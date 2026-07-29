@@ -142,6 +142,8 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
         run: |
           $ErrorActionPreference = 'Stop'
           git pull --ff-only origin main
@@ -166,12 +168,12 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw 'Cleanup push failed.' }
           }
 
-          foreach ($pr in @(3, 4, 6, 7, 8, 10)) {
-              gh pr close $pr --repo $env:GITHUB_REPOSITORY --delete-branch=false 2>$null
+          if ($env:PR_NUMBER) {
+              gh pr close $env:PR_NUMBER --repo $env:GITHUB_REPOSITORY --delete-branch=false 2>$null
           }
           gh issue close 2 --repo $env:GITHUB_REPOSITORY --reason completed 2>$null
 
-          foreach ($branch in @(
+          $branches = @(
               'agent/unpack-build-release-fix22',
               'agent/verified-fix22-release',
               'run-fix22-release',
@@ -180,6 +182,8 @@ jobs:
               'verify/fix22-salvage',
               'finalize-fix22',
               'release/fix22'
-          )) {
+          )
+          if ($env:PR_HEAD) { $branches += $env:PR_HEAD }
+          foreach ($branch in ($branches | Select-Object -Unique)) {
               gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/heads/$branch" 2>$null
           }
