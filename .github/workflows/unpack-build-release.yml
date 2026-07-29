@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/fix22_v2/**'
       - '.github/workflows/unpack-build-release.yml'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
