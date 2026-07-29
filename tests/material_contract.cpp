@@ -53,8 +53,9 @@ static_assert(epoch::sand::material_profile(Material::plastic).conversions.find(
 static_assert(epoch::sand::material_profile(Material::acid_resistant_plastic).acid_resistance >
               epoch::sand::material_profile(Material::plastic).acid_resistance);
 
-static_assert(epoch::sand::policy::reconstruction_ready(52u, 120u, true, true, false, false, 0u));
-static_assert(!epoch::sand::policy::reconstruction_ready(51u, 120u, true, true, false, false, 0u));
+static_assert(epoch::sand::policy::stability_ready(52u, 120u, true, true, false, false, 0u));
+static_assert(!epoch::sand::policy::stability_ready(51u, 120u, true, true, false, false, 0u));
+static_assert(epoch::sand::policy::laser_hits_to_dislodge == 2u);
 static_assert(!epoch::sand::policy::should_collapse(32u));
 static_assert(epoch::sand::policy::should_collapse(31u));
 static_assert(epoch::sand::policy::update_vent_pressure(100u, true, false) == 103u);
