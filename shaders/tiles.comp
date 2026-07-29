@@ -71,7 +71,7 @@ void main() {
     bool structuralTile = structural > 0u;
 
     // An aligned region never fills gaps, synthesizes pixels, or becomes a second
-    // tile object. Existing represented cells may only qualify as coherent terrain.
+    // tile object. Existing represented cells may only qualify as stable terrain.
     bool previouslyDense = tileHas(previous, TILE_STRUCTURAL) &&
                            previous.occupancy >= TILE_STABILITY_OCCUPANCY;
     bool denseStructural = structural >= TILE_STABILITY_OCCUPANCY || previouslyDense;
@@ -87,21 +87,21 @@ void main() {
     // More than half dislodged means fewer than 32 represented structural cells.
     // The chemistry pass releases every remaining cell in the same simulation tick.
     bool collapsing = structuralTile && previouslyDense && structural < TILE_COLLAPSE_OCCUPANCY;
-    bool coherent = (structuralTile || newlyStable) && !collapsing;
+    bool terrainStable = (structuralTile || newlyStable) && !collapsing;
     bool anchored = origin.y + int(TILE_SIZE) >= int(pc.height);
-    bool supported = coherent || anchored;
+    bool supported = terrainStable || anchored;
 
     uint flags = 0u;
     if (structuralTile || newlyStable) flags |= TILE_STRUCTURAL;
     if (supported) flags |= TILE_SUPPORTED;
     if (candidate) flags |= TILE_CANDIDATE;
-    if (coherent) flags |= TILE_STABLE;
+    if (terrainStable) flags |= TILE_STABLE;
     if (collapsing) flags |= TILE_COLLAPSING;
     if (damaged) flags |= TILE_DAMAGED;
 
-    uint coherentCells = structuralTile ? structural : occupied;
-    bool sleeping = coherent && !damaged && !moving && !hot && !reacting &&
-                    dominantCount == coherentCells;
+    uint stableCells = structuralTile ? structural : occupied;
+    bool sleeping = terrainStable && !damaged && !moving && !hot && !reacting &&
+                    dominantCount == stableCells;
     if (sleeping) flags |= TILE_SLEEPING;
     else flags |= TILE_ACTIVE;
 
