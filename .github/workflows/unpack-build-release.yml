@@ -1,10 +1,8 @@
 name: Unpack, Build, and Release EpochSand Fix22
 
 on:
-  push:
+  pull_request:
     branches: [main]
-  issues:
-    types: [opened]
   workflow_dispatch:
 
 permissions:
@@ -16,14 +14,14 @@ concurrency:
 
 jobs:
   build-release:
-    if: github.event_name != 'issues' || github.event.issue.title == 'Trigger EpochSand Fix22 Release'
     runs-on: windows-latest
     timeout-minutes: 60
 
     steps:
-      - name: Check out repository
+      - name: Check out main
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Unpack source into repository root
@@ -31,33 +29,33 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $zip = "EpochSand_Cpp23_Vulkan_WindowsFix22.zip"
-
-          if (Test-Path -LiteralPath $zip) {
-              $extractRoot = Join-Path $env:RUNNER_TEMP "epoch-sand-fix22-source"
-              Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
-              New-Item -ItemType Directory -Path $extractRoot | Out-Null
-              Expand-Archive -LiteralPath $zip -DestinationPath $extractRoot -Force
-
-              $sourceRoot = Join-Path $extractRoot "EpochSand"
-              if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot "CMakeLists.txt"))) {
-                  throw "The archive does not contain EpochSand/CMakeLists.txt."
-              }
-
-              Get-ChildItem -LiteralPath $sourceRoot -Force | ForEach-Object {
-                  Copy-Item -LiteralPath $_.FullName -Destination $env:GITHUB_WORKSPACE -Recurse -Force
-              }
-
-              Remove-Item -LiteralPath $zip -Force
-
-              git config user.name "github-actions[bot]"
-              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-              git add -A
-              $changes = git status --porcelain
-              if ($changes) {
-                  git commit -m "Unpack EpochSand WindowsFix22 source"
-                  git push origin HEAD:main
-              }
+          if (-not (Test-Path -LiteralPath $zip)) {
+              throw "Missing $zip"
           }
+
+          $extractRoot = Join-Path $env:RUNNER_TEMP "epoch-sand-fix22-source"
+          Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $extractRoot | Out-Null
+          Expand-Archive -LiteralPath $zip -DestinationPath $extractRoot -Force
+
+          $sourceRoot = Join-Path $extractRoot "EpochSand"
+          if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot "CMakeLists.txt"))) {
+              throw "The archive does not contain EpochSand/CMakeLists.txt."
+          }
+
+          Get-ChildItem -LiteralPath $sourceRoot -Force | ForEach-Object {
+              Copy-Item -LiteralPath $_.FullName -Destination $env:GITHUB_WORKSPACE -Recurse -Force
+          }
+
+          Remove-Item -LiteralPath $zip -Force
+          Remove-Item -LiteralPath ".github/release-trigger" -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath ".github/workflows/unpack-build-release.yml" -Force -ErrorAction SilentlyContinue
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Unpack EpochSand WindowsFix22 source"
+          git push origin HEAD:main
 
           $releaseSha = git rev-parse HEAD
           "RELEASE_SHA=$releaseSha" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -71,9 +69,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $vcpkgRoot = Join-Path $env:RUNNER_TEMP "vcpkg"
-          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot ".git"))) {
-              git clone --filter=blob:none https://github.com/microsoft/vcpkg.git $vcpkgRoot
-          }
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git $vcpkgRoot
           git -C $vcpkgRoot checkout 04a735608afac5844e86fc91d6ba2112cac613c1
           & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
           "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -103,10 +99,8 @@ jobs:
           $distRoot = Join-Path $env:GITHUB_WORKSPACE "dist"
           $stage = Join-Path $distRoot "EpochSand_Windows_x64_Fix22"
           $archive = Join-Path $distRoot "EpochSand_Windows_x64_Fix22.zip"
-
           Remove-Item -LiteralPath $distRoot -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $stage | Out-Null
-
           Copy-Item "build/windows/Release/epoch_sand.exe" $stage -Force
           Copy-Item "build/windows/Release/shaders" (Join-Path $stage "shaders") -Recurse -Force
 
@@ -124,7 +118,6 @@ jobs:
           Copy-Item README.md, LICENSE -Destination $stage -Force
           $runLines = @('@echo off', 'cd /d "%~dp0"', 'epoch_sand.exe')
           Set-Content -LiteralPath (Join-Path $stage "run.bat") -Value $runLines -Encoding ascii
-
           Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $archive -CompressionLevel Optimal
           "RELEASE_ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append
 
@@ -145,9 +138,8 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
               gh release delete $tag --repo $env:GITHUB_REPOSITORY --yes --cleanup-tag
           }
-
           gh release create $tag $env:RELEASE_ARCHIVE `
             --repo $env:GITHUB_REPOSITORY `
             --target $env:RELEASE_SHA `
             --title "EpochSand Windows Fix22" `
-            --notes "Unpacked C++23 source is committed to main. This release contains the Windows x64 executable, compiled SPIR-V shaders, Vulkan loader, README, license, and launcher. Shader validation and C++23 contract tests run before publication."
+            --notes "Unpacked C++23 source is committed to main. This release contains the Windows x64 executable, compiled SPIR-V shaders, Vulkan loader, README, license, and launcher. Shader validation and C++23 contract tests passed before publication."
