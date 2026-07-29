@@ -34,35 +34,9 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Apply corrected terrain stability rules
+      - name: Capture release source
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $source = Get-Content -LiteralPath 'tools/apply_terrain_stability_fix.py' -Raw
-          $marker = 'workflow_path = ROOT / ".github/workflows/windows-release.yml"'
-          $markerIndex = $source.IndexOf($marker)
-          if ($markerIndex -lt 0) { throw 'Terrain correction script tail marker was not found.' }
-          $runtimeScript = 'tools/.apply_terrain_stability_fix_runtime.py'
-          Set-Content -LiteralPath $runtimeScript -Value $source.Substring(0, $markerIndex) -NoNewline -Encoding utf8
-          python $runtimeScript
-          if ($LASTEXITCODE -ne 0) { throw 'Terrain stability correction failed.' }
-          Remove-Item -LiteralPath $runtimeScript -Force
-
-          $validatorPath = 'tools/validate_shader_contracts.py'
-          $validator = Get-Content -LiteralPath $validatorPath -Raw
-          $validator = $validator.Replace('TILE_REBUILD_OCCUPANCY', 'TILE_STABILITY_OCCUPANCY')
-          $validator = $validator.Replace('TILE_REBUILD_COOLDOWN', 'TILE_RESTABILIZE_COOLDOWN')
-          $validator = $validator.Replace('TILE_BREAK_OCCUPANCY', 'TILE_COLLAPSE_OCCUPANCY')
-          Set-Content -LiteralPath $validatorPath -Value $validator -NoNewline -Encoding utf8
-
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          if (-not (git diff --cached --quiet)) {
-              git commit -m 'Align terrain stability validation contracts'
-              git push origin HEAD:main
-              if ($LASTEXITCODE -ne 0) { throw 'Terrain stability source push failed.' }
-          }
           $releaseSha = git rev-parse HEAD
           "RELEASE_SHA=$releaseSha" | Out-File -FilePath $env:GITHUB_ENV -Append
 
