@@ -8,6 +8,10 @@ on:
       - '.github/release-trigger'
     tags:
       - 'v*'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/release-pr-trigger'
 
 permissions:
   contents: write
@@ -27,6 +31,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Validate shader contracts
@@ -126,6 +131,7 @@ jobs:
           git pull --ff-only origin main
 
           Remove-Item '.github/release-trigger' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/release-pr-trigger' -Force -ErrorAction SilentlyContinue
           Remove-Item '.github/test-small.txt' -Force -ErrorAction SilentlyContinue
           Remove-Item '.github/fix22' -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item '.github/fix22_v2' -Recurse -Force -ErrorAction SilentlyContinue
@@ -144,7 +150,7 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw 'Cleanup push failed.' }
           }
 
-          foreach ($pr in @(3, 4, 6, 7)) {
+          foreach ($pr in @(3, 4, 6, 7, 8)) {
               gh pr close $pr --repo $env:GITHUB_REPOSITORY --delete-branch=false 2>$null
           }
           gh issue close 2 --repo $env:GITHUB_REPOSITORY --reason completed 2>$null
@@ -156,7 +162,8 @@ jobs:
               'trigger-fix22-release',
               'transfer/fix22-zip',
               'verify/fix22-salvage',
-              'finalize-fix22'
+              'finalize-fix22',
+              'release/fix22'
           )) {
               gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/heads/$branch" 2>$null
           }
