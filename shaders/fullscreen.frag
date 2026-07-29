@@ -323,7 +323,7 @@ void main() {
         vec3 overlay = vec3(0.0);
         float alpha = 0.0;
         if (tileHas(tile, TILE_COLLAPSING) || tileHas(tile, TILE_DAMAGED)) { overlay = vec3(0.95, 0.15, 0.10); alpha = 0.34; }
-        else if (tileHas(tile, TILE_RECONSTRUCT) || tileHas(tile, TILE_CANDIDATE)) { overlay = vec3(0.95, 0.72, 0.12); alpha = 0.30; }
+        else if (tileHas(tile, TILE_STABLE) || tileHas(tile, TILE_CANDIDATE)) { overlay = vec3(0.95, 0.72, 0.12); alpha = 0.30; }
         else if (tileHas(tile, TILE_SLEEPING)) { overlay = vec3(0.16, 0.72, 0.38); alpha = 0.22; }
         else if (tileHas(tile, TILE_ACTIVE)) { overlay = vec3(0.10, 0.65, 0.92); alpha = 0.18; }
         color.rgb = mix(color.rgb, overlay, alpha * float(tile.occupancy) / 64.0);

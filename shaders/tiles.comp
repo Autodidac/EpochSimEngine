@@ -66,49 +66,46 @@ void main() {
 
     uint cooldown = tileCooldown(previous);
     if (cooldown > 0u) --cooldown;
-    bool isUniformMaterial = dominant != MAT_EMPTY && dominantCount == occupied;
-    bool compatible = isUniformMaterial && isReconstructableMaterial(dominant);
+    bool uniformMaterial = dominant != MAT_EMPTY && dominantCount == occupied;
+    bool stabilizable = uniformMaterial && isReconstructableMaterial(dominant);
     bool structuralTile = structural > 0u;
 
-    // Sparse authored geometry such as one-cell glass walls, ramps, wires, and
-    // bridge braces is valid structural content. Collapse only applies to a tile
-    // that was previously a dense structural mass and has since been damaged
-    // below the break threshold. This preserves intentional shapes while keeping
-    // real destruction and block-to-particle release intact.
+    // An aligned region never fills gaps, synthesizes pixels, or becomes a second
+    // tile object. Existing represented cells may only qualify as coherent terrain.
     bool previouslyDense = tileHas(previous, TILE_STRUCTURAL) &&
-                           previous.occupancy >= TILE_REBUILD_OCCUPANCY;
-    bool denseStructural = structural >= TILE_REBUILD_OCCUPANCY || previouslyDense;
+                           previous.occupancy >= TILE_STABILITY_OCCUPANCY;
+    bool denseStructural = structural >= TILE_STABILITY_OCCUPANCY || previouslyDense;
     bool damaged = structuralTile && denseStructural &&
                    (structural < TILE_CELL_COUNT ||
                     (structural > 0u && healthSum / structural < 240u));
-    bool candidate = !structuralTile && cooldown == 0u && compatible &&
-                     occupied >= TILE_REBUILD_OCCUPANCY && stable == occupied &&
+    bool candidate = !structuralTile && cooldown == 0u && stabilizable &&
+                     occupied >= TILE_STABILITY_OCCUPANCY && stable == occupied &&
                      !moving && !hot && !reacting;
     uint stableTicks = candidate ? min(tileStableTicks(previous) + 1u, TILE_STABILIZE_TICKS) : 0u;
-    bool reconstruct = candidate && stableTicks >= TILE_STABILIZE_TICKS;
-    bool collapsing = structuralTile && previouslyDense && structural < TILE_BREAK_OCCUPANCY;
+    bool newlyStable = candidate && stableTicks >= TILE_STABILIZE_TICKS;
 
-    // Support is derived only from this tile's represented mass. Intact tiles
-    // remain coherent; missing provenance or a temporarily open neighbor is never
-    // a destruction condition. Real collapse is controlled by occupancy damage.
+    // More than half dislodged means fewer than 32 represented structural cells.
+    // The chemistry pass releases every remaining cell in the same simulation tick.
+    bool collapsing = structuralTile && previouslyDense && structural < TILE_COLLAPSE_OCCUPANCY;
+    bool coherent = (structuralTile || newlyStable) && !collapsing;
     bool anchored = origin.y + int(TILE_SIZE) >= int(pc.height);
-    bool supported = (structuralTile || reconstruct) && !collapsing;
-    if (anchored) supported = true;
+    bool supported = coherent || anchored;
 
     uint flags = 0u;
-    if (structuralTile || reconstruct) flags |= TILE_STRUCTURAL;
+    if (structuralTile || newlyStable) flags |= TILE_STRUCTURAL;
     if (supported) flags |= TILE_SUPPORTED;
     if (candidate) flags |= TILE_CANDIDATE;
-    if (reconstruct) flags |= TILE_RECONSTRUCT;
+    if (coherent) flags |= TILE_STABLE;
     if (collapsing) flags |= TILE_COLLAPSING;
     if (damaged) flags |= TILE_DAMAGED;
 
-    bool sleeping = structuralTile && !damaged && !moving && !hot && !reacting &&
-                    dominantCount == structural;
+    uint coherentCells = structuralTile ? structural : occupied;
+    bool sleeping = coherent && !damaged && !moving && !hot && !reacting &&
+                    dominantCount == coherentCells;
     if (sleeping) flags |= TILE_SLEEPING;
     else flags |= TILE_ACTIVE;
 
-    if (collapsing || reconstruct) cooldown = TILE_REBUILD_COOLDOWN;
+    if (collapsing || newlyStable) cooldown = TILE_RESTABILIZE_COOLDOWN;
     tiles[index] = TileState(dominant, structuralTile ? structural : occupied,
                              flags, packTileCounters(stableTicks, cooldown));
 }

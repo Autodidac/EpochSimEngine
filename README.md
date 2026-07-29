@@ -16,14 +16,14 @@ Material behavior is determined by the material ID, current temperature, phase, 
 The following creation paths produce the same canonical behavior:
 
 - pre-placed scene content
-- reconstructed Terraria-style tiles
+- stabilized Terraria-style terrain cells
 - mouse-painted cells
 - broken structural fragments
 - spawned particles
 - reaction products
 - loaded cells
 
-A material does not disappear because it came from a particular creation path, because provenance is missing, or because a damaged tile cannot reconstruct. Structural breakup releases represented cells into the same material simulation.
+A material does not disappear because it came from a particular creation path, because provenance is missing, or because a damaged region is incomplete. Structural breakup releases represented cells into the same material simulation.
 
 ## Thermal and phase model
 
@@ -67,21 +67,21 @@ Water movement uses bounded local pair passes and a bounded eight-cell pressure 
 
 Fresh water, saltwater, dirty water, oil, acid, lava, and honey retain different density, viscosity, and flow behavior. Stable liquid cells stop changing once local pressure and level differences are resolved.
 
-## Terraria-style terrain reconstruction
+## Terraria-style terrain stability
 
-The world uses 8x8 aligned terrain regions made from ordinary cells. A loose solid region may reconstruct only when all of these conditions hold:
+The world uses 8x8 aligned terrain regions made from ordinary cells. Regions never reconstruct, synthesize missing pixels, fill gaps, snap material into place, or become a second tile object. Existing cells may qualify for stability only when all of these conditions hold:
 
 - at least 52 of 64 cells are occupied
 - occupied cells are one compatible material
 - temperature and phase are stable
 - cells have remained still long enough
 - no active burning, melting, erosion, reaction, falling, or displacement exists
-- the 120-tick stabilization period completes
-- the 240-tick rebuild cooldown has expired
+- the 120-tick stability qualification completes
+- the 240-tick restabilization cooldown has expired
 
-Mixed or incomplete regions remain loose material. Reconstruction preserves material, temperature, represented mass, and existing damage state. It does not heal cells or synthesize missing mass.
+Qualification changes only the coherence/support state of cells that already exist, allowing the region to stop falling. Empty positions remain empty. Material, temperature, represented mass, and existing damage are preserved.
 
-A reconstructed region sleeps when intact and inactive. Real damage below half occupancy releases remaining structural cells progressively. Missing provenance, age, or a temporary open neighbor cannot destroy a tile.
+Each stable terrain pixel has 255 integrity and an ordinary laser hit applies 144 damage, so every pixel requires exactly two hits to dislodge. The region remains coherent with 32 pixels left. Once fewer than 32 remain—more than half dislodged—all remaining pixels release and drop in the same simulation pass.
 
 ## Terrain rendering and debug view
 
@@ -94,7 +94,7 @@ Press `F3` to reveal the structural debug layer:
 - structural and supported states
 - sleeping and active regions
 - damage and collapse state
-- reconstruction candidates
+- stability candidates
 
 The overlay reads simulation state only and does not alter it.
 
@@ -133,7 +133,7 @@ Examples:
 - structural breakup preserves fragments
 - phase changes preserve the represented cell
 
-Debug accounting tracks cells created at explicit world boundaries, converted, intentionally boundary-lost, rebuilt, broken, and conservation errors. Debug mode periodically reports non-zero conservation errors.
+Debug accounting tracks cells created at explicit world boundaries, converted, intentionally boundary-lost, stabilized, broken, and conservation errors. Debug mode periodically reports non-zero conservation errors.
 
 ## Material readability and gases
 
@@ -268,14 +268,14 @@ Vulkan thread
     fixed-rate simulation and acquire/present
     reset/paint
     sunlight
-    tile reconstruction/sleep controller
+    tile stability/sleep controller
     canonical chemistry/thermal pass
     deterministic movement and salinity passes
     actor/factory pass
     cohesive terrain, gas boundary, UI, debug, and inspection render
 ```
 
-Each cell is 16 bytes: material ID, age, signed temperature, and packed material-specific state. Each aligned tile has a separate compact controller containing material, occupancy, structural flags, stabilization time, and rebuild cooldown. Neither structure contains creation provenance used by physics.
+Each cell is 16 bytes: material ID, age, signed temperature, and packed material-specific state. Each aligned region has a compact controller containing material, occupancy, stability flags, settled time, and restabilization cooldown. Neither structure contains creation provenance used by physics.
 
 ## EpochGui snapshot
 

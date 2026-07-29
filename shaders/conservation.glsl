@@ -6,7 +6,7 @@ const uint CONS_DESTROYED = 1u;
 const uint CONS_CONVERTED = 2u;
 const uint CONS_BOUNDARY_LOST = 3u;
 const uint CONS_PHASE_CHANGES = 4u;
-const uint CONS_RECONSTRUCTED = 5u;
+const uint CONS_STABILIZED = 5u;
 const uint CONS_BROKEN = 6u;
 const uint CONS_ERRORS = 7u;
 
@@ -31,7 +31,7 @@ void recordConservation(Cell before, Cell after) {
     }
     if (before.material == after.material && cellPhase(before) != cellPhase(after))
         atomicAdd(conservation[CONS_PHASE_CHANGES], 1u);
-    if (!isStructural(before) && isStructural(after)) atomicAdd(conservation[CONS_RECONSTRUCTED], 1u);
+    if (!isStructural(before) && isStructural(after)) atomicAdd(conservation[CONS_STABILIZED], 1u);
     if (isStructural(before) && !isStructural(after)) atomicAdd(conservation[CONS_BROKEN], 1u);
 }
 

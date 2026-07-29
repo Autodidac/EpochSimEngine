@@ -347,8 +347,8 @@ def main() -> int:
         if re.search(rf"\b{forbidden}\b", strip_comments(combined), re.I):
             errors.append(f"placement-source physics identifier remains: {forbidden}")
 
-    if "setStateValue(result, 255u)" in chemistry.split("TILE_RECONSTRUCT", 1)[1].split("if (isStructural(source)", 1)[0]:
-        errors.append("reconstruction resets represented damage instead of preserving it")
+    if "setStateValue(result, 255u)" in chemistry.split("TILE_STABLE", 1)[1].split("if (isStructural(source)", 1)[0]:
+        errors.append("stability qualification resets represented damage instead of preserving it")
 
     # CPU and GLSL push constants must remain byte-for-byte field compatible.
     push_contracts = {

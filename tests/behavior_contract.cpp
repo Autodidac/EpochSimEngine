@@ -8,7 +8,7 @@
 namespace {
 
 enum class CreationPath : std::uint8_t {
-    map, tile, cursor, fragment, particle, reaction, save
+    map, stable_terrain, cursor, fragment, particle, reaction, save
 };
 
 struct CanonicalState final {
@@ -32,7 +32,7 @@ struct CanonicalState final {
 
 [[nodiscard]] constexpr bool creation_paths_are_canonical() noexcept {
     constexpr std::array paths{
-        CreationPath::map, CreationPath::tile, CreationPath::cursor,
+        CreationPath::map, CreationPath::stable_terrain, CreationPath::cursor,
         CreationPath::fragment, CreationPath::particle, CreationPath::reaction,
         CreationPath::save,
     };
@@ -83,26 +83,30 @@ struct CanonicalState final {
     return total == original && maximum - minimum <= 1;
 }
 
-[[nodiscard]] constexpr bool break_rebuild_preserves_representation() noexcept {
-    constexpr std::uint32_t initial_mass = 64;
-    constexpr std::uint32_t detached_fragments = 33;
-    constexpr std::uint32_t tile_remainder = initial_mass - detached_fragments;
-    static_assert(epoch::sand::policy::should_collapse(tile_remainder));
-    constexpr std::uint32_t settled_again = tile_remainder + detached_fragments;
-    return settled_again == initial_mass;
+[[nodiscard]] constexpr bool terrain_stability_preserves_representation() noexcept {
+    constexpr std::uint32_t initial_mass = 64u;
+    constexpr std::uint32_t detached_pixels = 33u;
+    constexpr std::uint32_t remaining_pixels = initial_mass - detached_pixels;
+    static_assert(epoch::sand::policy::should_collapse(remaining_pixels));
+    constexpr std::uint32_t settled_mass = remaining_pixels + detached_pixels;
+    return settled_mass == initial_mass;
 }
 
 static_assert(creation_paths_are_canonical());
 static_assert(local_water_equalization_preserves_volume());
-static_assert(break_rebuild_preserves_representation());
+static_assert(terrain_stability_preserves_representation());
+static_assert(epoch::sand::policy::stability_ready(52u, 120u, true, true, false, false, 0u));
+static_assert(!epoch::sand::policy::stability_ready(51u, 120u, true, true, false, false, 0u));
+static_assert(epoch::sand::policy::laser_hits_to_dislodge == 2u);
+static_assert(!epoch::sand::policy::should_collapse(32u));
+static_assert(epoch::sand::policy::should_collapse(31u));
 static_assert(epoch::sand::policy::water_pressure_depth == 8u);
 static_assert(epoch::sand::policy::vent_eruption_pressure > epoch::sand::policy::vent_gas_release_pressure);
-static_assert(epoch::sand::policy::reconstruction_cooldown_ticks >
-              epoch::sand::policy::reconstruction_stabilization_ticks);
+static_assert(epoch::sand::policy::restabilization_cooldown_ticks > epoch::sand::policy::stability_ticks);
 
 } // namespace
 
 int main() {
     return creation_paths_are_canonical() && local_water_equalization_preserves_volume() &&
-           break_rebuild_preserves_representation() ? 0 : 1;
+           terrain_stability_preserves_representation() ? 0 : 1;
 }

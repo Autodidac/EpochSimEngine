@@ -463,8 +463,7 @@ bool sleepingStructuralNeighborhood(ivec2 position, Cell source) {
             if (candidate.x < 0 || candidate.y < 0 ||
                 candidate.x >= int(columns) || candidate.y >= int(rows)) continue;
             TileState nearby = tiles[uint(candidate.y) * columns + uint(candidate.x)];
-            if (tileHas(nearby, TILE_ACTIVE) || tileHas(nearby, TILE_COLLAPSING) ||
-                tileHas(nearby, TILE_RECONSTRUCT)) return false;
+            if (tileHas(nearby, TILE_ACTIVE) || tileHas(nearby, TILE_COLLAPSING)) return false;
         }
     }
     return true;
@@ -498,10 +497,12 @@ void main() {
     // Tile analysis already consumed the previous movement marker.
     result.aux &= ~AUX_MOVED;
     TileState tile = tiles[tileIndex(p, pc.width)];
-    if (tileHas(tile, TILE_RECONSTRUCT) && source.material == tile.material &&
-        source.material != MAT_EMPTY && !isCellGas(source) && !isCellLiquid(source)) {
-        // Reconstruction changes only structural state. Material, temperature,
-        // age, random variation, and existing damage remain exactly represented.
+    if (tileHas(tile, TILE_STABLE) && !isStructural(source) &&
+        source.material == tile.material && source.material != MAT_EMPTY &&
+        !isCellGas(source) && !isCellLiquid(source)) {
+        // Stability qualification never creates, replaces, fills, or snaps cells.
+        // It marks only the already represented pixels coherent and supported.
+        // Material, temperature, age, random variation, and damage are preserved.
         result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
         result.aux &= ~AUX_MOVED;
     }
@@ -512,8 +513,7 @@ void main() {
         result.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
         result.aux |= AUX_MOVED;
         result.age = 0u;
-    } else if (isStructural(source) && tileHas(tile, TILE_COLLAPSING) &&
-               ((uint(p.x & 7) + uint(p.y & 7) * TILE_SIZE) == (pc.step & 63u))) {
+    } else if (isStructural(source) && tileHas(tile, TILE_COLLAPSING)) {
         result.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
         result.aux |= AUX_MOVED;
         result.age = 0u;
