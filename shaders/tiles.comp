@@ -82,17 +82,17 @@ void main() {
                      occupied >= TILE_STABILITY_OCCUPANCY && stable == occupied &&
                      !moving && !hot && !reacting;
     uint stableTicks = candidate ? min(tileStableTicks(previous) + 1u, TILE_STABILIZE_TICKS) : 0u;
-    bool newlyStable = candidate && stableTicks >= TILE_STABILIZE_TICKS;
+    bool stableRegion = candidate && stableTicks >= TILE_STABILIZE_TICKS;
 
     // More than half dislodged means fewer than 32 represented structural cells.
     // The chemistry pass releases every remaining cell in the same simulation tick.
     bool collapsing = structuralTile && previouslyDense && structural < TILE_COLLAPSE_OCCUPANCY;
-    bool terrainStable = (structuralTile || newlyStable) && !collapsing;
+    bool terrainStable = (structuralTile || stableRegion) && !collapsing;
     bool anchored = origin.y + int(TILE_SIZE) >= int(pc.height);
     bool supported = terrainStable || anchored;
 
     uint flags = 0u;
-    if (structuralTile || newlyStable) flags |= TILE_STRUCTURAL;
+    if (structuralTile) flags |= TILE_STRUCTURAL;
     if (supported) flags |= TILE_SUPPORTED;
     if (candidate) flags |= TILE_CANDIDATE;
     if (terrainStable) flags |= TILE_STABLE;
@@ -105,7 +105,7 @@ void main() {
     if (sleeping) flags |= TILE_SLEEPING;
     else flags |= TILE_ACTIVE;
 
-    if (collapsing || newlyStable) cooldown = TILE_RESTABILIZE_COOLDOWN;
+    if (collapsing) cooldown = TILE_RESTABILIZE_COOLDOWN;
     tiles[index] = TileState(dominant, structuralTile ? structural : occupied,
                              flags, packTileCounters(stableTicks, cooldown));
 }

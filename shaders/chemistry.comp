@@ -503,7 +503,7 @@ void main() {
         // Stability qualification never creates, replaces, fills, or snaps cells.
         // It marks only the already represented pixels coherent and supported.
         // Material, temperature, age, random variation, and damage are preserved.
-        result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
+        result.aux |= AUX_SUPPORTED;
         result.aux &= ~AUX_MOVED;
     }
     if (isStructural(source) && (cellPhase(result) == PHASE_MOLTEN ||
@@ -722,12 +722,14 @@ void main() {
         if (impact || source.age > 72u || nearWater || nearSaltwater) result = makeCell(MAT_EMPTY);
     } else if (isStructural(source) && hasNeighbor(p, MAT_PLASMA_BOLT)) {
         uint health = stateValue(source);
-        if (health <= 24u) {
+        if (health == 0u) health = 255u;
+        const uint laserDamage = 144u;
+        if (health <= laserDamage) {
             result.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED | AUX_MOVED);
             setStateValue(result, 48u);
             result.age = 0u;
         } else {
-            setStateValue(result, health - 24u);
+            setStateValue(result, health - laserDamage);
         }
     }
 
