@@ -1,11 +1,6 @@
 name: Assemble EpochSand Fix22 Archive
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/fix22_v2/**'
-      - '.github/workflows/unpack-build-release.yml'
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -14,8 +9,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: epoch-sand-fix22-release
-  cancel-in-progress: true
+  group: epoch-sand-fix22-transfer
+  cancel-in-progress: false
 
 jobs:
   assemble:
@@ -38,7 +33,7 @@ jobs:
           $zip = Join-Path $env:GITHUB_WORKSPACE "EpochSand_Cpp23_Vulkan_WindowsFix22.zip"
           $ready = $false
 
-          for ($attempt = 1; $attempt -le 100; ++$attempt) {
+          for ($attempt = 1; $attempt -le 150; ++$attempt) {
               git pull --ff-only origin main
               if ($LASTEXITCODE -ne 0) {
                   throw "Unable to fast-forward to current main"
