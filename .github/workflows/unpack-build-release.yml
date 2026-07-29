@@ -3,9 +3,6 @@ name: Unpack, Build, and Release EpochSand Fix22
 on:
   push:
     branches: [main]
-    paths:
-      - "EpochSand_Cpp23_Vulkan_WindowsFix22.zip"
-      - ".github/workflows/unpack-build-release.yml"
   workflow_dispatch:
 
 permissions:
@@ -122,7 +119,11 @@ jobs:
           }
 
           Copy-Item README.md, LICENSE -Destination $stage -Force
-          "@echo off`r`ncd /d \"%~dp0\"`r`nepoch_sand.exe`r`n" | Set-Content -LiteralPath (Join-Path $stage "run.bat") -Encoding ascii
+          @'
+@echo off
+cd /d "%~dp0"
+epoch_sand.exe
+'@ | Set-Content -LiteralPath (Join-Path $stage "run.bat") -Encoding ascii
 
           Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $archive -CompressionLevel Optimal
           "RELEASE_ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append
