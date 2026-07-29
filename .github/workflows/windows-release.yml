@@ -39,6 +39,7 @@ jobs:
         run: |
           python tools/apply_terrain_stability_fix.py
           if ($LASTEXITCODE -ne 0) { throw 'Terrain stability correction failed.' }
+          git restore --source=HEAD -- .github/workflows/windows-release.yml tools/apply_terrain_stability_fix.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
