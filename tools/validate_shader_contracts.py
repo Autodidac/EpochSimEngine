@@ -331,7 +331,7 @@ def main() -> int:
 
     architecture_contracts = {
         "movement": (movement, ("isStructural(moving)", "liquidColumnPressure", "TILE_SLEEPING")),
-        "tiles": (tiles, ("TILE_REBUILD_OCCUPANCY", "TILE_STABILIZE_TICKS", "TILE_REBUILD_COOLDOWN", "TILE_SLEEPING")),
+        "tiles": (tiles, ("TILE_STABILITY_OCCUPANCY", "TILE_STABILIZE_TICKS", "TILE_RESTABILIZE_COOLDOWN", "TILE_SLEEPING")),
         "renderer": (renderer, ("renderPc.inspectMode", "renderPc.debugMode", "gasPresentation", "TILE_CANDIDATE")),
         "materials": (materials, ("cellPhase", "materialMeltingPoint", "materialVaporizationPoint", "isReconstructableMaterial", "STRUCTURAL_COLLAPSE_CELLS")),
         "chemistry": (chemistry, ("materialThermalConductivity", "MAT_MAGMA_VENT", "AUX_STRUCTURAL", "recordConservation")),
@@ -427,8 +427,8 @@ def main() -> int:
     for token in ("authoredStructuralCell", "looseAuthoredCargo"):
         if token not in reset:
             errors.append(f"authored scene stability contract missing {token!r}")
-    for token in ("previouslyDense", "previous.occupancy >= TILE_REBUILD_OCCUPANCY",
-                  "structuralTile && previouslyDense && structural < TILE_BREAK_OCCUPANCY"):
+    for token in ("previouslyDense", "previous.occupancy >= TILE_STABILITY_OCCUPANCY",
+                  "structuralTile && previouslyDense && structural < TILE_COLLAPSE_OCCUPANCY"):
         if token not in tiles:
             errors.append(f"bounded structural collapse contract missing {token!r}")
     if "sameNeighbors" not in renderer or "sameNeighbors == 0u" not in renderer:
