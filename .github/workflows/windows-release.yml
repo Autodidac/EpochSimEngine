@@ -37,9 +37,17 @@ jobs:
       - name: Apply corrected terrain stability rules
         shell: pwsh
         run: |
-          python tools/apply_terrain_stability_fix.py
+          $ErrorActionPreference = 'Stop'
+          $source = Get-Content -LiteralPath 'tools/apply_terrain_stability_fix.py' -Raw
+          $marker = 'workflow_path = ROOT / ".github/workflows/windows-release.yml"'
+          $markerIndex = $source.IndexOf($marker)
+          if ($markerIndex -lt 0) { throw 'Terrain correction script tail marker was not found.' }
+          $runtimeScript = 'tools/.apply_terrain_stability_fix_runtime.py'
+          Set-Content -LiteralPath $runtimeScript -Value $source.Substring(0, $markerIndex) -NoNewline -Encoding utf8
+          python $runtimeScript
           if ($LASTEXITCODE -ne 0) { throw 'Terrain stability correction failed.' }
-          git restore --source=HEAD -- .github/workflows/windows-release.yml tools/apply_terrain_stability_fix.py
+          Remove-Item -LiteralPath $runtimeScript -Force
+
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
@@ -155,6 +163,7 @@ jobs:
           Remove-Item '.github/fix22' -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item '.github/fix22_v2' -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item 'EpochSand_Cpp23_Vulkan_WindowsFix22.zip' -Force -ErrorAction SilentlyContinue
+          Remove-Item 'tools/apply_terrain_stability_fix.py' -Force -ErrorAction SilentlyContinue
           Remove-Item '.github/workflows/unpack-build-release.yml' -Force -ErrorAction SilentlyContinue
           Remove-Item '.github/workflows/fix22-salvage-release.yml' -Force -ErrorAction SilentlyContinue
           Remove-Item '.github/workflows/fix22-finalize.yml' -Force -ErrorAction SilentlyContinue
@@ -182,7 +191,8 @@ jobs:
               'transfer/fix22-zip',
               'verify/fix22-salvage',
               'finalize-fix22',
-              'release/fix22'
+              'release/fix22',
+              'cleanup-fix22'
           )
           if ($env:PR_HEAD) { $branches += $env:PR_HEAD }
           foreach ($branch in ($branches | Select-Object -Unique)) {
