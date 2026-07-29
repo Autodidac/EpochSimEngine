@@ -1,0 +1,114 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "materials.glsl"
+#include "tiles.glsl"
+
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
+layout(std430, binding = 4) buffer Tiles { TileState tiles[]; };
+
+bool tileInside(ivec2 p) {
+    return p.x >= 0 && p.y >= 0 && p.x < int(pc.width) && p.y < int(pc.height);
+}
+
+void main() {
+    uvec2 tile = gl_GlobalInvocationID.xy;
+    uint columns = tileColumns(pc.width);
+    uint rows = (pc.height + TILE_SIZE - 1u) / TILE_SIZE;
+    if (tile.x >= columns || tile.y >= rows) return;
+
+    uint index = tile.y * columns + tile.x;
+    TileState previous = tiles[index];
+    ivec2 origin = ivec2(tile * TILE_SIZE);
+
+    uint counts[MATERIAL_COUNT];
+    for (uint i = 0u; i < MATERIAL_COUNT; ++i) counts[i] = 0u;
+    uint occupied = 0u;
+    uint structural = 0u;
+    uint stable = 0u;
+    uint healthSum = 0u;
+    bool hot = false;
+    bool moving = false;
+    bool reacting = false;
+
+    for (uint y = 0u; y < TILE_SIZE; ++y) {
+        for (uint x = 0u; x < TILE_SIZE; ++x) {
+            ivec2 p = origin + ivec2(x, y);
+            if (!tileInside(p)) continue;
+            Cell cell = cells[indexOf(p)];
+            if (cell.material == MAT_EMPTY || isCellGas(cell) || isCellLiquid(cell)) continue;
+            ++occupied;
+            if (cell.material < MATERIAL_COUNT) ++counts[cell.material];
+            if (isStructural(cell)) {
+                ++structural;
+                uint health = stateValue(cell);
+                healthSum += health == 0u ? 255u : health;
+            }
+            uint phase = cellPhase(cell);
+            bool cellStable = cell.age >= 30u && (cell.aux & AUX_MOVED) == 0u &&
+                              phase != PHASE_SOFTENED && phase != PHASE_MOLTEN && phase != PHASE_VAPOR;
+            if (cellStable) ++stable;
+            moving = moving || (cell.aux & AUX_MOVED) != 0u || cell.age < 8u;
+            hot = hot || abs(cell.temperature - 20) > 80;
+            reacting = reacting || cell.material == MAT_FIRE || cell.material == MAT_EMBER ||
+                       cell.material == MAT_GUNPOWDER || cell.material == MAT_ACID;
+        }
+    }
+
+    uint dominant = MAT_EMPTY;
+    uint dominantCount = 0u;
+    for (uint material = 1u; material < MATERIAL_COUNT; ++material) {
+        if (counts[material] > dominantCount) {
+            dominantCount = counts[material];
+            dominant = material;
+        }
+    }
+
+    uint cooldown = tileCooldown(previous);
+    if (cooldown > 0u) --cooldown;
+    bool isUniformMaterial = dominant != MAT_EMPTY && dominantCount == occupied;
+    bool compatible = isUniformMaterial && isReconstructableMaterial(dominant);
+    bool structuralTile = structural > 0u;
+
+    // Sparse authored geometry such as one-cell glass walls, ramps, wires, and
+    // bridge braces is valid structural content. Collapse only applies to a tile
+    // that was previously a dense structural mass and has since been damaged
+    // below the break threshold. This preserves intentional shapes while keeping
+    // real destruction and block-to-particle release intact.
+    bool previouslyDense = tileHas(previous, TILE_STRUCTURAL) &&
+                           previous.occupancy >= TILE_REBUILD_OCCUPANCY;
+    bool denseStructural = structural >= TILE_REBUILD_OCCUPANCY || previouslyDense;
+    bool damaged = structuralTile && denseStructural &&
+                   (structural < TILE_CELL_COUNT ||
+                    (structural > 0u && healthSum / structural < 240u));
+    bool candidate = !structuralTile && cooldown == 0u && compatible &&
+                     occupied >= TILE_REBUILD_OCCUPANCY && stable == occupied &&
+                     !moving && !hot && !reacting;
+    uint stableTicks = candidate ? min(tileStableTicks(previous) + 1u, TILE_STABILIZE_TICKS) : 0u;
+    bool reconstruct = candidate && stableTicks >= TILE_STABILIZE_TICKS;
+    bool collapsing = structuralTile && previouslyDense && structural < TILE_BREAK_OCCUPANCY;
+
+    // Support is derived only from this tile's represented mass. Intact tiles
+    // remain coherent; missing provenance or a temporarily open neighbor is never
+    // a destruction condition. Real collapse is controlled by occupancy damage.
+    bool anchored = origin.y + int(TILE_SIZE) >= int(pc.height);
+    bool supported = (structuralTile || reconstruct) && !collapsing;
+    if (anchored) supported = true;
+
+    uint flags = 0u;
+    if (structuralTile || reconstruct) flags |= TILE_STRUCTURAL;
+    if (supported) flags |= TILE_SUPPORTED;
+    if (candidate) flags |= TILE_CANDIDATE;
+    if (reconstruct) flags |= TILE_RECONSTRUCT;
+    if (collapsing) flags |= TILE_COLLAPSING;
+    if (damaged) flags |= TILE_DAMAGED;
+
+    bool sleeping = structuralTile && !damaged && !moving && !hot && !reacting &&
+                    dominantCount == structural;
+    if (sleeping) flags |= TILE_SLEEPING;
+    else flags |= TILE_ACTIVE;
+
+    if (collapsing || reconstruct) cooldown = TILE_REBUILD_COOLDOWN;
+    tiles[index] = TileState(dominant, structuralTile ? structural : occupied,
+                             flags, packTileCounters(stableTicks, cooldown));
+}

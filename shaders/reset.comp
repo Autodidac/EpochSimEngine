@@ -1,0 +1,462 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "materials.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
+
+const uint SCENE_SANDBOX = 0u;
+const uint SCENE_BLANK = 1u;
+const uint SCENE_VOLCANO = 2u;
+const uint SCENE_WATERWORKS = 3u;
+const uint SCENE_ECOSYSTEM = 4u;
+const uint SCENE_ENGINEERING = 5u;
+const uint SCENE_GOLD_MINE = 6u;
+const uint SCENE_DEMOLITION = 7u;
+const uint SCENE_FRONTIER_BASE = 8u;
+const uint SCENE_COUNT = 9u;
+
+bool rectContains(ivec2 p, ivec2 minimum, ivec2 maximum) {
+    return all(greaterThanEqual(p, minimum)) && all(lessThan(p, maximum));
+}
+
+uint sandboxMaterial(ivec2 p) {
+    uint terrain = pc.height - 44u + (hash32(uint(p.x) * 17u) % 9u);
+    uint material = MAT_EMPTY;
+    if (uint(p.y) >= pc.height - 8u) material = MAT_STONE;
+    else if (uint(p.y) >= terrain) material = uint(p.y) == terrain ? MAT_GRASS : MAT_DIRT;
+
+    ivec2 sandCenter = ivec2(int(pc.width / 5u), int(pc.height - 80u));
+    ivec2 sandDelta = p - sandCenter;
+    if (sandDelta.y >= 0 && sandDelta.y < 38 && abs(sandDelta.x) < 40 - sandDelta.y) material = MAT_SAND;
+
+    if (p.x > int(pc.width * 2u / 5u) && p.x < int(pc.width * 3u / 5u) &&
+        p.y > int(pc.height - 92u) && p.y < int(pc.height - 52u)) material = MAT_WATER;
+
+    ivec2 crystalCenter = ivec2(int(pc.width * 3u / 4u), int(pc.height - 62u));
+    ivec2 crystalDelta = p - crystalCenter;
+    if (crystalDelta.x * crystalDelta.x + crystalDelta.y * crystalDelta.y < 180) material = MAT_CRYSTAL;
+
+    if (p.x > int(pc.width - 72u) && p.x < int(pc.width - 48u) &&
+        p.y > int(pc.height - 58u) && p.y < int(pc.height - 10u)) material = MAT_ACID_RESISTANT_PLASTIC;
+    if (p.x > int(pc.width - 69u) && p.x < int(pc.width - 51u) &&
+        p.y > int(pc.height - 52u) && p.y < int(pc.height - 14u)) material = MAT_ACID;
+
+    ivec2 queen = ivec2(int(pc.width * 4u / 5u), int(pc.height - 126u));
+    ivec2 q = p - queen;
+    int q2 = q.x * q.x + q.y * q.y;
+    if (p.x > queen.x - 34 && p.x < queen.x + 28 && p.y > queen.y - 16 && p.y < queen.y - 11) material = MAT_WOOD;
+    if (q2 >= 24 && q2 < 88) material = MAT_BEE_NEST;
+    if (q2 == 0) material = MAT_QUEEN_BEE;
+    else if (q.x >= 1 && q.x <= 10 && abs(q.y) <= 1) material = MAT_EMPTY;
+    else if (q2 < 24) {
+        uint chamberPattern = hash32(indexOf(p) ^ pc.seed);
+        material = (chamberPattern & 3u) == 0u ? MAT_EMPTY
+            : (((chamberPattern >> 2u) & 3u) == 0u ? MAT_POLLEN : MAT_HONEY);
+    }
+    if (q2 > 110 && q2 < 620 && (hash32(indexOf(p) ^ pc.seed ^ 0xbee51u) % 37u) == 0u) material = MAT_BEE;
+    return material;
+}
+
+uint volcanoMaterial(ivec2 p) {
+    int floorY = int(pc.height) - 12;
+    if (p.y >= floorY) return MAT_STONE;
+
+    int centerX = int(pc.width / 2u);
+    int vertical = floorY - p.y;
+    int halfWidth = max(0, 176 - vertical * 3 / 4);
+    uint material = MAT_EMPTY;
+    if (vertical >= 0 && vertical < 204 && abs(p.x - centerX) < halfWidth) {
+        material = MAT_STONE;
+        int throat = max(5, 19 - vertical / 11);
+        if (abs(p.x - centerX) < throat && vertical < 162) material = MAT_LAVA;
+        if (vertical < 10 && abs(p.x - centerX) < 8) material = MAT_MAGMA_VENT;
+        if (vertical > 150 && abs(p.x - centerX) < 32) material = MAT_EMPTY;
+    }
+
+    // A side lake turns overflowing lava into steam and new rock.
+    ivec2 lakeMin = ivec2(centerX + 150, floorY - 62);
+    ivec2 lakeMax = ivec2(min(int(pc.width) - 20, centerX + 250), floorY);
+    if (rectContains(p, lakeMin, lakeMax)) material = MAT_WATER;
+    if (p.y == lakeMax.y - 1 && p.x >= lakeMin.x - 8 && p.x < lakeMax.x + 8) material = MAT_STONE;
+
+    if (p.y < floorY - 172 && p.y > floorY - 250 && abs(p.x - centerX) < 70 &&
+        (hash32(indexOf(p) ^ pc.seed) & 23u) == 0u) material = MAT_SMOKE;
+    return material;
+}
+
+uint waterworksMaterial(ivec2 p) {
+    int floorY = int(pc.height) - 10;
+    if (p.y >= floorY) return MAT_STONE;
+
+    uint material = MAT_EMPTY;
+    int basinTop = int(pc.height) - 74;
+    if (p.y == basinTop || p.y == floorY - 1 || p.x == 18 || p.x == int(pc.width) - 19) {
+        if (p.y >= basinTop && p.y < floorY) material = MAT_GLASS;
+    }
+
+    int reservoirTop = int(pc.height) - 220;
+    int reservoirBottom = int(pc.height) - 118;
+    int width = 112;
+    for (int reservoir = 0; reservoir < 3; ++reservoir) {
+        int left = 42 + reservoir * 176;
+        int right = left + width;
+        bool wall = (p.x == left || p.x == right || p.y == reservoirBottom) &&
+                    p.y >= reservoirTop && p.y <= reservoirBottom;
+        bool outlet = p.y == reservoirBottom && p.x >= left + width / 2 - 5 && p.x <= left + width / 2 + 5;
+        if (wall && !outlet) material = MAT_GLASS;
+        if (p.x > left && p.x < right && p.y > reservoirTop + 12 && p.y < reservoirBottom) {
+            material = reservoir == 0 ? MAT_WATER : (reservoir == 1 ? MAT_SALTWATER : MAT_OIL);
+        }
+
+        int channelX = left + width / 2;
+        int channelBottom = basinTop - 2;
+        if (p.x >= channelX - 2 && p.x <= channelX + 2 && p.y > reservoirBottom && p.y < channelBottom) {
+            material = MAT_EMPTY;
+        }
+        if ((p.x == channelX - 4 || p.x == channelX + 4) && p.y > reservoirBottom && p.y < channelBottom) {
+            material = MAT_GLASS;
+        }
+    }
+
+    if (p.y > basinTop + 8 && p.y < floorY - 2 && p.x > 22 && p.x < int(pc.width) - 22) {
+        material = MAT_WATER;
+    }
+    return material;
+}
+
+uint ecosystemMaterial(ivec2 p) {
+    uint terrain = pc.height - 54u + (hash32(uint(p.x) * 31u) % 7u);
+    uint material = MAT_EMPTY;
+    if (uint(p.y) >= pc.height - 8u) material = MAT_STONE;
+    else if (uint(p.y) >= terrain) material = uint(p.y) == terrain ? MAT_GRASS : MAT_DIRT;
+
+    ivec2 pond = ivec2(int(pc.width / 3u), int(pc.height - 58u));
+    ivec2 pd = p - pond;
+    if (pd.y >= -18 && pd.y <= 18 && pd.x * pd.x / 5 + pd.y * pd.y < 1300) {
+        material = pd.y >= 14 ? MAT_SILT : MAT_WATER;
+    }
+
+    // Planted seeds demonstrate the real staged growth path instead of pre-spawned flowers.
+    for (int seedIndex = 0; seedIndex < 6; ++seedIndex) {
+        int x = int(pc.width / 2u) + seedIndex * 22 - 55;
+        if (p.x == x && p.y == int(terrain) - 1) material = MAT_SEED;
+        // Exposed compost cells beside irrigation demonstrate the conservative
+        // fertilizer + fresh-water -> dirt + food transfer.
+        if (p.x == x + 2 && p.y == int(terrain) - 1) material = MAT_FERTILIZER;
+        if (p.x == x + 3 && p.y == int(terrain) - 1) material = MAT_WATER;
+    }
+
+    ivec2 queen = ivec2(int(pc.width * 4u / 5u), int(pc.height - 128u));
+    ivec2 q = p - queen;
+    int q2 = q.x * q.x + q.y * q.y;
+    if (p.x > queen.x - 38 && p.x < queen.x + 30 && p.y > queen.y - 17 && p.y < queen.y - 12) material = MAT_WOOD;
+    if (q2 >= 25 && q2 < 92) material = MAT_BEE_NEST;
+    if (q2 == 0) material = MAT_QUEEN_BEE;
+    else if (q.x >= 1 && q.x <= 10 && abs(q.y) <= 1) material = MAT_EMPTY;
+    else if (q2 < 25) {
+        uint chamberPattern = hash32(indexOf(p) ^ pc.seed);
+        material = (chamberPattern & 3u) == 0u ? MAT_EMPTY
+            : (((chamberPattern >> 2u) & 1u) == 0u ? MAT_HONEY : MAT_POLLEN);
+    }
+    if (q2 > 100 && q2 < 900 && (hash32(indexOf(p) ^ pc.seed ^ 0xb33u) % 31u) == 0u) material = MAT_BEE;
+    return material;
+}
+
+uint engineeringMaterial(ivec2 p) {
+    int floorY = int(pc.height) - 12;
+    uint material = p.y >= floorY ? MAT_INSULATOR : MAT_EMPTY;
+
+    // Station 1: a lightning source feeds a copper bus into a saltwater load.
+    int busY = int(pc.height) - 74;
+    if (p.y >= busY && p.y < busY + 4 && p.x > 24 && p.x < 208) material = MAT_COPPER;
+    if (p.x >= 36 && p.x < 44 && p.y > busY - 86 && p.y < busY + 4) material = MAT_COPPER;
+    if (rectContains(p, ivec2(28, busY - 104), ivec2(52, busY - 86))) material = MAT_LIGHTNING;
+    if (rectContains(p, ivec2(160, busY - 42), ivec2(202, busY))) material = MAT_SALTWATER;
+    if ((p.x == 156 || p.x == 205 || p.y == busY - 45) && p.x >= 156 && p.x <= 205 && p.y >= busY - 45 && p.y <= busY) material = MAT_GLASS;
+
+    // Station 2: a magnet pulls iron from a falling sand/iron mixture.
+    ivec2 magnetCenter = ivec2(int(pc.width / 2u), int(pc.height - 110u));
+    if (abs(p.x - magnetCenter.x) < 18 && abs(p.y - magnetCenter.y) < 28) material = MAT_MAGNET;
+    if (p.y > magnetCenter.y - 96 && p.y < magnetCenter.y - 42 && abs(p.x - magnetCenter.x) < 54) {
+        material = ((p.x + p.y) & 3) == 0 ? MAT_IRON : MAT_SAND;
+    }
+    if (p.y == magnetCenter.y + 42 && abs(p.x - magnetCenter.x) < 82) material = MAT_GLASS;
+
+    // Pink hydrogen test cell: sealed glass with oxygen and a small ignition source.
+    int gasLeft = int(pc.width) - 188;
+    int gasRight = int(pc.width) - 42;
+    int gasTop = 24;
+    int gasBottom = 112;
+    bool gasWall = (p.x == gasLeft || p.x == gasRight || p.y == gasTop || p.y == gasBottom) &&
+                   p.x >= gasLeft && p.x <= gasRight && p.y >= gasTop && p.y <= gasBottom;
+    if (gasWall) material = MAT_GLASS;
+    if (p.x > gasLeft && p.x < gasRight && p.y > gasTop && p.y < gasBottom) {
+        material = p.x < (gasLeft + gasRight) / 2 ? MAT_HYDROGEN : MAT_OXYGEN;
+    }
+    if (rectContains(p, ivec2((gasLeft + gasRight) / 2 - 2, gasBottom - 8),
+                        ivec2((gasLeft + gasRight) / 2 + 2, gasBottom))) material = MAT_EMBER;
+
+    // Station 3: uranium is water-cooled and surrounded by metal shielding.
+    int left = int(pc.width) - 184;
+    int right = int(pc.width) - 46;
+    int top = int(pc.height) - 218;
+    int bottom = int(pc.height) - 28;
+    bool wall = (p.x == left || p.x == right || p.y == top || p.y == bottom) &&
+                p.x >= left && p.x <= right && p.y >= top && p.y <= bottom;
+    if (wall) material = MAT_METAL;
+    if (rectContains(p, ivec2(left + 50, top + 66), ivec2(right - 50, bottom - 48))) material = MAT_URANIUM;
+    if (rectContains(p, ivec2(left + 8, top + 8), ivec2(right - 8, bottom - 8)) && material == MAT_EMPTY) material = MAT_WATER;
+    return material;
+}
+
+uint goldMineMaterial(ivec2 p) {
+    int surface = int(pc.height) - 34;
+    if (p.y >= int(pc.height) - 8) return MAT_STONE;
+    if (p.y >= surface) return p.y == surface ? MAT_GRASS : MAT_DIRT;
+
+    uint material = MAT_EMPTY;
+    // Broad cave strata use aligned coarse blocks; pockets remain fine particles.
+    if (p.y > 76 && p.y < surface) {
+        int cavern = abs(p.x - int(pc.width / 2u)) + (p.y - 80) / 3;
+        if (cavern > 142 || p.y > surface - 44) material = MAT_STONE;
+    }
+
+    ivec2 block = p / int(STRUCTURAL_BLOCK_SIZE);
+    uint veinHash = hash32(uint(block.x) * 92837111u ^ uint(block.y) * 689287499u ^ pc.seed);
+    if (material == MAT_STONE && (veinHash % 29u) == 0u) material = MAT_GOLD_ORE;
+
+    if (rectContains(p, ivec2(82, surface - 32), ivec2(190, surface - 4))) material = MAT_SAND;
+    if (rectContains(p, ivec2(int(pc.width) - 190, surface - 52), ivec2(int(pc.width) - 82, surface - 4))) material = MAT_WATER;
+
+    // Timber supports and a hanging ore shelf provide a meaningful collapse target.
+    if ((p.x >= 220 && p.x < 228 && p.y >= surface - 128 && p.y < surface) ||
+        (p.x >= 368 && p.x < 376 && p.y >= surface - 128 && p.y < surface) ||
+        (p.y >= surface - 132 && p.y < surface - 124 && p.x >= 212 && p.x < 384)) material = MAT_WOOD;
+    if (p.y >= surface - 180 && p.y < surface - 156 && p.x >= 240 && p.x < 356) material = MAT_GOLD_ORE;
+    return material;
+}
+
+uint demolitionMaterial(ivec2 p) {
+    int floorY = int(pc.height) - 12;
+    if (p.y >= floorY) return MAT_STONE;
+    uint material = MAT_EMPTY;
+
+    // Two grounded towers support a long hanging bridge made from the same cells as particles.
+    if ((p.x >= 96 && p.x < 128 && p.y >= floorY - 174 && p.y < floorY) ||
+        (p.x >= int(pc.width) - 128 && p.x < int(pc.width) - 96 && p.y >= floorY - 174 && p.y < floorY)) {
+        material = MAT_STONE;
+    }
+    if (p.y >= floorY - 178 && p.y < floorY - 154 && p.x >= 96 && p.x < int(pc.width) - 96) material = MAT_METAL;
+    if (p.y >= floorY - 154 && p.y < floorY - 146 && p.x >= 128 && p.x < int(pc.width) - 128) material = MAT_GLASS;
+
+    // Suspended pixel loads demonstrate the 50-percent block integrity release.
+    if (rectContains(p, ivec2(206, floorY - 234), ivec2(286, floorY - 178))) material = MAT_SAND;
+    if (rectContains(p, ivec2(358, floorY - 226), ivec2(438, floorY - 178))) material = MAT_WATER;
+    return material;
+}
+
+
+uint frontierBaseMaterial(ivec2 p) {
+    const int surfaceY = 92;
+    const int floorY = int(pc.height) - 8;
+    uint material = MAT_EMPTY;
+
+    // Terraria-like surface and Noita-like destructible underground strata.
+    int terrainNoise = int(hash32(uint(p.x) * 7349u ^ pc.seed) % 9u) - 4;
+    int localSurface = surfaceY + terrainNoise;
+    if (p.y >= floorY) material = MAT_STONE;
+    else if (p.y >= localSurface) {
+        material = p.y == localSurface ? MAT_GRASS : (p.y < localSurface + 14 ? MAT_DIRT : MAT_STONE);
+        ivec2 coarse = p / int(STRUCTURAL_BLOCK_SIZE);
+        uint ore = hash32(uint(coarse.x) * 92837111u ^ uint(coarse.y) * 689287499u ^ pc.seed);
+        if (p.y > localSurface + 34 && material == MAT_STONE) {
+            if ((ore % 37u) == 0u) material = MAT_IRON_ORE;
+            else if ((ore % 83u) == 0u) material = MAT_GOLD_ORE;
+        }
+    }
+
+    // Underground base shell and rooms. All walls are ordinary structural cells.
+    bool baseOuter = rectContains(p, ivec2(32, 142), ivec2(430, 328));
+    bool baseInner = rectContains(p, ivec2(42, 152), ivec2(420, 318));
+    if (baseOuter) material = MAT_STEEL;
+    if (baseInner) material = MAT_EMPTY;
+    if (baseInner && (p.y == 208 || p.y == 264) && p.x > 42 && p.x < 420) material = MAT_STEEL;
+    if (baseInner && (p.x == 136 || p.x == 250 || p.x == 356) && p.y > 152 && p.y < 318) material = MAT_STEEL;
+
+    // Walkable internal ramps keep all three base levels reachable by the same
+    // grid actor. Floors are opened first, then a two-cell steel stair surface
+    // descends one cell for every two horizontal cells.
+    if (p.y == 208 && p.x >= 136 && p.x < 232) material = MAT_EMPTY;
+    if (p.x >= 136 && p.x < 232) {
+        int rampY = 208 + ((p.x - 136) * 55) / 95;
+        if (p.y >= rampY && p.y < rampY + 2) material = MAT_STEEL;
+        else if (p.y >= 208 && p.y < rampY) material = MAT_EMPTY;
+    }
+    if (p.y == 264 && p.x >= 52 && p.x < 148) material = MAT_EMPTY;
+    if (p.x >= 52 && p.x < 148) {
+        int rampY = 264 + ((p.x - 52) * 53) / 95;
+        if (p.y >= rampY && p.y < rampY + 2) material = MAT_STEEL;
+        else if (p.y >= 264 && p.y < rampY) material = MAT_EMPTY;
+    }
+
+    // Doors and circulation openings.
+    if (rectContains(p, ivec2(128, 188), ivec2(145, 208)) ||
+        rectContains(p, ivec2(242, 244), ivec2(259, 264)) ||
+        rectContains(p, ivec2(348, 188), ivec2(365, 208))) material = MAT_EMPTY;
+
+    // Sloped access tunnel to the surface.
+    for (int step = 0; step < 62; ++step) {
+        int x = 54 + step;
+        int y = 142 - step / 2;
+        if (p.x >= x && p.x < x + 8 && p.y >= y && p.y < y + 12) material = MAT_EMPTY;
+        if (p.x >= x && p.x < x + 8 && p.y == y + 12) material = MAT_STEEL;
+    }
+
+    // Waterfall aerator: reservoir, drop shaft, and collection basin.
+    if (rectContains(p, ivec2(44, 24), ivec2(98, 66))) material = MAT_WATER;
+    if ((p.x == 40 || p.x == 101 || p.y == 20) && p.x >= 40 && p.x <= 101 && p.y >= 20 && p.y <= 68)
+        material = MAT_GLASS;
+    if (p.x >= 67 && p.x <= 73 && p.y >= 66 && p.y < 178) material = MAT_WATER;
+    if ((p.x == 62 || p.x == 78) && p.y >= 66 && p.y < 184) material = MAT_GLASS;
+    if (rectContains(p, ivec2(48, 178), ivec2(118, 204))) material = MAT_WATER;
+    if ((p.x == 44 || p.x == 121 || p.y == 204) && p.x >= 44 && p.x <= 121 && p.y >= 174 && p.y <= 204)
+        material = MAT_GLASS;
+
+    // Breathable starting atmosphere inside the base; CO2 pools low.
+    if (baseInner && material == MAT_EMPTY && p.y < 282 && ((p.x + p.y) & 1) == 0) material = MAT_OXYGEN;
+    if (baseInner && material == MAT_EMPTY && p.y >= 302 && (p.x & 3) == 0) material = MAT_CARBON_DIOXIDE;
+
+    // Factory floor: mined material falls onto one unified cell-grid conveyor line.
+    if (p.y >= 288 && p.y < 296 && p.x >= 112 && p.x < 392) material = MAT_CONVEYOR;
+    if (rectContains(p, ivec2(192, 280), ivec2(200, 288))) material = MAT_FACTORY_CORE;
+    if (rectContains(p, ivec2(224, 280), ivec2(232, 288))) material = MAT_SMELTER;
+    if (rectContains(p, ivec2(272, 280), ivec2(280, 288))) material = MAT_ASSEMBLER;
+    if (rectContains(p, ivec2(328, 280), ivec2(336, 288))) material = MAT_BOT_FABRICATOR;
+
+    // Initial resources make the production chain visibly functional.
+    if (rectContains(p, ivec2(116, 270), ivec2(132, 290))) material = (p.y & 1) == 0 ? MAT_IRON : MAT_GOLD;
+    if (rectContains(p, ivec2(248, 270), ivec2(258, 290))) material = MAT_COPPER;
+    if (rectContains(p, ivec2(300, 270), ivec2(310, 290))) material = MAT_POWER_CELL;
+
+    // Surface battlefield and opposing deployment zones.
+    if (p.y == localSurface - 1 && p.x > 150 && p.x < 250 && (p.x % 19) == 0) material = MAT_ALLY_BOT;
+    if (p.y == localSurface - 1 && p.x > int(pc.width) - 220 && p.x < int(pc.width) - 80 && (p.x % 17) == 0)
+        material = MAT_ENEMY_BOT;
+    if (rectContains(p, ivec2(int(pc.width) - 104, 54), ivec2(int(pc.width) - 72, localSurface))) material = MAT_STEEL;
+
+    // Enemy underground reinforcement plant uses the same factory mechanics with an unpowered-side core.
+    int enemyLeft = int(pc.width) - 160;
+    if (rectContains(p, ivec2(enemyLeft, 156), ivec2(int(pc.width) - 18, 264))) material = MAT_STEEL;
+    if (rectContains(p, ivec2(enemyLeft + 10, 166), ivec2(int(pc.width) - 28, 254))) material = MAT_EMPTY;
+    if (rectContains(p, ivec2(enemyLeft + 24, 216), ivec2(enemyLeft + 32, 224))) material = MAT_FACTORY_CORE;
+    if (rectContains(p, ivec2(enemyLeft + 64, 224), ivec2(enemyLeft + 72, 232))) material = MAT_BOT_FABRICATOR;
+    if (p.y >= 232 && p.y < 240 && p.x >= enemyLeft + 12 && p.x < int(pc.width) - 30) material = MAT_CONVEYOR;
+    if (rectContains(p, ivec2(enemyLeft + 12, 208), ivec2(enemyLeft + 24, 230))) material = MAT_STEEL;
+    if (rectContains(p, ivec2(enemyLeft + 32, 208), ivec2(enemyLeft + 44, 230))) material = MAT_COPPER;
+    if (rectContains(p, ivec2(enemyLeft + 48, 208), ivec2(enemyLeft + 60, 230))) material = MAT_PLASMA_AMMO;
+
+    return material;
+}
+
+uint materialForScene(uint scene, ivec2 p) {
+    if (scene == SCENE_SANDBOX) return sandboxMaterial(p);
+    if (scene == SCENE_VOLCANO) return volcanoMaterial(p);
+    if (scene == SCENE_WATERWORKS) return waterworksMaterial(p);
+    if (scene == SCENE_ECOSYSTEM) return ecosystemMaterial(p);
+    if (scene == SCENE_ENGINEERING) return engineeringMaterial(p);
+    if (scene == SCENE_GOLD_MINE) return goldMineMaterial(p);
+    if (scene == SCENE_DEMOLITION) return demolitionMaterial(p);
+    if (scene == SCENE_FRONTIER_BASE) return frontierBaseMaterial(p);
+    return MAT_EMPTY;
+}
+
+bool looseAuthoredCargo(uint scene, ivec2 p, uint material) {
+    if (scene == SCENE_ENGINEERING && material == MAT_IRON) {
+        ivec2 magnetCenter = ivec2(int(pc.width / 2u), int(pc.height - 110u));
+        if (p.y > magnetCenter.y - 96 && p.y < magnetCenter.y - 42 &&
+            abs(p.x - magnetCenter.x) < 54) return true;
+    }
+
+    if (scene == SCENE_FRONTIER_BASE) {
+        if (rectContains(p, ivec2(116, 270), ivec2(132, 290)) &&
+            (material == MAT_IRON || material == MAT_GOLD)) return true;
+        if (rectContains(p, ivec2(248, 270), ivec2(258, 290)) && material == MAT_COPPER) return true;
+        if (rectContains(p, ivec2(300, 270), ivec2(310, 290)) && material == MAT_POWER_CELL) return true;
+
+        int enemyLeft = int(pc.width) - 160;
+        if (rectContains(p, ivec2(enemyLeft + 12, 208), ivec2(enemyLeft + 24, 230)) &&
+            material == MAT_STEEL) return true;
+        if (rectContains(p, ivec2(enemyLeft + 32, 208), ivec2(enemyLeft + 44, 230)) &&
+            material == MAT_COPPER) return true;
+        if (rectContains(p, ivec2(enemyLeft + 48, 208), ivec2(enemyLeft + 60, 230)) &&
+            material == MAT_PLASMA_AMMO) return true;
+    }
+    return false;
+}
+
+bool looseAuthoredTerrain(uint scene, ivec2 p, uint material) {
+    if (material != MAT_SAND && material != MAT_SILT && material != MAT_SALT && material != MAT_ICE)
+        return false;
+
+    // Deliberate simulation samples must remain loose. World terrain surrounding
+    // those samples is authored as stable Terraria-style terrain.
+    if (scene == SCENE_SANDBOX && material == MAT_SAND) {
+        ivec2 sandCenter = ivec2(int(pc.width / 5u), int(pc.height - 80u));
+        ivec2 d = p - sandCenter;
+        return d.y >= 0 && d.y < 38 && abs(d.x) < 40 - d.y;
+    }
+    if (scene == SCENE_ECOSYSTEM && material == MAT_SILT) return true;
+    if (scene == SCENE_ENGINEERING && material == MAT_SAND) return true;
+    if (scene == SCENE_GOLD_MINE && material == MAT_SAND) return true;
+    if (scene == SCENE_DEMOLITION && material == MAT_SAND) return true;
+    return false;
+}
+
+bool authoredStructuralCell(uint scene, ivec2 p, uint material) {
+    // Authored walls, slopes, shells, ore strata, machines, and terrain are
+    // structural even when they do not fill a globally aligned 8x8 block.
+    // Explicit cargo and demonstration piles remain canonical loose material.
+    bool authoredTerrain = material == MAT_DIRT || material == MAT_GRASS ||
+                           material == MAT_SAND || material == MAT_SILT ||
+                           material == MAT_SALT || material == MAT_ICE;
+    return (isBlockCapable(material) || authoredTerrain) &&
+           !looseAuthoredCargo(scene, p, material) &&
+           !looseAuthoredTerrain(scene, p, material);
+}
+
+void main() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (!inside(p)) return;
+
+    uint scene = pc.material % SCENE_COUNT;
+    uint material = materialForScene(scene, p);
+    bool structural = authoredStructuralCell(scene, p, material);
+    bool anchored = p.y >= int(pc.height) - 9;
+    Cell cell = structural ? makeStructuralCell(material, anchored) : makeCell(material);
+    bool machineController = (material == MAT_SMELTER || material == MAT_ASSEMBLER ||
+                              material == MAT_BOT_FABRICATOR) && (p.x & 7) == 3 && (p.y & 7) == 3;
+
+    cell.aux = (cell.aux & ~AUX_RANDOM_MASK) | (hash32(indexOf(p) ^ pc.seed) & AUX_RANDOM_MASK) |
+               (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |
+                            AUX_PLANT_STEM | AUX_STRUCTURAL | AUX_SUPPORTED |
+                            AUX_STATE_MASK));
+
+    // Machine controllers use the texture-bit range as four packed inventory
+    // counters. Initialize it after assigning static texture variation and keep
+    // allegiance in the independent charged flag.
+    if (machineController) {
+        setMachineInventory(cell, uvec4(0u));
+        if (scene == SCENE_FRONTIER_BASE && p.x > int(pc.width / 2u)) cell.aux &= ~AUX_CHARGED;
+        else cell.aux |= AUX_CHARGED;
+    }
+
+    if (scene == SCENE_ENGINEERING && isConductive(material) && p.x < 70) cell.aux |= AUX_CHARGED;
+    if (material == MAT_ENEMY_BOT) cell.aux &= ~AUX_CHARGED;
+    if (material == MAT_ALLY_BOT || material == MAT_CONVEYOR) cell.aux |= AUX_CHARGED;
+    if (material == MAT_FACTORY_CORE) {
+        if (scene == SCENE_FRONTIER_BASE && p.x > int(pc.width / 2u)) cell.aux &= ~AUX_CHARGED;
+        else cell.aux |= AUX_CHARGED;
+    }
+    cells[indexOf(p)] = cell;
+}

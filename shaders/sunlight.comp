@@ -1,0 +1,29 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "materials.glsl"
+
+layout(local_size_x = 64) in;
+layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
+layout(std430, binding = 2) writeonly buffer Sunlight { uint light[]; };
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    if (x >= pc.width) return;
+
+    uint intensity = 255u;
+    for (uint y = 0u; y < pc.height; ++y) {
+        uint index = y * pc.width + x;
+        uint material = cells[index].material;
+        light[index] = intensity;
+
+        if (blocksSun(material)) {
+            intensity = intensity > 80u ? intensity - 80u : 0u;
+        } else if (material == MAT_WATER || material == MAT_SALTWATER ||
+                   material == MAT_DIRTY_WATER || material == MAT_GLASS ||
+                   material == MAT_ICE || material == MAT_CRYSTAL) {
+            intensity = intensity > 3u ? intensity - 3u : 0u;
+        } else if (material != MAT_EMPTY) {
+            intensity = intensity > 8u ? intensity - 8u : 0u;
+        }
+    }
+}
