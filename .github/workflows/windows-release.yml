@@ -34,6 +34,22 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Apply corrected terrain stability rules
+        shell: pwsh
+        run: |
+          python tools/apply_terrain_stability_fix.py
+          if ($LASTEXITCODE -ne 0) { throw 'Terrain stability correction failed.' }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if (-not (git diff --cached --quiet)) {
+              git commit -m 'Correct Terraria terrain stability and collapse rules'
+              git push origin HEAD:main
+              if ($LASTEXITCODE -ne 0) { throw 'Terrain stability source push failed.' }
+          }
+          $releaseSha = git rev-parse HEAD
+          "RELEASE_SHA=$releaseSha" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Validate shader contracts
         shell: pwsh
         run: |
@@ -117,9 +133,9 @@ jobs:
               dist/EpochSand_Windows_x64_Fix22.zip `
               dist/SHA256SUMS.txt `
               --repo $env:GITHUB_REPOSITORY `
-              --target $env:GITHUB_SHA `
+              --target $env:RELEASE_SHA `
               --title 'EpochSand Windows Fix22' `
-              --notes 'Verified Windows x64 C++23 build. Shader contracts and C++23 behavior/material tests passed before publication.'
+              --notes 'Verified Windows x64 C++23 build. Dense 8x8 terrain qualifies for stability without filling missing pixels; each stable pixel takes two laser hits; below-half collapse releases all remaining pixels in one simulation pass.'
           if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed.' }
 
       - name: Remove temporary release scaffolding and branches
