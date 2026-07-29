@@ -3,11 +3,16 @@ name: Windows Release
 on:
   workflow_dispatch:
   push:
+    branches: [main]
+    paths:
+      - '.github/release-trigger'
     tags:
       - 'v*'
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: epoch-sand-windows-release
@@ -21,6 +26,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Validate shader contracts
         shell: pwsh
@@ -109,3 +116,47 @@ jobs:
               --title 'EpochSand Windows Fix22' `
               --notes 'Verified Windows x64 C++23 build. Shader contracts and C++23 behavior/material tests passed before publication.'
           if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed.' }
+
+      - name: Remove temporary release scaffolding and branches
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git pull --ff-only origin main
+
+          Remove-Item '.github/release-trigger' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/test-small.txt' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/fix22' -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/fix22_v2' -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item 'EpochSand_Cpp23_Vulkan_WindowsFix22.zip' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/workflows/unpack-build-release.yml' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/workflows/fix22-salvage-release.yml' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/workflows/fix22-finalize.yml' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/workflows/cleanup-after-fix22-release.yml' -Force -ErrorAction SilentlyContinue
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if (-not (git diff --cached --quiet)) {
+              git commit -m 'Remove Fix22 transfer scaffolding [skip ci]'
+              git push origin HEAD:main
+              if ($LASTEXITCODE -ne 0) { throw 'Cleanup push failed.' }
+          }
+
+          foreach ($pr in @(3, 4, 6, 7)) {
+              gh pr close $pr --repo $env:GITHUB_REPOSITORY --delete-branch=false 2>$null
+          }
+          gh issue close 2 --repo $env:GITHUB_REPOSITORY --reason completed 2>$null
+
+          foreach ($branch in @(
+              'agent/unpack-build-release-fix22',
+              'agent/verified-fix22-release',
+              'run-fix22-release',
+              'trigger-fix22-release',
+              'transfer/fix22-zip',
+              'verify/fix22-salvage',
+              'finalize-fix22'
+          )) {
+              gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/heads/$branch" 2>$null
+          }
