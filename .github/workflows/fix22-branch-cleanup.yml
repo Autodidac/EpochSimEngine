@@ -1,0 +1,81 @@
+name: Final Fix22 Branch Cleanup
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify source and release before cleanup
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -f CMakeLists.txt
+          test -f src/main.cpp
+          test -f shaders/move.comp
+          test -f include/epoch/sand/window.hpp
+          gh release view v1.0.0-fix22 --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name' | grep -Fx 'EpochSand_Windows_x64_Fix22.zip'
+          gh release view v1.0.0-fix22 --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name' | grep -Fx 'SHA256SUMS.txt'
+
+      - name: Remove recovery scaffolding from main
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .github/fix22 .github/fix22_v2
+          rm -f EpochSand_Cpp23_Vulkan_WindowsFix22.zip
+          rm -f .github/release-trigger .github/test-small.txt
+          rm -f .github/run-fix22-release
+          rm -f .github/run-fix22-salvage-release
+          rm -f .github/run-fix22-salvage-release-2
+          rm -f .github/finalize-fix22-trigger
+          rm -f .github/workflows/unpack-build-release.yml
+          rm -f .github/workflows/fix22-salvage-release.yml
+          rm -f .github/workflows/fix22-finalize.yml
+          rm -f .github/workflows/cleanup-after-fix22-release.yml
+          rm -f .github/workflows/fix22-branch-cleanup.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'Remove Fix22 recovery scaffolding'
+            git push origin HEAD:main
+          fi
+
+      - name: Close temporary conversations and delete branches
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_PR: ${{ github.event.pull_request.number }}
+          CURRENT_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          for pr in 1 3 4 5 6; do
+            gh pr close "$pr" --repo "$GITHUB_REPOSITORY" --delete-branch=false >/dev/null 2>&1 || true
+          done
+          gh issue close 2 --repo "$GITHUB_REPOSITORY" --reason completed >/dev/null 2>&1 || true
+          branches=(trigger-fix22-release run-fix22-release finalize-fix22 cleanup-fix22)
+          if [[ -n "${CURRENT_BRANCH:-}" ]]; then
+            branches+=("$CURRENT_BRANCH")
+          fi
+          for branch in "${branches[@]}"; do
+            [[ "$branch" == main ]] && continue
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch" >/dev/null 2>&1 || true
+          done
