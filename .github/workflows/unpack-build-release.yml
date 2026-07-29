@@ -119,11 +119,8 @@ jobs:
           }
 
           Copy-Item README.md, LICENSE -Destination $stage -Force
-          @'
-@echo off
-cd /d "%~dp0"
-epoch_sand.exe
-'@ | Set-Content -LiteralPath (Join-Path $stage "run.bat") -Encoding ascii
+          $runLines = @('@echo off', 'cd /d "%~dp0"', 'epoch_sand.exe')
+          Set-Content -LiteralPath (Join-Path $stage "run.bat") -Value $runLines -Encoding ascii
 
           Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $archive -CompressionLevel Optimal
           "RELEASE_ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append
