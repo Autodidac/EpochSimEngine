@@ -20,7 +20,7 @@ permissions:
 
 concurrency:
   group: epoch-sand-windows-release
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-release:
@@ -150,7 +150,7 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw 'Cleanup push failed.' }
           }
 
-          foreach ($pr in @(3, 4, 6, 7, 8)) {
+          foreach ($pr in @(3, 4, 6, 7, 8, 10)) {
               gh pr close $pr --repo $env:GITHUB_REPOSITORY --delete-branch=false 2>$null
           }
           gh issue close 2 --repo $env:GITHUB_REPOSITORY --reason completed 2>$null
