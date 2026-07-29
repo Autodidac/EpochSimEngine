@@ -1,6 +1,8 @@
 name: Unpack, Build, and Release EpochSand Fix22
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -24,10 +26,61 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Reassemble verified source archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+          $chunkRoot = Join-Path $env:GITHUB_WORKSPACE ".github/fix22_v2"
+          $zip = Join-Path $env:GITHUB_WORKSPACE "EpochSand_Cpp23_Vulkan_WindowsFix22.zip"
+          $archiveReady = $false
+
+          for ($attempt = 1; $attempt -le 40; ++$attempt) {
+              git pull --ff-only origin main
+              if ($LASTEXITCODE -ne 0) {
+                  throw "Unable to fast-forward to current main"
+              }
+
+              $chunks = @()
+              if (Test-Path -LiteralPath $chunkRoot) {
+                  $chunks = @(Get-ChildItem -LiteralPath $chunkRoot -Filter "part_*.txt" -File | Sort-Object Name)
+              }
+
+              if ($chunks.Count -gt 0) {
+                  $base64 = [System.Text.StringBuilder]::new()
+                  foreach ($chunk in $chunks) {
+                      [void]$base64.Append((Get-Content -LiteralPath $chunk.FullName -Raw).Trim())
+                  }
+
+                  try {
+                      $bytes = [Convert]::FromBase64String($base64.ToString())
+                      [System.IO.File]::WriteAllBytes($zip, $bytes)
+                      & tar.exe -tf $zip *> $null
+                      if ($LASTEXITCODE -eq 0) {
+                          Write-Host "Verified $($chunks.Count) archive parts ($($bytes.Length) bytes)."
+                          $archiveReady = $true
+                          break
+                      }
+                  }
+                  catch {
+                      Write-Host "Archive is not complete yet: $($_.Exception.Message)"
+                  }
+              }
+
+              Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+              Write-Host "Verified archive incomplete on attempt $attempt; checking again shortly."
+              Start-Sleep -Seconds 15
+          }
+
+          if (-not $archiveReady) {
+              throw "Verified Fix22 archive did not become complete within the integrity-check window"
+          }
+
       - name: Unpack source into repository root
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
           $zip = "EpochSand_Cpp23_Vulkan_WindowsFix22.zip"
           if (-not (Test-Path -LiteralPath $zip)) {
               throw "Missing $zip"
@@ -51,6 +104,8 @@ jobs:
           }
 
           Remove-Item -LiteralPath $zip -Force
+          Remove-Item -LiteralPath ".github/fix22" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath ".github/fix22_v2" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item -LiteralPath ".github/release-trigger" -Force -ErrorAction SilentlyContinue
           Remove-Item -LiteralPath ".github/workflows/unpack-build-release.yml" -Force -ErrorAction SilentlyContinue
 
@@ -59,6 +114,9 @@ jobs:
           git add -A
           git commit -m "Unpack EpochSand WindowsFix22 source"
           git push origin HEAD:main
+          if ($LASTEXITCODE -ne 0) {
+              throw "Failed to push unpacked source to main"
+          }
 
           $releaseSha = git rev-parse HEAD
           "RELEASE_SHA=$releaseSha" | Out-File -FilePath $env:GITHUB_ENV -Append
