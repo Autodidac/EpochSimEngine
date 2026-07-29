@@ -48,11 +48,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Terrain stability correction failed.' }
           Remove-Item -LiteralPath $runtimeScript -Force
 
+          $validatorPath = 'tools/validate_shader_contracts.py'
+          $validator = Get-Content -LiteralPath $validatorPath -Raw
+          $validator = $validator.Replace('TILE_REBUILD_OCCUPANCY', 'TILE_STABILITY_OCCUPANCY')
+          $validator = $validator.Replace('TILE_REBUILD_COOLDOWN', 'TILE_RESTABILIZE_COOLDOWN')
+          $validator = $validator.Replace('TILE_BREAK_OCCUPANCY', 'TILE_COLLAPSE_OCCUPANCY')
+          Set-Content -LiteralPath $validatorPath -Value $validator -NoNewline -Encoding utf8
+
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           if (-not (git diff --cached --quiet)) {
-              git commit -m 'Correct Terraria terrain stability and collapse rules'
+              git commit -m 'Align terrain stability validation contracts'
               git push origin HEAD:main
               if ($LASTEXITCODE -ne 0) { throw 'Terrain stability source push failed.' }
           }
