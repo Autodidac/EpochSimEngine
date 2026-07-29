@@ -1,4 +1,4 @@
-name: Assemble EpochSand Fix22 Archive
+name: Transfer EpochSand Fix22 Archive
 
 on:
   pull_request:
@@ -13,9 +13,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  assemble:
+  transfer:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
 
     steps:
       - name: Check out main
@@ -24,56 +24,27 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Assemble verified ZIP
+      - name: Assemble current ZIP bytes
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $PSNativeCommandUseErrorActionPreference = $false
           $partsRoot = Join-Path $env:GITHUB_WORKSPACE ".github/fix22_v2"
           $zip = Join-Path $env:GITHUB_WORKSPACE "EpochSand_Cpp23_Vulkan_WindowsFix22.zip"
-          $ready = $false
-
-          for ($attempt = 1; $attempt -le 150; ++$attempt) {
-              git pull --ff-only origin main
-              if ($LASTEXITCODE -ne 0) {
-                  throw "Unable to fast-forward to current main"
-              }
-
-              $parts = @()
-              if (Test-Path -LiteralPath $partsRoot) {
-                  $parts = @(Get-ChildItem -LiteralPath $partsRoot -Filter "part_*.txt" -File | Sort-Object Name)
-              }
-
-              if ($parts.Count -gt 0) {
-                  $base64 = [System.Text.StringBuilder]::new()
-                  foreach ($part in $parts) {
-                      [void]$base64.Append((Get-Content -LiteralPath $part.FullName -Raw).Trim())
-                  }
-
-                  try {
-                      $bytes = [Convert]::FromBase64String($base64.ToString())
-                      [System.IO.File]::WriteAllBytes($zip, $bytes)
-                      & unzip -tqq $zip
-                      if ($LASTEXITCODE -eq 0) {
-                          Write-Host "Verified $($parts.Count) parts ($($bytes.Length) bytes)."
-                          $ready = $true
-                          break
-                      }
-                  }
-                  catch {
-                      Write-Host "Archive incomplete: $($_.Exception.Message)"
-                  }
-              }
-
-              Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
-              Start-Sleep -Seconds 10
+          $parts = @(Get-ChildItem -LiteralPath $partsRoot -Filter "part_*.txt" -File | Sort-Object Name)
+          if ($parts.Count -eq 0) {
+              throw "No verified archive parts found"
           }
 
-          if (-not $ready) {
-              throw "Verified archive did not become complete"
+          $base64 = [System.Text.StringBuilder]::new()
+          foreach ($part in $parts) {
+              [void]$base64.Append((Get-Content -LiteralPath $part.FullName -Raw).Trim())
           }
 
-      - name: Upload original ZIP
+          $bytes = [Convert]::FromBase64String($base64.ToString())
+          [System.IO.File]::WriteAllBytes($zip, $bytes)
+          Write-Host "Assembled $($parts.Count) parts into $($bytes.Length) bytes."
+
+      - name: Upload ZIP bytes
         uses: actions/upload-artifact@v4
         with:
           name: EpochSand_Cpp23_Vulkan_WindowsFix22
