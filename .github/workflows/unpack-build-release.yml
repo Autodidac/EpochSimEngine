@@ -1,23 +1,24 @@
-name: Unpack, Build, and Release EpochSand Fix22
+name: Assemble EpochSand Fix22 Archive
 
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+    paths:
+      - '.github/fix22_v2/**'
+      - '.github/workflows/unpack-build-release.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: epoch-sand-fix22-release
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  build-release:
-    runs-on: windows-latest
-    timeout-minutes: 60
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Check out main
@@ -26,181 +27,59 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Reassemble verified source archive
+      - name: Assemble verified ZIP
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $false
-          $chunkRoot = Join-Path $env:GITHUB_WORKSPACE ".github/fix22_v2"
+          $partsRoot = Join-Path $env:GITHUB_WORKSPACE ".github/fix22_v2"
           $zip = Join-Path $env:GITHUB_WORKSPACE "EpochSand_Cpp23_Vulkan_WindowsFix22.zip"
-          $archiveReady = $false
+          $ready = $false
 
-          for ($attempt = 1; $attempt -le 40; ++$attempt) {
+          for ($attempt = 1; $attempt -le 100; ++$attempt) {
               git pull --ff-only origin main
               if ($LASTEXITCODE -ne 0) {
                   throw "Unable to fast-forward to current main"
               }
 
-              $chunks = @()
-              if (Test-Path -LiteralPath $chunkRoot) {
-                  $chunks = @(Get-ChildItem -LiteralPath $chunkRoot -Filter "part_*.txt" -File | Sort-Object Name)
+              $parts = @()
+              if (Test-Path -LiteralPath $partsRoot) {
+                  $parts = @(Get-ChildItem -LiteralPath $partsRoot -Filter "part_*.txt" -File | Sort-Object Name)
               }
 
-              if ($chunks.Count -gt 0) {
+              if ($parts.Count -gt 0) {
                   $base64 = [System.Text.StringBuilder]::new()
-                  foreach ($chunk in $chunks) {
-                      [void]$base64.Append((Get-Content -LiteralPath $chunk.FullName -Raw).Trim())
+                  foreach ($part in $parts) {
+                      [void]$base64.Append((Get-Content -LiteralPath $part.FullName -Raw).Trim())
                   }
 
                   try {
                       $bytes = [Convert]::FromBase64String($base64.ToString())
                       [System.IO.File]::WriteAllBytes($zip, $bytes)
-                      & tar.exe -tf $zip *> $null
+                      & unzip -tqq $zip
                       if ($LASTEXITCODE -eq 0) {
-                          Write-Host "Verified $($chunks.Count) archive parts ($($bytes.Length) bytes)."
-                          $archiveReady = $true
+                          Write-Host "Verified $($parts.Count) parts ($($bytes.Length) bytes)."
+                          $ready = $true
                           break
                       }
                   }
                   catch {
-                      Write-Host "Archive is not complete yet: $($_.Exception.Message)"
+                      Write-Host "Archive incomplete: $($_.Exception.Message)"
                   }
               }
 
               Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
-              Write-Host "Verified archive incomplete on attempt $attempt; checking again shortly."
-              Start-Sleep -Seconds 15
+              Start-Sleep -Seconds 10
           }
 
-          if (-not $archiveReady) {
-              throw "Verified Fix22 archive did not become complete within the integrity-check window"
+          if (-not $ready) {
+              throw "Verified archive did not become complete"
           }
 
-      - name: Unpack source into repository root
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $PSNativeCommandUseErrorActionPreference = $false
-          $zip = "EpochSand_Cpp23_Vulkan_WindowsFix22.zip"
-          if (-not (Test-Path -LiteralPath $zip)) {
-              throw "Missing $zip"
-          }
-
-          $extractRoot = Join-Path $env:RUNNER_TEMP "epoch-sand-fix22-source"
-          Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Path $extractRoot | Out-Null
-          & tar.exe -xf $zip -C $extractRoot
-          if ($LASTEXITCODE -ne 0) {
-              throw "tar.exe failed to unpack $zip with exit code $LASTEXITCODE"
-          }
-
-          $sourceRoot = Join-Path $extractRoot "EpochSand"
-          if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot "CMakeLists.txt"))) {
-              throw "The archive does not contain EpochSand/CMakeLists.txt."
-          }
-
-          Get-ChildItem -LiteralPath $sourceRoot -Force | ForEach-Object {
-              Copy-Item -LiteralPath $_.FullName -Destination $env:GITHUB_WORKSPACE -Recurse -Force
-          }
-
-          Remove-Item -LiteralPath $zip -Force
-          Remove-Item -LiteralPath ".github/fix22" -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item -LiteralPath ".github/fix22_v2" -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item -LiteralPath ".github/release-trigger" -Force -ErrorAction SilentlyContinue
-          Remove-Item -LiteralPath ".github/workflows/unpack-build-release.yml" -Force -ErrorAction SilentlyContinue
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Unpack EpochSand WindowsFix22 source"
-          git push origin HEAD:main
-          if ($LASTEXITCODE -ne 0) {
-              throw "Failed to push unpacked source to main"
-          }
-
-          $releaseSha = git rev-parse HEAD
-          "RELEASE_SHA=$releaseSha" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Validate shader contracts
-        shell: pwsh
-        run: python tools/validate_shader_contracts.py
-
-      - name: Bootstrap vcpkg
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $vcpkgRoot = Join-Path $env:RUNNER_TEMP "vcpkg"
-          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git $vcpkgRoot
-          git -C $vcpkgRoot checkout 04a735608afac5844e86fc91d6ba2112cac613c1
-          & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
-          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Configure Windows release
-        shell: pwsh
-        run: |
-          cmake -S . -B build/windows -G "Visual Studio 17 2022" -A x64 `
-            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows `
-            -DEPOCH_SAND_WARNINGS_AS_ERRORS=ON `
-            -DEPOCH_SAND_ENABLE_VALIDATION=OFF `
-            -DBUILD_TESTING=ON
-
-      - name: Build Windows release
-        shell: pwsh
-        run: cmake --build build/windows --config Release --parallel
-
-      - name: Run C++23 contract tests
-        shell: pwsh
-        run: ctest --test-dir build/windows -C Release --output-on-failure
-
-      - name: Package Windows release
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $distRoot = Join-Path $env:GITHUB_WORKSPACE "dist"
-          $stage = Join-Path $distRoot "EpochSand_Windows_x64_Fix22"
-          $archive = Join-Path $distRoot "EpochSand_Windows_x64_Fix22.zip"
-          Remove-Item -LiteralPath $distRoot -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Path $stage | Out-Null
-          Copy-Item "build/windows/Release/epoch_sand.exe" $stage -Force
-          Copy-Item "build/windows/Release/shaders" (Join-Path $stage "shaders") -Recurse -Force
-
-          $runtimeCandidates = @(
-              "build/windows/Release/vulkan-1.dll",
-              "build/windows/vcpkg_installed/x64-windows/bin/vulkan-1.dll"
-          )
-          foreach ($runtime in $runtimeCandidates) {
-              if (Test-Path -LiteralPath $runtime) {
-                  Copy-Item -LiteralPath $runtime -Destination $stage -Force
-                  break
-              }
-          }
-
-          Copy-Item README.md, LICENSE -Destination $stage -Force
-          $runLines = @('@echo off', 'cd /d "%~dp0"', 'epoch_sand.exe')
-          Set-Content -LiteralPath (Join-Path $stage "run.bat") -Value $runLines -Encoding ascii
-          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $archive -CompressionLevel Optimal
-          "RELEASE_ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Upload workflow artifact
+      - name: Upload original ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: EpochSand_Windows_x64_Fix22
-          path: dist/EpochSand_Windows_x64_Fix22.zip
+          name: EpochSand_Cpp23_Vulkan_WindowsFix22
+          path: EpochSand_Cpp23_Vulkan_WindowsFix22.zip
           if-no-files-found: error
-
-      - name: Publish GitHub release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $tag = "v1.0.0-fix22"
-          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -eq 0) {
-              gh release delete $tag --repo $env:GITHUB_REPOSITORY --yes --cleanup-tag
-          }
-          gh release create $tag $env:RELEASE_ARCHIVE `
-            --repo $env:GITHUB_REPOSITORY `
-            --target $env:RELEASE_SHA `
-            --title "EpochSand Windows Fix22" `
-            --notes "Unpacked C++23 source is committed to main. This release contains the Windows x64 executable, compiled SPIR-V shaders, Vulkan loader, README, license, and launcher. Shader validation and C++23 contract tests passed before publication."
+          retention-days: 1
