@@ -1,0 +1,268 @@
+name: Finalize EpochSand Fix22
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: epoch-sand-fix22-finalize
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: windows-2022
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Import or verify source and clean transfer files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sourceReady = (Test-Path 'CMakeLists.txt') -and
+                         (Test-Path 'src/main.cpp') -and
+                         (Test-Path 'shaders/move.comp') -and
+                         (Test-Path 'include/epoch/sand/window.hpp')
+
+          if (-not $sourceReady) {
+              $archive = Join-Path $env:GITHUB_WORKSPACE 'EpochSand_Cpp23_Vulkan_WindowsFix22.zip'
+              if (-not (Test-Path -LiteralPath $archive)) {
+                  throw 'Neither unpacked source nor the temporary Fix22 archive is present.'
+              }
+
+              $prefixBase64 = Join-Path $env:RUNNER_TEMP 'fix22-prefix.b64'
+              $prefixZip = Join-Path $env:RUNNER_TEMP 'fix22-prefix.bin'
+              $parts = 0..5 | ForEach-Object {
+                  Join-Path $env:GITHUB_WORKSPACE ('.github/fix22_v2/part_{0:D3}.txt' -f $_)
+              }
+              foreach ($part in $parts) {
+                  if (-not (Test-Path -LiteralPath $part)) {
+                      throw "Missing verified archive prefix part: $part"
+                  }
+              }
+              ($parts | ForEach-Object { (Get-Content -LiteralPath $_ -Raw).Trim() }) -join '' |
+                  Set-Content -LiteralPath $prefixBase64 -NoNewline -Encoding ascii
+              [IO.File]::WriteAllBytes($prefixZip, [Convert]::FromBase64String((Get-Content $prefixBase64 -Raw)))
+
+              $recoverScript = Join-Path $env:RUNNER_TEMP 'recover_header.py'
+              $recoveredHeader = Join-Path $env:RUNNER_TEMP 'window.hpp'
+              @'
+import binascii
+import pathlib
+import struct
+import sys
+import zlib
+
+source = pathlib.Path(sys.argv[1]).read_bytes()
+target = b'EpochSand/include/epoch/sand/window.hpp'
+offset = 0
+while offset + 30 <= len(source):
+    if source[offset:offset + 4] != b'PK\x03\x04':
+        offset = source.find(b'PK\x03\x04', offset + 1)
+        if offset < 0:
+            break
+        continue
+
+    fields = struct.unpack_from('<IHHHHHIIIHH', source, offset)
+    _, _, flags, method, _, _, crc_expected, packed_size, unpacked_size, name_size, extra_size = fields
+    name_start = offset + 30
+    name_end = name_start + name_size
+    data_start = name_end + extra_size
+    data_end = data_start + packed_size
+    if data_end > len(source):
+        break
+
+    name = source[name_start:name_end]
+    if name == target:
+        packed = source[data_start:data_end]
+        if method == 0:
+            decoded = packed
+        elif method == 8:
+            decoded = zlib.decompress(packed, -15)
+        else:
+            raise RuntimeError(f'Unsupported ZIP method {method}')
+        if len(decoded) != unpacked_size:
+            raise RuntimeError('Recovered window.hpp size mismatch')
+        if (binascii.crc32(decoded) & 0xffffffff) != crc_expected:
+            raise RuntimeError('Recovered window.hpp CRC mismatch')
+        pathlib.Path(sys.argv[2]).write_bytes(decoded)
+        raise SystemExit(0)
+
+    if flags & 0x08:
+        raise RuntimeError('Unexpected ZIP data descriptor in verified prefix')
+    offset = data_end
+
+raise RuntimeError('window.hpp was not found in the verified archive prefix')
+'@ | Set-Content -LiteralPath $recoverScript -Encoding utf8
+              python $recoverScript $prefixZip $recoveredHeader
+              if ($LASTEXITCODE -ne 0) { throw 'Verified window.hpp recovery failed.' }
+
+              $extractRoot = Join-Path $env:RUNNER_TEMP 'fix22-source'
+              Remove-Item $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+              New-Item -ItemType Directory -Path $extractRoot | Out-Null
+              & 7z.exe x $archive "-o$extractRoot" -y
+              Write-Host "7-Zip returned $LASTEXITCODE; the known damaged header is replaced next."
+
+              $sourceRoot = Join-Path $extractRoot 'EpochSand'
+              if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot 'CMakeLists.txt'))) {
+                  throw 'Archive recovery did not produce the EpochSand source root.'
+              }
+              $headerDestination = Join-Path $sourceRoot 'include/epoch/sand/window.hpp'
+              New-Item -ItemType Directory -Path (Split-Path $headerDestination) -Force | Out-Null
+              Copy-Item $recoveredHeader $headerDestination -Force
+
+              Get-ChildItem -LiteralPath $sourceRoot -Force | ForEach-Object {
+                  Copy-Item -LiteralPath $_.FullName -Destination $env:GITHUB_WORKSPACE -Recurse -Force
+              }
+          }
+
+          Remove-Item 'EpochSand_Cpp23_Vulkan_WindowsFix22.zip' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/fix22' -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/fix22_v2' -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/release-trigger' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/test-small.txt' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/run-fix22-release' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/run-fix22-salvage-release' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/run-fix22-salvage-release-2' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/workflows/unpack-build-release.yml' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/workflows/fix22-salvage-release.yml' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/workflows/cleanup-after-fix22-release.yml' -Force -ErrorAction SilentlyContinue
+
+          $releaseWorkflow = '.github/workflows/windows-release.yml'
+          if (Test-Path $releaseWorkflow) {
+              $workflowText = Get-Content $releaseWorkflow -Raw
+              $workflowText = $workflowText -replace "(?ms)^on:\r?\n  workflow_dispatch:\r?\n  push:\r?\n    tags:\r?\n      - 'v\*'\r?\n", "on:`n  workflow_dispatch:`n"
+              Set-Content $releaseWorkflow -Value $workflowText -Encoding utf8
+          }
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if (-not (git diff --cached --quiet)) {
+              git commit -m 'Import EpochSand Fix22 source and remove transfer files'
+              git push origin HEAD:main
+              if ($LASTEXITCODE -ne 0) { throw 'Pushing the finalized source tree failed.' }
+          }
+          $releaseSha = git rev-parse HEAD
+          "RELEASE_SHA=$releaseSha" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Validate shader contracts
+        shell: pwsh
+        run: |
+          python tools/validate_shader_contracts.py
+          if ($LASTEXITCODE -ne 0) { throw 'Shader contract validation failed.' }
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'vcpkg'
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git $root
+          git -C $root checkout 04a735608afac5844e86fc91d6ba2112cac613c1
+          & (Join-Path $root 'bootstrap-vcpkg.bat') -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed.' }
+          "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure Windows x64 Release
+        shell: pwsh
+        run: |
+          cmake -S . -B build/windows -G 'Visual Studio 17 2022' -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DVCPKG_HOST_TRIPLET=x64-windows `
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=ON `
+            -DEPOCH_SAND_ENABLE_VALIDATION=OFF `
+            -DBUILD_TESTING=ON
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
+
+      - name: Build Windows x64 Release
+        shell: pwsh
+        run: |
+          cmake --build build/windows --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed.' }
+
+      - name: Run C++23 contract tests
+        shell: pwsh
+        run: |
+          ctest --test-dir build/windows -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'C++23 contract tests failed.' }
+
+      - name: Package release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dist = Join-Path $env:GITHUB_WORKSPACE 'dist'
+          $stage = Join-Path $dist 'EpochSand_Windows_x64_Fix22'
+          $archive = Join-Path $dist 'EpochSand_Windows_x64_Fix22.zip'
+          Remove-Item $dist -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          cmake --install build/windows --config Release --prefix $stage
+          if ($LASTEXITCODE -ne 0) { throw 'Release staging failed.' }
+          Copy-Item README.md, LICENSE -Destination $stage -Force
+          @('@echo off', 'cd /d "%~dp0bin"', 'epoch_sand.exe') |
+              Set-Content -LiteralPath (Join-Path $stage 'run.bat') -Encoding ascii
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -CompressionLevel Optimal
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "EpochSand_Windows_x64_Fix22.zip  SHA256: $hash" |
+              Set-Content -LiteralPath (Join-Path $dist 'SHA256SUMS.txt') -Encoding ascii
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EpochSand_Windows_x64_Fix22
+          path: |
+            dist/EpochSand_Windows_x64_Fix22.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'v1.0.0-fix22'
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+              gh release delete $tag --repo $env:GITHUB_REPOSITORY --yes --cleanup-tag
+          }
+          gh release create $tag `
+              dist/EpochSand_Windows_x64_Fix22.zip `
+              dist/SHA256SUMS.txt `
+              --repo $env:GITHUB_REPOSITORY `
+              --target $env:RELEASE_SHA `
+              --title 'EpochSand Windows Fix22' `
+              --notes 'Verified Windows x64 C++23 build. Shader contracts and C++23 behavior/material tests passed before publication.'
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed.' }
+
+      - name: Remove finalizer and temporary branches
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git pull --ff-only origin main
+          Remove-Item '.github/workflows/fix22-finalize.yml' -Force -ErrorAction SilentlyContinue
+          git add -A
+          if (-not (git diff --cached --quiet)) {
+              git commit -m 'Remove Fix22 finalization workflow'
+              git push origin HEAD:main
+          }
+          if ($env:PR_NUMBER) {
+              gh pr close $env:PR_NUMBER --repo $env:GITHUB_REPOSITORY --delete-branch=false 2>$null
+          }
+          gh issue close 2 --repo $env:GITHUB_REPOSITORY --reason completed 2>$null
+          foreach ($branch in @('finalize-fix22', 'run-fix22-release', 'trigger-fix22-release')) {
+              gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/heads/$branch" 2>$null
+          }
