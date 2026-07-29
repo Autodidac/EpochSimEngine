@@ -36,7 +36,10 @@ jobs:
           $extractRoot = Join-Path $env:RUNNER_TEMP "epoch-sand-fix22-source"
           Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $extractRoot | Out-Null
-          Expand-Archive -LiteralPath $zip -DestinationPath $extractRoot -Force
+          & tar.exe -xf $zip -C $extractRoot
+          if ($LASTEXITCODE -ne 0) {
+              throw "tar.exe failed to unpack $zip with exit code $LASTEXITCODE"
+          }
 
           $sourceRoot = Join-Path $extractRoot "EpochSand"
           if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot "CMakeLists.txt"))) {
