@@ -11,8 +11,8 @@ queen_pattern = re.compile(
     r'[ \t]+(\(randomValue & 4095u\) == 0u\) \{\n""")'
 )
 text, queen_count = queen_pattern.subn(
-    lambda match: match.group(1) + '                            ' + match.group(2) +
-                  '                            ' + match.group(3),
+    lambda match: match.group(1) + '                           ' + match.group(2) +
+                  '                           ' + match.group(3),
     text,
     count=1,
 )
