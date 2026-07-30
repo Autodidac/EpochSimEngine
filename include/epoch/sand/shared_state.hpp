@@ -31,7 +31,7 @@ struct SharedState final {
     std::atomic_uint32_t selected_group{static_cast<std::uint32_t>(MaterialGroup::ground)};
     std::atomic_uint32_t hovered_material{material_count};
     std::atomic_uint32_t hovered_group{material_group_count};
-    std::atomic_uint32_t selected_scene{static_cast<std::uint32_t>(Scene::sandbox)};
+    std::atomic_uint32_t selected_scene{static_cast<std::uint32_t>(Scene::ecosystem)};
     std::atomic_uint32_t brush_radius{6};
     std::atomic_uint32_t steps_per_frame{1};
     std::atomic_uint32_t frames_per_second{0};

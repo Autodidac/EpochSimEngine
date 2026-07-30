@@ -39,6 +39,8 @@ namespace {
 
 constexpr std::uint32_t simulation_local_size = 16;
 constexpr std::uint32_t sunlight_local_size = 64;
+constexpr std::uint32_t debug_stats_local_size = 256;
+constexpr std::uint32_t debug_stat_word_count = 128;
 
 [[noreturn]] void throw_vk(const char* operation, const VkResult result) {
     throw std::runtime_error(std::string{operation} + " failed with VkResult " + std::to_string(result));
@@ -279,6 +281,7 @@ struct VulkanRenderer::Impl final {
     VkPipeline chemistry_pipeline{};
     VkPipeline movement_pipeline{};
     VkPipeline actor_pipeline{};
+    VkPipeline debug_stats_pipeline{};
     VkPipeline graphics_pipeline{};
 
     VkCommandPool command_pool{};
@@ -376,6 +379,7 @@ struct VulkanRenderer::Impl final {
             if (chemistry_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_pipeline, nullptr);
             if (movement_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, movement_pipeline, nullptr);
             if (actor_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, actor_pipeline, nullptr);
+            if (debug_stats_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, debug_stats_pipeline, nullptr);
             if (graphics_pipeline_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(device, graphics_pipeline_layout, nullptr);
             if (compute_pipeline_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(device, compute_pipeline_layout, nullptr);
             if (descriptor_pool != VK_NULL_HANDLE) vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
@@ -694,7 +698,7 @@ struct VulkanRenderer::Impl final {
         sunlight_buffer = create_buffer(light_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         actor_buffer = create_buffer(sizeof(std::uint32_t) * 20u, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         tile_buffer = create_buffer(tile_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        conservation_buffer = create_buffer(sizeof(std::uint32_t) * 8u, storage_usage,
+        conservation_buffer = create_buffer(sizeof(std::uint32_t) * debug_stat_word_count, storage_usage,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
         const auto ui_text_size = static_cast<VkDeviceSize>(ui::text_storage.size() * sizeof(std::uint32_t));
@@ -743,7 +747,7 @@ struct VulkanRenderer::Impl final {
                 .binding = 5,
                 .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             },
             VkDescriptorSetLayoutBinding{
                 .binding = 6,
@@ -931,6 +935,7 @@ struct VulkanRenderer::Impl final {
         chemistry_pipeline = create_compute_pipeline("chemistry.comp.spv");
         movement_pipeline = create_compute_pipeline("move.comp.spv");
         actor_pipeline = create_compute_pipeline("actor.comp.spv");
+        debug_stats_pipeline = create_compute_pipeline("debug_stats.comp.spv");
     }
 
     void create_frames() {
@@ -1489,7 +1494,39 @@ struct VulkanRenderer::Impl final {
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     }
 
-    void record_simulation_step(const VkCommandBuffer command_buffer) {
+
+    void reset_debug_stats(const VkCommandBuffer command_buffer) const {
+        constexpr VkDeviceSize first_debug_word = sizeof(std::uint32_t) * 8u;
+        constexpr VkDeviceSize debug_bytes = sizeof(std::uint32_t) * (debug_stat_word_count - 8u);
+        vkCmdFillBuffer(command_buffer, conservation_buffer.handle,
+                        first_debug_word, debug_bytes, 0u);
+        buffer_barrier(command_buffer, conservation_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    }
+
+    void record_debug_stats(const VkCommandBuffer command_buffer, const SharedState& state,
+                            const std::uint32_t movement_pair_tests) const {
+        const SimulationPush push{
+            .width = config.grid_width,
+            .height = config.grid_height,
+            .step = simulation_step,
+            .seed = random_seed,
+            .radius = movement_pair_tests,
+            .material = state.selected_material.load(std::memory_order_relaxed),
+        };
+        bind_compute(command_buffer, debug_stats_pipeline, current_set);
+        vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
+                           0, sizeof(push), &push);
+        const auto cell_count = config.grid_width * config.grid_height;
+        vkCmdDispatch(command_buffer, divide_round_up(cell_count, debug_stats_local_size), 1, 1);
+        buffer_barrier(command_buffer, conservation_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    }
+
+    void record_simulation_step(const VkCommandBuffer command_buffer,
+                                const bool collect_debug_stats) {
         SimulationPush simulation_push{
             .width = config.grid_width,
             .height = config.grid_height,
@@ -1572,6 +1609,7 @@ struct VulkanRenderer::Impl final {
                     phase == 5
                         ? ((simulation_step + static_cast<std::uint32_t>(phase_index)) & 1u)
                         : ((simulation_step + static_cast<std::uint32_t>(phase)) & 1u)),
+                .reserved0 = collect_debug_stats ? 1u : 0u,
             };
             vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
                                0, sizeof(movement_push), &movement_push);
@@ -1637,6 +1675,11 @@ struct VulkanRenderer::Impl final {
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
         buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        buffer_barrier(command_buffer, conservation_buffer,
+                       VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
         VkClearValue clear_value{};
@@ -1799,10 +1842,12 @@ struct VulkanRenderer::Impl final {
         }
         record_paint(frame.command_buffer, state);
 
+        const bool debug_stats = state.debug_visualization.load(std::memory_order_relaxed);
+        if (debug_stats) reset_debug_stats(frame.command_buffer);
         const bool step_once = state.single_step.exchange(false, std::memory_order_acq_rel);
         const bool run_simulation = !reset_this_frame && (step_once ||
             (simulation_tick && !state.paused.load(std::memory_order_relaxed)));
-        if (run_simulation) record_simulation_step(frame.command_buffer);
+        if (run_simulation) record_simulation_step(frame.command_buffer, debug_stats);
         const bool actor_action = state.fire_tool.load(std::memory_order_relaxed) ||
                                   state.deposit_resource.load(std::memory_order_relaxed) ||
                                   state.fire_tool_pressed.load(std::memory_order_acquire) ||
@@ -1815,6 +1860,12 @@ struct VulkanRenderer::Impl final {
         if (run_simulation || reset_actor || actor_action || actor_motion)
             record_actor(frame.command_buffer, state, reset_actor, actor_simulation);
 
+        if (debug_stats) {
+            const auto movement_pair_tests = run_simulation
+                ? config.grid_width * config.grid_height * 9u / 2u
+                : 0u;
+            record_debug_stats(frame.command_buffer, state, movement_pair_tests);
+        }
         record_render(frame.command_buffer, image_index, state);
         check_vk(vkEndCommandBuffer(frame.command_buffer), "vkEndCommandBuffer");
 

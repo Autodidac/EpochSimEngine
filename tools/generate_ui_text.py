@@ -22,6 +22,10 @@ FIXED = [
     "SPACE JUMP", "P PAUSE", "LMB USE", "RMB DROP ERASE", "ALT CELL CARD",
     "SAVE", "LOAD", "ERASER", "KEYMAP", "WHEEL BRUSH", "N STEP", "R RESET",
     "BRACKETS SCENE", "F5 SAVE PPM", "F9 LOAD PPM",
+    "DEBUG STATS", "STEP", "PAIRS", "SWAPS", "MOVED", "CELLS", "SLEEP TILES",
+    "BEES", "BEE MOVES", "QUEENS", "NESTS", "FLOWERS", "HONEY", "ANTS",
+    "ANT MOVES", "BEETLES", "BEETLE MOVES", "HABITATS", "SELECTED",
+    "STRUCT", "LIQUID", "GAS", "POLLEN", "ACTIVE TILES",
 ]
 SCENES = [
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",

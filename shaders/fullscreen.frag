@@ -6,11 +6,13 @@
 #include "actor.glsl"
 #include "epochgui_font.glsl"
 #include "ui_text.glsl"
+#include "debug_stats.glsl"
 
 layout(location = 0) out vec4 outColor;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 3) readonly buffer ActorBuffer { ActorState actor; };
 layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
+layout(std430, binding = 5) readonly buffer DebugStatsBuffer { uint debugStats[]; };
 
 layout(push_constant) uniform RenderPush {
     uint gridWidth;
@@ -93,6 +95,8 @@ bool cardPixel(ivec2 pixel, ivec2 origin, int scale, uint materialId, uint line)
 }
 
 uint decimalLength(uint value) {
+    if (value >= 1000000u) return 7u;
+    if (value >= 100000u) return 6u;
     if (value >= 10000u) return 5u;
     if (value >= 1000u) return 4u;
     if (value >= 100u) return 3u;
@@ -100,6 +104,8 @@ uint decimalLength(uint value) {
     return 1u;
 }
 uint decimalDivisor(uint positionFromRight) {
+    if (positionFromRight == 6u) return 1000000u;
+    if (positionFromRight == 5u) return 100000u;
     if (positionFromRight == 4u) return 10000u;
     if (positionFromRight == 3u) return 1000u;
     if (positionFromRight == 2u) return 100u;
@@ -107,7 +113,7 @@ uint decimalDivisor(uint positionFromRight) {
     return 1u;
 }
 bool numberPixel(ivec2 pixel, ivec2 origin, int scale, uint value) {
-    value = min(value, 99999u);
+    value = min(value, 9999999u);
     uint length = decimalLength(value);
     for (uint i = 0u; i < length; ++i) {
         uint divisor = decimalDivisor(length - i - 1u);
@@ -122,6 +128,13 @@ bool signedNumberPixel(ivec2 pixel, ivec2 origin, int scale, int value) {
         return numberPixel(pixel, origin + ivec2(6 * scale, 0), scale, uint(-value));
     }
     return numberPixel(pixel, origin, scale, uint(value));
+}
+
+
+bool statPixel(ivec2 pixel, ivec2 origin, uint labelId, uint value) {
+    bool label = fixedPixel(pixel, origin, 1, labelId);
+    int numberX = int(fixedTextLength(labelId)) * 6 + 4;
+    return label || numberPixel(pixel, origin + ivec2(numberX, 0), 1, value);
 }
 
 bool borderPixel(uint x, uint y, uint left, uint top, uint right, uint bottom) {
@@ -455,6 +468,60 @@ void main() {
         else if (tileHas(tile, TILE_SLEEPING)) { overlay = vec3(0.16, 0.72, 0.38); alpha = 0.22; }
         else if (tileHas(tile, TILE_ACTIVE)) { overlay = vec3(0.10, 0.65, 0.92); alpha = 0.18; }
         color.rgb = mix(color.rgb, overlay, alpha * float(tile.occupancy) / 64.0);
+    }
+
+
+    if (renderPc.debugMode != 0u) {
+        uint panelLeft = renderPc.viewportLeft + 4u;
+        uint panelRight = viewportRight > 4u ? viewportRight - 4u : viewportRight;
+        uint panelTop = renderPc.viewportTop + 4u;
+        uint panelBottom = min(viewportBottom, panelTop + 76u);
+        if (x >= panelLeft && x < panelRight && y >= panelTop && y < panelBottom) {
+            color.rgb = vec3(0.018, 0.027, 0.040);
+            if (borderPixel(x, y, panelLeft, panelTop, panelRight, panelBottom))
+                color.rgb = vec3(0.16, 0.30, 0.42);
+
+            bool statsText = fixedPixel(pixel, ivec2(int(panelLeft + 7u), int(panelTop + 4u)), 1, 75u);
+            uint columnWidth = max((panelRight - panelLeft - 12u) / 6u, 1u);
+            uint row0 = panelTop + 19u;
+            uint row1 = panelTop + 33u;
+            uint row2 = panelTop + 47u;
+            uint row3 = panelTop + 61u;
+            uint columnLeft = panelLeft + 7u;
+
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 0u), int(row0)), 76u, debugStats[STAT_SIMULATION_STEP]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 1u), int(row0)), 77u, debugStats[STAT_MOVE_PAIR_TESTS]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 2u), int(row0)), 78u, debugStats[STAT_MOVE_SWAPS]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 3u), int(row0)), 79u, debugStats[STAT_MOVED_CELLS]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 4u), int(row0)), 80u, debugStats[STAT_ACTIVE_CELLS]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 5u), int(row0)), 81u, debugStats[STAT_SLEEPING_TILES]);
+
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 0u), int(row1)), 82u, debugStats[STAT_BEE_COUNT]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 1u), int(row1)), 83u, debugStats[STAT_BEE_MOVES]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 2u), int(row1)), 84u, debugStats[STAT_QUEEN_COUNT]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 3u), int(row1)), 85u, debugStats[STAT_NEST_COUNT]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 4u), int(row1)), 86u, debugStats[STAT_FLOWER_COUNT]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 5u), int(row1)), 87u, debugStats[STAT_HONEY_COUNT]);
+
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 0u), int(row2)), 88u, debugStats[STAT_ANT_COUNT]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 1u), int(row2)), 89u, debugStats[STAT_ANT_MOVES]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 2u), int(row2)), 90u, debugStats[STAT_BEETLE_COUNT]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 3u), int(row2)), 91u, debugStats[STAT_BEETLE_MOVES]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 4u), int(row2)), 92u, debugStats[STAT_HABITAT_COUNT]);
+            uint selected = min(renderPc.selectedMaterial, renderPc.materialCount - 1u);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 5u), int(row2)), 93u, debugStats[STAT_MATERIAL_BASE + selected]);
+
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 0u), int(row3)), 94u, debugStats[STAT_STRUCTURAL_CELLS]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 1u), int(row3)), 95u, debugStats[STAT_LIQUID_CELLS]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 2u), int(row3)), 96u, debugStats[STAT_GAS_CELLS]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 3u), int(row3)), 97u, debugStats[STAT_POLLEN_COUNT]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 4u), int(row3)), 98u, debugStats[STAT_ACTIVE_TILES]);
+            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 5u), int(row3)), 1u, renderPc.framesPerSecond);
+
+            if (statsText) color.rgb = vec3(0.94, 0.98, 1.0);
+            outColor = vec4(color.rgb, 1.0);
+            return;
+        }
     }
 
     if (actor.enabled != 0u && actor.health != 0u && actor.shotTimer > 0u) {

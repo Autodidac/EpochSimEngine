@@ -122,6 +122,7 @@ if(EPOCH_SAND_BUILD_APP)
         chemistry.comp
         move.comp
         actor.comp
+        debug_stats.comp
         fullscreen.vert
         fullscreen.frag
     )
@@ -147,6 +148,7 @@ if(EPOCH_SAND_BUILD_APP)
                     "${SHADER_SOURCE_DIR}/material_physics.glsl"
                     "${SHADER_SOURCE_DIR}/tiles.glsl"
                     "${SHADER_SOURCE_DIR}/conservation.glsl"
+                    "${SHADER_SOURCE_DIR}/debug_stats.glsl"
                     "${SHADER_SOURCE_DIR}/actor.glsl" "${SHADER_SOURCE_DIR}/epochgui_font.glsl"
                     "${SHADER_SOURCE_DIR}/ui_text.glsl"
             VERBATIM
