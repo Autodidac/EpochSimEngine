@@ -1,0 +1,158 @@
+name: Screenshot Gameplay Pass Build and Release V2
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/screenshot-pass-release-trigger-v2'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: epoch-sand-screenshot-fix23-v2
+  cancel-in-progress: true
+
+jobs:
+  build-test-release:
+    runs-on: windows-2022
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply screenshot and gameplay fixes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tools/apply_screenshot_pass_v2.py
+          if ($LASTEXITCODE -ne 0) { throw 'Screenshot correction pass failed.' }
+
+      - name: Validate generated shader contracts
+        shell: pwsh
+        run: |
+          python tools/validate_shader_contracts.py
+          if ($LASTEXITCODE -ne 0) { throw 'Shader contract validation failed.' }
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'vcpkg'
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git $root
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg clone failed.' }
+          git -C $root checkout 04a735608afac5844e86fc91d6ba2112cac613c1
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg checkout failed.' }
+          & (Join-Path $root 'bootstrap-vcpkg.bat') -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed.' }
+          "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure Windows x64 Release
+        shell: pwsh
+        run: |
+          cmake -S . -B build/windows -G 'Visual Studio 17 2022' -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DVCPKG_HOST_TRIPLET=x64-windows `
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=ON `
+            -DEPOCH_SAND_ENABLE_VALIDATION=OFF `
+            -DBUILD_TESTING=ON
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
+
+      - name: Build Windows x64 Release
+        shell: pwsh
+        run: |
+          cmake --build build/windows --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed.' }
+
+      - name: Run C++23 contract tests
+        shell: pwsh
+        run: |
+          ctest --test-dir build/windows -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'C++23 contract tests failed.' }
+
+      - name: Commit verified source to main
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item 'tools/apply_screenshot_pass.py' -Force -ErrorAction SilentlyContinue
+          Remove-Item 'tools/apply_screenshot_pass_v2.py' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/workflows/screenshot-pass-build-release.yml' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.github/workflows/screenshot-pass-build-release-v2.yml' -Force -ErrorAction SilentlyContinue
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if (-not (git diff --cached --quiet)) {
+            git commit -m 'Fix gameplay, resource pixels, UI, and authored scenes'
+            if ($LASTEXITCODE -ne 0) { throw 'Verified source commit failed.' }
+            git push origin HEAD:main
+            if ($LASTEXITCODE -ne 0) { throw 'Verified source push failed.' }
+          }
+          $releaseSha = git rev-parse HEAD
+          "RELEASE_SHA=$releaseSha" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Package verified Windows release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dist = Join-Path $env:GITHUB_WORKSPACE 'dist'
+          $stage = Join-Path $dist 'EpochSand_Windows_x64_Fix23'
+          $archive = Join-Path $dist 'EpochSand_Windows_x64_Fix23.zip'
+          Remove-Item $dist -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          cmake --install build/windows --config Release --prefix $stage
+          if ($LASTEXITCODE -ne 0) { throw 'Release staging failed.' }
+          Copy-Item README.md, LICENSE -Destination $stage -Force
+          @('@echo off', 'cd /d "%~dp0bin"', 'epoch_sand.exe') |
+            Set-Content -LiteralPath (Join-Path $stage 'run.bat') -Encoding ascii
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -CompressionLevel Optimal
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "EpochSand_Windows_x64_Fix23.zip  SHA256: $hash" |
+            Set-Content -LiteralPath (Join-Path $dist 'SHA256SUMS.txt') -Encoding ascii
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EpochSand_Windows_x64_Fix23
+          path: |
+            dist/EpochSand_Windows_x64_Fix23.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'v1.0.0-fix23'
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release delete $tag --repo $env:GITHUB_REPOSITORY --yes --cleanup-tag
+          }
+          gh release create $tag `
+            dist/EpochSand_Windows_x64_Fix23.zip `
+            dist/SHA256SUMS.txt `
+            --repo $env:GITHUB_REPOSITORY `
+            --target $env:RELEASE_SHA `
+            --title 'EpochSand Windows Fix23' `
+            --notes 'Verified Windows x64 C++23 release. Restores persistent player movement and character tools, removes passive atmosphere health death, prevents structural platforms from being collected, removes authored ore blocks, adds loose gold/iron/copper pixels for sediment sifting, adds a dedicated multi-level Platformer scene based on the supplied reference, rebuilds the Volcano and Engineering Lab as contained functional scenes, enlarges the UI font and controls, and preserves charcoal CO2 plus pink hydrogen.'
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed.' }
+
+      - name: Close trigger PR and remove branch
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if ($env:PR_NUMBER) {
+            gh pr close $env:PR_NUMBER --repo $env:GITHUB_REPOSITORY --delete-branch=false 2>$null
+          }
+          if ($env:PR_HEAD) {
+            gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/heads/$env:PR_HEAD" 2>$null
+          }
