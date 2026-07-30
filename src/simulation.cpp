@@ -60,7 +60,7 @@ namespace fastfreddy::testbed
 
     void Simulation::step()
     {
-        const std::uint64_t before = total_water_units();
+        [[maybe_unused]] const std::uint64_t before = total_water_units();
         for (std::uint32_t substep = 0; substep < 2U; ++substep)
         {
             std::fill(moved_.begin(), moved_.end(), std::uint8_t{});
