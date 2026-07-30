@@ -16,233 +16,182 @@ const uint SCENE_GOLD_MINE = 6u;
 const uint SCENE_DEMOLITION = 7u;
 const uint SCENE_FRONTIER_BASE = 8u;
 const uint SCENE_COUNT = 9u;
+const int BRICK_SIZE = 8;
 
-bool rectContains(ivec2 p, ivec2 minimum, ivec2 maximum) {
-    return all(greaterThanEqual(p, minimum)) && all(lessThan(p, maximum));
+ivec2 brickCoordinate(ivec2 p) { return p / BRICK_SIZE; }
+ivec2 brickOrigin(ivec2 brick) { return brick * BRICK_SIZE; }
+ivec2 brickCenter(ivec2 brick) { return brickOrigin(brick) + ivec2(BRICK_SIZE / 2); }
+ivec2 worldBrickSize() {
+    return ivec2((int(pc.width) + BRICK_SIZE - 1) / BRICK_SIZE,
+                 (int(pc.height) + BRICK_SIZE - 1) / BRICK_SIZE);
+}
+
+bool brickRect(ivec2 p, ivec2 minimumBrick, ivec2 maximumBrick) {
+    ivec2 brick = brickCoordinate(p);
+    return all(greaterThanEqual(brick, minimumBrick)) && all(lessThan(brick, maximumBrick));
+}
+
+bool brickFrame(ivec2 p, ivec2 minimumBrick, ivec2 maximumBrick, int thickness) {
+    ivec2 brick = brickCoordinate(p);
+    if (!all(greaterThanEqual(brick, minimumBrick)) || !all(lessThan(brick, maximumBrick))) return false;
+    return brick.x < minimumBrick.x + thickness || brick.x >= maximumBrick.x - thickness ||
+           brick.y < minimumBrick.y + thickness || brick.y >= maximumBrick.y - thickness;
+}
+
+bool brickStair(ivec2 p, ivec2 startBrick, int count, bool risingRight) {
+    ivec2 brick = brickCoordinate(p);
+    int localX = brick.x - startBrick.x;
+    if (localX < 0 || localX >= count) return false;
+    int stairY = risingRight ? startBrick.y - localX : startBrick.y + localX;
+    return brick.y == stairY;
 }
 
 uint sandboxMaterial(ivec2 p) {
-    uint terrain = pc.height - 44u + (hash32(uint(p.x) * 17u) % 9u);
+    ivec2 world = worldBrickSize();
+    ivec2 b = brickCoordinate(p);
+    int ground = world.y - 5;
     uint material = MAT_EMPTY;
-    if (uint(p.y) >= pc.height - 8u) material = MAT_STONE;
-    else if (uint(p.y) >= terrain) material = uint(p.y) == terrain ? MAT_GRASS : MAT_DIRT;
 
-    ivec2 sandCenter = ivec2(int(pc.width / 5u), int(pc.height - 80u));
-    ivec2 sandDelta = p - sandCenter;
-    if (sandDelta.y >= 0 && sandDelta.y < 38 && abs(sandDelta.x) < 40 - sandDelta.y) material = MAT_SAND;
+    if (b.y >= world.y - 2) material = MAT_STONE;
+    else if (b.y == ground) material = MAT_GRASS;
+    else if (b.y > ground) material = MAT_DIRT;
+    if ((b.x == 0 || b.x == world.x - 1) && b.y >= 2) material = MAT_STONE;
 
-    if (p.x > int(pc.width * 2u / 5u) && p.x < int(pc.width * 3u / 5u) &&
-        p.y > int(pc.height - 92u) && p.y < int(pc.height - 52u)) material = MAT_WATER;
+    // Brick-aligned water basin.
+    ivec2 basinMin = ivec2(world.x * 2 / 5, ground - 7);
+    ivec2 basinMax = ivec2(world.x * 3 / 5, ground + 1);
+    if (brickFrame(p, basinMin, basinMax, 1)) material = MAT_GLASS;
+    else if (brickRect(p, basinMin + ivec2(1), basinMax - ivec2(1))) material = MAT_WATER;
 
-    ivec2 crystalCenter = ivec2(int(pc.width * 3u / 4u), int(pc.height - 62u));
-    ivec2 crystalDelta = p - crystalCenter;
-    if (crystalDelta.x * crystalDelta.x + crystalDelta.y * crystalDelta.y < 180) material = MAT_CRYSTAL;
+    // Brick-aligned crystal monument and acid-safe tank.
+    if (brickRect(p, ivec2(world.x * 3 / 4, ground - 4), ivec2(world.x * 3 / 4 + 3, ground)))
+        material = MAT_CRYSTAL;
+    ivec2 acidMin = ivec2(world.x - 10, ground - 7);
+    ivec2 acidMax = ivec2(world.x - 3, ground + 1);
+    if (brickFrame(p, acidMin, acidMax, 1)) material = MAT_ACID_RESISTANT_PLASTIC;
+    else if (brickRect(p, acidMin + ivec2(1), acidMax - ivec2(1))) material = MAT_ACID;
 
-    if (p.x > int(pc.width - 72u) && p.x < int(pc.width - 48u) &&
-        p.y > int(pc.height - 58u) && p.y < int(pc.height - 10u)) material = MAT_ACID_RESISTANT_PLASTIC;
-    if (p.x > int(pc.width - 69u) && p.x < int(pc.width - 51u) &&
-        p.y > int(pc.height - 52u) && p.y < int(pc.height - 14u)) material = MAT_ACID;
-
-    ivec2 queen = ivec2(int(pc.width * 4u / 5u), int(pc.height - 126u));
-    ivec2 q = p - queen;
-    int q2 = q.x * q.x + q.y * q.y;
-    if (p.x > queen.x - 34 && p.x < queen.x + 28 && p.y > queen.y - 16 && p.y < queen.y - 11) material = MAT_WOOD;
-    if (q2 >= 24 && q2 < 88) material = MAT_BEE_NEST;
-    if (q2 == 0) material = MAT_QUEEN_BEE;
-    else if (q.x >= 1 && q.x <= 10 && abs(q.y) <= 1) material = MAT_EMPTY;
-    else if (q2 < 24) {
-        uint chamberPattern = hash32(indexOf(p) ^ pc.seed);
-        material = (chamberPattern & 3u) == 0u ? MAT_EMPTY
-            : (((chamberPattern >> 2u) & 3u) == 0u ? MAT_POLLEN : MAT_HONEY);
-    }
-    if (q2 > 110 && q2 < 620 && (hash32(indexOf(p) ^ pc.seed ^ 0xbee51u) % 37u) == 0u) material = MAT_BEE;
+    // Deliberately loose granular sample; it is not structural terrain.
+    ivec2 pileCenter = ivec2(int(pc.width) / 5, ground * BRICK_SIZE - 1);
+    ivec2 d = p - pileCenter;
+    if (d.y >= 0 && d.y < 48 && abs(d.x) < 52 - d.y) material = MAT_SAND;
     return material;
 }
 
 uint volcanoMaterial(ivec2 p) {
-    int floorY = int(pc.height) - 10;
-    int centerX = int(pc.width / 2u);
-    int coneTop = max(22, floorY - 198);
-    int vertical = floorY - p.y;
+    ivec2 world = worldBrickSize();
+    ivec2 b = brickCoordinate(p);
+    int center = world.x / 2;
+    int floorRow = world.y - 2;
+    int top = max(3, floorRow - 27);
     uint material = MAT_EMPTY;
 
-    if (p.y >= floorY) return MAT_STONE;
-    int halfWidth = max(0, 194 - vertical * 9 / 10);
-    if (p.y >= coneTop && vertical >= 0 && abs(p.x - centerX) < halfWidth)
-        material = MAT_STONE;
+    if (b.y >= floorRow) return MAT_STONE;
+    int depth = b.y - top;
+    int halfWidth = max(0, depth * 2 / 3 + 2);
+    if (b.y >= top && b.y < floorRow && abs(b.x - center) <= halfWidth) material = MAT_STONE;
 
-    int chamberTop = floorY - 86;
-    int chamberBottom = floorY - 18;
-    int dx = p.x - centerX;
-    int chamberY = (chamberTop + chamberBottom) / 2;
-    int dy = p.y - chamberY;
-    if (dx * dx * 4 + dy * dy * 9 < 92 * 92) material = MAT_LAVA;
-    if (abs(dx) <= 7 && p.y >= coneTop + 12 && p.y <= chamberTop + 20) material = MAT_LAVA;
-    if (p.y >= coneTop && p.y < coneTop + 18 && abs(dx) < 24)
-        material = p.y >= coneTop + 8 ? MAT_LAVA : MAT_EMPTY;
-    if (rectContains(p, ivec2(centerX - 8, chamberBottom - 12),
-                         ivec2(centerX + 9, chamberBottom))) material = MAT_MAGMA_VENT;
-    if (abs(dx) <= 2 && p.y >= chamberTop - 4 && p.y <= coneTop + 18 && ((p.y - coneTop) % 14) == 0)
-        material = MAT_MAGMA_VENT;
+    // Brick-aligned magma chamber, conduit, crater, and vents.
+    ivec2 chamberCenter = ivec2(center, floorRow - 6);
+    ivec2 chamberDelta = b - chamberCenter;
+    if (chamberDelta.x * chamberDelta.x * 2 + chamberDelta.y * chamberDelta.y * 5 <= 54)
+        material = MAT_LAVA;
+    if (abs(b.x - center) <= 1 && b.y >= top + 2 && b.y <= chamberCenter.y) material = MAT_LAVA;
+    if (b.y >= top && b.y < top + 2 && abs(b.x - center) <= 3) material = MAT_EMPTY;
+    if (b.y == chamberCenter.y + 2 && abs(b.x - center) <= 1) material = MAT_MAGMA_VENT;
 
-    int lakeLeft = min(int(pc.width) - 126, centerX + 150);
-    int lakeRight = min(int(pc.width) - 18, centerX + 268);
-    int lakeTop = floorY - 58;
-    bool lakeWall = (p.x == lakeLeft || p.x == lakeRight || p.y == floorY - 1) &&
-                    p.x >= lakeLeft && p.x <= lakeRight && p.y >= lakeTop && p.y < floorY;
-    if (lakeWall) material = MAT_STONE;
-    if (p.x > lakeLeft && p.x < lakeRight && p.y > lakeTop + 12 && p.y < floorY - 1)
-        material = MAT_WATER;
+    // Brick-aligned cooling lake.
+    ivec2 lakeMin = ivec2(min(world.x - 17, center + 14), floorRow - 8);
+    ivec2 lakeMax = ivec2(min(world.x - 2, center + 30), floorRow + 1);
+    if (brickFrame(p, lakeMin, lakeMax, 1)) material = MAT_STONE;
+    else if (brickRect(p, lakeMin + ivec2(1), lakeMax - ivec2(1))) material = MAT_WATER;
 
-    if (p.y < coneTop && p.y > max(3, coneTop - 92) && abs(dx) < 72 &&
-        (hash32(indexOf(p) ^ pc.seed ^ 0x51a9u) % 17u) == 0u) material = MAT_SMOKE;
+    if (material == MAT_EMPTY && p.y < top * BRICK_SIZE && p.y > max(8, top * BRICK_SIZE - 88) &&
+        abs(p.x - center * BRICK_SIZE) < 72 && (hash32(indexOf(p) ^ pc.seed ^ 0x51a9u) % 19u) == 0u)
+        material = MAT_SMOKE;
     return material;
 }
 
 uint waterworksMaterial(ivec2 p) {
-    int floorY = int(pc.height) - 10;
-    if (p.y >= floorY) return MAT_STONE;
+    ivec2 world = worldBrickSize();
+    ivec2 b = brickCoordinate(p);
+    int floorRow = world.y - 2;
+    uint material = b.y >= floorRow ? MAT_STONE : MAT_EMPTY;
 
-    uint material = MAT_EMPTY;
-    int basinTop = int(pc.height) - 74;
-    if (p.y == basinTop || p.y == floorY - 1 || p.x == 18 || p.x == int(pc.width) - 19) {
-        if (p.y >= basinTop && p.y < floorY) material = MAT_GLASS;
+    int tankWidth = max(8, (world.x - 10) / 3);
+    for (int tank = 0; tank < 3; ++tank) {
+        int left = 2 + tank * (tankWidth + 1);
+        ivec2 minimumBrick = ivec2(left, 3);
+        ivec2 maximumBrick = ivec2(min(left + tankWidth, world.x - 2), floorRow - 9);
+        if (brickFrame(p, minimumBrick, maximumBrick, 1)) material = MAT_GLASS;
+        else if (brickRect(p, minimumBrick + ivec2(1), maximumBrick - ivec2(1)))
+            material = tank == 0 ? MAT_WATER : (tank == 1 ? MAT_SALTWATER : MAT_OIL);
+
+        int outlet = (minimumBrick.x + maximumBrick.x) / 2;
+        if (b.x == outlet && b.y >= maximumBrick.y - 1 && b.y < floorRow - 3) material = MAT_EMPTY;
+        if ((b.x == outlet - 1 || b.x == outlet + 1) &&
+            b.y >= maximumBrick.y - 1 && b.y < floorRow - 3) material = MAT_GLASS;
     }
 
-    int reservoirTop = int(pc.height) - 220;
-    int reservoirBottom = int(pc.height) - 118;
-    int width = 112;
-    for (int reservoir = 0; reservoir < 3; ++reservoir) {
-        int left = 42 + reservoir * 176;
-        int right = left + width;
-        bool wall = (p.x == left || p.x == right || p.y == reservoirBottom) &&
-                    p.y >= reservoirTop && p.y <= reservoirBottom;
-        bool outlet = p.y == reservoirBottom && p.x >= left + width / 2 - 5 && p.x <= left + width / 2 + 5;
-        if (wall && !outlet) material = MAT_GLASS;
-        if (p.x > left && p.x < right && p.y > reservoirTop + 12 && p.y < reservoirBottom) {
-            material = reservoir == 0 ? MAT_WATER : (reservoir == 1 ? MAT_SALTWATER : MAT_OIL);
-        }
-
-        int channelX = left + width / 2;
-        int channelBottom = basinTop - 2;
-        if (p.x >= channelX - 2 && p.x <= channelX + 2 && p.y > reservoirBottom && p.y < channelBottom) {
-            material = MAT_EMPTY;
-        }
-        if ((p.x == channelX - 4 || p.x == channelX + 4) && p.y > reservoirBottom && p.y < channelBottom) {
-            material = MAT_GLASS;
-        }
-    }
-
-    if (p.y > basinTop + 8 && p.y < floorY - 2 && p.x > 22 && p.x < int(pc.width) - 22) {
-        material = MAT_WATER;
-    }
+    ivec2 basinMin = ivec2(2, floorRow - 4);
+    ivec2 basinMax = ivec2(world.x - 2, floorRow + 1);
+    if (brickFrame(p, basinMin, basinMax, 1)) material = MAT_GLASS;
+    else if (brickRect(p, basinMin + ivec2(1), basinMax - ivec2(1))) material = MAT_WATER;
     return material;
 }
 
+ivec2 ecosystemQueen() {
+    ivec2 world = worldBrickSize();
+    return brickCenter(ivec2(world.x - 14, world.y - 20));
+}
 
 uint ecosystemMaterial(ivec2 p) {
-    int width = int(pc.width);
-    int height = int(pc.height);
-    int floorY = height - 10;
+    ivec2 world = worldBrickSize();
+    ivec2 b = brickCoordinate(p);
+    int ground = world.y - 8;
     uint material = MAT_EMPTY;
 
-    if (p.y >= floorY) return MAT_STONE;
-    if ((p.x < 8 || p.x >= width - 8) && p.y >= 8) material = MAT_STONE;
+    if (b.y >= world.y - 2) return MAT_STONE;
+    if ((b.x == 0 || b.x == world.x - 1) && b.y >= 2) material = MAT_STONE;
+    if (b.y == ground) material = MAT_GRASS;
+    else if (b.y > ground) material = MAT_DIRT;
 
-    int groundY = floorY - 54 + int(hash32(uint(p.x) * 31u) % 5u);
-    if (p.y >= groundY && p.y < floorY)
-        material = p.y == groundY ? MAT_GRASS : MAT_DIRT;
+    // Brick reservoir and irrigation channel.
+    ivec2 tankMin = ivec2(2, 4);
+    ivec2 tankMax = ivec2(18, ground - 2);
+    if (brickFrame(p, tankMin, tankMax, 1)) material = MAT_GLASS;
+    else if (brickRect(p, tankMin + ivec2(1), tankMax - ivec2(1))) material = MAT_WATER;
+    if (brickRect(p, ivec2(18, ground - 2), ivec2(world.x - 24, ground - 1))) material = MAT_WATER;
+    if (brickRect(p, ivec2(18, ground - 1), ivec2(world.x - 24, ground))) material = MAT_GLASS;
 
-    // Four-pixel reservoir walls satisfy the 32-pixel cohesive minimum in each
-    // aligned region; scene glass can no longer survive as one-pixel threads.
-    int tankLeft = 22;
-    int tankRight = 148;
-    int tankTop = 54;
-    int tankBottom = groundY - 8;
-    int tankThickness = 4;
-    bool tankBounds = p.x >= tankLeft && p.x <= tankRight &&
-                      p.y >= tankTop && p.y <= tankBottom;
-    bool tankWall = tankBounds &&
-        (p.x < tankLeft + tankThickness || p.x > tankRight - tankThickness ||
-         p.y < tankTop + tankThickness || p.y > tankBottom - tankThickness);
-    bool outlet = p.x >= tankRight - 7 && p.x <= tankRight &&
-                  p.y >= tankBottom - 11 && p.y <= tankBottom;
-    if (tankWall && !outlet) material = MAT_GLASS;
-    if (p.x >= tankLeft + tankThickness && p.x <= tankRight - tankThickness &&
-        p.y >= tankTop + 14 && p.y <= tankBottom - tankThickness)
-        material = MAT_WATER;
-
-    int trenchY = groundY - 5;
-    if (p.x >= tankRight && p.x < 430 && p.y >= trenchY + 4 && p.y < trenchY + 8)
-        material = MAT_GLASS;
-    if (p.x >= tankRight && p.x < 430 && p.y > trenchY && p.y < trenchY + 4)
-        material = MAT_WATER;
-
+    // Brick crop beds.
     for (int bed = 0; bed < 3; ++bed) {
-        int left = 178 + bed * 78;
-        int right = left + 58;
-        if (p.x >= left && p.x < right && p.y >= groundY - 8 && p.y <= groundY)
-            material = p.y == groundY - 8 ? MAT_GRASS : MAT_DIRT;
-        int seedX = left + 14;
-        int matureX = left + 38;
-        if (p.x == seedX && p.y == groundY - 9) material = MAT_SEED;
-        if (p.x == matureX && p.y >= groundY - 12 && p.y <= groundY - 9)
+        int left = 22 + bed * 10;
+        if (brickRect(p, ivec2(left, ground - 1), ivec2(left + 7, ground + 1)))
+            material = b.y == ground - 1 ? MAT_GRASS : MAT_DIRT;
+        int stemX = (left + 2) * BRICK_SIZE + 4;
+        int flowerX = (left + 5) * BRICK_SIZE + 4;
+        if (p.x == stemX && p.y >= ground * BRICK_SIZE - 7 && p.y < ground * BRICK_SIZE)
             material = MAT_PLANT_STEM;
-        if (p.x == matureX && p.y == groundY - 13) material = MAT_FLOWER;
-        if (p.x == right - 4 && p.y == groundY - 9) material = MAT_FERTILIZER;
+        if (p.x == stemX && p.y == ground * BRICK_SIZE - 8) material = MAT_FLOWER;
+        if (p.x == flowerX && p.y == ground * BRICK_SIZE - 1) material = MAT_SEED;
     }
 
-    // Proper bottom insect farm: clear the chamber first, then add thick walls,
-    // substrate, two habitats, recoverable waste/fertilizer, ants, and beetles.
-    int farmLeft = 244;
-    int farmRight = 420;
-    int farmTop = groundY + 10;
-    int farmBottom = floorY - 4;
-    int farmWallThickness = 4;
-    bool farmInterior = p.x > farmLeft && p.x < farmRight &&
-                        p.y > farmTop && p.y < farmBottom;
-    if (farmInterior) material = MAT_EMPTY;
-    bool farmWall = p.x >= farmLeft && p.x <= farmRight &&
-                    p.y >= farmTop && p.y <= farmBottom &&
-        (p.x < farmLeft + farmWallThickness || p.x > farmRight - farmWallThickness ||
-         p.y < farmTop + farmWallThickness || p.y > farmBottom - farmWallThickness);
-    bool farmVent = p.y < farmTop + farmWallThickness &&
-                    ((p.x >= farmLeft + 28 && p.x < farmLeft + 44) ||
-                     (p.x >= farmRight - 44 && p.x < farmRight - 28));
-    if (farmWall && !farmVent)
-        material = p.y < farmTop + farmWallThickness ? MAT_GLASS : MAT_WOOD;
-
-    int substrateTop = farmBottom - 12;
-    if (p.x >= farmLeft + farmWallThickness && p.x <= farmRight - farmWallThickness &&
-        p.y >= substrateTop && p.y < farmBottom - farmWallThickness)
-        material = p.y == substrateTop ? MAT_GRASS : MAT_DIRT;
-
-    if (rectContains(p, ivec2(farmLeft + 16, substrateTop - 8),
-                        ivec2(farmLeft + 32, substrateTop)))
+    // Brick-aligned insect farm under the soil.
+    ivec2 farmMin = ivec2(world.x / 3, ground + 1);
+    ivec2 farmMax = ivec2(world.x * 2 / 3, world.y - 2);
+    if (brickFrame(p, farmMin, farmMax, 1)) material = MAT_WOOD;
+    else if (brickRect(p, farmMin + ivec2(1), farmMax - ivec2(1))) material = MAT_EMPTY;
+    if (brickRect(p, ivec2(farmMin.x + 2, farmMax.y - 2), ivec2(farmMin.x + 4, farmMax.y - 1)))
         material = MAT_INSECT_HABITAT;
-    if (rectContains(p, ivec2(farmLeft + 48, substrateTop - 8),
-                        ivec2(farmLeft + 64, substrateTop)))
+    if (brickRect(p, ivec2(farmMin.x + 6, farmMax.y - 2), ivec2(farmMin.x + 8, farmMax.y - 1)))
         material = MAT_INSECT_HABITAT;
+    if (p.y == brickOrigin(ivec2(0, farmMax.y - 2)).y - 1 &&
+        p.x > (farmMin.x + 2) * BRICK_SIZE && p.x < (farmMax.x - 2) * BRICK_SIZE && (p.x % 13) == 0)
+        material = ((p.x / 13) & 1) == 0 ? MAT_ANT : MAT_BEETLE;
 
-    if (rectContains(p, ivec2(farmRight - 62, substrateTop - 7),
-                        ivec2(farmRight - 42, substrateTop)))
-        material = ((p.x + p.y) & 1) == 0 ? MAT_WASTE : MAT_FERTILIZER;
-    if (rectContains(p, ivec2(farmRight - 36, substrateTop - 7),
-                        ivec2(farmRight - 16, substrateTop)))
-        material = ((p.x + p.y) & 1) == 0 ? MAT_WOOD : MAT_WASTE;
-
-    if (p.y == substrateTop - 1 && p.x > farmLeft + 72 && p.x < farmRight - 70 &&
-        (p.x % 7) == 0)
-        material = ((p.x / 7) & 1) == 0 ? MAT_ANT : MAT_BEETLE;
-    if (p.y == substrateTop - 2 && p.x > farmLeft + 20 && p.x < farmLeft + 64 &&
-        (p.x % 11) == 0)
-        material = ((p.x / 11) & 1) == 0 ? MAT_BEETLE : MAT_ANT;
-
-    // Keep the compact Fix29 hive. The swarm is a separate 200-bee
-    // biohazard silhouette, so hive geometry and bee motion remain independent.
-    int queenX = width - 104;
-    int queenGroundY = floorY - 54 + int(hash32(uint(queenX) * 31u) % 5u);
-    ivec2 queen = ivec2(queenX, queenGroundY - 72);
+    // Organic hive and true three-lobed biohazard swarm. The hive is not terrain.
+    ivec2 queen = ecosystemQueen();
     ivec2 q = p - queen;
     int q2 = q.x * q.x + q.y * q.y;
     if (q2 >= 28 && q2 < 108) material = MAT_BEE_NEST;
@@ -250,321 +199,196 @@ uint ecosystemMaterial(ivec2 p) {
     else if (q.x >= 1 && q.x <= 12 && abs(q.y) <= 1) material = MAT_EMPTY;
     else if (q2 < 28) {
         uint chamber = hash32(indexOf(p) ^ pc.seed ^ 0xb33u);
-        material = (chamber & 3u) == 0u ? MAT_EMPTY
-            : ((chamber & 4u) == 0u ? MAT_HONEY : MAT_POLLEN);
+        material = (chamber & 3u) == 0u ? MAT_EMPTY : ((chamber & 4u) == 0u ? MAT_HONEY : MAT_POLLEN);
     }
-
     int formationSlot = beeFormationSlotFromOffset(q);
     if (material == MAT_EMPTY && formationSlot >= 0) material = MAT_BEE;
 
     for (int flower = 0; flower < 6; ++flower) {
-        int x = width - 240 + flower * 26;
-        if (p.x == x && p.y >= groundY - 5 && p.y <= groundY - 2)
+        int x = (world.x - 31 + flower * 3) * BRICK_SIZE + 4;
+        if (p.x == x && p.y >= ground * BRICK_SIZE - 6 && p.y < ground * BRICK_SIZE)
             material = MAT_PLANT_STEM;
-        if (p.x == x && p.y == groundY - 6) material = MAT_FLOWER;
+        if (p.x == x && p.y == ground * BRICK_SIZE - 7) material = MAT_FLOWER;
     }
-
-    if (material == MAT_EMPTY && p.y > groundY - 62 && p.y < groundY - 12 &&
-        p.x > 150 && p.x < 430 &&
-        (hash32(indexOf(p) ^ pc.seed ^ 0x02u) % 17u) == 0u)
-        material = MAT_OXYGEN;
-    if (material == MAT_EMPTY && p.y >= groundY - 16 && p.y < groundY &&
-        (hash32(indexOf(p) ^ pc.seed ^ 0xc02u) % 13u) == 0u)
-        material = MAT_CARBON_DIOXIDE;
-
-    int gasLeft = width - 188;
-    int gasRight = width - 20;
-    int gasTop = 18;
-    int gasBottom = 72;
-    int gasThickness = 4;
-    bool gasBounds = p.x >= gasLeft && p.x <= gasRight &&
-                     p.y >= gasTop && p.y <= gasBottom;
-    bool gasWall = gasBounds &&
-        (p.x < gasLeft + gasThickness || p.x > gasRight - gasThickness ||
-         p.y < gasTop + gasThickness || p.y > gasBottom - gasThickness);
-    if (gasWall) material = MAT_GLASS;
-    if (p.x >= gasLeft + gasThickness && p.x <= gasRight - gasThickness &&
-        p.y >= gasTop + gasThickness && p.y <= gasBottom - gasThickness &&
-        (hash32(indexOf(p) ^ pc.seed ^ 0x4a2u) & 1u) == 0u)
-        material = MAT_HYDROGEN;
-
     return material;
 }
 
 uint engineeringMaterial(ivec2 p) {
-    int floorY = int(pc.height) - 12;
-    uint material = p.y >= floorY ? MAT_INSULATOR : MAT_EMPTY;
+    ivec2 world = worldBrickSize();
+    ivec2 b = brickCoordinate(p);
+    int floorRow = world.y - 3;
+    uint material = b.y >= floorRow ? MAT_INSULATOR : MAT_EMPTY;
 
-    // Left station: contained water/steam thermal vessel on a steel workbench.
-    int tankLeft = 24;
-    int tankRight = 188;
-    int tankTop = 48;
-    int tankBottom = 246;
-    bool tankWall = (p.x == tankLeft || p.x == tankRight || p.y == tankTop || p.y == tankBottom) &&
-                    p.x >= tankLeft && p.x <= tankRight && p.y >= tankTop && p.y <= tankBottom;
-    if (tankWall) material = MAT_GLASS;
-    if (p.x > tankLeft && p.x < tankRight && p.y > 132 && p.y < tankBottom) material = MAT_WATER;
-    if (p.x > tankLeft + 8 && p.x < tankRight - 8 && p.y > tankTop + 10 && p.y < 118 &&
-        (hash32(indexOf(p) ^ pc.seed) & 7u) == 0u) material = MAT_STEAM;
-    if (rectContains(p, ivec2(78, tankBottom + 2), ivec2(134, tankBottom + 12))) material = MAT_COPPER;
-    if (rectContains(p, ivec2(101, tankBottom - 5), ivec2(111, tankBottom + 2))) material = MAT_EMBER;
+    // Brick thermal vessel.
+    ivec2 tankMin = ivec2(2, 5);
+    ivec2 tankMax = ivec2(23, floorRow - 5);
+    if (brickFrame(p, tankMin, tankMax, 1)) material = MAT_GLASS;
+    else if (brickRect(p, tankMin + ivec2(1), tankMax - ivec2(1)))
+        material = b.y >= (tankMin.y + tankMax.y) / 2 ? MAT_WATER : MAT_STEAM;
+    if (brickRect(p, ivec2(10, tankMax.y), ivec2(16, tankMax.y + 1))) material = MAT_COPPER;
+    if (brickRect(p, ivec2(12, tankMax.y - 1), ivec2(14, tankMax.y))) material = MAT_EMBER;
 
-    // Center station: a real sediment sifter. Sand/silt and independent metal
-    // pixels fall through a narrow outlet toward a magnet and separated bins.
-    int hopperLeft = 226;
-    int hopperRight = 390;
-    int hopperTop = 42;
-    int hopperBottom = 150;
-    bool hopperWall = (p.x == hopperLeft || p.x == hopperRight || p.y == hopperTop) &&
-                      p.x >= hopperLeft && p.x <= hopperRight && p.y >= hopperTop && p.y <= hopperBottom;
-    if (hopperWall) material = MAT_STEEL;
-    if (p.y == hopperBottom && p.x >= hopperLeft && p.x <= hopperRight && abs(p.x - 308) > 7)
-        material = MAT_STEEL;
-    if (p.x > hopperLeft && p.x < hopperRight && p.y > hopperTop + 8 && p.y < hopperBottom) {
+    // Center station: a real sediment sifter built entirely from aligned bricks.
+    ivec2 hopperMin = ivec2(world.x / 3, 5);
+    ivec2 hopperMax = ivec2(world.x / 3 + 21, 20);
+    if (brickFrame(p, hopperMin, hopperMax, 1)) material = MAT_STEEL;
+    else if (brickRect(p, hopperMin + ivec2(1), hopperMax - ivec2(1))) {
         uint mix = hash32(indexOf(p) ^ pc.seed ^ 0x5f17u);
         if ((mix % 71u) == 0u) material = MAT_ALUMINUM_SHAVINGS;
         else if ((mix % 43u) == 0u) material = MAT_COPPER;
         else if ((mix % 23u) == 0u) material = MAT_IRON_SHAVINGS;
         else material = (mix & 3u) == 0u ? MAT_SILT : MAT_SAND;
     }
-    if (rectContains(p, ivec2(410, 154), ivec2(444, 214))) material = MAT_MAGNET;
-    if (rectContains(p, ivec2(232, 246), ivec2(438, 254))) material = MAT_STEEL;
-    if ((p.x == 232 || p.x == 332 || p.x == 438) && p.y >= 214 && p.y <= 306) material = MAT_GLASS;
-    if (p.y == 306 && p.x >= 232 && p.x <= 438) material = MAT_GLASS;
-
-    // Right station: sealed, readable pink hydrogen and cyan oxygen chamber.
-    int gasLeft = int(pc.width) - 172;
-    int gasRight = int(pc.width) - 24;
-    int gasTop = 42;
-    int gasBottom = 164;
-    bool gasWall = (p.x == gasLeft || p.x == gasRight || p.y == gasTop || p.y == gasBottom) &&
-                   p.x >= gasLeft && p.x <= gasRight && p.y >= gasTop && p.y <= gasBottom;
-    if (gasWall) material = MAT_GLASS;
-    if (p.x > gasLeft && p.x < gasRight && p.y > gasTop && p.y < gasBottom) {
-        int split = (gasLeft + gasRight) / 2;
-        material = p.x < split ? MAT_HYDROGEN : MAT_OXYGEN;
-    }
-    if (rectContains(p, ivec2((gasLeft + gasRight) / 2 - 2, gasBottom - 9),
-                         ivec2((gasLeft + gasRight) / 2 + 3, gasBottom))) material = MAT_EMBER;
-
-    if (p.y >= floorY - 8 && p.y < floorY && p.x > 12 && p.x < int(pc.width) - 12)
+    int outlet = (hopperMin.x + hopperMax.x) / 2;
+    if (b.y == hopperMax.y - 1 && abs(b.x - outlet) <= 1) material = MAT_EMPTY;
+    if (brickRect(p, ivec2(outlet + 5, hopperMax.y + 1), ivec2(outlet + 9, hopperMax.y + 7)))
+        material = MAT_MAGNET;
+    if (brickRect(p, ivec2(hopperMin.x, floorRow - 7), ivec2(hopperMax.x + 8, floorRow - 6)))
         material = MAT_STEEL;
+
+    // Right brick gas chamber.
+    ivec2 gasMin = ivec2(world.x - 23, 5);
+    ivec2 gasMax = ivec2(world.x - 2, 21);
+    if (brickFrame(p, gasMin, gasMax, 1)) material = MAT_GLASS;
+    else if (brickRect(p, gasMin + ivec2(1), gasMax - ivec2(1)))
+        material = b.x < (gasMin.x + gasMax.x) / 2 ? MAT_HYDROGEN : MAT_OXYGEN;
     return material;
 }
 
 uint goldMineMaterial(ivec2 p) {
-    int width = int(pc.width);
-    int height = int(pc.height);
-    int floorY = height - 10;
-    int upperFloor = 130;
-    int middleFloor = 210;
-    int lowerFloor = 286;
+    ivec2 world = worldBrickSize();
+    ivec2 b = brickCoordinate(p);
     uint material = MAT_EMPTY;
+    int upper = 16;  // y=128, matching the player spawn.
+    int middle = 26;
+    int lower = 36;
+    int floorRow = world.y - 2;
 
-    if (p.y >= floorY) return MAT_STONE;
-    if ((p.x < 12 || p.x >= width - 12) && p.y >= 18) material = MAT_STONE;
+    if (b.y >= floorRow) return MAT_STONE;
+    if ((b.x == 0 || b.x == world.x - 1) && b.y >= 2) material = MAT_STONE;
 
-    // Tall left water tower and controlled waterfall.
-    int towerLeft = 28;
-    int towerRight = 132;
-    int towerTop = 30;
-    int towerBottom = upperFloor;
-    bool towerWall = (p.x == towerLeft || p.x == towerRight || p.y == towerTop || p.y == towerBottom) &&
-                     p.x >= towerLeft && p.x <= towerRight && p.y >= towerTop && p.y <= towerBottom;
-    if (towerWall) material = MAT_STEEL;
-    if (p.x > towerLeft && p.x < towerRight && p.y > towerTop + 8 && p.y < 78) material = MAT_WATER;
-    if (p.x >= 74 && p.x <= 80 && p.y >= 78 && p.y < towerBottom) material = MAT_WATER;
-    if ((p.x == 70 || p.x == 84) && p.y >= 74 && p.y < towerBottom) material = MAT_GLASS;
+    // Large upper reservoir and filter bed, aligned to the global brick grid.
+    ivec2 reservoirMin = ivec2(22, 3);
+    ivec2 reservoirMax = ivec2(world.x - 3, 13);
+    if (brickFrame(p, reservoirMin, reservoirMax, 1)) material = MAT_STEEL;
+    else if (brickRect(p, reservoirMin + ivec2(1), reservoirMax - ivec2(1)))
+        material = b.y < reservoirMax.y - 3 ? MAT_WATER : (((b.x & 1) == 0) ? MAT_STONE : MAT_GRASS);
 
-    // Large upper reservoir and filter bed, matching the reference layout.
-    int reservoirLeft = 176;
-    int reservoirRight = width - 28;
-    int reservoirTop = 24;
-    int reservoirBottom = 106;
-    bool reservoirWall = (p.x == reservoirLeft || p.x == reservoirRight ||
-                          p.y == reservoirTop || p.y == reservoirBottom) &&
-                         p.x >= reservoirLeft && p.x <= reservoirRight &&
-                         p.y >= reservoirTop && p.y <= reservoirBottom;
-    if (reservoirWall) material = MAT_STEEL;
-    if (p.x > reservoirLeft && p.x < reservoirRight && p.y > reservoirTop && p.y < 84)
-        material = MAT_WATER;
-    if (p.x > reservoirLeft && p.x < reservoirRight && p.y >= 84 && p.y < reservoirBottom)
-        material = ((p.x / 8) & 1) == 0 ? MAT_STONE : MAT_GRASS;
+    if (brickRect(p, ivec2(2, upper), ivec2(29, upper + 1))) material = MAT_STEEL;
+    if (brickRect(p, ivec2(2, middle), ivec2(world.x - 2, middle + 1))) material = MAT_STEEL;
+    if (brickRect(p, ivec2(2, lower), ivec2(world.x - 2, lower + 1))) material = MAT_STEEL;
+    if (brickStair(p, ivec2(16, middle - 1), 10, true)) material = MAT_STEEL;
+    if (brickStair(p, ivec2(5, lower - 1), 10, true)) material = MAT_STEEL;
 
-    // Upper player deck.
-    if (p.y >= upperFloor && p.y < upperFloor + 6 && p.x >= 22 && p.x < 226)
-        material = MAT_STEEL;
-    if (p.x >= 22 && p.x < 30 && p.y >= upperFloor && p.y < middleFloor)
-        material = MAT_STEEL;
-
-    // Middle deck, a loose sand pile with independent metal pixels, and a water room.
-    if (p.y >= middleFloor && p.y < middleFloor + 6 && p.x >= 22 && p.x < width - 22)
-        material = MAT_STEEL;
-    ivec2 pileCenter = ivec2(286, middleFloor);
+    ivec2 pileCenter = ivec2(36 * BRICK_SIZE, middle * BRICK_SIZE - 1);
     ivec2 pile = p - pileCenter;
-    if (pile.y <= 0 && pile.y > -58 && abs(pile.x) < 68 + pile.y) {
+    if (pile.y <= 0 && pile.y > -56 && abs(pile.x) < 70 + pile.y) {
         uint mix = hash32(indexOf(p) ^ pc.seed ^ 0x91f3u);
         if ((mix % 97u) == 0u) material = MAT_ALUMINUM_SHAVINGS;
         else if ((mix % 41u) == 0u) material = MAT_COPPER;
         else if ((mix % 29u) == 0u) material = MAT_IRON_SHAVINGS;
+        else if ((mix % 23u) == 0u) material = MAT_GOLD;
         else material = MAT_SAND;
     }
 
-    int poolLeft = width - 176;
-    int poolRight = width - 32;
-    int poolTop = 146;
-    int poolBottom = middleFloor;
-    bool poolWall = (p.x == poolLeft || p.x == poolRight || p.y == poolTop || p.y == poolBottom) &&
-                    p.x >= poolLeft && p.x <= poolRight && p.y >= poolTop && p.y <= poolBottom;
-    if (poolWall) material = MAT_GLASS;
-    if (p.x > poolLeft && p.x < poolRight && p.y > poolTop + 12 && p.y < poolBottom)
-        material = MAT_WATER;
-
-    // Reachable steel ramps connect every level without teleporting the actor.
-    if (p.x >= 126 && p.x < 226) {
-        int rampY = middleFloor - ((p.x - 126) * (middleFloor - upperFloor)) / 100;
-        if (p.y >= rampY && p.y < rampY + 3) material = MAT_STEEL;
-    }
-    if (p.x >= 34 && p.x < 134) {
-        int rampY = lowerFloor - ((p.x - 34) * (lowerFloor - middleFloor)) / 100;
-        if (p.y >= rampY && p.y < rampY + 3) material = MAT_STEEL;
-    }
-
-    // Lower combat floor and a contained lava hazard trench.
-    if (p.y >= lowerFloor && p.y < lowerFloor + 6 && p.x >= 22 && p.x < width - 22)
-        material = MAT_STEEL;
-    int trenchLeft = 258;
-    int trenchRight = 388;
-    if ((p.x == trenchLeft || p.x == trenchRight) && p.y >= lowerFloor && p.y < floorY)
-        material = MAT_STONE;
-    if (p.x > trenchLeft && p.x < trenchRight && p.y > lowerFloor + 18 && p.y < floorY)
-        material = MAT_LAVA;
-    if (p.y == lowerFloor - 1 && p.x > width - 150 && p.x < width - 46 && (p.x % 23) == 0)
-        material = MAT_BEETLE;
-    if (rectContains(p, ivec2(430, lowerFloor - 10), ivec2(446, lowerFloor)))
-        material = MAT_PLASMA_AMMO;
-
+    ivec2 poolMin = ivec2(world.x - 22, 18);
+    ivec2 poolMax = ivec2(world.x - 3, middle + 1);
+    if (brickFrame(p, poolMin, poolMax, 1)) material = MAT_GLASS;
+    else if (brickRect(p, poolMin + ivec2(1), poolMax - ivec2(1))) material = MAT_WATER;
     return material;
 }
 
 uint demolitionMaterial(ivec2 p) {
-    int floorY = int(pc.height) - 12;
-    if (p.y >= floorY) return MAT_STONE;
+    ivec2 world = worldBrickSize();
+    ivec2 b = brickCoordinate(p);
+    int floorRow = world.y - 4;
     uint material = MAT_EMPTY;
 
-    // Two grounded towers support a long hanging bridge made from the same cells as particles.
-    if ((p.x >= 96 && p.x < 128 && p.y >= floorY - 174 && p.y < floorY) ||
-        (p.x >= int(pc.width) - 128 && p.x < int(pc.width) - 96 && p.y >= floorY - 174 && p.y < floorY)) {
-        material = MAT_STONE;
-    }
-    if (p.y >= floorY - 178 && p.y < floorY - 154 && p.x >= 96 && p.x < int(pc.width) - 96) material = MAT_ALUMINUM;
-    if (p.y >= floorY - 154 && p.y < floorY - 146 && p.x >= 128 && p.x < int(pc.width) - 128) material = MAT_GLASS;
+    if (b.y >= floorRow) material = MAT_STONE;
+    if ((b.x == 0 || b.x == world.x - 1) && b.y >= 2) material = MAT_STONE;
 
-    // Suspended pixel loads demonstrate the 50-percent block integrity release.
-    if (rectContains(p, ivec2(206, floorY - 234), ivec2(286, floorY - 178))) material = MAT_SAND;
-    if (rectContains(p, ivec2(358, floorY - 226), ivec2(438, floorY - 178))) material = MAT_WATER;
+    ivec2 towerMin = ivec2(world.x / 3, 7);
+    ivec2 towerMax = ivec2(world.x * 2 / 3, floorRow);
+    if (brickFrame(p, towerMin, towerMax, 1)) material = MAT_STEEL;
+    else if (brickRect(p, towerMin + ivec2(1), towerMax - ivec2(1))) material = MAT_EMPTY;
+    for (int level = towerMin.y + 5; level < towerMax.y; level += 6)
+        if (brickRect(p, ivec2(towerMin.x + 1, level), ivec2(towerMax.x - 1, level + 1))) material = MAT_STEEL;
+
+    // Explosive cells remain canonical loose material inside brick-aligned rooms.
+    if (brickRect(p, ivec2(towerMin.x + 3, towerMax.y - 8), ivec2(towerMin.x + 8, towerMax.y - 4)))
+        material = ((p.x + p.y) & 1) == 0 ? MAT_GUNPOWDER : MAT_OIL;
+    if (brickRect(p, ivec2(towerMax.x - 8, towerMax.y - 14), ivec2(towerMax.x - 3, towerMax.y - 10)))
+        material = ((p.x + p.y) & 3) == 0 ? MAT_EMBER : MAT_GUNPOWDER;
+    if (brickRect(p, ivec2(towerMin.x - 9, floorRow - 6), ivec2(towerMin.x - 2, floorRow))) material = MAT_SAND;
     return material;
 }
 
-
 uint frontierBaseMaterial(ivec2 p) {
-    const int surfaceY = 92;
-    const int floorY = int(pc.height) - 8;
+    ivec2 world = worldBrickSize();
+    ivec2 b = brickCoordinate(p);
+    int surface = 17;
+    int floorRow = world.y - 2;
     uint material = MAT_EMPTY;
 
-    // Terraria-like surface and Noita-like destructible underground strata.
-    int terrainNoise = int(hash32(uint(p.x) * 7349u ^ pc.seed) % 9u) - 4;
-    int localSurface = surfaceY + terrainNoise;
-    if (p.y >= floorY) material = MAT_STONE;
-    else if (p.y >= localSurface) {
-        material = p.y == localSurface ? MAT_GRASS : (p.y < localSurface + 14 ? MAT_DIRT : MAT_STONE);
-    }
+    if (b.y >= floorRow) return MAT_STONE;
+    if (b.y == surface) material = MAT_GRASS;
+    else if (b.y > surface) material = MAT_DIRT;
 
-    // Underground base shell and rooms. All walls are ordinary structural cells.
-    bool baseOuter = rectContains(p, ivec2(32, 142), ivec2(430, 328));
-    bool baseInner = rectContains(p, ivec2(42, 152), ivec2(420, 318));
-    if (baseOuter) material = MAT_STEEL;
-    if (baseInner) material = MAT_EMPTY;
-    if (baseInner && (p.y == 208 || p.y == 264) && p.x > 42 && p.x < 420) material = MAT_STEEL;
-    if (baseInner && (p.x == 136 || p.x == 250 || p.x == 356) && p.y > 152 && p.y < 318) material = MAT_STEEL;
+    // Player bunker aligned around the fixed actor spawn at x=168, y=200.
+    ivec2 baseMin = ivec2(6, 20);
+    ivec2 baseMax = ivec2(50, 41);
+    if (brickFrame(p, baseMin, baseMax, 1)) material = MAT_STEEL;
+    else if (brickRect(p, baseMin + ivec2(1), baseMax - ivec2(1))) material = MAT_EMPTY;
+    for (int level = 26; level < 41; level += 7)
+        if (brickRect(p, ivec2(baseMin.x + 1, level), ivec2(baseMax.x - 1, level + 1))) material = MAT_STEEL;
+    if (brickStair(p, ivec2(7, 39), 9, true)) material = MAT_STEEL;
 
-    // Walkable internal ramps keep all three base levels reachable by the same
-    // grid actor. Floors are opened first, then a two-cell steel stair surface
-    // descends one cell for every two horizontal cells.
-    if (p.y == 208 && p.x >= 136 && p.x < 232) material = MAT_EMPTY;
-    if (p.x >= 136 && p.x < 232) {
-        int rampY = 208 + ((p.x - 136) * 55) / 95;
-        if (p.y >= rampY && p.y < rampY + 2) material = MAT_STEEL;
-        else if (p.y >= 208 && p.y < rampY) material = MAT_EMPTY;
-    }
-    if (p.y == 264 && p.x >= 52 && p.x < 148) material = MAT_EMPTY;
-    if (p.x >= 52 && p.x < 148) {
-        int rampY = 264 + ((p.x - 52) * 53) / 95;
-        if (p.y >= rampY && p.y < rampY + 2) material = MAT_STEEL;
-        else if (p.y >= 264 && p.y < rampY) material = MAT_EMPTY;
-    }
-
-    // Doors and circulation openings.
-    if (rectContains(p, ivec2(128, 188), ivec2(145, 208)) ||
-        rectContains(p, ivec2(242, 244), ivec2(259, 264)) ||
-        rectContains(p, ivec2(348, 188), ivec2(365, 208))) material = MAT_EMPTY;
-
-    // Sloped access tunnel to the surface.
-    for (int step = 0; step < 62; ++step) {
-        int x = 54 + step;
-        int y = 142 - step / 2;
-        if (p.x >= x && p.x < x + 8 && p.y >= y && p.y < y + 12) material = MAT_EMPTY;
-        if (p.x >= x && p.x < x + 8 && p.y == y + 12) material = MAT_STEEL;
-    }
-
-    // Waterfall aerator: reservoir, drop shaft, and collection basin.
-    if (rectContains(p, ivec2(44, 24), ivec2(98, 66))) material = MAT_WATER;
-    if ((p.x == 40 || p.x == 101 || p.y == 20) && p.x >= 40 && p.x <= 101 && p.y >= 20 && p.y <= 68)
+    // Brick waterfall aerator.
+    ivec2 waterMin = ivec2(5, 3);
+    ivec2 waterMax = ivec2(14, 9);
+    if (brickFrame(p, waterMin, waterMax, 1)) material = MAT_GLASS;
+    else if (brickRect(p, waterMin + ivec2(1), waterMax - ivec2(1))) material = MAT_WATER;
+    if (brickRect(p, ivec2(8, 8), ivec2(10, 22))) material = MAT_WATER;
+    if (brickRect(p, ivec2(7, 8), ivec2(8, 23)) || brickRect(p, ivec2(10, 8), ivec2(11, 23)))
         material = MAT_GLASS;
-    if (p.x >= 67 && p.x <= 73 && p.y >= 66 && p.y < 178) material = MAT_WATER;
-    if ((p.x == 62 || p.x == 78) && p.y >= 66 && p.y < 184) material = MAT_GLASS;
-    if (rectContains(p, ivec2(48, 178), ivec2(118, 204))) material = MAT_WATER;
-    if ((p.x == 44 || p.x == 121 || p.y == 204) && p.x >= 44 && p.x <= 121 && p.y >= 174 && p.y <= 204)
-        material = MAT_GLASS;
+    ivec2 catchMin = ivec2(5, 22);
+    ivec2 catchMax = ivec2(15, 27);
+    if (brickFrame(p, catchMin, catchMax, 1)) material = MAT_GLASS;
+    else if (brickRect(p, catchMin + ivec2(1), catchMax - ivec2(1))) material = MAT_WATER;
 
-    // Breathable starting atmosphere inside the base; CO2 pools low.
-    if (baseInner && material == MAT_EMPTY && p.y < 282 && ((p.x + p.y) & 1) == 0) material = MAT_OXYGEN;
-    if (baseInner && material == MAT_EMPTY && p.y >= 302 && (p.x & 3) == 0) material = MAT_CARBON_DIOXIDE;
+    // Unified brick-grid factory floor.
+    if (brickRect(p, ivec2(14, 35), ivec2(49, 36))) material = MAT_CONVEYOR;
+    if (brickRect(p, ivec2(24, 34), ivec2(25, 35))) material = MAT_FACTORY_CORE;
+    if (brickRect(p, ivec2(28, 34), ivec2(29, 35))) material = MAT_SMELTER;
+    if (brickRect(p, ivec2(34, 34), ivec2(35, 35))) material = MAT_ASSEMBLER;
+    if (brickRect(p, ivec2(41, 34), ivec2(42, 35))) material = MAT_INSECT_HABITAT;
+    if (brickRect(p, ivec2(15, 32), ivec2(18, 35))) material = ((p.x + p.y) & 1) == 0 ? MAT_IRON : MAT_GOLD;
+    if (brickRect(p, ivec2(31, 32), ivec2(33, 35))) material = MAT_COPPER;
+    if (brickRect(p, ivec2(37, 32), ivec2(39, 35))) material = MAT_POWER_CELL;
 
-    // Factory floor: mined material falls onto one unified cell-grid conveyor line.
-    if (p.y >= 288 && p.y < 296 && p.x >= 112 && p.x < 392) material = MAT_CONVEYOR;
-    if (rectContains(p, ivec2(192, 280), ivec2(200, 288))) material = MAT_FACTORY_CORE;
-    if (rectContains(p, ivec2(224, 280), ivec2(232, 288))) material = MAT_SMELTER;
-    if (rectContains(p, ivec2(272, 280), ivec2(280, 288))) material = MAT_ASSEMBLER;
-    if (rectContains(p, ivec2(328, 280), ivec2(336, 288))) material = MAT_INSECT_HABITAT;
+    // Enemy bunker and factory remain on the same aligned grid.
+    ivec2 enemyMin = ivec2(world.x - 21, 20);
+    ivec2 enemyMax = ivec2(world.x - 2, 34);
+    if (brickFrame(p, enemyMin, enemyMax, 1)) material = MAT_STEEL;
+    else if (brickRect(p, enemyMin + ivec2(1), enemyMax - ivec2(1))) material = MAT_EMPTY;
+    if (brickRect(p, ivec2(enemyMin.x + 2, 27), ivec2(enemyMin.x + 3, 28))) material = MAT_FACTORY_CORE;
+    if (brickRect(p, ivec2(enemyMin.x + 7, 28), ivec2(enemyMin.x + 8, 29))) material = MAT_INSECT_HABITAT;
+    if (brickRect(p, ivec2(enemyMin.x + 1, 29), ivec2(enemyMax.x - 1, 30))) material = MAT_CONVEYOR;
+    if (brickRect(p, ivec2(enemyMin.x + 2, 25), ivec2(enemyMin.x + 4, 28))) material = MAT_STEEL;
+    if (brickRect(p, ivec2(enemyMin.x + 5, 25), ivec2(enemyMin.x + 7, 28))) material = MAT_COPPER;
+    if (brickRect(p, ivec2(enemyMin.x + 8, 25), ivec2(enemyMin.x + 10, 28))) material = MAT_PLASMA_AMMO;
 
-    // Initial resources make the production chain visibly functional.
-    if (rectContains(p, ivec2(116, 270), ivec2(132, 290))) material = (p.y & 1) == 0 ? MAT_IRON : MAT_GOLD;
-    if (rectContains(p, ivec2(248, 270), ivec2(258, 290))) material = MAT_COPPER;
-    if (rectContains(p, ivec2(300, 270), ivec2(310, 290))) material = MAT_POWER_CELL;
-
-    // Surface battlefield and opposing deployment zones.
-    if (p.y == localSurface - 1 && p.x > 150 && p.x < 250 && (p.x % 31) == 0) material = MAT_ANT;
-    if (p.y == localSurface - 1 && p.x > int(pc.width) - 220 && p.x < int(pc.width) - 80 && (p.x % 17) == 0)
+    if (material == MAT_EMPTY && brickRect(p, baseMin + ivec2(1), baseMax - ivec2(1)) && ((p.x + p.y) & 1) == 0)
+        material = MAT_OXYGEN;
+    if (p.y == surface * BRICK_SIZE - 1 && p.x > 150 && p.x < 250 && (p.x % 31) == 0) material = MAT_ANT;
+    if (p.y == surface * BRICK_SIZE - 1 && p.x > int(pc.width) - 220 && p.x < int(pc.width) - 80 && (p.x % 17) == 0)
         material = MAT_BEETLE;
-    if (rectContains(p, ivec2(int(pc.width) - 104, 54), ivec2(int(pc.width) - 72, localSurface))) material = MAT_STEEL;
-
-    // Enemy underground reinforcement plant uses the same factory mechanics with an unpowered-side core.
-    int enemyLeft = int(pc.width) - 160;
-    if (rectContains(p, ivec2(enemyLeft, 156), ivec2(int(pc.width) - 18, 264))) material = MAT_STEEL;
-    if (rectContains(p, ivec2(enemyLeft + 10, 166), ivec2(int(pc.width) - 28, 254))) material = MAT_EMPTY;
-    if (rectContains(p, ivec2(enemyLeft + 24, 216), ivec2(enemyLeft + 32, 224))) material = MAT_FACTORY_CORE;
-    if (rectContains(p, ivec2(enemyLeft + 64, 224), ivec2(enemyLeft + 72, 232))) material = MAT_INSECT_HABITAT;
-    if (p.y >= 232 && p.y < 240 && p.x >= enemyLeft + 12 && p.x < int(pc.width) - 30) material = MAT_CONVEYOR;
-    if (rectContains(p, ivec2(enemyLeft + 12, 208), ivec2(enemyLeft + 24, 230))) material = MAT_STEEL;
-    if (rectContains(p, ivec2(enemyLeft + 32, 208), ivec2(enemyLeft + 44, 230))) material = MAT_COPPER;
-    if (rectContains(p, ivec2(enemyLeft + 48, 208), ivec2(enemyLeft + 60, 230))) material = MAT_PLASMA_AMMO;
-
     return material;
 }
 
 uint materialForScene(uint scene, ivec2 p) {
     if (scene == SCENE_SANDBOX) return sandboxMaterial(p);
+    if (scene == SCENE_BLANK) return MAT_EMPTY;
     if (scene == SCENE_VOLCANO) return volcanoMaterial(p);
     if (scene == SCENE_WATERWORKS) return waterworksMaterial(p);
     if (scene == SCENE_ECOSYSTEM) return ecosystemMaterial(p);
@@ -576,24 +400,10 @@ uint materialForScene(uint scene, ivec2 p) {
 }
 
 bool looseAuthoredCargo(uint scene, ivec2 p, uint material) {
-    if (scene == SCENE_ENGINEERING &&
-        rectContains(p, ivec2(227, 51), ivec2(390, 150)) &&
-        (material == MAT_IRON || material == MAT_COPPER || material == MAT_GOLD)) return true;
-    if (scene == SCENE_GOLD_MINE &&
-        (material == MAT_IRON || material == MAT_COPPER || material == MAT_GOLD)) return true;
-
-    if (scene == SCENE_FRONTIER_BASE) {
-        if (rectContains(p, ivec2(116, 270), ivec2(132, 290)) &&
-            (material == MAT_IRON || material == MAT_GOLD)) return true;
-        if (rectContains(p, ivec2(248, 270), ivec2(258, 290)) && material == MAT_COPPER) return true;
-        if (rectContains(p, ivec2(300, 270), ivec2(310, 290)) && material == MAT_POWER_CELL) return true;
-
-        int enemyLeft = int(pc.width) - 160;
-        if (rectContains(p, ivec2(enemyLeft + 12, 208), ivec2(enemyLeft + 24, 230)) &&
-            material == MAT_STEEL) return true;
-        if (rectContains(p, ivec2(enemyLeft + 32, 208), ivec2(enemyLeft + 44, 230)) &&
-            material == MAT_COPPER) return true;
-        if (rectContains(p, ivec2(enemyLeft + 48, 208), ivec2(enemyLeft + 60, 230)) &&
+    if (scene == SCENE_ENGINEERING || scene == SCENE_GOLD_MINE || scene == SCENE_FRONTIER_BASE) {
+        if (material == MAT_IRON || material == MAT_COPPER || material == MAT_GOLD ||
+            material == MAT_ALUMINUM || material == MAT_ALUMINUM_SHAVINGS ||
+            material == MAT_IRON_SHAVINGS || material == MAT_POWER_CELL ||
             material == MAT_PLASMA_AMMO) return true;
     }
     return false;
@@ -602,25 +412,14 @@ bool looseAuthoredCargo(uint scene, ivec2 p, uint material) {
 bool looseAuthoredTerrain(uint scene, ivec2 p, uint material) {
     if (material != MAT_SAND && material != MAT_SILT && material != MAT_SALT && material != MAT_ICE)
         return false;
-
-    // Deliberate simulation samples must remain loose. World terrain surrounding
-    // those samples is authored as stable Terraria-style terrain.
-    if (scene == SCENE_SANDBOX && material == MAT_SAND) {
-        ivec2 sandCenter = ivec2(int(pc.width / 5u), int(pc.height - 80u));
-        ivec2 d = p - sandCenter;
-        return d.y >= 0 && d.y < 38 && abs(d.x) < 40 - d.y;
-    }
-    if (scene == SCENE_ECOSYSTEM && material == MAT_SILT) return true;
-    if (scene == SCENE_ENGINEERING && (material == MAT_SAND || material == MAT_SILT)) return true;
-    if (scene == SCENE_GOLD_MINE && (material == MAT_SAND || material == MAT_SILT)) return true;
-    if (scene == SCENE_DEMOLITION && material == MAT_SAND) return true;
-    return false;
+    // Explicit samples stay loose; every structural scene surface is authored by brick helpers.
+    return scene == SCENE_SANDBOX || scene == SCENE_ENGINEERING ||
+           scene == SCENE_GOLD_MINE || scene == SCENE_DEMOLITION;
 }
 
 bool authoredStructuralCell(uint scene, ivec2 p, uint material) {
-    // Authored walls, slopes, shells, machines, and terrain are
-    // structural even when they do not fill a globally aligned 8x8 block.
-    // Explicit cargo and demonstration piles remain canonical loose material.
+    // All structural assignments above originate from global 8x8 brick coordinates.
+    // Organic agents and deliberate granular/cargo samples remain ordinary cells.
     bool authoredTerrain = material == MAT_DIRT || material == MAT_GRASS ||
                            material == MAT_SAND || material == MAT_SILT ||
                            material == MAT_SALT || material == MAT_ICE;
@@ -636,21 +435,17 @@ void main() {
     uint scene = pc.material % SCENE_COUNT;
     uint material = materialForScene(scene, p);
     bool structural = authoredStructuralCell(scene, p, material);
-    bool anchored = p.y >= int(pc.height) - 9;
+    bool anchored = brickCoordinate(p).y >= worldBrickSize().y - 2;
     Cell cell = structural ? makeStructuralCell(material, anchored) : makeCell(material);
     bool machineController = (material == MAT_SMELTER || material == MAT_ASSEMBLER ||
                               material == MAT_INSECT_HABITAT) && (p.x & 7) == 3 && (p.y & 7) == 3;
 
     cell.aux = (cell.aux & ~AUX_RANDOM_MASK) | (hash32(indexOf(p) ^ pc.seed) & AUX_RANDOM_MASK) |
                (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |
-                            AUX_PLANT_STEM | AUX_STRUCTURAL | AUX_SUPPORTED |
-                            AUX_STATE_MASK));
+                            AUX_PLANT_STEM | AUX_STRUCTURAL | AUX_SUPPORTED | AUX_STATE_MASK));
 
     if (scene == SCENE_ECOSYSTEM && material == MAT_BEE) {
-        int queenX = int(pc.width) - 104;
-        int queenGroundY = int(pc.height) - 64 +
-            int(hash32(uint(queenX) * 31u) % 5u);
-        ivec2 queen = ivec2(queenX, queenGroundY - 72);
+        ivec2 queen = ecosystemQueen();
         int slot = beeFormationSlotFromOffset(p - queen);
         if (slot >= 0) {
             cell.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
@@ -659,15 +454,11 @@ void main() {
         }
     }
 
-    // Machine controllers use the texture-bit range as four packed inventory
-    // counters. Initialize it after assigning static texture variation and keep
-    // allegiance in the independent charged flag.
     if (machineController) {
         setMachineInventory(cell, uvec4(0u));
         if (scene == SCENE_FRONTIER_BASE && p.x > int(pc.width / 2u)) cell.aux &= ~AUX_CHARGED;
         else cell.aux |= AUX_CHARGED;
     }
-
     if (scene == SCENE_ENGINEERING && isConductive(material) && p.x < 70) cell.aux |= AUX_CHARGED;
     if (material == MAT_BEETLE) cell.aux &= ~AUX_CHARGED;
     if (material == MAT_ANT || material == MAT_CONVEYOR) cell.aux |= AUX_CHARGED;

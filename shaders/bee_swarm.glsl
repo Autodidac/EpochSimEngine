@@ -11,26 +11,26 @@ const uint BEE_AUX_MIGRATING = 0x02000000u;
 const uint BEE_METADATA_MASK = 0x00ffffffu;
 
 const uint BEE_BIOHAZARD_PACKED[BEE_FORMATION_COUNT] = uint[](
-    1084u, 1088u, 1205u, 1210u, 1223u, 1341u, 1347u, 1355u, 1460u, 1463u,
-    1481u, 1485u, 1585u, 1711u, 1747u, 1871u, 1964u, 2002u, 2132u, 2348u,
-    2390u, 2472u, 2730u, 2776u, 2855u, 3162u, 3241u, 3288u, 3366u, 3496u,
-    3545u, 3750u, 3783u, 3880u, 3906u, 3929u, 4029u, 4032u, 4036u, 4042u,
-    4045u, 4184u, 4263u, 4284u, 4303u, 4314u, 4410u, 4520u, 4562u, 4696u,
-    4777u, 4794u, 4820u, 4951u, 6463u, 6588u, 6594u, 6718u, 6725u, 6841u,
-    6983u, 7096u, 7195u, 7198u, 7321u, 7396u, 7447u, 7453u, 7528u, 7571u,
-    7573u, 7577u, 7654u, 7711u, 7785u, 7788u, 7827u, 7966u, 8012u, 8045u,
-    8078u, 8081u, 8175u, 8223u, 8244u, 8305u, 8333u, 8349u, 8370u, 8397u,
-    8463u, 8562u, 8652u, 8717u, 8733u, 8755u, 8946u, 8971u, 9076u, 9118u,
-    9162u, 9165u, 9268u, 9308u, 9333u, 9356u, 9373u, 9417u, 9420u, 9461u,
-    9482u, 9503u, 9527u, 9543u, 9587u, 9610u, 9612u, 9659u, 9693u, 9797u,
-    9867u, 9869u, 9888u, 10018u, 10076u, 10100u, 10124u, 10206u, 10273u, 10355u,
-    10379u, 10381u, 10403u, 10460u, 10534u, 10537u, 10613u, 10637u, 10792u, 10795u,
-    10845u, 10995u, 11021u, 11098u, 11277u, 11279u, 11355u, 11378u, 11481u, 11606u,
-    11663u, 11736u, 11760u, 11794u, 11860u, 11990u, 12013u, 12109u, 12115u, 12143u,
-    12178u, 12241u, 12308u, 12396u, 12491u, 12595u, 12649u, 12693u, 12721u, 12748u,
-    12780u, 12824u, 12903u, 12906u, 12950u, 12954u, 12976u, 13005u, 13161u, 13208u,
-    13212u, 13264u, 13284u, 13358u, 13395u, 13410u, 13414u, 13469u, 13475u, 13478u,
-    13482u, 13526u, 13530u, 13535u, 13599u, 13660u, 13732u, 13735u, 13785u, 13792u
+    2366u, 2370u, 2489u, 2503u, 2741u, 2763u, 2879u, 2883u, 2993u, 3002u,
+    3023u, 3144u, 3254u, 3404u, 3501u, 3539u, 3634u, 3791u, 4011u, 4053u,
+    4143u, 4306u, 4521u, 4567u, 4653u, 4926u, 4930u, 4948u, 5160u, 5178u,
+    5190u, 5208u, 5292u, 5559u, 5577u, 5588u, 5800u, 5804u, 5848u, 6069u,
+    6091u, 6099u, 6205u, 6211u, 6313u, 6359u, 6446u, 6572u, 6577u, 6580u,
+    6583u, 6592u, 6601u, 6604u, 6607u, 6612u, 6696u, 6715u, 6725u, 6737u,
+    6744u, 6819u, 6877u, 6955u, 6960u, 6997u, 7071u, 7085u, 7091u, 7093u,
+    7095u, 7113u, 7115u, 7117u, 7121u, 7125u, 7137u, 7208u, 7217u, 7247u,
+    7258u, 7332u, 7342u, 7378u, 7452u, 7518u, 7524u, 7603u, 7604u, 7628u,
+    7629u, 7712u, 7727u, 7761u, 7856u, 7888u, 7961u, 8034u, 8039u, 8107u,
+    8149u, 8220u, 8243u, 8269u, 8421u, 8471u, 8489u, 8535u, 8553u, 8624u,
+    8656u, 8730u, 8884u, 8908u, 9062u, 9109u, 9128u, 9176u, 9195u, 9369u,
+    9395u, 9399u, 9417u, 9421u, 9641u, 9687u, 9703u, 9749u, 9787u, 9797u,
+    9835u, 9881u, 9911u, 9920u, 9929u, 10046u, 10050u, 10155u, 10197u, 10215u,
+    10262u, 10301u, 10307u, 10346u, 10427u, 10432u, 10437u, 10522u, 10542u, 10578u,
+    10674u, 10679u, 10684u, 10687u, 10692u, 10697u, 10702u, 10853u, 10903u, 10946u,
+    10985u, 11036u, 11197u, 11199u, 11201u, 11362u, 11417u, 11461u, 11495u, 11551u,
+    11578u, 11711u, 11713u, 11743u, 11849u, 11933u, 11939u, 11958u, 11995u, 12003u,
+    12072u, 12091u, 12101u, 12109u, 12192u, 12204u, 12209u, 12242u, 12246u, 12256u,
+    12453u, 12471u, 12489u, 12507u, 12595u, 12621u, 12713u, 12718u, 12754u, 12759u
 );
 
 ivec2 beeFormationOffset(uint slot) {
@@ -149,19 +149,23 @@ ivec2 beeRotateOffset(ivec2 offset, uint phase) {
 }
 
 ivec2 beeFlutterOffset(uint slot, uint step) {
-    // Each bee circles a small moving anchor. The anchor preserves the symbol,
-    // while the local orbit makes the silhouette read as a living swarm.
-    uint phase = step / 2u + slot * 5u;
-    int radius = 2 + int((slot * 13u) % 3u);
+    // Individual bees circle their own fixed silhouette anchor.
+    uint phase = step + slot * 5u;
+    int radius = 1 + int((slot * 13u) % 3u);
     return beeRotateOffset(ivec2(radius, 0), phase);
+}
+
+ivec2 beeSwarmWave(uint slot, uint step) {
+    // The three lobes breathe out of phase while the symbol itself stays fixed.
+    ivec2 base = beeFormationOffset(slot);
+    uint lobePhase = base.y < -10 ? 0u : (base.x < 0 ? 5u : 10u);
+    return beeRotateOffset(ivec2(1, 0), step / 6u + lobePhase);
 }
 
 ivec2 beeOrbitTarget(uint aux, uint step) {
     uint slot = beeFormationSlotFromAux(aux);
-    uint shapePhase = step / 24u;
-    ivec2 anchor = beeHomeCenterFromAux(aux) +
-                   beeRotateOffset(beeFormationOffset(slot), shapePhase);
-    return anchor + beeFlutterOffset(slot, step);
+    return beeHomeCenterFromAux(aux) + beeFormationOffset(slot) +
+           beeFlutterOffset(slot, step) + beeSwarmWave(slot, step);
 }
 
 ivec2 beeLandingOffset(uint slot) {

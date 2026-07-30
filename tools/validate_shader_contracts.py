@@ -304,7 +304,7 @@ def main() -> int:
         "Buffer ui_text_buffer{}",
         ".binding = 6",
         ".stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT",
-        ".descriptorCount = 14",
+        ".descriptorCount = 16",
         ".dstBinding = 6",
         "ui::text_storage.data()",
     ):

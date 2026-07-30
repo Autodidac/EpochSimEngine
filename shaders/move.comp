@@ -236,8 +236,10 @@ void swapCells(ivec2 aPosition, ivec2 bPosition) {
     uint bIndex = moveIndex(bPosition);
     Cell a = cells[aIndex];
     Cell b = cells[bIndex];
-    a.age = 0u;
-    b.age = 0u;
+    bool preserveAgentAge = a.material == MAT_BEE || a.material == MAT_ANT || a.material == MAT_BEETLE;
+    bool preserveTargetAge = b.material == MAT_BEE || b.material == MAT_ANT || b.material == MAT_BEETLE;
+    if (!preserveAgentAge) a.age = 0u;
+    if (!preserveTargetAge) b.age = 0u;
     a.aux |= AUX_MOVED;
     b.aux |= AUX_MOVED;
     cells[aIndex] = b;
@@ -493,7 +495,7 @@ bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint r
     bool boundedSidestep = targetDistance <= sourceDistance + 2 &&
                            targetDistance <= 49 && forwardScore >= 0 &&
                            tangentScore > 0;
-    return boundedSidestep && ((randomValue ^ slot ^ movePc.step) & 1u) == 0u;
+    return boundedSidestep;
 }
 
 bool magneticMoveAllowed(ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {
@@ -582,14 +584,23 @@ bool sleepSafe(ivec2 position, Cell cell) {
 }
 
 bool pairSleeping(ivec2 a, ivec2 b) {
+    Cell firstCell = moveAt(a);
+    Cell secondCell = moveAt(b);
+    bool activeAgentPair = firstCell.material == MAT_BEE || secondCell.material == MAT_BEE ||
+                           firstCell.material == MAT_QUEEN_BEE || secondCell.material == MAT_QUEEN_BEE ||
+                           isInsect(firstCell.material) || isInsect(secondCell.material);
+    if (activeAgentPair) return false;
+
+    TileState tileA = tiles[tileIndex(a, movePc.width)];
+    TileState tileB = tiles[tileIndex(b, movePc.width)];
+    if (tileHas(tileA, TILE_ACTIVE) || tileHas(tileB, TILE_ACTIVE) ||
+        tileHas(tileA, TILE_HAS_BEES) || tileHas(tileB, TILE_HAS_BEES)) return false;
     if (chunkPairSleeping(a, b)) {
         if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], 2u);
         return true;
     }
-    TileState tileA = tiles[tileIndex(a, movePc.width)];
-    TileState tileB = tiles[tileIndex(b, movePc.width)];
     if (!tileHas(tileA, TILE_SLEEPING) || !tileHas(tileB, TILE_SLEEPING)) return false;
-    return sleepSafe(a, moveAt(a)) && sleepSafe(b, moveAt(b));
+    return sleepSafe(a, firstCell) && sleepSafe(b, secondCell);
 }
 
 void processVertical(ivec2 top, ivec2 bottom) {

@@ -17,6 +17,7 @@ namespace {
 
 constexpr std::uint32_t aux_charged = 0x40000000u;
 constexpr std::uint32_t aux_bee_fed = 0x10000000u;
+constexpr std::uint32_t aux_bee_swarm = 0x08000000u;
 constexpr std::uint32_t aux_plant_stem = 0x08000000u;
 constexpr std::uint32_t aux_structural = 0x04000000u;
 constexpr std::uint32_t aux_supported = 0x02000000u;
@@ -26,6 +27,9 @@ constexpr std::uint32_t aux_random_mask = 0x00ffff00u;
 constexpr std::uint32_t tile_size = 8u;
 constexpr std::uint32_t minimum_cohesive_cells = 32u;
 constexpr std::uint32_t full_strength_cells = 52u;
+constexpr std::uint32_t bee_target_none = 0xffffu;
+constexpr std::uint32_t bee_formation_count = 200u;
+constexpr std::uint32_t bee_metadata_mask = 0x00ffffffu;
 
 struct Rgb final {
     std::uint8_t r{};
@@ -55,6 +59,14 @@ constexpr std::uint32_t hash32(std::uint32_t value) noexcept {
 
 void set_state(std::uint32_t& aux, const std::uint32_t value) noexcept {
     aux = (aux & ~aux_state_mask) | std::min(value, 255u);
+}
+
+std::uint32_t pack_bee_metadata(std::uint32_t aux, const std::uint32_t home_x,
+                                const std::uint32_t home_y, const std::uint32_t slot) noexcept {
+    const auto packed_home_x = std::min(home_x / 4u, 255u);
+    const auto packed_home_y = std::min(home_y / 4u, 127u);
+    const auto metadata = packed_home_x | (packed_home_y << 8u) | ((slot & 255u) << 15u);
+    return (aux & ~bee_metadata_mask) | metadata;
 }
 
 bool structural_candidate(const Material material) noexcept {
@@ -98,8 +110,7 @@ std::uint32_t default_aux(const Material material, const std::uint32_t entropy) 
         set_state(aux, 255u);
         break;
     case Material::bee:
-        aux |= aux_bee_fed;
-        set_state(aux, 180u);
+        aux |= aux_bee_fed | aux_bee_swarm;
         break;
     case Material::pollen:
         set_state(aux, 16u);
@@ -284,6 +295,53 @@ bool load_scene_ppm(const std::filesystem::path& path,
                 .aux = aux,
             };
         }
+    }
+    std::vector<std::size_t> queen_indices;
+    std::vector<std::size_t> bee_indices;
+    for (std::size_t index = 0; index < materials.size(); ++index) {
+        if (materials[index] == static_cast<std::uint32_t>(Material::queen_bee)) queen_indices.push_back(index);
+        if (materials[index] == static_cast<std::uint32_t>(Material::bee)) bee_indices.push_back(index);
+    }
+
+    std::vector<std::uint32_t> colony_sizes(queen_indices.empty() ? 1u : queen_indices.size(), 0u);
+    std::uint32_t fallback_home_x = width / 2u;
+    std::uint32_t fallback_home_y = height / 2u;
+    if (queen_indices.empty() && !bee_indices.empty()) {
+        std::uint64_t sum_x = 0u;
+        std::uint64_t sum_y = 0u;
+        for (const auto bee_index : bee_indices) {
+            sum_x += bee_index % width;
+            sum_y += bee_index / width;
+        }
+        fallback_home_x = static_cast<std::uint32_t>(sum_x / bee_indices.size());
+        fallback_home_y = static_cast<std::uint32_t>(sum_y / bee_indices.size());
+    }
+
+    for (const auto bee_index : bee_indices) {
+        const auto bee_x = static_cast<std::uint32_t>(bee_index % width);
+        const auto bee_y = static_cast<std::uint32_t>(bee_index / width);
+        std::size_t colony = 0u;
+        std::uint64_t best_distance = std::numeric_limits<std::uint64_t>::max();
+        if (!queen_indices.empty()) {
+            for (std::size_t candidate = 0; candidate < queen_indices.size(); ++candidate) {
+                const auto queen_x = static_cast<std::uint32_t>(queen_indices[candidate] % width);
+                const auto queen_y = static_cast<std::uint32_t>(queen_indices[candidate] / width);
+                const auto dx = static_cast<std::int64_t>(bee_x) - queen_x;
+                const auto dy = static_cast<std::int64_t>(bee_y) - queen_y;
+                const auto distance = static_cast<std::uint64_t>(dx * dx + dy * dy);
+                if (distance < best_distance) {
+                    best_distance = distance;
+                    colony = candidate;
+                }
+            }
+        }
+        const auto home_index = queen_indices.empty() ? std::size_t{0} : queen_indices[colony];
+        const auto home_x = queen_indices.empty() ? fallback_home_x : static_cast<std::uint32_t>(home_index % width);
+        const auto home_y = queen_indices.empty() ? fallback_home_y : static_cast<std::uint32_t>(home_index / width);
+        const auto slot = colony_sizes[colony]++ % bee_formation_count;
+        auto& bee = cells[bee_index];
+        bee.aux = pack_bee_metadata(bee.aux | aux_bee_fed | aux_bee_swarm, home_x, home_y, slot);
+        bee.age = (slot * 17u) % 900u | (bee_target_none << 16u);
     }
     return true;
 }

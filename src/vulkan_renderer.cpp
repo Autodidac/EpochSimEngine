@@ -1926,10 +1926,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const bool explicit_load = state.load_scene_image.exchange(false, std::memory_order_acq_rel);
         const bool reset_requested = needs_reset || state.reset.exchange(false, std::memory_order_acq_rel);
         bool image_loaded = false;
-        if (explicit_load || reset_requested) {
+        if (explicit_load) {
             const auto selected = static_cast<Scene>(selected_scene);
             if (scene_image_exists(scene_directory(), selected)) image_loaded = load_scene_image(selected_scene);
-            else if (explicit_load) startup_log("No saved PPM exists for the selected scene.");
+            else startup_log("No saved PPM exists for the selected scene.");
         }
 
         std::uint32_t image_index{};

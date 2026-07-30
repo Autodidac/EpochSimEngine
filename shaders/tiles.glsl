@@ -81,18 +81,18 @@ uint packTileOccupancy(uint occupancy, ivec2 queenLocal, ivec2 flowerLocal,
            (min(beeCount, 127u) << TILE_BEE_COUNT_SHIFT);
 }
 
-ivec2 tileOriginFromIndex(uint index, uint width) {
+ivec2 brickOriginFromIndex(uint index, uint width) {
     uint columns = tileColumns(width);
     return ivec2(int(index % columns), int(index / columns)) * int(TILE_SIZE);
 }
 ivec2 tileQueenPosition(uint index, uint width, TileState state) {
-    return tileOriginFromIndex(index, width) + tileQueenLocal(state);
+    return brickOriginFromIndex(index, width) + tileQueenLocal(state);
 }
 ivec2 tileFlowerPosition(uint index, uint width, TileState state) {
-    return tileOriginFromIndex(index, width) + tileFlowerLocal(state);
+    return brickOriginFromIndex(index, width) + tileFlowerLocal(state);
 }
 ivec2 tileHoneyPosition(uint index, uint width, TileState state) {
-    return tileOriginFromIndex(index, width) + tileHoneyLocal(state);
+    return brickOriginFromIndex(index, width) + tileHoneyLocal(state);
 }
 
 #endif
