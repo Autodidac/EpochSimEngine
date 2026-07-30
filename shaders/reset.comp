@@ -79,8 +79,10 @@ uint volcanoMaterial(ivec2 p) {
     if (abs(dx) <= 7 && p.y >= coneTop + 12 && p.y <= chamberTop + 20) material = MAT_LAVA;
     if (p.y >= coneTop && p.y < coneTop + 18 && abs(dx) < 24)
         material = p.y >= coneTop + 8 ? MAT_LAVA : MAT_EMPTY;
-    if (rectContains(p, ivec2(centerX - 5, chamberBottom - 10),
-                         ivec2(centerX + 6, chamberBottom))) material = MAT_MAGMA_VENT;
+    if (rectContains(p, ivec2(centerX - 8, chamberBottom - 12),
+                         ivec2(centerX + 9, chamberBottom))) material = MAT_MAGMA_VENT;
+    if (abs(dx) <= 2 && p.y >= chamberTop - 4 && p.y <= coneTop + 18 && ((p.y - coneTop) % 14) == 0)
+        material = MAT_MAGMA_VENT;
 
     int lakeLeft = min(int(pc.width) - 126, centerX + 150);
     int lakeRight = min(int(pc.width) - 18, centerX + 268);
@@ -171,6 +173,13 @@ uint ecosystemMaterial(ivec2 p) {
             : (((chamberPattern >> 2u) & 1u) == 0u ? MAT_HONEY : MAT_POLLEN);
     }
     if (q2 > 100 && q2 < 900 && (hash32(indexOf(p) ^ pc.seed ^ 0xb33u) % 31u) == 0u) material = MAT_BEE;
+    if (rectContains(p, ivec2(int(pc.width / 2u) - 16, int(pc.height - 86u)),
+                         ivec2(int(pc.width / 2u) + 16, int(pc.height - 72u)))) material = MAT_INSECT_HABITAT;
+    if (p.y == int(terrain) - 1 && p.x > int(pc.width / 2u) - 90 && p.x < int(pc.width / 2u) + 90) {
+        uint insectRoll = hash32(indexOf(p) ^ pc.seed ^ 0x1a5ecu);
+        if ((insectRoll % 47u) == 0u) material = MAT_ANT;
+        else if ((insectRoll % 79u) == 0u) material = MAT_BEETLE;
+    }
     return material;
 }
 
@@ -205,9 +214,9 @@ uint engineeringMaterial(ivec2 p) {
         material = MAT_STEEL;
     if (p.x > hopperLeft && p.x < hopperRight && p.y > hopperTop + 8 && p.y < hopperBottom) {
         uint mix = hash32(indexOf(p) ^ pc.seed ^ 0x5f17u);
-        if ((mix % 71u) == 0u) material = MAT_GOLD;
+        if ((mix % 71u) == 0u) material = MAT_ALUMINUM_SHAVINGS;
         else if ((mix % 43u) == 0u) material = MAT_COPPER;
-        else if ((mix % 23u) == 0u) material = MAT_IRON;
+        else if ((mix % 23u) == 0u) material = MAT_IRON_SHAVINGS;
         else material = (mix & 3u) == 0u ? MAT_SILT : MAT_SAND;
     }
     if (rectContains(p, ivec2(410, 154), ivec2(444, 214))) material = MAT_MAGNET;
@@ -287,9 +296,9 @@ uint goldMineMaterial(ivec2 p) {
     ivec2 pile = p - pileCenter;
     if (pile.y <= 0 && pile.y > -58 && abs(pile.x) < 68 + pile.y) {
         uint mix = hash32(indexOf(p) ^ pc.seed ^ 0x91f3u);
-        if ((mix % 97u) == 0u) material = MAT_GOLD;
+        if ((mix % 97u) == 0u) material = MAT_ALUMINUM_SHAVINGS;
         else if ((mix % 41u) == 0u) material = MAT_COPPER;
-        else if ((mix % 29u) == 0u) material = MAT_IRON;
+        else if ((mix % 29u) == 0u) material = MAT_IRON_SHAVINGS;
         else material = MAT_SAND;
     }
 
@@ -323,7 +332,7 @@ uint goldMineMaterial(ivec2 p) {
     if (p.x > trenchLeft && p.x < trenchRight && p.y > lowerFloor + 18 && p.y < floorY)
         material = MAT_LAVA;
     if (p.y == lowerFloor - 1 && p.x > width - 150 && p.x < width - 46 && (p.x % 23) == 0)
-        material = MAT_ENEMY_BOT;
+        material = MAT_BEETLE;
     if (rectContains(p, ivec2(430, lowerFloor - 10), ivec2(446, lowerFloor)))
         material = MAT_PLASMA_AMMO;
 
@@ -340,7 +349,7 @@ uint demolitionMaterial(ivec2 p) {
         (p.x >= int(pc.width) - 128 && p.x < int(pc.width) - 96 && p.y >= floorY - 174 && p.y < floorY)) {
         material = MAT_STONE;
     }
-    if (p.y >= floorY - 178 && p.y < floorY - 154 && p.x >= 96 && p.x < int(pc.width) - 96) material = MAT_METAL;
+    if (p.y >= floorY - 178 && p.y < floorY - 154 && p.x >= 96 && p.x < int(pc.width) - 96) material = MAT_ALUMINUM;
     if (p.y >= floorY - 154 && p.y < floorY - 146 && p.x >= 128 && p.x < int(pc.width) - 128) material = MAT_GLASS;
 
     // Suspended pixel loads demonstrate the 50-percent block integrity release.
@@ -419,7 +428,7 @@ uint frontierBaseMaterial(ivec2 p) {
     if (rectContains(p, ivec2(192, 280), ivec2(200, 288))) material = MAT_FACTORY_CORE;
     if (rectContains(p, ivec2(224, 280), ivec2(232, 288))) material = MAT_SMELTER;
     if (rectContains(p, ivec2(272, 280), ivec2(280, 288))) material = MAT_ASSEMBLER;
-    if (rectContains(p, ivec2(328, 280), ivec2(336, 288))) material = MAT_BOT_FABRICATOR;
+    if (rectContains(p, ivec2(328, 280), ivec2(336, 288))) material = MAT_INSECT_HABITAT;
 
     // Initial resources make the production chain visibly functional.
     if (rectContains(p, ivec2(116, 270), ivec2(132, 290))) material = (p.y & 1) == 0 ? MAT_IRON : MAT_GOLD;
@@ -427,9 +436,9 @@ uint frontierBaseMaterial(ivec2 p) {
     if (rectContains(p, ivec2(300, 270), ivec2(310, 290))) material = MAT_POWER_CELL;
 
     // Surface battlefield and opposing deployment zones.
-    if (p.y == localSurface - 1 && p.x > 150 && p.x < 250 && (p.x % 19) == 0) material = MAT_ALLY_BOT;
+    if (p.y == localSurface - 1 && p.x > 150 && p.x < 250 && (p.x % 31) == 0) material = MAT_ANT;
     if (p.y == localSurface - 1 && p.x > int(pc.width) - 220 && p.x < int(pc.width) - 80 && (p.x % 17) == 0)
-        material = MAT_ENEMY_BOT;
+        material = MAT_BEETLE;
     if (rectContains(p, ivec2(int(pc.width) - 104, 54), ivec2(int(pc.width) - 72, localSurface))) material = MAT_STEEL;
 
     // Enemy underground reinforcement plant uses the same factory mechanics with an unpowered-side core.
@@ -437,7 +446,7 @@ uint frontierBaseMaterial(ivec2 p) {
     if (rectContains(p, ivec2(enemyLeft, 156), ivec2(int(pc.width) - 18, 264))) material = MAT_STEEL;
     if (rectContains(p, ivec2(enemyLeft + 10, 166), ivec2(int(pc.width) - 28, 254))) material = MAT_EMPTY;
     if (rectContains(p, ivec2(enemyLeft + 24, 216), ivec2(enemyLeft + 32, 224))) material = MAT_FACTORY_CORE;
-    if (rectContains(p, ivec2(enemyLeft + 64, 224), ivec2(enemyLeft + 72, 232))) material = MAT_BOT_FABRICATOR;
+    if (rectContains(p, ivec2(enemyLeft + 64, 224), ivec2(enemyLeft + 72, 232))) material = MAT_INSECT_HABITAT;
     if (p.y >= 232 && p.y < 240 && p.x >= enemyLeft + 12 && p.x < int(pc.width) - 30) material = MAT_CONVEYOR;
     if (rectContains(p, ivec2(enemyLeft + 12, 208), ivec2(enemyLeft + 24, 230))) material = MAT_STEEL;
     if (rectContains(p, ivec2(enemyLeft + 32, 208), ivec2(enemyLeft + 44, 230))) material = MAT_COPPER;
@@ -522,7 +531,7 @@ void main() {
     bool anchored = p.y >= int(pc.height) - 9;
     Cell cell = structural ? makeStructuralCell(material, anchored) : makeCell(material);
     bool machineController = (material == MAT_SMELTER || material == MAT_ASSEMBLER ||
-                              material == MAT_BOT_FABRICATOR) && (p.x & 7) == 3 && (p.y & 7) == 3;
+                              material == MAT_INSECT_HABITAT) && (p.x & 7) == 3 && (p.y & 7) == 3;
 
     cell.aux = (cell.aux & ~AUX_RANDOM_MASK) | (hash32(indexOf(p) ^ pc.seed) & AUX_RANDOM_MASK) |
                (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |
@@ -539,8 +548,8 @@ void main() {
     }
 
     if (scene == SCENE_ENGINEERING && isConductive(material) && p.x < 70) cell.aux |= AUX_CHARGED;
-    if (material == MAT_ENEMY_BOT) cell.aux &= ~AUX_CHARGED;
-    if (material == MAT_ALLY_BOT || material == MAT_CONVEYOR) cell.aux |= AUX_CHARGED;
+    if (material == MAT_BEETLE) cell.aux &= ~AUX_CHARGED;
+    if (material == MAT_ANT || material == MAT_CONVEYOR) cell.aux |= AUX_CHARGED;
     if (material == MAT_FACTORY_CORE) {
         if (scene == SCENE_FRONTIER_BASE && p.x > int(pc.width / 2u)) cell.aux &= ~AUX_CHARGED;
         else cell.aux |= AUX_CHARGED;

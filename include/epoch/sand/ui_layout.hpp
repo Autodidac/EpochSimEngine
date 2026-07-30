@@ -30,6 +30,37 @@ struct Layout final {
     epochengine::gui_lib::Rect material_card{};
 };
 
+struct SimulationViewport final {
+    epochengine::gui_lib::Rect rect{};
+    std::uint32_t tile_pixel_size{};
+};
+
+[[nodiscard]] inline SimulationViewport make_simulation_viewport(
+    const Layout& layout, const std::uint32_t grid_width,
+    const std::uint32_t grid_height) noexcept {
+    constexpr std::uint32_t cells_per_tile = 8u;
+    const auto tile_columns = (std::max)(1u, (grid_width + cells_per_tile - 1u) / cells_per_tile);
+    const auto tile_rows = (std::max)(1u, (grid_height + cells_per_tile - 1u) / cells_per_tile);
+    const auto panel_width = (std::max)(1u, static_cast<std::uint32_t>(layout.simulation.size.x));
+    const auto panel_height = (std::max)(1u, static_cast<std::uint32_t>(layout.simulation.size.y));
+
+    // Very small windows fall back to the full panel rather than overflowing.
+    if (panel_width < tile_columns || panel_height < tile_rows) {
+        return {layout.simulation, 0u};
+    }
+
+    const auto tile_pixels = (std::max)(1u, (std::min)(panel_width / tile_columns,
+                                                       panel_height / tile_rows));
+    const auto viewport_width = tile_columns * tile_pixels;
+    const auto viewport_height = tile_rows * tile_pixels;
+    const auto left = layout.simulation.position.x +
+        static_cast<float>((panel_width - viewport_width) / 2u);
+    const auto top = layout.simulation.position.y +
+        static_cast<float>((panel_height - viewport_height) / 2u);
+    return {{{left, top}, {static_cast<float>(viewport_width),
+                          static_cast<float>(viewport_height)}}, tile_pixels};
+}
+
 [[nodiscard]] inline Layout make_layout(const std::uint32_t width, const std::uint32_t height) noexcept {
     const auto safe_width = (std::max)(width, 1u);
     const auto safe_height = (std::max)(height, 1u);

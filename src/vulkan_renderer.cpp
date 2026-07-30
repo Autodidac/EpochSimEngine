@@ -222,8 +222,12 @@ struct RenderPush final {
     std::uint32_t debug_mode{};
     std::uint32_t tile_columns{};
     std::uint32_t tile_rows{};
+    std::uint32_t viewport_left{};
+    std::uint32_t viewport_top{};
+    std::uint32_t viewport_width{};
+    std::uint32_t viewport_height{};
 };
-static_assert(sizeof(RenderPush) == 108);
+static_assert(sizeof(RenderPush) == 124);
 
 bool contains_extension(const std::vector<VkExtensionProperties>& extensions, const char* name) {
     return std::ranges::any_of(extensions, [name](const VkExtensionProperties& extension) {
@@ -439,7 +443,7 @@ struct VulkanRenderer::Impl final {
 
         const VkApplicationInfo application_info{
             .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-            .pApplicationName = "EpochSand",
+            .pApplicationName = "SandHybrid",
             .applicationVersion = VK_MAKE_API_VERSION(0, 1, 0, 0),
             .pEngineName = "Epoch",
             .engineVersion = VK_MAKE_API_VERSION(0, 1, 0, 0),
@@ -681,7 +685,7 @@ struct VulkanRenderer::Impl final {
             buffer = create_buffer(cells_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         }
         sunlight_buffer = create_buffer(light_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        actor_buffer = create_buffer(sizeof(std::uint32_t) * 16u, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        actor_buffer = create_buffer(sizeof(std::uint32_t) * 20u, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         tile_buffer = create_buffer(tile_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         conservation_buffer = create_buffer(sizeof(std::uint32_t) * 8u, storage_usage,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
@@ -1297,17 +1301,19 @@ struct VulkanRenderer::Impl final {
         const auto width = (std::max)(state.window_width.load(std::memory_order_relaxed), 1u);
         const auto height = (std::max)(state.window_height.load(std::memory_order_relaxed), 1u);
         const auto layout = ui::make_layout(width, height);
-        const auto simulation_height = (std::max)(static_cast<std::uint32_t>(layout.simulation.size.y), 1u);
-        const auto mouse_x = std::clamp(state.mouse_x.load(std::memory_order_relaxed), 0,
-                                        static_cast<int>(width - 1u));
+        const auto viewport = ui::make_simulation_viewport(layout, config.grid_width, config.grid_height);
+        const auto viewport_width = (std::max)(static_cast<std::uint32_t>(viewport.rect.size.x), 1u);
+        const auto viewport_height = (std::max)(static_cast<std::uint32_t>(viewport.rect.size.y), 1u);
+        const auto mouse_x = std::clamp(
+            state.mouse_x.load(std::memory_order_relaxed) - static_cast<int>(viewport.rect.position.x),
+            0, static_cast<int>(viewport_width - 1u));
         const auto mouse_y = std::clamp(
-            state.mouse_y.load(std::memory_order_relaxed) - static_cast<int>(layout.simulation.position.y),
-            0,
-            static_cast<int>(simulation_height - 1u));
+            state.mouse_y.load(std::memory_order_relaxed) - static_cast<int>(viewport.rect.position.y),
+            0, static_cast<int>(viewport_height - 1u));
         const auto grid_x = static_cast<std::int32_t>(
-            static_cast<std::uint64_t>(mouse_x) * config.grid_width / width);
+            static_cast<std::uint64_t>(mouse_x) * config.grid_width / viewport_width);
         const auto grid_y = static_cast<std::int32_t>(
-            static_cast<std::uint64_t>(mouse_y) * config.grid_height / simulation_height);
+            static_cast<std::uint64_t>(mouse_y) * config.grid_height / viewport_height);
         return {grid_x, grid_y};
     }
 
@@ -1528,12 +1534,14 @@ struct VulkanRenderer::Impl final {
 
         const auto [cursor_x, cursor_y] = grid_cursor(state);
         const auto layout = ui::make_layout(swapchain_extent.width, swapchain_extent.height);
+        const auto simulation_viewport = ui::make_simulation_viewport(
+            layout, config.grid_width, config.grid_height);
         const epochengine::gui_lib::Vec2 pointer{
             static_cast<float>(state.mouse_x.load(std::memory_order_relaxed)),
             static_cast<float>(state.mouse_y.load(std::memory_order_relaxed))
         };
         const bool inspect_visible = state.inspect_material.load(std::memory_order_relaxed) &&
-                                     epochengine::gui_lib::contains(layout.simulation, pointer);
+                                     epochengine::gui_lib::contains(simulation_viewport.rect, pointer);
         const RenderPush push{
             .grid_width = config.grid_width,
             .grid_height = config.grid_height,
@@ -1568,6 +1576,10 @@ struct VulkanRenderer::Impl final {
             .debug_mode = state.debug_visualization.load(std::memory_order_relaxed) ? 1u : 0u,
             .tile_columns = divide_round_up(config.grid_width, 8u),
             .tile_rows = divide_round_up(config.grid_height, 8u),
+            .viewport_left = static_cast<std::uint32_t>(simulation_viewport.rect.position.x),
+            .viewport_top = static_cast<std::uint32_t>(simulation_viewport.rect.position.y),
+            .viewport_width = static_cast<std::uint32_t>(simulation_viewport.rect.size.x),
+            .viewport_height = static_cast<std::uint32_t>(simulation_viewport.rect.size.y),
         };
         vkCmdPushConstants(command_buffer, graphics_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                            0, sizeof(push), &push);
@@ -1717,7 +1729,7 @@ struct VulkanRenderer::Impl final {
     }
 #endif
 
-    void run(const std::stop_token stop_token, SharedState& state) {
+    void run(const std::atomic_bool& stop_requested, SharedState& state) {
         startup_log("Entering render loop...");
         using Clock = std::chrono::steady_clock;
         const auto frame_interval = std::chrono::duration_cast<Clock::duration>(
@@ -1729,7 +1741,8 @@ struct VulkanRenderer::Impl final {
         auto fps_window_start = next_frame;
         std::uint32_t rendered_frames = 0;
 
-        while (!stop_token.stop_requested() && !state.quit.load(std::memory_order_acquire)) {
+        while (!stop_requested.load(std::memory_order_acquire) &&
+               !state.quit.load(std::memory_order_acquire)) {
             const auto width = state.window_width.load(std::memory_order_relaxed);
             const auto height = state.window_height.load(std::memory_order_relaxed);
             if (width == 0 || height == 0) {
@@ -1792,8 +1805,8 @@ VulkanRenderer::VulkanRenderer(const NativeWindow& window, const SimulationConfi
 
 VulkanRenderer::~VulkanRenderer() = default;
 
-void VulkanRenderer::run(const std::stop_token stop_token, SharedState& shared_state) {
-    impl_->run(stop_token, shared_state);
+void VulkanRenderer::run(const std::atomic_bool& stop_requested, SharedState& shared_state) {
+    impl_->run(stop_requested, shared_state);
 }
 
 } // namespace epoch::sand

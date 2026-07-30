@@ -40,6 +40,10 @@ layout(push_constant) uniform RenderPush {
     uint debugMode;
     uint tileColumns;
     uint tileRows;
+    uint viewportLeft;
+    uint viewportTop;
+    uint viewportWidth;
+    uint viewportHeight;
 } renderPc;
 
 uint glyphRow(uint code, uint row) {
@@ -156,6 +160,24 @@ vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
 
 vec4 worldColor(Cell cell, ivec2 grid) {
     vec4 base = materialColor(cell.material, cell.age, cell.aux, grid);
+    bool metalSurface = cell.material == MAT_ALUMINUM || cell.material == MAT_IRON ||
+                        cell.material == MAT_COPPER || cell.material == MAT_GOLD ||
+                        cell.material == MAT_STEEL || cell.material == MAT_ALUMINUM_SHAVINGS ||
+                        cell.material == MAT_IRON_SHAVINGS;
+    if (metalSurface) {
+        uint grainHash = hash32(uint(grid.x) * 73856093u ^ uint(grid.y) * 19349663u ^ cell.aux);
+        float grain = float((grainHash >> 8u) & 31u) / 31.0 - 0.5;
+        float brushed = ((grid.x + int(cell.age >> 4u)) & 7) == 0 ? 0.10 : 0.0;
+        base.rgb = clamp(base.rgb * (0.88 + grain * 0.20) + vec3(brushed), 0.0, 1.0);
+        if (cell.material == MAT_IRON || cell.material == MAT_IRON_SHAVINGS)
+            base.rgb = mix(base.rgb, vec3(0.34, 0.20, 0.13), float((grainHash >> 16u) & 7u) / 42.0);
+        if (cell.material == MAT_COPPER)
+            base.rgb = mix(base.rgb, vec3(0.08, 0.42, 0.32), float((grainHash >> 20u) & 3u) / 24.0);
+    }
+    if (cell.material == MAT_PLANT_STEM) {
+        uint stemHash = hash32(uint(grid.x) * 2654435761u ^ uint(grid.y) ^ cell.aux);
+        base.rgb = mix(vec3(0.12, 0.42, 0.10), vec3(0.34, 0.66, 0.18), float(stemHash & 7u) / 7.0);
+    }
     uint phase = cellPhase(cell);
     if (phase == PHASE_GAS || phase == PHASE_VAPOR) {
         base = gasPresentation(cell, grid, base);
@@ -188,7 +210,7 @@ bool dangerous(Cell cell) {
     int ignition = materialIgnitionPoint(cell.material);
     return cell.material == MAT_ACID || cell.material == MAT_LAVA || cell.material == MAT_FIRE ||
            cell.material == MAT_LIGHTNING || cell.material == MAT_RADIATION ||
-           cell.material == MAT_PLASMA_BOLT || cell.material == MAT_HYDROGEN ||
+           cell.material == MAT_PLANT_STEM || cell.material == MAT_HYDROGEN ||
            cell.temperature >= 400 ||
            (ignition != NO_TEMPERATURE && cell.temperature >= ignition);
 }
@@ -224,17 +246,20 @@ void main() {
                 color = i == 4 && renderPc.debugMode != 0u ? vec3(0.24, 0.40, 0.22) : vec3(0.075, 0.105, 0.145);
         }
 
-        bool text = fixedPixel(pixel, ivec2(12, 12), 4, 0u);
+        const int titleScale = 3;
+        bool text = fixedPixel(pixel, ivec2(12, 15), titleScale, 0u);
         int fpsX = fullControls ? starts[0] - 178 : starts[3] - 178;
-        fpsX = max(fpsX, 208);
+        fpsX = max(fpsX, 310);
         text = text || fixedPixel(pixel, ivec2(fpsX, 12), 4, 1u) ||
                numberPixel(pixel, ivec2(fpsX + 82, 12), 4, renderPc.framesPerSecond);
 
-        if (renderPc.windowWidth >= 1250u) {
-            int sceneX = 204;
-            text = text || fixedPixel(pixel, ivec2(sceneX, 15), 2, 5u) ||
-                   scenePixel(pixel, ivec2(sceneX + 66, 15), 2,
-                              renderPc.selectedScene % max(renderPc.sceneCount, 1u));
+        int titleRight = 12 + int(fixedTextLength(0u)) * 6 * titleScale;
+        int sceneX = titleRight + 24;
+        uint sceneId = renderPc.selectedScene % max(renderPc.sceneCount, 1u);
+        int sceneRight = sceneX + 66 + int(sceneTextLength(sceneId)) * 12;
+        if (renderPc.windowWidth >= 900u && sceneRight + 18 < fpsX) {
+            text = text || fixedPixel(pixel, ivec2(sceneX, 18), 2, 5u) ||
+                   scenePixel(pixel, ivec2(sceneX + 66, 18), 2, sceneId);
         }
         if (renderPc.windowWidth >= 1080u) {
             int hintX = max(fpsX - 150, 390);
@@ -310,10 +335,23 @@ void main() {
         return;
     }
 
-    uint simulationHeight = max(renderPc.windowHeight - renderPc.statusHeight - renderPc.paletteHeight, 1u);
-    uint simulationY = y - renderPc.statusHeight;
-    uint gridX = min(renderPc.gridWidth - 1u, x * renderPc.gridWidth / max(renderPc.windowWidth, 1u));
-    uint gridY = min(renderPc.gridHeight - 1u, simulationY * renderPc.gridHeight / simulationHeight);
+    uint viewportRight = renderPc.viewportLeft + renderPc.viewportWidth;
+    uint viewportBottom = renderPc.viewportTop + renderPc.viewportHeight;
+    if (x < renderPc.viewportLeft || x >= viewportRight ||
+        y < renderPc.viewportTop || y >= viewportBottom) {
+        // Deliberate letterbox, not a clipped simulation tile.
+        vec3 bar = vec3(0.018, 0.024, 0.034);
+        if ((x + y) % 24u == 0u) bar += vec3(0.006);
+        outColor = vec4(bar, 1.0);
+        return;
+    }
+    uint simulationHeight = max(renderPc.viewportHeight, 1u);
+    uint simulationX = x - renderPc.viewportLeft;
+    uint simulationY = y - renderPc.viewportTop;
+    uint gridX = min(renderPc.gridWidth - 1u,
+                     simulationX * renderPc.gridWidth / max(renderPc.viewportWidth, 1u));
+    uint gridY = min(renderPc.gridHeight - 1u,
+                     simulationY * renderPc.gridHeight / simulationHeight);
     ivec2 grid = ivec2(int(gridX), int(gridY));
     Cell cell = cellAt(grid);
     TileState tile = tileAt(grid);
@@ -367,10 +405,10 @@ void main() {
     }
 
     if (actor.enabled != 0u && renderPc.windowWidth >= 560u) {
-        uint hudLeft = 10u;
-        uint hudTop = renderPc.statusHeight + 10u;
-        uint hudRight = min(renderPc.windowWidth - 10u, hudLeft + 670u);
-        uint hudBottom = hudTop + 78u;
+        uint hudLeft = renderPc.viewportLeft + 10u;
+        uint hudTop = renderPc.viewportTop + 10u;
+        uint hudRight = min(viewportRight - 10u, hudLeft + 670u);
+        uint hudBottom = hudTop + 112u;
         if (x >= hudLeft && x < hudRight && y >= hudTop && y < hudBottom) {
             vec3 hudColor = vec3(0.025, 0.034, 0.048);
             if (borderPixel(x, y, hudLeft, hudTop, hudRight, hudBottom)) hudColor = vec3(0.12, 0.22, 0.31);
@@ -397,7 +435,22 @@ void main() {
                            fixedPixel(pixel, ivec2(int(hudLeft + 304u), int(hudTop + 44u)), 2, 49u) ||
                            numberPixel(pixel, ivec2(int(hudLeft + 372u), int(hudTop + 44u)), 2, actor.iron) ||
                            fixedPixel(pixel, ivec2(int(hudLeft + 450u), int(hudTop + 44u)), 1, 50u) ||
-                           fixedPixel(pixel, ivec2(int(hudLeft + 548u), int(hudTop + 44u)), 1, 51u);
+                           fixedPixel(pixel, ivec2(int(hudLeft + 548u), int(hudTop + 44u)), 1, 51u) ||
+                           fixedPixel(pixel, ivec2(int(hudLeft + 10u), int(hudTop + 66u)), 2, 52u) ||
+                           numberPixel(pixel, ivec2(int(hudLeft + 48u), int(hudTop + 66u)), 2, actor.aluminum) ||
+                           fixedPixel(pixel, ivec2(int(hudLeft + 122u), int(hudTop + 66u)), 2, 53u) ||
+                           numberPixel(pixel, ivec2(int(hudLeft + 160u), int(hudTop + 66u)), 2, actor.copper) ||
+                           fixedPixel(pixel, ivec2(int(hudLeft + 240u), int(hudTop + 68u)), 1, 54u) ||
+                           numberPixel(pixel, ivec2(int(hudLeft + 300u), int(hudTop + 68u)), 1, actor.drillLevel) ||
+                           fixedPixel(pixel, ivec2(int(hudLeft + 360u), int(hudTop + 68u)), 1, 55u) ||
+                           fixedPixel(pixel, ivec2(int(hudLeft + 438u), int(hudTop + 68u)), 1,
+                                      (actor.unlocks & 2u) != 0u ? 59u : 58u) ||
+                           fixedPixel(pixel, ivec2(int(hudLeft + 540u), int(hudTop + 68u)), 1, 56u) ||
+                           fixedPixel(pixel, ivec2(int(hudLeft + 606u), int(hudTop + 68u)), 1,
+                                      (actor.unlocks & 4u) != 0u ? 59u : 58u) ||
+                           fixedPixel(pixel, ivec2(int(hudLeft + 708u), int(hudTop + 68u)), 1, 57u) ||
+                           fixedPixel(pixel, ivec2(int(hudLeft + 786u), int(hudTop + 68u)), 1,
+                                      (actor.unlocks & 8u) != 0u ? 59u : 58u);
             if (hudText) hudColor = vec3(0.94, 0.97, 1.0);
             outColor = vec4(hudColor, 0.97);
             return;
@@ -411,13 +464,16 @@ void main() {
                              ivec2(int(renderPc.gridWidth) - 1, int(renderPc.gridHeight) - 1));
         Cell inspected = cellAt(cursor);
         TileState inspectedTile = tileAt(cursor);
-        uint cursorScreenX = uint(cursor.x) * renderPc.windowWidth / max(renderPc.gridWidth, 1u);
-        uint cardWidth = min(366u, renderPc.windowWidth - 24u);
-        uint cardHeight = min(252u, simulationHeight - 12u);
-        uint cardLeft = cursorScreenX > renderPc.windowWidth / 2u ? 12u : renderPc.windowWidth - cardWidth - 12u;
-        uint cursorScreenY = renderPc.statusHeight + uint(cursor.y) * simulationHeight / max(renderPc.gridHeight, 1u);
-        uint minTop = renderPc.statusHeight + 10u;
-        uint maxTop = controlsStart > cardHeight + 10u ? controlsStart - cardHeight - 10u : minTop;
+        uint cursorScreenX = renderPc.viewportLeft +
+            uint(cursor.x) * renderPc.viewportWidth / max(renderPc.gridWidth, 1u);
+        uint cardWidth = min(366u, renderPc.viewportWidth - 24u);
+        uint cardHeight = min(286u, simulationHeight - 12u);
+        uint cardLeft = cursorScreenX > renderPc.viewportLeft + renderPc.viewportWidth / 2u
+            ? renderPc.viewportLeft + 12u : viewportRight - cardWidth - 12u;
+        uint cursorScreenY = renderPc.viewportTop +
+            uint(cursor.y) * simulationHeight / max(renderPc.gridHeight, 1u);
+        uint minTop = renderPc.viewportTop + 10u;
+        uint maxTop = viewportBottom > cardHeight + 10u ? viewportBottom - cardHeight - 10u : minTop;
         uint cardTop = clamp(cursorScreenY > cardHeight / 2u ? cursorScreenY - cardHeight / 2u : minTop, minTop, maxTop);
         uint cardRight = cardLeft + cardWidth;
         uint cardBottom = cardTop + cardHeight;
@@ -428,28 +484,29 @@ void main() {
                 cardColor = alert ? vec3(0.76, 0.16, 0.10) : vec3(0.13, 0.29, 0.43);
             else if (y < cardTop + 30u) cardColor = vec3(0.065, 0.095, 0.135);
 
-            bool text = materialPixel(pixel, ivec2(int(cardLeft + 10u), int(cardTop + 8u)), 2, inspected.material);
+            bool text = fixedPixel(pixel, ivec2(int(cardLeft + 10u), int(cardTop + 8u)), 1, 11u) ||
+                        materialPixel(pixel, ivec2(int(cardLeft + 10u), int(cardTop + 24u)), 2, inspected.material);
             if (alert) text = text || fixedPixel(pixel, ivec2(int(cardRight - 50u), int(cardTop + 11u)), 1, 25u);
             uint phase = cellPhase(inspected);
-            text = text || fixedPixel(pixel, ivec2(int(cardLeft + 10u), int(cardTop + 38u)), 1, 12u) ||
-                   phasePixel(pixel, ivec2(int(cardLeft + 58u), int(cardTop + 38u)), 1, phase) ||
-                   fixedPixel(pixel, ivec2(int(cardLeft + 172u), int(cardTop + 38u)), 1, 13u) ||
-                   signedNumberPixel(pixel, ivec2(int(cardLeft + 208u), int(cardTop + 38u)), 1, inspected.temperature);
-            text = text || fixedPixel(pixel, ivec2(int(cardLeft + 10u), int(cardTop + 54u)), 1, 14u) ||
-                   numberPixel(pixel, ivec2(int(cardLeft + 46u), int(cardTop + 54u)), 1, inspectedTile.occupancy) ||
-                   fixedPixel(pixel, ivec2(int(cardLeft + 104u), int(cardTop + 54u)), 1, 15u) ||
-                   numberPixel(pixel, ivec2(int(cardLeft + 170u), int(cardTop + 54u)), 1,
+            text = text || fixedPixel(pixel, ivec2(int(cardLeft + 10u), int(cardTop + 52u)), 1, 12u) ||
+                   phasePixel(pixel, ivec2(int(cardLeft + 58u), int(cardTop + 52u)), 1, phase) ||
+                   fixedPixel(pixel, ivec2(int(cardLeft + 172u), int(cardTop + 52u)), 1, 13u) ||
+                   signedNumberPixel(pixel, ivec2(int(cardLeft + 208u), int(cardTop + 52u)), 1, inspected.temperature);
+            text = text || fixedPixel(pixel, ivec2(int(cardLeft + 10u), int(cardTop + 68u)), 1, 14u) ||
+                   numberPixel(pixel, ivec2(int(cardLeft + 46u), int(cardTop + 68u)), 1, inspectedTile.occupancy) ||
+                   fixedPixel(pixel, ivec2(int(cardLeft + 104u), int(cardTop + 68u)), 1, 15u) ||
+                   numberPixel(pixel, ivec2(int(cardLeft + 170u), int(cardTop + 68u)), 1,
                                isStructural(inspected) ? (stateValue(inspected) == 0u ? 255u : stateValue(inspected)) : 0u) ||
-                   fixedPixel(pixel, ivec2(int(cardLeft + 228u), int(cardTop + 54u)), 1, 16u) ||
-                   numberPixel(pixel, ivec2(int(cardLeft + 276u), int(cardTop + 54u)), 1, materialDensity(inspected.material));
+                   fixedPixel(pixel, ivec2(int(cardLeft + 228u), int(cardTop + 68u)), 1, 16u) ||
+                   numberPixel(pixel, ivec2(int(cardLeft + 276u), int(cardTop + 68u)), 1, materialDensity(inspected.material));
 
             uint stateLabel = isStructural(inspected) ? 26u : 27u;
             if (tileHas(inspectedTile, TILE_SLEEPING)) stateLabel = 28u;
             else if (tileHas(inspectedTile, TILE_CANDIDATE)) stateLabel = 30u;
-            text = text || fixedPixel(pixel, ivec2(int(cardLeft + 10u), int(cardTop + 70u)), 1, stateLabel);
+            text = text || fixedPixel(pixel, ivec2(int(cardLeft + 10u), int(cardTop + 84u)), 1, stateLabel);
 
             for (uint line = 0u; line < 10u; ++line) {
-                ivec2 origin = ivec2(int(cardLeft + 10u), int(cardTop + 86u + line * 15u));
+                ivec2 origin = ivec2(int(cardLeft + 10u), int(cardTop + 104u + line * 16u));
                 if (cardPixel(pixel, origin, 1, inspected.material, line)) text = true;
             }
             if (text) cardColor = alert && y < cardTop + 30u ? vec3(1.0, 0.78, 0.68) : vec3(0.92, 0.95, 0.98);

@@ -12,13 +12,13 @@ from material_catalog import (
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXED = [
-    "EPOCH SAND", "FPS", "RUNNING", "PAUSED", "BRUSH", "SCENE", "RESET", "BUILD", "MINE",
+    "SANDHYBRID", "FPS", "RUNNING", "PAUSED", "BRUSH", "SCENE", "RESET", "BUILD", "MINE",
     "DEBUG", "ALT INSPECT", "MATERIAL", "PHASE", "TEMP", "MASS", "INTEGRITY", "DENSITY",
     "SOFT", "MELT", "BOIL", "VAPOR", "IGNITE", "STRENGTH", "EROSION", "ACID", "ALERT",
     "STRUCTURAL", "LOOSE", "SLEEPING", "ACTIVE", "CANDIDATE", "DAMAGE", "OCCUPANCY",
     "PRESSURE", "CONSERVATION", "CREATED", "DESTROYED", "CONVERTED", "BOUNDARY",
     "F3 DEBUG", "HOLD ALT", "PREV", "NEXT", "TOOLS", "MATERIALS",
-    "HP", "O2", "AMMO", "GOLD", "IRON", "LMB TOOL", "RMB DROP",
+    "HP", "O2", "AMMO", "GOLD", "IRON", "LMB TOOL", "RMB DROP", "AL", "CU", "DRILL", "RANGE", "JUMP", "PLASMA", "LOCKED", "READY",
 ]
 SCENES = [
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",

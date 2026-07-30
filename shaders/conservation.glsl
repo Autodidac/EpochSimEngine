@@ -14,7 +14,7 @@ layout(std430, binding = 5) buffer ConservationBuffer { uint conservation[8]; };
 
 bool isEphemeralEnergy(uint material) {
     return material == MAT_FIRE || material == MAT_LIGHTNING || material == MAT_RADIATION ||
-           material == MAT_PLASMA_BOLT;
+           material == MAT_PLANT_STEM;
 }
 
 void recordConservation(Cell before, Cell after) {

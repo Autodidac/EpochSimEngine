@@ -20,9 +20,10 @@ namespace epoch::sand {
 
 int run_application() {
     std::fprintf(stderr, "[EpochSand] Creating native window...\n");
-    NativeWindow window{"EpochSand - Loading", 1280, 720};
+    NativeWindow window{"SandHybrid - Loading", 1280, 720};
     std::fprintf(stderr, "[EpochSand] Native window created.\n");
     SharedState shared_state{};
+    const SimulationConfig simulation_config{};
     std::atomic_bool renderer_ready{false};
 
     std::exception_ptr render_error;
@@ -31,13 +32,14 @@ int run_application() {
     // Keep driver initialization off the native event thread. Startup remains
     // responsive, while stage-by-stage console logging identifies any driver or
     // pipeline failure instead of leaving a silent frozen window.
-    std::jthread render_thread([&](const std::stop_token stop_token) {
+    std::atomic_bool stop_renderer{false};
+    std::thread render_thread([&] {
         try {
             std::fprintf(stderr, "[EpochSand] Vulkan initialization started.\n");
-            VulkanRenderer renderer{window, SimulationConfig{}};
+            VulkanRenderer renderer{window, simulation_config};
             renderer_ready.store(true, std::memory_order_release);
             std::fprintf(stderr, "[EpochSand] Vulkan renderer ready.\n");
-            renderer.run(stop_token, shared_state);
+            renderer.run(stop_renderer, shared_state);
         } catch (...) {
             {
                 const std::scoped_lock lock{render_error_mutex};
@@ -51,7 +53,7 @@ int run_application() {
     bool ready_title_applied = false;
     while (!shared_state.quit.load(std::memory_order_acquire) && window.poll(input)) {
         if (!ready_title_applied && renderer_ready.load(std::memory_order_acquire)) {
-            window.set_title("EpochSand");
+            window.set_title("SandHybrid");
             ready_title_applied = true;
         }
         shared_state.window_width.store(input.width, std::memory_order_relaxed);
@@ -99,6 +101,8 @@ int run_application() {
         }
 
         const auto layout = ui::make_layout(input.width, input.height);
+        const auto simulation_viewport = ui::make_simulation_viewport(
+            layout, simulation_config.grid_width, simulation_config.grid_height);
         const epochengine::gui_lib::Vec2 pointer{
             static_cast<float>(input.mouse_x),
             static_cast<float>(input.mouse_y),
@@ -145,7 +149,7 @@ int run_application() {
             }
         }
 
-        const bool over_simulation = epochengine::gui_lib::contains(layout.simulation, pointer);
+        const bool over_simulation = epochengine::gui_lib::contains(simulation_viewport.rect, pointer);
         const bool mining = shared_state.mining_mode.load(std::memory_order_relaxed);
         const bool character_scene = scene_has_character(scene);
         const bool inspecting = input.inspect_material;
@@ -180,8 +184,8 @@ int run_application() {
 
     std::fprintf(stderr, "[EpochSand] Shutting down.\n");
     shared_state.quit.store(true, std::memory_order_release);
-    render_thread.request_stop();
-    render_thread.join();
+    stop_renderer.store(true, std::memory_order_release);
+    if (render_thread.joinable()) render_thread.join();
 
     {
         const std::scoped_lock lock{render_error_mutex};

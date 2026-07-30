@@ -17,17 +17,17 @@ static_assert(static_cast<std::uint32_t>(Material::hydrogen) == 64u);
 static_assert(epoch::sand::material_count == 65u);
 static_assert(epoch::sand::material_profiles.size() == epoch::sand::material_count);
 static_assert(epoch::sand::material_group_count == 8u);
-static_assert(epoch::sand::material_slots_per_group == 9u);
+static_assert(epoch::sand::material_slots_per_group == 10u);
 static_assert(epoch::sand::material_group_size(MaterialGroup::ground) == 8u);
-static_assert(epoch::sand::material_group_size(MaterialGroup::colony) == 9u);
-static_assert(epoch::sand::material_group_size(MaterialGroup::engineering) == 4u);
+static_assert(epoch::sand::material_group_size(MaterialGroup::colony) == 8u);
+static_assert(epoch::sand::material_group_size(MaterialGroup::engineering) == 8u);
 static_assert(epoch::sand::scene_count == 9u);
 static_assert(epoch::sand::next_scene(Scene::frontier_base) == Scene::sandbox);
 static_assert(epoch::sand::scene_has_character(Scene::frontier_base));
 static_assert(epoch::sand::scene_name(Scene::gold_mine) == "Platformer");
 static_assert(epoch::sand::grouped_material(MaterialGroup::ground, 0u) == Material::empty);
-static_assert(epoch::sand::grouped_material(MaterialGroup::industry, 3u) == Material::bot_fabricator);
-static_assert(epoch::sand::grouped_material(MaterialGroup::colony, 8u) == Material::hydrogen);
+static_assert(epoch::sand::grouped_material(MaterialGroup::industry, 3u) == Material::factory_core);
+static_assert(epoch::sand::grouped_material(MaterialGroup::engineering, 6u) == Material::hydrogen);
 static_assert(epoch::sand::is_block_material(Material::stone));
 static_assert(!epoch::sand::is_block_material(Material::mud));
 
@@ -72,8 +72,8 @@ constexpr bool palette_materials_are_unique() {
             if (++count != 1u) return false;
         }
     }
-    return counts[static_cast<std::uint32_t>(Material::gold_ore)] == 0u &&
-           counts[static_cast<std::uint32_t>(Material::iron_ore)] == 0u;
+    return counts[static_cast<std::uint32_t>(Material::aluminum_shavings)] == 1u &&
+           counts[static_cast<std::uint32_t>(Material::iron_shavings)] == 1u;
 }
 static_assert(palette_materials_are_unique());
 
@@ -92,13 +92,19 @@ int main() {
         layout, MaterialGroup::industry,
         {bot_slot.position.x + bot_slot.size.x * 0.5f,
          bot_slot.position.y + bot_slot.size.y * 0.5f});
-    if (material != Material::bot_fabricator) return 2;
+    if (material != Material::factory_core) return 2;
     if (layout.simulation.size.y <= 0.0f || layout.debug_toggle.size.x < 60.0f) return 3;
 
+    const auto viewport = epoch::sand::ui::make_simulation_viewport(layout, 640u, 360u);
+    if (static_cast<std::uint32_t>(viewport.rect.size.x) % 80u != 0u ||
+        static_cast<std::uint32_t>(viewport.rect.size.y) % 45u != 0u) return 4;
+    if (viewport.rect.size.x / 80.0f != viewport.rect.size.y / 45.0f) return 5;
+    if (viewport.rect.position.x < 0.0f || viewport.rect.position.y < layout.simulation.position.y) return 6;
+
     const auto compact = epoch::sand::ui::make_layout(480u, 320u);
-    if (compact.simulation.size.y <= 0.0f) return 4;
+    if (compact.simulation.size.y <= 0.0f) return 7;
     if (compact.previous_scene.size.x != 0.0f || compact.next_scene.size.x != 0.0f ||
-        compact.reset_scene.size.x != 0.0f) return 5;
-    if (compact.mode_toggle.position.x < 0.0f || compact.debug_toggle.position.x < 0.0f) return 6;
+        compact.reset_scene.size.x != 0.0f) return 8;
+    if (compact.mode_toggle.position.x < 0.0f || compact.debug_toggle.position.x < 0.0f) return 9;
     return 0;
 }

@@ -200,7 +200,7 @@ bool hotWaterBelow(ivec2 p, uint material) {
 }
 
 bool radioactiveSourceNear(ivec2 p) {
-    return hasNeighbor(p, MAT_URANIUM) && !hasNeighbor(p, MAT_METAL) && !hasNeighbor(p, MAT_IRON);
+    return hasNeighbor(p, MAT_URANIUM) && !hasNeighbor(p, MAT_ALUMINUM) && !hasNeighbor(p, MAT_IRON);
 }
 
 
@@ -224,7 +224,7 @@ void applyStructuralHazards(ivec2 position, Cell source, inout Cell result,
         else damage += 1u;
     }
     if (nearSaltwater && (randomValue & 1023u) == 0u &&
-        (source.material == MAT_IRON || source.material == MAT_METAL ||
+        (source.material == MAT_IRON || source.material == MAT_ALUMINUM ||
          source.material == MAT_COPPER || source.material == MAT_CONVEYOR)) {
         damage += 1u;
     }
@@ -242,12 +242,14 @@ void applyStructuralHazards(ivec2 position, Cell source, inout Cell result,
 
 
 bool isMachine(uint material) {
-    return material == MAT_SMELTER || material == MAT_ASSEMBLER || material == MAT_BOT_FABRICATOR;
+    return material == MAT_SMELTER || material == MAT_ASSEMBLER;
 }
 
 bool isFactoryInputResource(uint material) {
-    return material == MAT_IRON || material == MAT_GOLD || material == MAT_STEEL ||
-           material == MAT_COPPER || material == MAT_POWER_CELL || material == MAT_PLASMA_AMMO;
+    return material == MAT_IRON || material == MAT_IRON_SHAVINGS ||
+           material == MAT_ALUMINUM || material == MAT_ALUMINUM_SHAVINGS ||
+           material == MAT_GOLD || material == MAT_STEEL || material == MAT_COPPER ||
+           material == MAT_POWER_CELL || material == MAT_PLASMA_AMMO;
 }
 
 bool isMachineController(ivec2 p, uint material) {
@@ -256,7 +258,7 @@ bool isMachineController(ivec2 p, uint material) {
 
 int machineResourceSlot(uint machine, uint resourceMaterial) {
     if (machine == MAT_SMELTER) {
-        return resourceMaterial == MAT_IRON ? 0 : -1;
+        return (resourceMaterial == MAT_IRON || resourceMaterial == MAT_IRON_SHAVINGS) ? 0 : -1;
     }
     if (machine == MAT_ASSEMBLER) {
         if (resourceMaterial == MAT_STEEL) return 0;
@@ -265,7 +267,7 @@ int machineResourceSlot(uint machine, uint resourceMaterial) {
         if (resourceMaterial == MAT_POWER_CELL) return 3;
         return -1;
     }
-    if (machine == MAT_BOT_FABRICATOR) {
+    if (machine == MAT_INSECT_HABITAT) {
         if (resourceMaterial == MAT_STEEL) return 0;
         if (resourceMaterial == MAT_COPPER) return 1;
         if (resourceMaterial == MAT_PLASMA_AMMO) return 2;
@@ -276,7 +278,7 @@ int machineResourceSlot(uint machine, uint resourceMaterial) {
 uvec4 machineRecipe(uint machine) {
     if (machine == MAT_SMELTER) return uvec4(4u, 0u, 0u, 0u);
     if (machine == MAT_ASSEMBLER) return uvec4(2u, 1u, 1u, 1u);
-    if (machine == MAT_BOT_FABRICATOR) return uvec4(3u, 1u, 2u, 0u);
+    if (machine == MAT_INSECT_HABITAT) return uvec4(3u, 1u, 2u, 0u);
     return uvec4(15u);
 }
 
@@ -287,7 +289,7 @@ bool machineReady(uint machine, uvec4 inventory) {
 uint machineOutput(uint machine, bool allied) {
     if (machine == MAT_SMELTER) return MAT_STEEL;
     if (machine == MAT_ASSEMBLER) return MAT_PLASMA_AMMO;
-    if (machine == MAT_BOT_FABRICATOR) return allied ? MAT_ALLY_BOT : MAT_ENEMY_BOT;
+    if (machine == MAT_INSECT_HABITAT) return allied ? MAT_ANT : MAT_BEETLE;
     return MAT_EMPTY;
 }
 
@@ -359,7 +361,7 @@ bool lineHasMaterial(ivec2 p, int direction, uint material, int distance) {
 bool opposingBoltNear(ivec2 p, bool allied) {
     for (uint i = 0u; i < 8u; ++i) {
         Cell bolt = at(p + neighborOffsets[i]);
-        if (bolt.material == MAT_PLASMA_BOLT && (((bolt.aux & AUX_CHARGED) != 0u) != allied)) return true;
+        if (bolt.material == MAT_PLANT_STEM && (((bolt.aux & AUX_CHARGED) != 0u) != allied)) return true;
     }
     return false;
 }
@@ -586,25 +588,12 @@ void main() {
                         machineReady(machine.material, machineInventory(machine)) &&
                         (machine.age % 24u) == 0u) {
                         result = makeCell(machineOutput(machine.material, machineIsAllied(controller)));
-                        if (result.material == MAT_ENEMY_BOT) result.aux &= ~AUX_CHARGED;
+                        if (result.material == MAT_BEETLE) result.aux &= ~AUX_CHARGED;
                         produced = true;
                     }
                 }
             }
             if (!produced) {
-                Cell leftBot = at(p + ivec2(-1, 0));
-                Cell rightBot = at(p + ivec2(1, 0));
-                if (leftBot.material == MAT_ALLY_BOT && leftBot.age % 90u == 0u &&
-                    lineHasMaterial(p + ivec2(-1, 0), 1, MAT_ENEMY_BOT, 28)) {
-                    result = makeCell(MAT_PLASMA_BOLT);
-                    result.aux |= AUX_CHARGED;
-                    produced = true;
-                } else if (rightBot.material == MAT_ENEMY_BOT && rightBot.age % 90u == 0u &&
-                           lineHasMaterial(p + ivec2(1, 0), -1, MAT_ALLY_BOT, 28)) {
-                    result = makeCell(MAT_PLASMA_BOLT);
-                    result.aux &= ~AUX_CHARGED;
-                    produced = true;
-                }
             }
             if (produced) {
                 commitResult(index, source, result);
@@ -619,6 +608,11 @@ void main() {
             return;
         }
 
+        if (hasNeighbor(p, MAT_INSECT_HABITAT) && (randomValue & 4095u) == 0u) {
+            result = makeCell((randomValue & 8192u) == 0u ? MAT_ANT : MAT_BEETLE);
+            commitResult(index, source, result);
+            return;
+        }
         if (pollenBeeTargets(p)) {
             result = makeCell(MAT_POLLEN);
         } else {
@@ -640,12 +634,11 @@ void main() {
             }
             if (!handledNest) {
                 Cell below = at(p + ivec2(0, 1));
-                if (below.material == MAT_GRASS && (below.aux & AUX_PLANT_STEM) != 0u &&
+                if (below.material == MAT_PLANT_STEM &&
                     below.age > 180u && hasFreshMoistureRadius(p, 3) && light[index] > 145u) {
                     uint stage = stateValue(below);
                     if (stage < 3u) {
-                        result = makeCell(MAT_GRASS);
-                        result.aux |= AUX_PLANT_STEM;
+                        result = makeCell(MAT_PLANT_STEM);
                         setStateValue(result, stage + 1u);
                     } else {
                         result = makeCell(MAT_FLOWER);
@@ -707,30 +700,30 @@ void main() {
         result.temperature = source.material == MAT_SMELTER ? max(result.temperature, 260) : result.temperature;
     }
 
-    if (source.material == MAT_ALLY_BOT || source.material == MAT_ENEMY_BOT) {
-        bool allied = source.material == MAT_ALLY_BOT;
-        uint health = stateValue(source);
-        if (health == 0u) health = 255u;
-        uint damage = 0u;
-        if (opposingBoltNear(p, allied)) damage += 72u;
-        if (nearFire || nearLava || nearAcid) damage += 24u;
-        if (damage >= health) result = makeCell(MAT_METAL);
-        else setStateValue(result, health - damage);
-    } else if (source.material == MAT_PLASMA_BOLT) {
-        bool allied = (source.aux & AUX_CHARGED) != 0u;
-        bool impact = allied ? hasNeighbor(p, MAT_ENEMY_BOT) : hasNeighbor(p, MAT_ALLY_BOT);
-        if (impact || source.age > 72u || nearWater || nearSaltwater) result = makeCell(MAT_EMPTY);
-    } else if (isStructural(source) && hasNeighbor(p, MAT_PLASMA_BOLT)) {
-        uint health = stateValue(source);
-        if (health == 0u) health = 255u;
-        const uint laserDamage = 144u;
-        if (health <= laserDamage) {
-            result.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED | AUX_MOVED);
-            setStateValue(result, 48u);
-            result.age = 0u;
-        } else {
-            setStateValue(result, health - laserDamage);
-        }
+
+
+    // Insects are ecosystem agents, not placeholder combat bots. Ants move
+    // recoverable waste toward soil; beetles break dead biomass into fertilizer.
+    if (source.material == MAT_ANT) {
+        if (nearWater || nearFire || nearAcid || nearLava) result = makeCell(MAT_WASTE);
+        else if (hasNeighbor(p, MAT_WASTE) && hasNeighbor(p, MAT_DIRT) && (randomValue & 255u) == 0u)
+            result = makeCell(MAT_FERTILIZER);
+    } else if (source.material == MAT_BEETLE) {
+        if (nearFire || nearAcid || nearLava) result = makeCell(MAT_WASTE);
+        else if ((hasNeighbor(p, MAT_WASTE) || hasNeighbor(p, MAT_WOOD)) &&
+                 hasFreshMoistureRadius(p, 2) && (randomValue & 255u) == 0u)
+            result = makeCell(MAT_FERTILIZER);
+    } else if (source.material == MAT_INSECT_HABITAT) {
+        result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
+    }
+
+    // Meager closed-system correction: wet ash/silt/waste are slowly reclaimed
+    // into fertilizer instead of being silently deleted. Every transition is
+    // one world cell to one world cell and therefore remains conservation-auditable.
+    if ((source.material == MAT_ASH || source.material == MAT_SILT || source.material == MAT_WASTE) &&
+        hasFreshMoistureRadius(p, 2) && hasNeighbor(p, MAT_OXYGEN) &&
+        light[index] > 80u && source.age > 1800u && (randomValue & 1023u) == 0u) {
+        result = makeCell(MAT_FERTILIZER);
     }
 
     // Structure chemistry only reduces integrity. It cannot replace a wall with
@@ -795,9 +788,9 @@ void main() {
                        at(p + ivec2(-1, 0)).material != MAT_EMPTY &&
                        at(p + ivec2(1, 0)).material != MAT_EMPTY;
         uint pressure = stateValue(source);
-        if (blocked) pressure = min(255u, pressure + 3u);
-        else if (openOutlet) pressure = pressure > 4u ? pressure - 4u : 0u;
-        else pressure = min(255u, pressure + 1u);
+        if (blocked) pressure = min(255u, pressure + 5u);
+        else if (openOutlet) pressure = min(255u, pressure + 2u);
+        else pressure = min(255u, pressure + 3u);
         setStateValue(result, pressure);
     }
 
@@ -870,12 +863,10 @@ void main() {
     // Seed growth is staged. The seed becomes the first grass stem segment;
     // subsequent segments grow upward and the flower exists only above grass.
     if (source.material == MAT_SEED && seedHasGrowingConditions(p)) {
-        result = makeCell(MAT_GRASS);
-        result.aux |= AUX_PLANT_STEM;
+        result = makeCell(MAT_PLANT_STEM);
         setStateValue(result, 1u);
     } else if (source.material == MAT_DIRT) {
-        bool exposedSurface = at(p + ivec2(0, -1)).material == MAT_EMPTY ||
-                              at(p + ivec2(0, -1)).material == MAT_GRASS;
+        bool exposedSurface = at(p + ivec2(0, -1)).material == MAT_EMPTY;
         if (exposedSurface && light[index] > 185u && hasFreshMoistureRadius(p, 3) &&
             hasNeighbor(p, MAT_GRASS) && source.age > 240u && (randomValue & 255u) == 0u) {
             result = makeCell(MAT_GRASS);
@@ -891,7 +882,7 @@ void main() {
         }
     } else if (source.material == MAT_FLOWER) {
         Cell support = at(p + ivec2(0, 1));
-        bool validStem = support.material == MAT_GRASS && (support.aux & AUX_PLANT_STEM) != 0u;
+        bool validStem = support.material == MAT_PLANT_STEM;
         if (!validStem || nearSaltwater || nearAcid || nearFire || nearLava || light[index] < 30u) {
             result = makeCell(nearFire || nearLava ? MAT_ASH : MAT_WASTE);
         }
@@ -1034,7 +1025,7 @@ void main() {
     } else if (source.material == MAT_URANIUM) {
         result.temperature = max(result.temperature, 42);
     } else if (source.material == MAT_RADIATION) {
-        if (hasNeighbor(p, MAT_METAL) || hasNeighbor(p, MAT_IRON)) {
+        if (hasNeighbor(p, MAT_ALUMINUM) || hasNeighbor(p, MAT_IRON)) {
             result = makeCell(MAT_EMPTY);
         } else if (source.age > 180u + (randomValue & 255u)) {
             result = makeCell(MAT_EMPTY);

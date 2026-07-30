@@ -18,6 +18,10 @@ struct ActorState {
     int hitY;
     uint scene;
     uint exposureTicks;
+    uint aluminum;
+    uint copper;
+    uint unlocks;
+    uint drillLevel;
 };
 
 #endif

@@ -48,11 +48,12 @@ Cell actorAt(ivec2 p) {
 bool blocksActor(Cell cell) {
     if (cell.material == MAT_EMPTY || isGas(cell.material) || isLiquid(cell.material) ||
         cell.material == MAT_BEE || cell.material == MAT_POLLEN ||
-        cell.material == MAT_FLOWER || cell.material == MAT_GRASS ||
-        cell.material == MAT_ALLY_BOT) return false;
+        cell.material == MAT_FLOWER || cell.material == MAT_GRASS || cell.material == MAT_PLANT_STEM ||
+        cell.material == MAT_ANT) return false;
     bool loosePickup = !isStructural(cell) &&
         (cell.material == MAT_GOLD || cell.material == MAT_IRON ||
-         cell.material == MAT_COPPER || cell.material == MAT_METAL ||
+         cell.material == MAT_COPPER || cell.material == MAT_ALUMINUM ||
+         cell.material == MAT_ALUMINUM_SHAVINGS || cell.material == MAT_IRON_SHAVINGS ||
          cell.material == MAT_POWER_CELL || cell.material == MAT_PLASMA_AMMO);
     return !loosePickup;
 }
@@ -76,7 +77,18 @@ bool groundedAt(ivec2 center) {
 bool toolTransparent(uint material) {
     return material == MAT_EMPTY || isGas(material) || isLiquid(material) ||
            material == MAT_BEE || material == MAT_POLLEN || material == MAT_FLOWER ||
-           material == MAT_GRASS || material == MAT_ALLY_BOT || material == MAT_PLASMA_BOLT;
+           material == MAT_GRASS || material == MAT_ANT || material == MAT_PLANT_STEM;
+}
+
+void updateUnlocks(inout ActorState state) {
+    // Element-linked progression is deterministic and visible in the HUD.
+    // Iron improves drill integrity damage; copper extends range; aluminum
+    // improves movement/jump; gold unlocks plasma use against hostile fauna.
+    if (state.iron >= 8u) state.unlocks |= 1u;
+    if (state.copper >= 6u) state.unlocks |= 2u;
+    if (state.aluminum >= 6u) state.unlocks |= 4u;
+    if (state.gold >= 3u) state.unlocks |= 8u;
+    state.drillLevel = 1u + ((state.unlocks & 1u) != 0u ? 1u : 0u);
 }
 
 void collectResources(inout ActorState state) {
@@ -93,11 +105,18 @@ void collectResources(inout ActorState state) {
                 atomicAdd(conservation[CONS_CONVERTED], 1u);
                 cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
                 state.gold = min(state.gold + 1u, 9999u);
-            } else if (material == MAT_IRON || material == MAT_COPPER ||
-                       material == MAT_METAL || material == MAT_STEEL) {
+            } else if (material == MAT_IRON || material == MAT_IRON_SHAVINGS || material == MAT_STEEL) {
                 atomicAdd(conservation[CONS_CONVERTED], 1u);
                 cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
                 state.iron = min(state.iron + 1u, 9999u);
+            } else if (material == MAT_COPPER) {
+                atomicAdd(conservation[CONS_CONVERTED], 1u);
+                cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
+                state.copper = min(state.copper + 1u, 9999u);
+            } else if (material == MAT_ALUMINUM || material == MAT_ALUMINUM_SHAVINGS) {
+                atomicAdd(conservation[CONS_CONVERTED], 1u);
+                cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
+                state.aluminum = min(state.aluminum + 1u, 9999u);
             } else if (material == MAT_PLASMA_AMMO) {
                 atomicAdd(conservation[CONS_CONVERTED], 1u);
                 cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
@@ -105,6 +124,7 @@ void collectResources(inout ActorState state) {
             }
         }
     }
+    updateUnlocks(state);
 }
 
 void damageCell(ivec2 p, uint damage) {
@@ -113,9 +133,9 @@ void damageCell(ivec2 p, uint damage) {
     Cell cell = cells[index];
     if (toolTransparent(cell.material)) return;
 
-    if (cell.material == MAT_ENEMY_BOT) {
+    if (cell.material == MAT_BEETLE) {
         uint health = stateValue(cell);
-        if (health <= damage) cells[index] = Cell(MAT_METAL, 0u, 20, 255u);
+        if (health <= damage) cells[index] = Cell(MAT_ALUMINUM, 0u, 20, 255u);
         else {
             setStateValue(cell, health - damage);
             cells[index] = cell;
@@ -142,11 +162,18 @@ void damageCell(ivec2 p, uint damage) {
         return;
     }
 
-    Cell fragment = cell;
-    fragment.age = 0u;
-    fragment.aux |= AUX_MOVED;
-    recordConservation(cell, fragment);
-    cells[index] = fragment;
+    uint looseHealth = stateValue(cell);
+    if (looseHealth == 0u) looseHealth = 48u;
+    if (damage >= looseHealth) {
+        Cell emptyCell = Cell(MAT_EMPTY, 0u, 20, 0u);
+        recordConservation(cell, emptyCell);
+        cells[index] = emptyCell;
+    } else {
+        setStateValue(cell, looseHealth - damage);
+        cell.age = 0u;
+        cell.aux |= AUX_MOVED;
+        cells[index] = cell;
+    }
 }
 
 void fireTool(inout ActorState state) {
@@ -157,11 +184,12 @@ void fireTool(inout ActorState state) {
     if (targetDistance < 0.5) return;
 
     vec2 direction = delta / targetDistance;
-    float maximumDistance = min(targetDistance, 260.0);
+    float range = (state.unlocks & 2u) != 0u ? 340.0 : 260.0;
+    float maximumDistance = min(targetDistance, range);
     ivec2 hit = ivec2(origin);
     bool found = false;
     uint hitMaterial = MAT_EMPTY;
-    for (int stepIndex = 1; stepIndex <= 260; ++stepIndex) {
+    for (int stepIndex = 1; stepIndex <= 340; ++stepIndex) {
         float distanceAlongRay = float(stepIndex);
         if (distanceAlongRay > maximumDistance) break;
         ivec2 p = ivec2(round(origin + direction * distanceAlongRay));
@@ -179,10 +207,10 @@ void fireTool(inout ActorState state) {
     // One reliable primary action serves both tools: terrain and machines are
     // drilled; a visible hostile under the cursor receives a plasma shot when
     // ammunition exists. Ammo never blocks ordinary mining.
-    bool plasma = found && hitMaterial == MAT_ENEMY_BOT && state.ammo > 0u;
+    bool plasma = found && hitMaterial == MAT_BEETLE && state.ammo > 0u && (state.unlocks & 8u) != 0u;
     if (found) {
         int radius = plasma ? 3 : 2;
-        uint damage = plasma ? 255u : 144u;
+        uint damage = plasma ? 255u : (state.drillLevel >= 2u ? 192u : 144u);
         for (int y = -radius; y <= radius; ++y) {
             for (int x = -radius; x <= radius; ++x) {
                 if (x * x + y * y <= radius * radius) damageCell(hit + ivec2(x, y), damage);
@@ -263,7 +291,7 @@ void updateBreathing(inout ActorState state) {
 
 void resetActor(inout ActorState state) {
     state = ActorState(0, 0, 0, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
-                       255u, 255u, 0, 0, actorPc.scene, 0u);
+                       255u, 255u, 0, 0, actorPc.scene, 0u, 0u, 0u, 0u, 1u);
     if (actorPc.scene == SCENE_GOLD_MINE) {
         state.x = 78;
         state.y = 127;
@@ -300,7 +328,7 @@ void main() {
         bool grounded = groundedAt(center);
         state.grounded = grounded ? 1u : 0u;
 
-        if (actorPc.moveY < 0 && grounded) state.velocityY = -4;
+        if (actorPc.moveY < 0 && grounded) state.velocityY = (state.unlocks & 4u) != 0u ? -6 : -4;
         state.velocityY = min(state.velocityY + 1, 4);
 
         if (state.moveCooldown == 0u && actorPc.moveX != 0) {

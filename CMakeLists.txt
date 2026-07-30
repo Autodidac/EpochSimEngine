@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(EpochSand VERSION 1.0.0 LANGUAGES CXX)
+project(SandHybrid VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(BUILD_TESTING "Build EpochSand tests" OFF)
+option(BUILD_TESTING "Build SandHybrid tests" OFF)
 include(CTest)
 
 set(EPOCH_SAND_VALIDATION_DEFAULT OFF)
@@ -80,7 +80,7 @@ if(EPOCH_SAND_BUILD_APP)
     elseif(UNIX AND NOT APPLE)
         list(APPEND EPOCH_SAND_SOURCES src/window_xcb.cpp)
     else()
-        message(FATAL_ERROR "EpochSand currently supports Windows and Linux/XCB only.")
+        message(FATAL_ERROR "SandHybrid currently supports Windows and Linux/XCB only.")
     endif()
 
     add_executable(epoch_sand ${EPOCH_SAND_SOURCES})

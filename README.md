@@ -1,10 +1,10 @@
-# EpochSand
+# SandHybrid
 
-EpochSand is a standalone C++23 Vulkan material, terrain, ecology, factory, and combat sandbox. Fine particles, liquids, gases, machines, actors, and aligned Terraria-style terrain blocks share one deterministic cell simulation. There is no second rigid-body or voxel physics world.
+SandHybrid is a standalone C++23 Vulkan material, terrain, ecology, factory, and combat sandbox. Fine particles, liquids, gases, machines, actors, and aligned Terraria-style terrain blocks share one deterministic cell simulation. There is no second rigid-body or voxel physics world.
 
 - Native Win32/Vulkan on Windows
 - Native XCB/Vulkan on Linux
-- Dedicated `std::jthread` simulation/render thread
+- Explicit render worker using `std::thread`, atomic cancellation, and deterministic join
 - Renderer-neutral EpochGui layout, hit testing, and embedded bitmap font
 - CMake 3.28+ with a pinned vcpkg manifest
 - No SDL, GLFW, ImGui, Boost, or proprietary runtime framework
@@ -116,7 +116,7 @@ The card follows the cursor without covering the inspected point when space perm
 
 ## Ecology and conservation
 
-EpochSand targets a near-zero-loss material cycle. Reactions convert represented cells instead of using deletion as failure recovery.
+SandHybrid targets a near-zero-loss material cycle. Reactions convert represented cells instead of using deletion as failure recovery.
 
 Examples:
 
@@ -156,7 +156,7 @@ The interface was rebuilt as a pixel-aligned EpochGui layout. The native title b
 
 ## Resource pixels and sifting
 
-EpochSand has no authored ore blocks. Gold, iron, copper, and generic metal exist as independent material pixels mixed sparsely through sand or silt. Gravity, filters, conveyors, and magnets separate those pixels without changing them into nuclear fuel or radiation particles. Structural steel, iron, or copper is never collected merely because the player walks nearby.
+SandHybrid has no authored ore blocks. Gold, iron, copper, and generic metal exist as independent material pixels mixed sparsely through sand or silt. Gravity, filters, conveyors, and magnets separate those pixels without changing them into nuclear fuel or radiation particles. Structural steel, iron, or copper is never collected merely because the player walks nearby.
 
 ## Default scenes
 
@@ -253,7 +253,7 @@ See [`VALIDATION.md`](VALIDATION.md) for the required 24-item validation matrix 
 Manual contract commands:
 
 ```bash
-cmake -S . -B build/tests -DEPOCH_SAND_BUILD_APP=OFF -DBUILD_TESTING=ON
+cmake -S . -B build/tests -DSAND_HYBRID_BUILD_APP=OFF -DBUILD_TESTING=ON
 cmake --build build/tests
 ctest --test-dir build/tests --output-on-failure
 python tools/generate_ui_text.py

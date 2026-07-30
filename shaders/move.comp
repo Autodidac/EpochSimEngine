@@ -37,12 +37,12 @@ layout(push_constant) uniform MovementPush {
 const uint MATERIAL_DENSITY[MATERIAL_COUNT] = uint[](
       0u,  84u,  44u,  80u, 235u, 205u,  68u,  48u,
      64u,   4u,   5u,   2u,  72u,  25u, 170u, 160u,
-    180u,  58u,   8u,  76u,  40u, 235u,  28u,  18u,
+    180u,  58u,   8u,  76u,  40u, 150u,  28u,  18u,
     190u,  81u,  32u,  38u, 145u,  76u,  50u, 175u,
       6u,  46u,  12u,  30u, 225u, 215u, 230u, 180u,
-      1u, 255u, 230u,   1u, 225u, 210u,   7u,  11u,
-    225u, 245u, 220u, 240u, 225u, 230u,  92u,  93u,
-    180u, 180u,   2u, 254u,  60u,  55u,  42u,  58u,
+      1u, 255u, 230u,   1u, 150u, 210u,   7u,  11u,
+    225u, 245u, 220u, 240u, 225u, 175u,  92u,  93u,
+     10u,  18u,  70u, 254u,  60u,  55u,  42u,  58u,
       1u
 );
 
@@ -117,12 +117,13 @@ bool isPowderCellMaterial(uint material) {
            material == MAT_SALT || material == MAT_ASH || material == MAT_EMBER ||
            material == MAT_GUNPOWDER || material == MAT_SNOW || material == MAT_SEED ||
            material == MAT_POLLEN || material == MAT_SILT || material == MAT_FERTILIZER ||
-           material == MAT_FOOD || material == MAT_WASTE;
+           material == MAT_FOOD || material == MAT_WASTE ||
+           material == MAT_ALUMINUM_SHAVINGS || material == MAT_IRON_SHAVINGS;
 }
 
 bool isConveyorPowderMaterial(uint material) {
     return isPowderCellMaterial(material) || material == MAT_GOLD ||
-           material == MAT_IRON || material == MAT_COPPER || material == MAT_METAL ||
+           material == MAT_IRON || material == MAT_COPPER || material == MAT_ALUMINUM ||
            material == MAT_STEEL || material == MAT_POWER_CELL ||
            material == MAT_PLASMA_AMMO;
 }
@@ -130,11 +131,10 @@ bool isConveyorPowderMaterial(uint material) {
 bool isBlockCapable(uint material) {
     return material == MAT_STONE || material == MAT_CRYSTAL || material == MAT_WOOD ||
            material == MAT_PLASTIC || material == MAT_ACID_RESISTANT_PLASTIC ||
-           material == MAT_METAL || material == MAT_GLASS || material == MAT_IRON ||
+           material == MAT_ALUMINUM || material == MAT_GLASS || material == MAT_IRON ||
            material == MAT_COPPER || material == MAT_MAGNET || material == MAT_INSULATOR ||
-           material == MAT_URANIUM || material == MAT_GOLD_ORE || material == MAT_IRON_ORE ||
-           material == MAT_STEEL || material == MAT_CONVEYOR || material == MAT_SMELTER ||
-           material == MAT_ASSEMBLER || material == MAT_BOT_FABRICATOR ||
+           material == MAT_URANIUM || material == MAT_STEEL || material == MAT_CONVEYOR || material == MAT_SMELTER ||
+           material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||
            material == MAT_FACTORY_CORE;
 }
 
@@ -144,15 +144,15 @@ bool isMolten(Cell cell) {
     return (material == MAT_PLASTIC && temperature >= 165) ||
            (material == MAT_ACID_RESISTANT_PLASTIC && temperature >= 230) ||
            (material == MAT_BEESWAX && temperature >= 63) ||
-           (material == MAT_METAL && temperature >= 1250) ||
+           (material == MAT_ALUMINUM && temperature >= 1250) ||
            (material == MAT_IRON && temperature >= 1538) ||
            (material == MAT_COPPER && temperature >= 1085) ||
            (material == MAT_MAGNET && temperature >= 800) ||
            (material == MAT_GLASS && temperature >= 1400) ||
            (material == MAT_URANIUM && temperature >= 1132) ||
-           (material == MAT_GOLD_ORE && temperature >= 1064) ||
+           (material == MAT_ALUMINUM_SHAVINGS && temperature >= 1064) ||
            (material == MAT_GOLD && temperature >= 1064) ||
-           (material == MAT_IRON_ORE && temperature >= 1538) ||
+           (material == MAT_IRON_SHAVINGS && temperature >= 1538) ||
            (material == MAT_STEEL && temperature >= 1450) ||
            (material == MAT_POWER_CELL && temperature >= 220) ||
            (material == MAT_PLASMA_AMMO && temperature >= 180);
@@ -174,14 +174,13 @@ bool isImmovableMaterial(uint material) {
     return material == MAT_STONE || material == MAT_CRYSTAL || material == MAT_GRASS ||
            material == MAT_WOOD || material == MAT_PLASTIC ||
            material == MAT_ACID_RESISTANT_PLASTIC || material == MAT_ICE ||
-           material == MAT_METAL || material == MAT_GLASS || material == MAT_BEESWAX ||
+           material == MAT_ALUMINUM || material == MAT_GLASS || material == MAT_BEESWAX ||
            material == MAT_FLOWER || material == MAT_BEE_NEST ||
            material == MAT_QUEEN_BEE || material == MAT_IRON || material == MAT_COPPER ||
            material == MAT_MAGNET || material == MAT_INSULATOR ||
            material == MAT_MAGMA_VENT || material == MAT_URANIUM ||
-           material == MAT_GOLD_ORE || material == MAT_IRON_ORE ||
            material == MAT_STEEL || material == MAT_CONVEYOR || material == MAT_SMELTER ||
-           material == MAT_ASSEMBLER || material == MAT_BOT_FABRICATOR ||
+           material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||
            material == MAT_FACTORY_CORE;
 }
 
@@ -199,15 +198,15 @@ bool isLooseSolid(Cell cell) {
 }
 
 bool isMagnetic(uint material) {
-    return material == MAT_IRON || material == MAT_METAL;
+    return material == MAT_IRON || material == MAT_IRON_SHAVINGS;
 }
 
 bool isConductive(uint material) {
-    return material == MAT_METAL || material == MAT_IRON || material == MAT_COPPER ||
+    return material == MAT_ALUMINUM || material == MAT_IRON || material == MAT_COPPER ||
            material == MAT_STEEL || material == MAT_MAGNET || material == MAT_WATER ||
            material == MAT_SALTWATER || material == MAT_DIRTY_WATER || material == MAT_GOLD ||
            material == MAT_CONVEYOR || material == MAT_SMELTER || material == MAT_ASSEMBLER ||
-           material == MAT_BOT_FABRICATOR || material == MAT_FACTORY_CORE;
+           material == MAT_INSECT_HABITAT || material == MAT_FACTORY_CORE;
 }
 
 bool isSalineLiquid(Cell cell) {
@@ -279,6 +278,7 @@ bool movementAllows(Cell cell, uint randomValue) {
     if (cell.material == MAT_FERTILIZER) return (randomValue % 7u) == 0u;
     if (cell.material == MAT_FOOD) return (randomValue % 4u) == 0u;
     if (cell.material == MAT_WASTE) return (randomValue % 8u) == 0u;
+    if (cell.material == MAT_ALUMINUM_SHAVINGS || cell.material == MAT_IRON_SHAVINGS) return true;
     return true;
 }
 
@@ -406,21 +406,15 @@ bool gasHorizontalAllows(uint material, uint randomValue) {
     return (randomValue & 3u) == 0u;
 }
 
-bool isBot(uint material) {
-    return material == MAT_ALLY_BOT || material == MAT_ENEMY_BOT;
-}
+bool isInsect(uint material) { return material == MAT_ANT || material == MAT_BEETLE; }
 
-int botDirection(uint material) {
-    return material == MAT_ALLY_BOT ? 1 : -1;
-}
-
-bool botGrounded(ivec2 p) {
+bool insectGrounded(ivec2 p) {
     Cell below = sampleAt(p + ivec2(0, 1));
-    return below.material != MAT_EMPTY && !isCellGas(below) && below.material != MAT_PLASMA_BOLT;
+    return below.material != MAT_EMPTY && !isCellGas(below);
 }
 
 bool isConveyorCargo(Cell cell) {
-    return isConveyorPowderMaterial(cell.material) || isLooseSolid(cell) || isBot(cell.material);
+    return isConveyorPowderMaterial(cell.material) || isLooseSolid(cell);
 }
 
 int conveyorDirectionBelow(ivec2 p) {
@@ -449,10 +443,6 @@ void processVertical(ivec2 top, ivec2 bottom) {
         return;
     }
 
-    if (isBot(a.material) && (b.material == MAT_EMPTY || isCellGas(b)) && (a.age & 1u) == 0u) {
-        swapCells(top, bottom);
-        return;
-    }
 
     if ((isCellPowder(a) || isCellLiquid(a) || isLooseSolid(a)) && canCellFallInto(a, b) &&
         movementAllows(a, randomValue)) {
@@ -533,14 +523,6 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
         }
     }
 
-    if (upward && isBot(source.material) && target.material == MAT_EMPTY &&
-        botDirection(source.material) == (targetPosition.x > sourcePosition.x ? 1 : -1) &&
-        botGrounded(sourcePosition) &&
-        sampleAt(sourcePosition + ivec2(botDirection(source.material), 0)).material != MAT_EMPTY &&
-        (source.age % 3u) == 0u) {
-        swapCells(sourcePosition, targetPosition);
-        return;
-    }
 
     if (source.material == MAT_BEE && target.material == MAT_EMPTY &&
         beeMoveAllowed(source, sourcePosition, targetPosition, randomValue)) {
@@ -572,20 +554,12 @@ void processHorizontal(ivec2 left, ivec2 right) {
         return;
     }
 
-    if (a.material == MAT_PLASMA_BOLT && b.material == MAT_EMPTY && (a.aux & AUX_CHARGED) != 0u) {
-        swapCells(left, right);
-        return;
-    }
-    if (b.material == MAT_PLASMA_BOLT && a.material == MAT_EMPTY && (b.aux & AUX_CHARGED) == 0u) {
-        swapCells(left, right);
-        return;
-    }
 
-    if (a.material == MAT_ALLY_BOT && b.material == MAT_EMPTY && botGrounded(left) && (a.age & 1u) == 0u) {
+    if (isInsect(a.material) && b.material == MAT_EMPTY && insectGrounded(left) && (a.age & 1u) == 0u) {
         swapCells(left, right);
         return;
     }
-    if (b.material == MAT_ENEMY_BOT && a.material == MAT_EMPTY && botGrounded(right) && (b.age & 1u) == 0u) {
+    if (isInsect(b.material) && a.material == MAT_EMPTY && insectGrounded(right) && (b.age & 1u) == 0u) {
         swapCells(left, right);
         return;
     }

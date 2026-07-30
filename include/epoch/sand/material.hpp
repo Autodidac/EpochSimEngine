@@ -31,7 +31,7 @@ enum class Material : std::uint32_t {
     bee = 18,
     salt = 19,
     ice = 20,
-    metal = 21,
+    aluminum = 21,
     ash = 22,
     ember = 23,
     glass = 24,
@@ -54,21 +54,21 @@ enum class Material : std::uint32_t {
     magma_vent = 41,
     uranium = 42,
     radiation = 43,
-    gold_ore = 44,
+    aluminum_shavings = 44,
     gold = 45,
     oxygen = 46,
     carbon_dioxide = 47,
-    iron_ore = 48,
+    iron_shavings = 48,
     steel = 49,
     conveyor = 50,
     smelter = 51,
     assembler = 52,
-    bot_fabricator = 53,
+    insect_habitat = 53,
     power_cell = 54,
     plasma_ammo = 55,
-    ally_bot = 56,
-    enemy_bot = 57,
-    plasma_bolt = 58,
+    ant = 56,
+    beetle = 57,
+    plant_stem = 58,
     factory_core = 59,
     silt = 60,
     fertilizer = 61,
@@ -127,7 +127,7 @@ inline constexpr std::array<std::string_view, material_count> material_names{
     "Bee",
     "Salt",
     "Ice",
-    "Metal",
+    "Aluminum",
     "Ash",
     "Ember",
     "Glass",
@@ -150,21 +150,21 @@ inline constexpr std::array<std::string_view, material_count> material_names{
     "Magma vent",
     "Uranium",
     "Radiation",
-    "Gold concentrate",
+    "Al shavings",
     "Gold",
     "Oxygen",
     "CO2",
-    "Iron concentrate",
+    "Iron shavings",
     "Steel",
     "Conveyor",
     "Smelter",
     "Assembler",
-    "Bot fab",
+    "Insect habitat",
     "Power cell",
     "Plasma ammo",
-    "Ally bot",
-    "Enemy bot",
-    "Plasma bolt",
+    "Ant",
+    "Beetle",
+    "Plant stem",
     "Factory core",
     "Silt",
     "Fertilizer",
@@ -183,7 +183,7 @@ inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
     {68u, 22u, 68u, 185u, 180, 32767, 32767, 100, 100, 32767, 60u, MaterialPhase::powder, "Terrain", "STRONG: WATER STORAGE", "WEAK: DRYING / LOAD", "TO: DIRT / SILT", "ROLE: WET SOIL LAYER", "DANGER: ENTOMBMENT"},
     {48u, 0u, 48u, 255u, 110, 32767, -20, 110, 110, 32767, 95u, MaterialPhase::liquid, "Heat", "STRONG: CORROSION", "WEAK: DILUTION / GLASS", "TO: DIRTY WATER / SALT", "ROLE: CHEMICAL REAGENT", "DANGER: TOXIC CORROSIVE"},
     {64u, 18u, 64u, 165u, 120, 80, 32767, 32767, 350, 220, 14u, MaterialPhase::solid, "Life", "STRONG: CO2 CAPTURE", "WEAK: SALT / FIRE / DARK", "TO: FOOD / WASTE / ASH", "ROLE: PRIMARY PRODUCER", "DANGER: FIRE SPREAD"},
-    {4u, 0u, 4u, 255u, 500, 32767, 32767, 32767, 32767, 32767, 8u, MaterialPhase::gas, "Colony", "STRONG: HEAT CARRIER", "WEAK: STEAM / PLANTS", "TO: DIRTY STEAM / CO2", "ROLE: CARBON TRANSPORT", "DANGER: SUFFOCATION"},
+    {4u, 0u, 4u, 255u, 500, 32767, 32767, 32767, 32767, 32767, 8u, MaterialPhase::gas, "Heat", "STRONG: HEAT CARRIER", "WEAK: STEAM / PLANTS", "TO: DIRTY STEAM / CO2", "ROLE: CARBON TRANSPORT", "DANGER: SUFFOCATION"},
     {5u, 0u, 5u, 255u, 600, 32767, 32767, 32767, 32767, 32767, 12u, MaterialPhase::gas, "Water", "STRONG: PRESSURE / HEAT", "WEAK: COLD SURFACES", "TO: WATER / DIRTY STEAM", "ROLE: WATER VAPOR", "DANGER: BURNS / PRESSURE"},
     {2u, 0u, 2u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 4u, MaterialPhase::plasma, "Heat", "STRONG: IGNITION / HEAT", "WEAK: WATER / OXYGEN LOSS", "TO: SMOKE / EMBER / STEAM", "ROLE: COMBUSTION ENERGY", "DANGER: EXTREME FIRE"},
     {72u, 0u, 72u, 255u, 900, 32767, 700, 2600, 2600, 32767, 115u, MaterialPhase::liquid, "Heat", "STRONG: HEAT / FLOW", "WEAK: WATER COOLING", "TO: STONE / STEAM", "ROLE: GEOLOGIC HEAT", "DANGER: MELTING / FIRE"},
@@ -195,7 +195,7 @@ inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
     {8u, 0u, 8u, 110u, 55, 32767, 32767, 32767, 120, 32767, 3u, MaterialPhase::solid, "Colony", "STRONG: POLLINATION", "WEAK: SMOKE / ACID / FIRE", "TO: POLLEN / WASTE", "ROLE: COLONY WORKER", "DANGER: SWARM"},
     {76u, 8u, 76u, 255u, 800, 780, 801, 1465, 1465, 32767, 30u, MaterialPhase::powder, "Water", "STRONG: PRESERVATION", "WEAK: WATER DISSOLUTION", "TO: SALTWATER / CRYSTAL", "ROLE: DISSOLVED MINERAL", "DANGER: SOIL DAMAGE"},
     {120u, 80u, 40u, 240u, 2, 32767, 0, 100, 100, 32767, 80u, MaterialPhase::solid, "Water", "STRONG: COOLING / FLOATING", "WEAK: HEAT / BRINE", "TO: WATER", "ROLE: FROZEN STORAGE", "DANGER: SLIP / BLOCKAGE"},
-    {235u, 230u, 235u, 248u, 1450, 950, 1250, 2700, 2700, 32767, 220u, MaterialPhase::solid, "Materials", "STRONG: SUPPORT / CONDUCTION", "WEAK: ACID / LIGHTNING", "TO: SCRAP / OXIDE", "ROLE: ENGINEERING FRAME", "DANGER: ELECTRIC SHOCK"},
+    {150u, 118u, 150u, 236u, 660, 500, 660, 2470, 2470, 32767, 240u, MaterialPhase::solid, "Materials", "STRONG: LIGHT / CONDUCTION", "WEAK: ACID / EXTREME HEAT", "TO: SHAVINGS / PARTS", "ROLE: LIGHT ENGINEERING METAL", "DANGER: HOT METAL"},
     {28u, 4u, 28u, 180u, 500, 32767, 32767, 32767, 1100, 32767, 12u, MaterialPhase::powder, "Heat", "STRONG: MINERAL FEED", "WEAK: WATER / WIND", "TO: FERTILIZER / SILT", "ROLE: RECYCLED MINERALS", "DANGER: RESPIRATORY DUST"},
     {18u, 0u, 18u, 210u, 0, 32767, 32767, 32767, 900, 32767, 18u, MaterialPhase::powder, "Heat", "STRONG: STORED HEAT", "WEAK: WATER / AGE", "TO: ASH / FIRE", "ROLE: COMBUSTION INTERMEDIATE", "DANGER: REIGNITION"},
     {190u, 160u, 190u, 255u, 700, 600, 1400, 32767, 2500, 32767, 45u, MaterialPhase::solid, "Terrain", "STRONG: ACID / TRANSPARENCY", "WEAK: IMPACT / SHOCK", "TO: SHARDS / SAND", "ROLE: WINDOW / VESSEL", "DANGER: SHARP BREAKAGE"},
@@ -216,29 +216,29 @@ inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
     {180u, 170u, 180u, 255u, 600, 450, 900, 32767, 2200, 650, 2u, MaterialPhase::solid, "Materials", "STRONG: ELECTRIC ISOLATION", "WEAK: HEAT / IMPACT", "TO: WASTE", "ROLE: CIRCUIT SAFETY", "DANGER: BREAKDOWN"},
     {1u, 0u, 1u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 255u, MaterialPhase::plasma, "Engineering", "STRONG: ELECTRIC ENERGY", "WEAK: GROUND / INSULATION", "TO: HEAT / CHARGE", "ROLE: TRANSIENT FORCE", "DANGER: LETHAL VOLTAGE"},
     {255u, 255u, 255u, 255u, 2000, 32767, 32767, 32767, 32767, 32767, 255u, MaterialPhase::solid, "Heat", "STRONG: PERMANENT HEAT", "WEAK: NONE", "TO: LAVA / STONE", "ROLE: GEOLOGIC SOURCE", "DANGER: EXTREME HEAT"},
-    {230u, 215u, 230u, 250u, 1132, 1000, 1132, 4131, 4131, 32767, 115u, MaterialPhase::solid, "Unknown", "STRONG: ENERGY DENSITY", "WEAK: SHIELDING / ACID", "TO: HEAT / RADIATION", "ROLE: NUCLEAR FUEL", "DANGER: RADIATION"},
-    {1u, 0u, 1u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 0u, MaterialPhase::gas, "Unknown", "STRONG: PENETRATION", "WEAK: METAL SHIELDING", "TO: HEAT / DAMAGE", "ROLE: NUCLEAR FIELD", "DANGER: IONIZING"},
-    {96u, 20u, 225u, 246u, 1064, 900, 1064, 2856, 2856, 32767, 120u, MaterialPhase::solid, "Unknown", "STRONG: LEGACY SAVE COMPATIBILITY", "WEAK: NOT AUTHORED", "TO: GOLD PIXELS", "ROLE: DEPRECATED RESOURCE ID", "DANGER: NONE"},
+    {230u, 215u, 230u, 250u, 1132, 1000, 1132, 4131, 4131, 32767, 115u, MaterialPhase::solid, "Industry", "STRONG: ENERGY DENSITY", "WEAK: SHIELDING / ACID", "TO: HEAT / RADIATION", "ROLE: NUCLEAR FUEL", "DANGER: RADIATION"},
+    {1u, 0u, 1u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 0u, MaterialPhase::gas, "Engineering", "STRONG: PENETRATION", "WEAK: METAL SHIELDING", "TO: HEAT / DAMAGE", "ROLE: NUCLEAR FIELD", "DANGER: IONIZING"},
+    {62u, 18u, 150u, 220u, 660, 500, 660, 2470, 2470, 32767, 220u, MaterialPhase::powder, "Materials", "STRONG: SIFTING / RECYCLING", "WEAK: ACID / HEAT", "TO: ALUMINUM PARTS", "ROLE: DENSE MACHINING FEED", "DANGER: SHARP PARTICLES"},
     {96u, 90u, 210u, 246u, 1064, 850, 1064, 2856, 2856, 32767, 250u, MaterialPhase::solid, "Materials", "STRONG: CONDUCTION / ACID", "WEAK: SOFTNESS", "TO: CIRCUITS / SCRAP", "ROLE: ADVANCED COMPONENT", "DANGER: HEAVY FALL"},
-    {7u, 0u, 7u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 4u, MaterialPhase::gas, "Colony", "STRONG: RESPIRATION", "WEAK: FIRE CONSUMPTION", "TO: CO2 / STEAM", "ROLE: BREATHABLE GAS", "DANGER: FIRE ACCELERATION"},
-    {11u, 0u, 11u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 4u, MaterialPhase::gas, "Colony", "STRONG: FIRE SUPPRESSION", "WEAK: PLANTS / WATER", "TO: OXYGEN / FOOD", "ROLE: CARBON RESERVOIR", "DANGER: ASPHYXIATION"},
-    {88u, 20u, 225u, 244u, 1450, 1200, 1538, 2862, 2862, 32767, 90u, MaterialPhase::solid, "Unknown", "STRONG: LEGACY SAVE COMPATIBILITY", "WEAK: NOT AUTHORED", "TO: IRON PIXELS", "ROLE: DEPRECATED RESOURCE ID", "DANGER: NONE"},
+    {7u, 0u, 7u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 4u, MaterialPhase::gas, "Engineering", "STRONG: RESPIRATION", "WEAK: FIRE CONSUMPTION", "TO: CO2 / STEAM", "ROLE: BREATHABLE GAS", "DANGER: FIRE ACCELERATION"},
+    {11u, 0u, 11u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 4u, MaterialPhase::gas, "Engineering", "STRONG: FIRE SUPPRESSION", "WEAK: PLANTS / WATER", "TO: OXYGEN / FOOD", "ROLE: CARBON RESERVOIR", "DANGER: ASPHYXIATION"},
+    {86u, 24u, 225u, 220u, 1538, 1200, 1538, 2862, 2862, 32767, 180u, MaterialPhase::powder, "Materials", "STRONG: MAGNETIC SIFTING", "WEAK: ACID / CORROSION", "TO: IRON / STEEL", "ROLE: DENSE MACHINING FEED", "DANGER: SHARP PARTICLES"},
     {245u, 240u, 245u, 252u, 1450, 1250, 1450, 2900, 2900, 32767, 185u, MaterialPhase::solid, "Materials", "STRONG: SUPPORT / TOUGHNESS", "WEAK: EXTREME HEAT", "TO: SCRAP / MACHINES", "ROLE: PRIMARY STRUCTURE", "DANGER: HEAVY COLLAPSE"},
     {220u, 215u, 220u, 250u, 850, 700, 1350, 2800, 2800, 32767, 190u, MaterialPhase::solid, "Industry", "STRONG: MATERIAL ROUTING", "WEAK: POWER LOSS / DAMAGE", "TO: SCRAP", "ROLE: FACTORY TRANSPORT", "DANGER: PINCH POINT"},
     {240u, 230u, 240u, 252u, 1500, 1000, 1500, 3000, 3000, 32767, 175u, MaterialPhase::solid, "Industry", "STRONG: METAL PROCESSING", "WEAK: COOLANT LOSS", "TO: STEEL / SMOKE / SLAG", "ROLE: THERMAL FACTORY", "DANGER: HEAT / FIRE"},
     {225u, 215u, 225u, 250u, 700, 550, 1200, 2600, 2600, 32767, 170u, MaterialPhase::solid, "Industry", "STRONG: COMPONENT BUILD", "WEAK: POWER LOSS", "TO: POWER CELLS / AMMO", "ROLE: MANUFACTURING", "DANGER: MOVING PARTS"},
-    {230u, 220u, 230u, 250u, 700, 550, 1200, 2600, 2600, 32767, 170u, MaterialPhase::solid, "Industry", "STRONG: BOT PRODUCTION", "WEAK: POWER / INPUT LOSS", "TO: ALLY / ENEMY BOT", "ROLE: AUTOMATION", "DANGER: HOSTILE OUTPUT"},
+    {175u, 145u, 175u, 220u, 180, 80, 180, 32767, 420, 230, 12u, MaterialPhase::solid, "Colony", "STRONG: SHELTER / BREEDING", "WEAK: FIRE / ACID / DRYNESS", "TO: ANTS / BEETLES / WASTE", "ROLE: INSECT POPULATION SOURCE", "DANGER: INFESTATION"},
     {92u, 40u, 92u, 210u, 220, 120, 220, 350, 450, 180, 150u, MaterialPhase::solid, "Engineering", "STRONG: STORED ENERGY", "WEAK: HEAT / IMPACT", "TO: AMMO / FIRE / SCRAP", "ROLE: ENERGY STORAGE", "DANGER: THERMAL RUNAWAY"},
     {93u, 35u, 93u, 205u, 180, 110, 180, 330, 430, 160, 130u, MaterialPhase::solid, "Engineering", "STRONG: WEAPON ENERGY", "WEAK: HEAT / IMPACT", "TO: PLASMA BOLT / FIRE", "ROLE: FUTURE WEAPON FEED", "DANGER: EXPLOSIVE"},
-    {180u, 150u, 180u, 220u, 450, 350, 1200, 2600, 2600, 32767, 130u, MaterialPhase::solid, "Industry", "STRONG: COMBAT / LABOR", "WEAK: ACID / PLASMA", "TO: SCRAP / WASTE", "ROLE: FRIENDLY AUTOMATION", "DANGER: WEAPON FIRE"},
-    {180u, 150u, 180u, 220u, 450, 350, 1200, 2600, 2600, 32767, 130u, MaterialPhase::solid, "Industry", "STRONG: COMBAT / PRESSURE", "WEAK: PLASMA / MAGNETS", "TO: SCRAP", "ROLE: HOSTILE FORCE", "DANGER: HOSTILE"},
-    {2u, 0u, 2u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 255u, MaterialPhase::plasma, "Industry", "STRONG: ARMOR DAMAGE", "WEAK: RANGE / SHIELD", "TO: HEAT / CHARGE", "ROLE: PROJECTILE ENERGY", "DANGER: EXTREME ENERGY"},
+    {10u, 0u, 10u, 120u, 65, 32767, 32767, 32767, 120, 32767, 2u, MaterialPhase::solid, "Colony", "STRONG: WASTE TRANSPORT", "WEAK: WATER / FIRE / ACID", "TO: FERTILIZER / WASTE", "ROLE: DETRITIVORE", "DANGER: NONE"},
+    {18u, 2u, 18u, 145u, 90, 70, 32767, 32767, 160, 32767, 3u, MaterialPhase::solid, "Colony", "STRONG: DEAD MATTER BREAKDOWN", "WEAK: FIRE / ACID / COLD", "TO: FERTILIZER / WASTE", "ROLE: DECOMPOSER", "DANGER: CROP DAMAGE"},
+    {70u, 12u, 70u, 140u, 90, 60, 32767, 32767, 240, 180, 7u, MaterialPhase::solid, "Life", "STRONG: FLOWER SUPPORT", "WEAK: DARK / FIRE / SALT", "TO: FLOWER / WASTE", "ROLE: VASCULAR PLANT GROWTH", "DANGER: NONE"},
     {254u, 250u, 254u, 254u, 1200, 950, 1450, 2900, 2900, 32767, 220u, MaterialPhase::solid, "Industry", "STRONG: FACTORY CONTROL", "WEAK: POWER LOSS / DAMAGE", "TO: SCRAP / SHUTDOWN", "ROLE: PRODUCTION CONTROL", "DANGER: SYSTEM FAILURE"},
     {60u, 18u, 60u, 178u, 250, 32767, 32767, 100, 600, 32767, 25u, MaterialPhase::powder, "Terrain", "STRONG: NUTRIENT STORAGE", "WEAK: FAST WATER / DRYING", "TO: FERTILIZER / DIRT", "ROLE: SETTLED SEDIMENT", "DANGER: CLOGGING"},
     {55u, 8u, 55u, 160u, 160, 85, 32767, 32767, 350, 190, 14u, MaterialPhase::powder, "Life", "STRONG: CROP GROWTH", "WEAK: WATER LOSS / FIRE", "TO: FOOD / DIRT / SMOKE", "ROLE: FARM NUTRIENT", "DANGER: RUNOFF"},
     {42u, 4u, 42u, 145u, 100, 70, 32767, 32767, 260, 180, 11u, MaterialPhase::powder, "Life", "STRONG: LIFE SUPPORT", "WEAK: AGE / FIRE", "TO: WASTE / SMOKE", "ROLE: STORED BIOMASS", "DANGER: SPOILAGE"},
-    {58u, 10u, 58u, 150u, 180, 85, 32767, 32767, 400, 210, 12u, MaterialPhase::powder, "Life", "STRONG: RECOVERABLE CARBON", "WEAK: HEAT / WATER", "TO: DIRT / DIRTY WATER / SMOKE", "ROLE: RECYCLE FEED", "DANGER: BIOHAZARD"},
-    {1u, 0u, 1u, 255u, 0, 32767, 32767, 32767, 32767, 560, 180u, MaterialPhase::gas, "Colony", "STRONG: LIGHT FUEL GAS", "WEAK: IGNITION / CONTAINMENT", "TO: STEAM / FIRE", "ROLE: ENERGY CARRIER", "DANGER: EXPLOSIVE GAS"},
+    {58u, 10u, 58u, 150u, 180, 85, 32767, 32767, 400, 210, 12u, MaterialPhase::powder, "Industry", "STRONG: RECOVERABLE CARBON", "WEAK: HEAT / WATER", "TO: DIRT / DIRTY WATER / SMOKE", "ROLE: RECYCLE FEED", "DANGER: BIOHAZARD"},
+    {1u, 0u, 1u, 255u, 0, 32767, 32767, 32767, 32767, 560, 180u, MaterialPhase::gas, "Engineering", "STRONG: LIGHT FUEL GAS", "WEAK: IGNITION / CONTAINMENT", "TO: STEAM / FIRE", "ROLE: ENERGY CARRIER", "DANGER: EXPLOSIVE GAS"},
 }};
 
 [[nodiscard]] constexpr const MaterialProfile& material_profile(const Material material) noexcept {
@@ -272,17 +272,17 @@ enum class MaterialGroup : std::uint32_t {
 };
 
 inline constexpr auto material_group_count = static_cast<std::uint32_t>(MaterialGroup::count);
-inline constexpr std::uint32_t material_slots_per_group = 9u;
+inline constexpr std::uint32_t material_slots_per_group = 10u;
 
 inline constexpr std::array<std::uint32_t, material_group_count> material_group_slot_counts{
     8u,
     8u,
     8u,
+    8u,
     9u,
+    10u,
     8u,
-    8u,
-    4u,
-    8u,
+    6u,
 };
 
 inline constexpr std::array<std::string_view, material_group_count> material_group_names{
@@ -297,14 +297,14 @@ inline constexpr std::array<std::string_view, material_group_count> material_gro
 };
 
 inline constexpr std::array<std::array<Material, material_slots_per_group>, material_group_count> material_groups{{
-    {Material::empty, Material::sand, Material::dirt, Material::stone, Material::mud, Material::silt, Material::crystal, Material::glass, Material::count},
-    {Material::water, Material::saltwater, Material::dirty_water, Material::ice, Material::snow, Material::steam, Material::dirty_steam, Material::salt, Material::count},
-    {Material::grass, Material::seed, Material::flower, Material::wood, Material::food, Material::waste, Material::fertilizer, Material::pollen, Material::count},
-    {Material::honey, Material::bee, Material::queen_bee, Material::bee_nest, Material::beeswax, Material::oxygen, Material::carbon_dioxide, Material::smoke, Material::hydrogen},
-    {Material::fire, Material::lava, Material::oil, Material::ember, Material::ash, Material::gunpowder, Material::acid, Material::magma_vent, Material::count},
-    {Material::plastic, Material::acid_resistant_plastic, Material::metal, Material::iron, Material::copper, Material::gold, Material::steel, Material::insulator, Material::count},
-    {Material::magnet, Material::lightning, Material::power_cell, Material::plasma_ammo, Material::count, Material::count, Material::count, Material::count, Material::count},
-    {Material::conveyor, Material::smelter, Material::assembler, Material::bot_fabricator, Material::ally_bot, Material::enemy_bot, Material::plasma_bolt, Material::factory_core, Material::count},
+    {Material::empty, Material::sand, Material::dirt, Material::stone, Material::mud, Material::silt, Material::crystal, Material::glass, Material::count, Material::count},
+    {Material::water, Material::saltwater, Material::dirty_water, Material::ice, Material::snow, Material::steam, Material::dirty_steam, Material::salt, Material::count, Material::count},
+    {Material::grass, Material::seed, Material::plant_stem, Material::flower, Material::wood, Material::food, Material::fertilizer, Material::pollen, Material::count, Material::count},
+    {Material::honey, Material::bee, Material::queen_bee, Material::bee_nest, Material::beeswax, Material::ant, Material::beetle, Material::insect_habitat, Material::count, Material::count},
+    {Material::fire, Material::lava, Material::oil, Material::ember, Material::ash, Material::gunpowder, Material::acid, Material::magma_vent, Material::smoke, Material::count},
+    {Material::plastic, Material::acid_resistant_plastic, Material::aluminum, Material::aluminum_shavings, Material::iron, Material::iron_shavings, Material::copper, Material::gold, Material::steel, Material::insulator},
+    {Material::magnet, Material::lightning, Material::power_cell, Material::plasma_ammo, Material::oxygen, Material::carbon_dioxide, Material::hydrogen, Material::radiation, Material::count, Material::count},
+    {Material::conveyor, Material::smelter, Material::assembler, Material::factory_core, Material::uranium, Material::waste, Material::count, Material::count, Material::count, Material::count},
 }};
 
 [[nodiscard]] constexpr std::string_view material_group_name(const MaterialGroup group) noexcept {
@@ -330,7 +330,7 @@ inline constexpr std::array<std::array<Material, material_slots_per_group>, mate
     case Material::wood:
     case Material::plastic:
     case Material::acid_resistant_plastic:
-    case Material::metal:
+    case Material::aluminum:
     case Material::glass:
     case Material::iron:
     case Material::copper:
@@ -342,7 +342,7 @@ inline constexpr std::array<std::array<Material, material_slots_per_group>, mate
     case Material::conveyor:
     case Material::smelter:
     case Material::assembler:
-    case Material::bot_fabricator:
+    case Material::insect_habitat:
     case Material::factory_core:
         return true;
     default:

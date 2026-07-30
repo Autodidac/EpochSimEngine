@@ -185,9 +185,9 @@ def main() -> int:
         errors.append("generated group map contains an invalid material ID")
     if len(group_values) != len(set(group_values)):
         errors.append("generated group map contains duplicate material IDs")
-    for hidden in (cpp_ids.get("gold_ore"), cpp_ids.get("iron_ore")):
-        if hidden in group_values:
-            errors.append("legacy ore/concentrate IDs must not appear in the palette")
+    for forbidden in ("gold_ore", "iron_ore", "metal", "ally_bot", "enemy_bot", "bot_fabricator"):
+        if forbidden in cpp_ids:
+            errors.append(f"retired material identifier remains: {forbidden}")
 
     group_count_function = extract_uint_function(ui_text, "groupMaterialCount")
     for token in ("uiTextStorage", "GROUP_MATERIAL_COUNTS_BASE"):
@@ -237,18 +237,33 @@ def main() -> int:
     if actor_comp.count("ivec2 center = ivec2(state.x, state.y - 4);") != 1:
         errors.append("actor breathing center declaration must be unique")
     for token in (
-        "hitMaterial == MAT_ENEMY_BOT",
+        "hitMaterial == MAT_BEETLE",
         "state.ammo > 0u",
         "Ammo never blocks ordinary mining",
         "state.shotTimer = plasma ? 14u : 7u",
+        "state.drillLevel",
+        "state.aluminum",
+        "state.copper",
     ):
         if token not in actor_comp:
             errors.append(f"context-sensitive tool contract missing {token!r}")
     for token in ("ambientAir", "Atmosphere affects the oxygen meter only"):
         if token not in actor_comp:
             errors.append(f"nonlethal atmosphere contract missing {token!r}")
-    if "state.health -=" in actor_comp:
-        errors.append("passive atmosphere still drains player health")
+    if "std::jthread" in app_cpp or "stop_token" in app_cpp or "request_stop" in app_cpp:
+        errors.append("obsolete implicit jthread ownership remains")
+    if "SandHybrid" not in app_cpp:
+        errors.append("SandHybrid branding is missing from the application")
+    for token in ("make_simulation_viewport", "viewport_left", "viewport_width"):
+        if token not in app_cpp + ui_layout + (ROOT / "src/vulkan_renderer.cpp").read_text(encoding="utf-8"):
+            errors.append(f"tile-aligned viewport contract missing {token!r}")
+    for token in ("viewportLeft", "viewportWidth", "Deliberate letterbox"):
+        if token not in fullscreen:
+            errors.append(f"fullscreen tile-aligned viewport missing {token!r}")
+    for retired in ("MAT_METAL", "MAT_GOLD_ORE", "MAT_IRON_ORE", "MAT_ALLY_BOT", "MAT_ENEMY_BOT", "MAT_BOT_FABRICATOR"):
+        for shader_name in ENTRY_SHADERS:
+            if retired in (SHADERS / shader_name).read_text(encoding="utf-8"):
+                errors.append(f"{shader_name}: retired identifier remains: {retired}")
     for token in ("bool primary_pressed{}", "bool secondary_pressed{}"):
         if token not in window_hpp:
             errors.append(f"window press-edge contract missing {token!r}")
@@ -264,7 +279,7 @@ def main() -> int:
     for token in ("status_height = 72u", "group_tabs_height = 48u", "palette_items_height = 76u"):
         if token not in ui_layout:
             errors.append(f"large UI layout contract missing {token!r}")
-    for token in ("int[5](78, 78, 104, 136, 104)", "ivec2(12, 12), 4, 0u", "hudTop + 78u"):
+    for token in ("int[5](78, 78, 104, 136, 104)", "ivec2(12, 15), titleScale, 0u", "hudTop + 112u"):
         if token not in fullscreen:
             errors.append(f"large UI shader contract missing {token!r}")
 
@@ -379,12 +394,12 @@ def main() -> int:
              "palette_height", "group_tabs_height", "material_slots", "frames_per_second", "paused",
              "steps_per_frame", "selected_group", "hovered_group", "hovered_material", "selected_scene",
              "group_count", "scene_count", "mining_mode", "inspect_mode", "debug_mode", "tile_columns",
-             "tile_rows"],
+             "tile_rows", "viewport_left", "viewport_top", "viewport_width", "viewport_height"],
             ["gridWidth", "gridHeight", "windowWidth", "windowHeight", "selectedMaterial",
              "materialCount", "cursorX", "cursorY", "brushRadius", "statusHeight", "paletteHeight",
              "groupTabsHeight", "materialSlots", "framesPerSecond", "paused", "stepsPerFrame",
              "selectedGroup", "hoveredGroup", "hoveredMaterial", "selectedScene", "groupCount",
-             "sceneCount", "miningMode", "inspectMode", "debugMode", "tileColumns", "tileRows"],
+             "sceneCount", "miningMode", "inspectMode", "debugMode", "tileColumns", "tileRows", "viewportLeft", "viewportTop", "viewportWidth", "viewportHeight"],
             renderer,
             "renderPc",
         ),

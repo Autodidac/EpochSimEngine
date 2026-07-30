@@ -5,7 +5,7 @@
 
 #include <cstdint>
 #include <memory>
-#include <stop_token>
+#include <atomic>
 
 namespace epoch::sand {
 
@@ -24,7 +24,7 @@ public:
     VulkanRenderer(const VulkanRenderer&) = delete;
     VulkanRenderer& operator=(const VulkanRenderer&) = delete;
 
-    void run(std::stop_token stop_token, SharedState& shared_state);
+    void run(const std::atomic_bool& stop_requested, SharedState& shared_state);
 
 private:
     struct Impl;
