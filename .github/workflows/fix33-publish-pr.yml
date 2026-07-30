@@ -16,6 +16,12 @@ jobs:
   publish:
     runs-on: ubuntu-24.04
     steps:
+      - name: Check out verified source
+        uses: actions/checkout@v4
+        with:
+          ref: 9111f432d619c0d4a76c7951388e4ce05c91a012
+          fetch-depth: 0
+
       - name: Download verified Windows and Linux artifacts
         uses: actions/download-artifact@v4
         with:
@@ -25,6 +31,15 @@ jobs:
           pattern: SandHybrid_*_Fix33
           path: release
           merge-multiple: true
+
+      - name: Precreate verified release tag
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -f -a v1.8.0-fix33 9111f432d619c0d4a76c7951388e4ce05c91a012 \
+            -m 'SandHybrid Fix33 verified Windows and Linux build'
+          git push --force origin refs/tags/v1.8.0-fix33
 
       - name: Publish v1.8.0-fix33
         env:
@@ -37,7 +52,7 @@ jobs:
           test -f release/SandHybrid_Linux_x64_Fix33.sha256
           tag='v1.8.0-fix33'
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes
           fi
           gh release create "$tag" \
             release/SandHybrid_Windows_x64_Fix33.zip \
@@ -45,7 +60,7 @@ jobs:
             release/SandHybrid_Linux_x64_Fix33.tar.gz \
             release/SandHybrid_Linux_x64_Fix33.sha256 \
             --repo "$GITHUB_REPOSITORY" \
-            --target 9111f432d619c0d4a76c7951388e4ce05c91a012 \
+            --verify-tag \
             --title 'SandHybrid Fix33 — Hierarchical Simulation on Fix32' \
             --notes 'Fix33 starts from the current Fix32 FastFreddy source. It preserves the living biohazard bee swarm, zoomable cursor editor, readable keymap, all eight GUI material groups, and all 65 material buttons. It adds homogeneous 8x8 macro-cell bulk movement, 64x64 sleeping chunks, bounded chunk wakeups, hierarchy diagnostics in the existing debug GUI, and correct Linux XCB Vulkan-loader selection. Windows and Linux Release builds and all C++23 contracts passed before publication.'
 
