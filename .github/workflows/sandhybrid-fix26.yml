@@ -7,6 +7,7 @@ on:
     paths:
       - "tools/apply_fix26_systems.py"
       - "tools/patch_fix26_apply.py"
+      - "tools/patch_fix26_compile.py"
       - "tools/patch_fix26_validator.py"
       - "tools/audit_fix26_systems.py"
       - ".github/workflows/sandhybrid-fix26.yml"
@@ -42,6 +43,12 @@ jobs:
         run: |
           python tools/apply_fix26_systems.py
           if ($LASTEXITCODE -ne 0) { throw 'Fix26 correction pass failed.' }
+
+      - name: Apply Fix26 GLSL compile correction
+        shell: pwsh
+        run: |
+          python tools/patch_fix26_compile.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix26 GLSL compile correction failed.' }
 
       - name: Regenerate material and UI data
         shell: pwsh
@@ -113,6 +120,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Remove-Item -LiteralPath 'tools/apply_fix26_systems.py' -Force
           Remove-Item -LiteralPath 'tools/patch_fix26_apply.py' -Force
+          Remove-Item -LiteralPath 'tools/patch_fix26_compile.py' -Force
           Remove-Item -LiteralPath 'tools/patch_fix26_validator.py' -Force
           Remove-Item -LiteralPath 'tools/audit_fix26_systems.py' -Force
           Remove-Item -LiteralPath '.github/workflows/sandhybrid-fix26.yml' -Force
