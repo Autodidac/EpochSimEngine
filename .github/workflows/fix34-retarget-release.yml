@@ -1,0 +1,61 @@
+name: Retarget FastFreddyTestbed v2.2.0 Cleanly
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - fix34-retarget-trigger.txt
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  retarget:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download current corrected release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release
+          gh release download v2.2.0 --repo "$GITHUB_REPOSITORY" --dir release
+          cd release
+          sha256sum -c FastFreddyTestbed_Windows_x64_v2.2.0.sha256
+          sha256sum -c FastFreddyTestbed_Linux_x64_v2.2.0.sha256
+
+      - name: Recreate release on clean source commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete v2.2.0 --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          gh release create v2.2.0 \
+            release/FastFreddyTestbed_Windows_x64_v2.2.0.zip \
+            release/FastFreddyTestbed_Windows_x64_v2.2.0.sha256 \
+            release/FastFreddyTestbed_Linux_x64_v2.2.0.tar.gz \
+            release/FastFreddyTestbed_Linux_x64_v2.2.0.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target 9acc6c2f59cd2395cf161e943480acf6de3feb90 \
+            --title 'FastFreddyTestbed v2.2.0 — Current Fix32 Base + Half Water' \
+            --notes 'Correct target repository: fastfreddytestbed. Rebuilt from the current FastFreddy Fix32 application while preserving the full GUI, all 65 material buttons, current bee/cursor/keymap behavior, 8x8 macro-cell movement, 64x64 sleeping chunks, and hierarchy diagnostics. Fresh water alone uses conserved half-volume cells, a full-plus-half ledge threshold, and twice the horizontal movement passes. Windows and Linux Release builds, every Vulkan shader, package checksums, and all C++23 contracts passed. Documentation formatting is corrected, and the release targets the clean source commit.'
+
+      - name: Remove one-time workflow and trigger branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -f .github/workflows/fix34-retarget-release.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Remove one-time Fix34 release retarget [skip ci]'
+          git push origin HEAD:main
+          gh pr close ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" \
+            --comment 'v2.2.0 now targets the clean post-cleanup source commit.'
+          git push origin --delete '${{ github.event.pull_request.head.ref }}'
