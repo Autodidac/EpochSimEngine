@@ -64,6 +64,29 @@ jobs:
           end = source.index(end_marker, begin)
           lines = source[begin:end].splitlines()
           script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+          brittle = """def replace_once(path: str, old: str, new: str) -> None:
+    text = read(path)
+    if old not in text:
+        raise RuntimeError(f'missing marker in {path}: {old[:100]!r}')
+    write(path, text.replace(old, new, 1))
+"""
+          tolerant = """def replace_once(path: str, old: str, new: str) -> None:
+    import re
+    text = read(path)
+    if old in text:
+        write(path, text.replace(old, new, 1))
+        return
+    pieces = re.split(r'(\\s+)', old)
+    pattern = ''.join(r'\\s+' if piece.isspace() else re.escape(piece)
+                      for piece in pieces if piece)
+    match = re.search(pattern, text, flags=re.MULTILINE)
+    if match is None:
+        raise RuntimeError(f'missing marker in {path}: {old[:100]!r}')
+    write(path, text[:match.start()] + new + text[match.end():])
+"""
+          if brittle not in script:
+              raise RuntimeError('unable to find resolver helper')
+          script = script.replace(brittle, tolerant, 1)
           Path('/tmp/resolve_hierarchy.py').write_text(script, encoding='utf-8')
           PY
           python3 /tmp/resolve_hierarchy.py
