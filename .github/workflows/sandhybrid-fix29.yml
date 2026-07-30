@@ -6,6 +6,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "tools/fix29.py"
+      - "tools/fix29_prepare.py"
       - "tools/audit_fix29.py"
       - ".github/workflows/sandhybrid-fix29.yml"
 
@@ -28,6 +29,12 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Prepare whitespace-independent camera patch
+        shell: pwsh
+        run: |
+          python tools/fix29_prepare.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix29 camera matcher preparation failed.' }
 
       - name: Apply Fix29 camera cursor and bee corrections
         shell: pwsh
@@ -98,6 +105,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Remove-Item -LiteralPath 'tools/fix29.py' -Force
+          Remove-Item -LiteralPath 'tools/fix29_prepare.py' -Force
           Remove-Item -LiteralPath 'tools/audit_fix29.py' -Force
           Remove-Item -LiteralPath '.github/workflows/sandhybrid-fix29.yml' -Force
           git config user.name 'github-actions[bot]'
