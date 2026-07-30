@@ -3,10 +3,15 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 
-reset_path = root / "shaders/reset.comp"
-reset = reset_path.read_text(encoding="utf-8")
-if "tileOrigin" in reset:
-    reset_path.write_text(reset.replace("tileOrigin", "brickOrigin"), encoding="utf-8")
+shader_suffixes = {".glsl", ".comp", ".frag", ".vert"}
+renamed = 0
+for shader_path in (root / "shaders").iterdir():
+    if shader_path.suffix not in shader_suffixes:
+        continue
+    shader = shader_path.read_text(encoding="utf-8")
+    if "tileOrigin" in shader:
+        shader_path.write_text(shader.replace("tileOrigin", "brickOrigin"), encoding="utf-8")
+        renamed += 1
 
 validator_path = root / "tools/validate_shader_contracts.py"
 validator = validator_path.read_text(encoding="utf-8")
@@ -18,4 +23,4 @@ elif new not in validator:
     raise SystemExit("shader validator has neither the 14- nor 16-descriptor contract")
 validator_path.write_text(validator, encoding="utf-8")
 
-print("Fix34 post-patch contracts ready: brick naming and 16-descriptor chunk layout.")
+print(f"Fix34 post-patch contracts ready: renamed {renamed} shader file(s); 16-descriptor chunk layout.")
