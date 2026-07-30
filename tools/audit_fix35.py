@@ -27,6 +27,7 @@ require("shaders/bee_swarm.glsl", "beeBiohazardTargetOffset")
 require("shaders/bee_swarm.glsl", "beeHaloTargetOffset")
 require("shaders/bee_swarm.glsl", "beeCloudTargetOffset")
 require("shaders/bee_swarm.glsl", "beeSwarmTarget")
+require("shaders/bee_swarm.glsl", "beeOrbitTarget")
 
 require("shaders/paint.comp", "Exact Fix29 compact hive")
 require("shaders/paint.comp", "distanceSquared >= 28 && distanceSquared < 108")
@@ -43,7 +44,8 @@ require("shaders/reset.comp", "brickRect")
 require("shaders/reset.comp", "brickFrame")
 require("shaders/reset.comp", "brickStair")
 
-require("shaders/move.comp", "return beeSwarmTarget(bee.aux, movePc.step);")
+require("shaders/move.comp", "return beeOrbitTarget(bee.aux, movePc.step);")
+require("shaders/move.comp", "boundedSidestep")
 if "targetDistance <= 49" in text("shaders/move.comp"):
     raise SystemExit("move.comp: old 49-cell bee deadlock bound remains")
 require("shaders/move.comp", "Dense agents circulate around the moving hidden-mask target")
