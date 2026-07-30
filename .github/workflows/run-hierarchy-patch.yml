@@ -48,29 +48,8 @@ jobs:
           end = source.index(end_marker, begin)
           lines = source[begin:end].splitlines()
           stripped = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
-          brittle = '''def replace(path: str, old: str, new: str, count: int = 1) -> None:
-    text = read(path)
-    if old not in text:
-        raise RuntimeError(f'missing replacement marker in {path}: {old[:120]!r}')
-    text = text.replace(old, new, count)
-    write(path, text)
-'''
-          tolerant = '''def replace(path: str, old: str, new: str, count: int = 1) -> None:
-    import re
-    text = read(path)
-    if old in text:
-        write(path, text.replace(old, new, count))
-        return
-    pieces = re.split(r'(\\s+)', old)
-    pattern = ''.join(r'\\s+' if piece.isspace() else re.escape(piece)
-                      for piece in pieces if piece)
-    matches = list(re.finditer(pattern, text, flags=re.MULTILINE))
-    if len(matches) < count:
-        raise RuntimeError(f'missing replacement marker in {path}: {old[:120]!r}')
-    for match in reversed(matches[:count]):
-        text = text[:match.start()] + new + text[match.end():]
-    write(path, text)
-'''
+          brittle = "def replace(path: str, old: str, new: str, count: int = 1) -> None:\n    text = read(path)\n    if old not in text:\n        raise RuntimeError(f'missing replacement marker in {path}: {old[:120]!r}')\n    text = text.replace(old, new, count)\n    write(path, text)\n"
+          tolerant = "def replace(path: str, old: str, new: str, count: int = 1) -> None:\n    import re\n    text = read(path)\n    if old in text:\n        write(path, text.replace(old, new, count))\n        return\n    pieces = re.split(r'(\\s+)', old)\n    pattern = ''.join(r'\\s+' if piece.isspace() else re.escape(piece) for piece in pieces if piece)\n    matches = list(re.finditer(pattern, text, flags=re.MULTILINE))\n    if len(matches) < count:\n        raise RuntimeError(f'missing replacement marker in {path}: {old[:120]!r}')\n    for match in reversed(matches[:count]):\n        text = text[:match.start()] + new + text[match.end():]\n    write(path, text)\n"
           if brittle not in stripped:
               raise RuntimeError('Unable to replace brittle patch helper')
           stripped = stripped.replace(brittle, tolerant, 1)
@@ -87,4 +66,4 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
 
-# trigger 5
+# trigger 6
