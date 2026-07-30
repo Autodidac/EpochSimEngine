@@ -6,6 +6,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "tools/fix24b_parts/**"
+      - "tools/fix24b_patch.py"
       - ".github/workflows/sandhybrid-fix24b.yml"
 
 permissions:
@@ -48,6 +49,13 @@ jobs:
               raise SystemExit(f"Fix24b payload checksum mismatch: {actual}")
           pathlib.Path("tools/apply_sandhybrid_fix24.py").write_bytes(source)
           '@ | python -
+          python -m py_compile tools/apply_sandhybrid_fix24.py
+
+      - name: Patch palette regeneration contract
+        shell: pwsh
+        run: |
+          python tools/fix24b_patch.py
+          if ($LASTEXITCODE -ne 0) { throw 'Palette-regeneration patch failed.' }
           python -m py_compile tools/apply_sandhybrid_fix24.py
 
       - name: Apply SandHybrid correction pass
@@ -101,6 +109,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Remove-Item -LiteralPath 'tools/apply_sandhybrid_fix24.py' -Force
+          Remove-Item -LiteralPath 'tools/fix24b_patch.py' -Force
           Remove-Item -LiteralPath 'tools/fix24b_parts' -Recurse -Force
           Remove-Item -LiteralPath '.github/workflows/sandhybrid-fix24b.yml' -Force
           git config user.name 'github-actions[bot]'
