@@ -1,0 +1,256 @@
+name: SandHybrid Fix35 Colony Mask Pan Fill Release
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'tools/fix35_swarm.py'
+      - 'tools/fix35_input.py'
+      - 'tools/fix35_fill.py'
+      - 'tools/audit_fix35.py'
+      - '.github/workflows/sandhybrid-fix35.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sandhybrid-fix35-release
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Check out Fix35 branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Apply Fix35 source patches
+        shell: pwsh
+        run: |
+          python tools/fix35_swarm.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix35 swarm patch failed.' }
+          python tools/fix35_input.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix35 input patch failed.' }
+          python tools/fix35_fill.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix35 fill patch failed.' }
+          python tools/generate_ui_text.py
+          if ($LASTEXITCODE -ne 0) { throw 'UI text generation failed.' }
+
+      - name: Audit source contracts
+        shell: pwsh
+        run: |
+          python tools/audit_fix35.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix35 audit failed.' }
+          python tools/audit_material_behaviors.py
+          if ($LASTEXITCODE -ne 0) { throw 'Material audit failed.' }
+          python tools/audit_ecology_motion.py
+          if ($LASTEXITCODE -ne 0) { throw 'Ecology audit failed.' }
+          python tools/validate_shader_contracts.py
+          if ($LASTEXITCODE -ne 0) { throw 'Shader contract validation failed.' }
+
+      - name: Bootstrap pinned vcpkg
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'vcpkg'
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git $root
+          git -C $root checkout 04a735608afac5844e86fc91d6ba2112cac613c1
+          & (Join-Path $root 'bootstrap-vcpkg.bat') -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed.' }
+          "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure Windows x64 Release
+        shell: pwsh
+        run: |
+          cmake -S . -B build/windows -G 'Visual Studio 17 2022' -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DVCPKG_HOST_TRIPLET=x64-windows `
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=ON `
+            -DEPOCH_SAND_ENABLE_VALIDATION=OFF `
+            -DBUILD_TESTING=ON
+          if ($LASTEXITCODE -ne 0) { throw 'Windows configure failed.' }
+
+      - name: Build every shader and C++23 target
+        shell: pwsh
+        run: |
+          cmake --build build/windows --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed.' }
+
+      - name: Run C++23 tests
+        shell: pwsh
+        run: |
+          ctest --test-dir build/windows -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Windows tests failed.' }
+
+      - name: Package Windows release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dist = Join-Path $env:GITHUB_WORKSPACE 'dist/windows'
+          $stage = Join-Path $dist 'SandHybrid_Windows_x64_Fix35'
+          $archive = Join-Path $dist 'SandHybrid_Windows_x64_Fix35.zip'
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          Copy-Item 'build/windows/Release/epoch_sand.exe' (Join-Path $stage 'SandHybrid.exe') -Force
+          Copy-Item 'build/windows/Release/shaders' (Join-Path $stage 'shaders') -Recurse -Force
+          Copy-Item 'build/windows/Release/scenes' (Join-Path $stage 'scenes') -Recurse -Force
+          Copy-Item README.md, LICENSE -Destination $stage -Force
+          @('@echo off', 'cd /d "%~dp0"', 'SandHybrid.exe') |
+            Set-Content -LiteralPath (Join-Path $stage 'run.bat') -Encoding ascii
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -CompressionLevel Optimal
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "$hash  SandHybrid_Windows_x64_Fix35.zip" |
+            Set-Content -LiteralPath (Join-Path $dist 'SHA256SUMS-Windows.txt') -Encoding ascii
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SandHybrid-Windows-x64-Fix35
+          path: |
+            dist/windows/SandHybrid_Windows_x64_Fix35.zip
+            dist/windows/SHA256SUMS-Windows.txt
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out Fix35 branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Install Linux build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libxcb1-dev libvulkan-dev
+
+      - name: Apply Fix35 source patches
+        run: |
+          python3 tools/fix35_swarm.py
+          python3 tools/fix35_input.py
+          python3 tools/fix35_fill.py
+          python3 tools/generate_ui_text.py
+
+      - name: Audit source contracts
+        run: |
+          python3 tools/audit_fix35.py
+          python3 tools/audit_material_behaviors.py
+          python3 tools/audit_ecology_motion.py
+          python3 tools/validate_shader_contracts.py
+
+      - name: Bootstrap pinned vcpkg
+        run: |
+          root="$RUNNER_TEMP/vcpkg"
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git "$root"
+          git -C "$root" checkout 04a735608afac5844e86fc91d6ba2112cac613c1
+          "$root/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
+
+      - name: Configure Linux x64 Release
+        run: |
+          cmake -S . -B build/linux -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_HOST_TRIPLET=x64-linux \
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=OFF \
+            -DEPOCH_SAND_ENABLE_VALIDATION=OFF \
+            -DBUILD_TESTING=ON
+
+      - name: Build every shader and C++23 target
+        run: cmake --build build/linux --parallel
+
+      - name: Run C++23 tests
+        run: ctest --test-dir build/linux --output-on-failure
+
+      - name: Package Linux release
+        run: |
+          set -euo pipefail
+          dist="$GITHUB_WORKSPACE/dist/linux"
+          stage="$dist/SandHybrid_Linux_x64_Fix35"
+          archive="$dist/SandHybrid_Linux_x64_Fix35.tar.gz"
+          mkdir -p "$stage"
+          cp build/linux/epoch_sand "$stage/SandHybrid"
+          cp -R build/linux/shaders "$stage/shaders"
+          cp -R build/linux/scenes "$stage/scenes"
+          cp README.md LICENSE "$stage/"
+          printf '#!/usr/bin/env bash\ncd "$(dirname "$0")"\nexec ./SandHybrid\n' > "$stage/run.sh"
+          chmod +x "$stage/run.sh" "$stage/SandHybrid"
+          tar -C "$dist" -czf "$archive" SandHybrid_Linux_x64_Fix35
+          sha256sum "$archive" | sed 's# .*/#  #' > "$dist/SHA256SUMS-Linux.txt"
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SandHybrid-Linux-x64-Fix35
+          path: |
+            dist/linux/SandHybrid_Linux_x64_Fix35.tar.gz
+            dist/linux/SHA256SUMS-Linux.txt
+          if-no-files-found: error
+
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: [windows, linux]
+    steps:
+      - name: Check out verified Fix35 branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Materialize verified source
+        run: |
+          set -euo pipefail
+          python3 tools/fix35_swarm.py
+          python3 tools/fix35_input.py
+          python3 tools/fix35_fill.py
+          python3 tools/generate_ui_text.py
+          python3 tools/audit_fix35.py
+          rm -f tools/fix35_swarm.py tools/fix35_input.py tools/fix35_fill.py tools/audit_fix35.py
+          rm -f .github/workflows/sandhybrid-fix35.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'SandHybrid Fix35: live colony masks, pan and fill'
+          git push origin HEAD:main
+          echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Download verified packages
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='v1.9.0-fix35'
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && \
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create "$tag" \
+            artifacts/SandHybrid-Windows-x64-Fix35/SandHybrid_Windows_x64_Fix35.zip \
+            artifacts/SandHybrid-Windows-x64-Fix35/SHA256SUMS-Windows.txt \
+            artifacts/SandHybrid-Linux-x64-Fix35/SandHybrid_Linux_x64_Fix35.tar.gz \
+            artifacts/SandHybrid-Linux-x64-Fix35/SHA256SUMS-Linux.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$RELEASE_SHA" \
+            --title 'SandHybrid Fix35' \
+            --notes 'Verified Windows and Linux release. Restores the Fix29 compact hive as the default live colony prefab; each placed hive creates its queen and 200 bees. Bees move inside a hidden biohazard mask, periodically switch to two shorter alternate swarm states, and spend three times longer in the biohazard state. All authored scene lava is replaced by magma vents. Zoomed middle-mouse drag pans slowly, F performs connected bucket fill, structural fills preserve complete aligned 8x8 bricks, and the keymap remains readable.'
+
+      - name: Close PR and remove temporary branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr close ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" \
+            --comment 'Fix35 verified on Windows and Linux; source and release were published.'
+          git push origin --delete '${{ github.event.pull_request.head.ref }}'
