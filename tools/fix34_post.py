@@ -10,8 +10,11 @@ for shader_path in (root / "shaders").iterdir():
         continue
     shader = shader_path.read_text(encoding="utf-8")
     if "tileOrigin" in shader:
-        shader_path.write_text(shader.replace("tileOrigin", "brickOrigin"), encoding="utf-8")
+        shader = shader.replace("tileOrigin", "brickOrigin")
         renamed += 1
+    if shader_path.name == "reset.comp":
+        shader = shader.replace("int q2 = dot(q, q);", "int q2 = q.x * q.x + q.y * q.y;")
+    shader_path.write_text(shader, encoding="utf-8")
 
 validator_path = root / "tools/validate_shader_contracts.py"
 validator = validator_path.read_text(encoding="utf-8")
@@ -23,8 +26,4 @@ elif new not in validator:
     raise SystemExit("shader validator has neither the 14- nor 16-descriptor contract")
 validator_path.write_text(validator, encoding="utf-8")
 
-reset_lines = (root / "shaders/reset.comp").read_text(encoding="utf-8").splitlines()
-for line_number in range(190, min(202, len(reset_lines) + 1)):
-    print(f"RESET[{line_number}]: {reset_lines[line_number - 1]}")
-
-print(f"Fix34 post-patch contracts ready: renamed {renamed} shader file(s); 16-descriptor chunk layout.")
+print(f"Fix34 post-patch contracts ready: renamed {renamed} shader file(s); fixed integer hive distance; 16-descriptor chunk layout.")
