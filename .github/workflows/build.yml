@@ -123,7 +123,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     needs: [windows, linux]
     runs-on: ubuntu-24.04
     steps:
