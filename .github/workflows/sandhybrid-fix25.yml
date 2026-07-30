@@ -6,6 +6,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "tools/apply_fix25_motion_ecology.py"
+      - "tools/patch_fix25_apply.py"
       - ".github/workflows/sandhybrid-fix25.yml"
 
 permissions:
@@ -27,6 +28,12 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Patch Fix25 source matching contracts
+        shell: pwsh
+        run: |
+          python tools/patch_fix25_apply.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix25 apply-script patch failed.' }
 
       - name: Apply motion and ecology correction
         shell: pwsh
@@ -85,6 +92,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Remove-Item -LiteralPath 'tools/apply_fix25_motion_ecology.py' -Force
+          Remove-Item -LiteralPath 'tools/patch_fix25_apply.py' -Force
           Remove-Item -LiteralPath '.github/workflows/sandhybrid-fix25.yml' -Force
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
