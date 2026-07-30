@@ -1,32 +1,10 @@
-# FastFreddy Reduced-Material Water Optimization Build
+# EpochSand
 
-This repository is the complete `Autodidac/fastfreddy` application architecture, not a replacement demo. Scenes, native Vulkan renderer, EpochGui interface, material cards, scene navigation, mining/build controls, save/load support, diagnostics, debug visualization, statistics and build layout are retained.
-
-The visible simulation catalog is intentionally bounded to:
-
-- Sand, dirt, stone and mud
-- Water, saltwater, dirty water, acid, lava, oil and honey
-- Oxygen as the background atmosphere
-
-Removed authored/reaction materials are conservatively remapped to oxygen, water, dirt or stone instead of being deleted. Empty scene space and erasing produce oxygen.
-
-## Half-water contract
-
-Fresh water stores either one or two half-units in the existing 16-byte cell; no larger per-cell buffer is introduced.
-
-- Two adjacent half-water cells merge into one full-color water cell plus oxygen.
-- A full water cell spreading sideways splits into two faint half-water cells.
-- Half water receives four additional horizontal pair passes and therefore flows exactly twice as fast as full water.
-- Water hanging at a supported ledge cannot fall diagonally until the edge is full and the trailing cell contributes at least one half-unit.
-- Oxygen-only regions participate in the existing sleeping-tile optimization, avoiding full-atmosphere movement cost.
-
-# SandHybrid
-
-SandHybrid is a standalone C++23 Vulkan material, terrain, ecology, factory, and combat sandbox. Fine particles, liquids, gases, machines, actors, and aligned Terraria-style terrain blocks share one deterministic cell simulation. There is no second rigid-body or voxel physics world.
+EpochSand is a standalone C++23 Vulkan material, terrain, ecology, factory, and combat sandbox. Fine particles, liquids, gases, machines, actors, and aligned Terraria-style terrain blocks share one deterministic cell simulation. There is no second rigid-body or voxel physics world.
 
 - Native Win32/Vulkan on Windows
 - Native XCB/Vulkan on Linux
-- Explicit render worker using `std::thread`, atomic cancellation, and deterministic join
+- Dedicated `std::jthread` simulation/render thread
 - Renderer-neutral EpochGui layout, hit testing, and embedded bitmap font
 - CMake 3.28+ with a pinned vcpkg manifest
 - No SDL, GLFW, ImGui, Boost, or proprietary runtime framework
@@ -138,7 +116,7 @@ The card follows the cursor without covering the inspected point when space perm
 
 ## Ecology and conservation
 
-SandHybrid targets a near-zero-loss material cycle. Reactions convert represented cells instead of using deletion as failure recovery.
+EpochSand targets a near-zero-loss material cycle. Reactions convert represented cells instead of using deletion as failure recovery.
 
 Examples:
 
@@ -176,10 +154,6 @@ The interface was rebuilt as a pixel-aligned EpochGui layout. The native title b
 - `F3` debug controls visually separated from normal gameplay UI
 - compact layouts hide nonessential scene buttons rather than overlapping them
 
-## Resource pixels and sifting
-
-SandHybrid has no authored ore blocks. Gold, iron, copper, and generic metal exist as independent material pixels mixed sparsely through sand or silt. Gravity, filters, conveyors, and magnets separate those pixels without changing them into nuclear fuel or radiation particles. Structural steel, iron, or copper is never collected merely because the player walks nearby.
-
 ## Default scenes
 
 Cycle with `[` and `]` or the on-screen controls.
@@ -189,8 +163,8 @@ Cycle with `[` and `]` or the on-screen controls.
 3. Volcano
 4. Waterworks
 5. Ecosystem
-6. Engineering Lab — contained thermal vessel, sediment/metal sifter, and sealed gas cell
-7. Platformer — multi-level playable structure based on the supplied reference
+6. Engineering Lab
+7. Gold Mine
 8. Demolition
 9. Frontier Base
 
@@ -204,7 +178,7 @@ All scenes use the same canonical material and structural rules.
 - `R`: reset scene
 - Space: pause or resume
 - `N`: one simulation step while paused
-- `M`: Mine/Build mode in sandbox scenes; character scenes always keep player tools active
+- `M`: Mine/Build mode
 - `F3`: structural/debug overlay
 - Hold `Alt`: inspect exact cell
 - Mouse wheel over world: brush radius
@@ -275,7 +249,7 @@ See [`VALIDATION.md`](VALIDATION.md) for the required 24-item validation matrix 
 Manual contract commands:
 
 ```bash
-cmake -S . -B build/tests -DSAND_HYBRID_BUILD_APP=OFF -DBUILD_TESTING=ON
+cmake -S . -B build/tests -DEPOCH_SAND_BUILD_APP=OFF -DBUILD_TESTING=ON
 cmake --build build/tests
 ctest --test-dir build/tests --output-on-failure
 python tools/generate_ui_text.py

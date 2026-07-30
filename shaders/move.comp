@@ -1,0 +1,830 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "material_ids.glsl"
+#include "tiles.glsl"
+#include "debug_stats.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+struct Cell {
+    uint material;
+    uint age;
+    int temperature;
+    uint aux;
+};
+
+const uint AUX_CHARGED = 0x40000000u;
+const uint AUX_BEE_POLLEN = 0x20000000u;
+const uint AUX_BEE_FED = 0x10000000u;
+const uint AUX_STRUCTURAL = 0x04000000u;
+const uint AUX_MOVED = 0x01000000u;
+const uint AUX_WATER_HALF = 0x00800000u;
+const uint AUX_STATE_MASK = 0x000000ffu;
+
+layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
+layout(std430, binding = 1) readonly buffer SnapshotCells { Cell snapshotCells[]; };
+layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
+layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };
+
+layout(push_constant) uniform MovementPush {
+    uint width;
+    uint height;
+    uint step;
+    uint seed;
+    int phase;
+    int parity;
+    uint reserved0;
+    uint reserved1;
+} movePc;
+
+const uint MATERIAL_DENSITY[MATERIAL_COUNT] = uint[](
+      0u,  84u,  44u,  80u, 235u, 205u,  68u,  48u,
+     64u,   4u,   5u,   2u,  72u,  25u, 170u, 160u,
+    180u,  58u,   8u,  76u,  40u, 150u,  28u,  18u,
+    190u,  81u,  32u,  38u, 145u,  76u,  50u, 175u,
+      6u,  46u,  12u,  30u, 225u, 215u, 230u, 180u,
+      1u, 255u, 230u,   1u, 150u, 210u,   7u,  11u,
+    225u, 245u, 220u, 240u, 225u, 175u,  92u,  93u,
+     10u,  18u,  70u, 254u,  60u,  55u,  42u,  58u,
+      1u
+);
+
+uint moveHash(ivec2 p, uint salt) {
+    uint value = uint(p.x) * 73856093u ^ uint(p.y) * 19349663u ^
+                 movePc.step * 83492791u ^ movePc.seed ^ salt;
+    value ^= value >> 16u;
+    value *= 0x7feb352du;
+    value ^= value >> 15u;
+    value *= 0x846ca68bu;
+    value ^= value >> 16u;
+    return value;
+}
+
+bool moveInside(ivec2 p) {
+    return p.x >= 0 && p.y >= 0 && p.x < int(movePc.width) && p.y < int(movePc.height);
+}
+
+uint moveIndex(ivec2 p) {
+    return uint(p.y) * movePc.width + uint(p.x);
+}
+
+Cell boundaryCell() {
+    return Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
+}
+
+Cell moveAt(ivec2 p) {
+    return moveInside(p) ? cells[moveIndex(p)] : boundaryCell();
+}
+
+Cell sampleAt(ivec2 p) {
+    return moveInside(p) ? snapshotCells[moveIndex(p)] : boundaryCell();
+}
+
+uint stateValue(Cell cell) {
+    return cell.aux & AUX_STATE_MASK;
+}
+
+void setStateValue(inout Cell cell, uint value) {
+    cell.aux = (cell.aux & ~AUX_STATE_MASK) | min(value, 255u);
+}
+
+
+bool isHalfWaterCell(Cell cell) {
+    return cell.material == MAT_WATER && (cell.aux & AUX_WATER_HALF) != 0u;
+}
+
+uint waterHalfUnits(Cell cell) {
+    return cell.material == MAT_WATER ? (isHalfWaterCell(cell) ? 1u : 2u) : 0u;
+}
+
+void setHalfWaterCell(inout Cell cell, bool half) {
+    if (cell.material != MAT_WATER) return;
+    if (half) cell.aux |= AUX_WATER_HALF;
+    else cell.aux &= ~AUX_WATER_HALF;
+}
+
+bool isOpenGas(Cell cell) {
+    return cell.material == MAT_EMPTY || cell.material == MAT_OXYGEN;
+}
+
+Cell oxygenFrom(Cell source) {
+    source.material = MAT_OXYGEN;
+    source.age = 0u;
+    source.temperature = 20;
+    source.aux &= ~(AUX_WATER_HALF | AUX_MOVED | AUX_STATE_MASK);
+    source.aux |= 220u;
+    return source;
+}
+
+void mergeHalfWaterPair(ivec2 keepPosition, ivec2 releasePosition, Cell keep, Cell released) {
+    setHalfWaterCell(keep, false);
+    keep.age = 0u;
+    keep.aux |= AUX_MOVED;
+    cells[moveIndex(keepPosition)] = keep;
+    cells[moveIndex(releasePosition)] = oxygenFrom(released);
+}
+
+void splitFullWaterPair(ivec2 sourcePosition, ivec2 targetPosition, Cell source, Cell target) {
+    setHalfWaterCell(source, true);
+    source.age = 0u;
+    source.aux |= AUX_MOVED;
+    Cell half = source;
+    half.temperature = (source.temperature + target.temperature) / 2;
+    cells[moveIndex(sourcePosition)] = source;
+    cells[moveIndex(targetPosition)] = half;
+}
+
+uint salinity(Cell cell) {
+    return (cell.material == MAT_WATER || cell.material == MAT_SALTWATER) ? stateValue(cell) : 0u;
+}
+
+void setSalinity(inout Cell cell, uint value) {
+    uint concentration = min(value, 255u);
+    cell.material = concentration >= 12u ? MAT_SALTWATER : MAT_WATER;
+    setStateValue(cell, concentration);
+}
+
+uint densityOf(uint material) {
+    return material < MATERIAL_COUNT ? MATERIAL_DENSITY[material] : 0u;
+}
+
+bool isBaseGas(uint material) {
+    return material == MAT_SMOKE || material == MAT_STEAM || material == MAT_DIRTY_STEAM ||
+           material == MAT_FIRE || material == MAT_LIGHTNING || material == MAT_RADIATION ||
+           material == MAT_OXYGEN || material == MAT_CARBON_DIOXIDE ||
+           material == MAT_HYDROGEN;
+}
+
+bool isBaseLiquid(uint material) {
+    return material == MAT_WATER || material == MAT_SALTWATER || material == MAT_DIRTY_WATER ||
+           material == MAT_ACID || material == MAT_LAVA || material == MAT_OIL ||
+           material == MAT_HONEY;
+}
+
+bool isPowderCellMaterial(uint material) {
+    return material == MAT_SAND || material == MAT_DIRT || material == MAT_MUD ||
+           material == MAT_SALT || material == MAT_ASH || material == MAT_EMBER ||
+           material == MAT_GUNPOWDER || material == MAT_SNOW || material == MAT_SEED ||
+           material == MAT_POLLEN || material == MAT_SILT || material == MAT_FERTILIZER ||
+           material == MAT_FOOD || material == MAT_WASTE ||
+           material == MAT_ALUMINUM_SHAVINGS || material == MAT_IRON_SHAVINGS;
+}
+
+bool isConveyorPowderMaterial(uint material) {
+    return isPowderCellMaterial(material) || material == MAT_GOLD ||
+           material == MAT_IRON || material == MAT_COPPER || material == MAT_ALUMINUM ||
+           material == MAT_STEEL || material == MAT_POWER_CELL ||
+           material == MAT_PLASMA_AMMO;
+}
+
+bool isBlockCapable(uint material) {
+    return material == MAT_STONE || material == MAT_CRYSTAL || material == MAT_WOOD ||
+           material == MAT_PLASTIC || material == MAT_ACID_RESISTANT_PLASTIC ||
+           material == MAT_ALUMINUM || material == MAT_GLASS || material == MAT_IRON ||
+           material == MAT_COPPER || material == MAT_MAGNET || material == MAT_INSULATOR ||
+           material == MAT_URANIUM || material == MAT_STEEL || material == MAT_CONVEYOR || material == MAT_SMELTER ||
+           material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||
+           material == MAT_FACTORY_CORE;
+}
+
+bool isMolten(Cell cell) {
+    uint material = cell.material;
+    int temperature = cell.temperature;
+    return (material == MAT_PLASTIC && temperature >= 165) ||
+           (material == MAT_ACID_RESISTANT_PLASTIC && temperature >= 230) ||
+           (material == MAT_BEESWAX && temperature >= 63) ||
+           (material == MAT_ALUMINUM && temperature >= 1250) ||
+           (material == MAT_IRON && temperature >= 1538) ||
+           (material == MAT_COPPER && temperature >= 1085) ||
+           (material == MAT_MAGNET && temperature >= 800) ||
+           (material == MAT_GLASS && temperature >= 1400) ||
+           (material == MAT_URANIUM && temperature >= 1132) ||
+           (material == MAT_ALUMINUM_SHAVINGS && temperature >= 1064) ||
+           (material == MAT_GOLD && temperature >= 1064) ||
+           (material == MAT_IRON_SHAVINGS && temperature >= 1538) ||
+           (material == MAT_STEEL && temperature >= 1450) ||
+           (material == MAT_POWER_CELL && temperature >= 220) ||
+           (material == MAT_PLASMA_AMMO && temperature >= 180);
+}
+
+bool isCellGas(Cell cell) {
+    return isBaseGas(cell.material);
+}
+
+bool isCellLiquid(Cell cell) {
+    return isBaseLiquid(cell.material) || isMolten(cell);
+}
+
+bool isCellPowder(Cell cell) {
+    return isPowderCellMaterial(cell.material) && !isMolten(cell);
+}
+
+bool isImmovableMaterial(uint material) {
+    return material == MAT_STONE || material == MAT_CRYSTAL || material == MAT_GRASS ||
+           material == MAT_PLANT_STEM || material == MAT_WOOD || material == MAT_PLASTIC ||
+           material == MAT_ACID_RESISTANT_PLASTIC || material == MAT_ICE ||
+           material == MAT_ALUMINUM || material == MAT_GLASS || material == MAT_BEESWAX ||
+           material == MAT_FLOWER || material == MAT_BEE_NEST ||
+           material == MAT_QUEEN_BEE || material == MAT_IRON || material == MAT_COPPER ||
+           material == MAT_MAGNET || material == MAT_INSULATOR ||
+           material == MAT_MAGMA_VENT || material == MAT_URANIUM ||
+           material == MAT_STEEL || material == MAT_CONVEYOR || material == MAT_SMELTER ||
+           material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||
+           material == MAT_FACTORY_CORE;
+}
+
+bool isCellImmovable(Cell cell) {
+    return !isCellLiquid(cell) && !isCellGas(cell) && isImmovableMaterial(cell.material);
+}
+
+bool isStructural(Cell cell) {
+    return (cell.aux & AUX_STRUCTURAL) != 0u;
+}
+
+bool isLooseSolid(Cell cell) {
+    return isBlockCapable(cell.material) && !isStructural(cell) &&
+           !isCellLiquid(cell) && !isCellGas(cell);
+}
+
+bool isMagnetic(uint material) {
+    return material == MAT_IRON || material == MAT_IRON_SHAVINGS;
+}
+
+bool isConductive(uint material) {
+    return material == MAT_ALUMINUM || material == MAT_IRON || material == MAT_COPPER ||
+           material == MAT_STEEL || material == MAT_MAGNET || material == MAT_WATER ||
+           material == MAT_SALTWATER || material == MAT_DIRTY_WATER || material == MAT_GOLD ||
+           material == MAT_CONVEYOR || material == MAT_SMELTER || material == MAT_ASSEMBLER ||
+           material == MAT_INSECT_HABITAT || material == MAT_FACTORY_CORE;
+}
+
+bool isSalineLiquid(Cell cell) {
+    return cell.material == MAT_WATER || cell.material == MAT_SALTWATER;
+}
+
+void swapCells(ivec2 aPosition, ivec2 bPosition) {
+    uint aIndex = moveIndex(aPosition);
+    uint bIndex = moveIndex(bPosition);
+    Cell a = cells[aIndex];
+    Cell b = cells[bIndex];
+    a.age = 0u;
+    b.age = 0u;
+    a.aux |= AUX_MOVED;
+    b.aux |= AUX_MOVED;
+    cells[aIndex] = b;
+    cells[bIndex] = a;
+    if (movePc.reserved0 != 0u) {
+        atomicAdd(debugStats[STAT_MOVE_SWAPS], 1u);
+        uint movedMaterial = a.material != MAT_EMPTY ? a.material : b.material;
+        if (movedMaterial == MAT_BEE) atomicAdd(debugStats[STAT_BEE_MOVES], 1u);
+        else if (movedMaterial == MAT_ANT) atomicAdd(debugStats[STAT_ANT_MOVES], 1u);
+        else if (movedMaterial == MAT_BEETLE) atomicAdd(debugStats[STAT_BEETLE_MOVES], 1u);
+    }
+}
+
+void diffuseSalinityPair(ivec2 aPosition, ivec2 bPosition) {
+    uint aIndex = moveIndex(aPosition);
+    uint bIndex = moveIndex(bPosition);
+    Cell a = cells[aIndex];
+    Cell b = cells[bIndex];
+    if (!isSalineLiquid(a) || !isSalineLiquid(b)) return;
+
+    int difference = int(salinity(a)) - int(salinity(b));
+    if (abs(difference) < 3) return;
+
+    uint transfer = uint(max(1, min(abs(difference) / 4, 3)));
+    if (difference > 0) {
+        uint amount = min(transfer, salinity(a));
+        setSalinity(a, salinity(a) - amount);
+        setSalinity(b, salinity(b) + amount);
+    } else {
+        uint amount = min(transfer, salinity(b));
+        setSalinity(b, salinity(b) - amount);
+        setSalinity(a, salinity(a) + amount);
+    }
+    cells[aIndex] = a;
+    cells[bIndex] = b;
+}
+
+uint flowInterval(Cell cell) {
+    if (isMolten(cell)) {
+        if (cell.material == MAT_PLASTIC || cell.material == MAT_ACID_RESISTANT_PLASTIC) return 3u;
+        if (cell.material == MAT_COPPER || cell.material == MAT_GOLD) return 4u;
+        return 6u;
+    }
+    if (cell.material == MAT_HONEY) return 4u;
+    if (cell.material == MAT_LAVA) return stateValue(cell) >= 160u ? 1u : 2u;
+    return 1u;
+}
+
+bool movementAllows(Cell cell, uint randomValue) {
+    if (isLooseSolid(cell)) return (randomValue & 1u) == 0u;
+    if (isCellLiquid(cell)) {
+        uint interval = flowInterval(cell);
+        return interval <= 1u || (randomValue % interval) == 0u;
+    }
+    if (cell.material == MAT_SALT) return (randomValue & 3u) != 0u;
+    if (cell.material == MAT_ASH) return (randomValue % 10u) == 0u;
+    if (cell.material == MAT_POLLEN) return (randomValue % 6u) == 0u;
+    if (cell.material == MAT_GUNPOWDER || cell.material == MAT_SEED) return (randomValue & 1u) == 0u;
+    if (cell.material == MAT_SNOW) return (randomValue % 3u) == 0u;
+    if (cell.material == MAT_DIRT) return (randomValue & 3u) == 0u;
+    if (cell.material == MAT_MUD) return (randomValue % 24u) == 0u;
+    if (cell.material == MAT_SILT) return (randomValue % 5u) == 0u;
+    if (cell.material == MAT_FERTILIZER) return (randomValue % 7u) == 0u;
+    if (cell.material == MAT_FOOD) return (randomValue % 4u) == 0u;
+    if (cell.material == MAT_WASTE) return (randomValue % 8u) == 0u;
+    if (cell.material == MAT_ALUMINUM_SHAVINGS || cell.material == MAT_IRON_SHAVINGS) return true;
+    return true;
+}
+
+bool canCellFallInto(Cell moving, Cell target) {
+    if (isStructural(moving) || isCellImmovable(moving)) return false;
+    if (target.material == MAT_EMPTY) return true;
+    if (isCellImmovable(target)) return false;
+    if (moving.material == MAT_BEE || moving.material == MAT_QUEEN_BEE) return false;
+    if (isCellGas(target) && !isCellGas(moving)) return true;
+    if (isCellPowder(moving) || isLooseSolid(moving)) {
+        return isCellLiquid(target) && densityOf(moving.material) > densityOf(target.material);
+    }
+    if (isCellLiquid(moving)) {
+        return isCellGas(target) ||
+               (isCellLiquid(target) && densityOf(moving.material) > densityOf(target.material));
+    }
+    return false;
+}
+
+bool supportedAt(ivec2 position, Cell cell) {
+    return !canCellFallInto(cell, moveAt(position + ivec2(0, 1)));
+}
+
+int liquidColumnPressure(ivec2 position, uint material) {
+    int pressure = 0;
+    Cell c1 = moveAt(position + ivec2(0, -1));
+    if (c1.material != material && !(isCellLiquid(c1) && densityOf(c1.material) >= densityOf(material))) return pressure;
+    ++pressure;
+    Cell c2 = moveAt(position + ivec2(0, -2));
+    if (c2.material != material && !(isCellLiquid(c2) && densityOf(c2.material) >= densityOf(material))) return pressure;
+    ++pressure;
+    Cell c3 = moveAt(position + ivec2(0, -3));
+    if (c3.material != material && !(isCellLiquid(c3) && densityOf(c3.material) >= densityOf(material))) return pressure;
+    ++pressure;
+    Cell c4 = moveAt(position + ivec2(0, -4));
+    if (c4.material == material || (isCellLiquid(c4) && densityOf(c4.material) >= densityOf(material))) ++pressure;
+    return pressure;
+}
+
+bool liquidCanSpread(ivec2 sourcePosition, ivec2 targetPosition, Cell source, uint randomValue) {
+    if (!isOpenGas(moveAt(targetPosition)) || !movementAllows(source, randomValue)) return false;
+    if (!supportedAt(sourcePosition, source)) return false;
+    if (!supportedAt(targetPosition, source)) return true;
+    bool sourceCovered = isCellLiquid(moveAt(sourcePosition + ivec2(0, -1)));
+    bool targetCovered = isCellLiquid(moveAt(targetPosition + ivec2(0, -1)));
+    if (sourceCovered != targetCovered) return sourceCovered;
+    int sourcePressure = liquidColumnPressure(sourcePosition, source.material);
+    int targetPressure = liquidColumnPressure(targetPosition, source.material);
+    if (sourcePressure != targetPressure) return sourcePressure > targetPressure;
+    int direction = targetPosition.x > sourcePosition.x ? 1 : -1;
+    ivec2 next = targetPosition + ivec2(direction, 0);
+    ivec2 next2 = targetPosition + ivec2(direction * 2, 0);
+    bool firstDrop = moveInside(next) && moveAt(next).material == MAT_EMPTY && canCellFallInto(source, moveAt(next + ivec2(0, 1)));
+    bool secondDrop = moveInside(next2) && moveAt(next).material == MAT_EMPTY && moveAt(next2).material == MAT_EMPTY && canCellFallInto(source, moveAt(next2 + ivec2(0, 1)));
+    return firstDrop || secondDrop || (randomValue & 7u) == 0u;
+}
+
+bool isMovementHazard(uint material) {
+    return material == MAT_FIRE || material == MAT_LAVA || material == MAT_ACID ||
+           material == MAT_LIGHTNING || material == MAT_RADIATION ||
+           material == MAT_SMOKE || material == MAT_DIRTY_STEAM;
+}
+
+bool adjacentContains(ivec2 p, uint first, uint second) {
+    uint east = sampleAt(p + ivec2(1, 0)).material;
+    uint west = sampleAt(p + ivec2(-1, 0)).material;
+    uint south = sampleAt(p + ivec2(0, 1)).material;
+    uint north = sampleAt(p + ivec2(0, -1)).material;
+    return east == first || east == second || west == first || west == second ||
+           south == first || south == second || north == first || north == second;
+}
+
+bool adjacentHazard(ivec2 p) {
+    return isMovementHazard(sampleAt(p + ivec2(1, 0)).material) ||
+           isMovementHazard(sampleAt(p + ivec2(-1, 0)).material) ||
+           isMovementHazard(sampleAt(p + ivec2(0, 1)).material) ||
+           isMovementHazard(sampleAt(p + ivec2(0, -1)).material);
+}
+
+bool targetMaterial(uint material, uint first, uint second) {
+    return material == first || material == second;
+}
+
+int localTargetSignal(ivec2 p, uint first, uint second) {
+    int score = adjacentContains(p, first, second) ? 32 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(2, 0)).material, first, second) ? 14 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(-2, 0)).material, first, second) ? 14 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(0, 2)).material, first, second) ? 14 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(0, -2)).material, first, second) ? 14 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(2, 2)).material, first, second) ? 9 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(-2, 2)).material, first, second) ? 9 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(2, -2)).material, first, second) ? 9 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(-2, -2)).material, first, second) ? 9 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(4, 0)).material, first, second) ? 5 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(-4, 0)).material, first, second) ? 5 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(0, 4)).material, first, second) ? 5 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(0, -4)).material, first, second) ? 5 : 0;
+    return score;
+}
+
+int regionalTargetSignal(ivec2 p, uint first, uint second) {
+    int score = localTargetSignal(p, first, second) * 12;
+    score += localTargetSignal(p + ivec2(8, 0), first, second) * 7;
+    score += localTargetSignal(p + ivec2(-8, 0), first, second) * 7;
+    score += localTargetSignal(p + ivec2(0, 8), first, second) * 7;
+    score += localTargetSignal(p + ivec2(0, -8), first, second) * 7;
+    score += localTargetSignal(p + ivec2(12, 12), first, second) * 5;
+    score += localTargetSignal(p + ivec2(-12, 12), first, second) * 5;
+    score += localTargetSignal(p + ivec2(12, -12), first, second) * 5;
+    score += localTargetSignal(p + ivec2(-12, -12), first, second) * 5;
+    score += localTargetSignal(p + ivec2(24, 0), first, second) * 4;
+    score += localTargetSignal(p + ivec2(-24, 0), first, second) * 4;
+    score += localTargetSignal(p + ivec2(0, 24), first, second) * 4;
+    score += localTargetSignal(p + ivec2(0, -24), first, second) * 4;
+    score += localTargetSignal(p + ivec2(40, 20), first, second) * 2;
+    score += localTargetSignal(p + ivec2(-40, 20), first, second) * 2;
+    score += localTargetSignal(p + ivec2(40, -20), first, second) * 2;
+    score += localTargetSignal(p + ivec2(-40, -20), first, second) * 2;
+    score += localTargetSignal(p + ivec2(64, 0), first, second);
+    score += localTargetSignal(p + ivec2(-64, 0), first, second);
+    score += localTargetSignal(p + ivec2(0, 64), first, second);
+    score += localTargetSignal(p + ivec2(0, -64), first, second);
+    return score;
+}
+
+int beeTargetSignal(Cell bee, ivec2 p) {
+    bool carryingPollen = (bee.aux & AUX_BEE_POLLEN) != 0u;
+    bool resting = stateValue(bee) > 0u;
+    if (carryingPollen || resting) {
+        return regionalTargetSignal(p, MAT_QUEEN_BEE, MAT_BEE_NEST);
+    }
+    int flowerSignal = regionalTargetSignal(p, MAT_FLOWER, MAT_FLOWER);
+    if ((bee.aux & AUX_BEE_FED) == 0u) {
+        int foodSignal = regionalTargetSignal(p, MAT_HONEY, MAT_QUEEN_BEE);
+        return max(flowerSignal, foodSignal);
+    }
+    return flowerSignal;
+}
+
+int beeWaveVertical(Cell bee, ivec2 p) {
+    uint lane = ((bee.aux >> 8u) & 1u) * 3u;
+    uint phase = (movePc.step / 2u + uint(max(p.x, 0)) * 2u + lane) % 32u;
+    if (phase < 8u) return -1;
+    if (phase < 16u) return 0;
+    if (phase < 24u) return 1;
+    return 0;
+}
+
+int beeWaveHorizontal(Cell bee, ivec2 p) {
+    uint lane = ((bee.aux >> 9u) & 3u) * 5u;
+    uint phase = (movePc.step / 3u + uint(max(p.y, 0)) * 2u + lane) % 64u;
+    return phase < 32u ? 1 : -1;
+}
+
+bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {
+    if ((bee.aux & AUX_MOVED) != 0u) return false;
+    bool sourceHazard = adjacentHazard(sourcePosition);
+    bool targetHazard = adjacentHazard(targetPosition);
+    if (sourceHazard != targetHazard) return sourceHazard;
+
+    ivec2 delta = targetPosition - sourcePosition;
+    int sourceSignal = beeTargetSignal(bee, sourcePosition);
+    int targetSignal = beeTargetSignal(bee, targetPosition);
+    if (sourceSignal != targetSignal) return targetSignal > sourceSignal;
+
+    int desiredVertical = beeWaveVertical(bee, sourcePosition);
+    int desiredHorizontal = beeWaveHorizontal(bee, sourcePosition);
+    if (delta.x == desiredHorizontal && delta.y == desiredVertical) return true;
+    if (delta.x == desiredHorizontal && delta.y == 0) return true;
+    if (delta.y == desiredVertical && delta.x == 0) return (randomValue & 1u) == 0u;
+    return (randomValue & 15u) == 0u;
+}
+
+bool magneticMoveAllowed(ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {
+    bool sourceTarget = adjacentContains(sourcePosition, MAT_MAGNET, MAT_MAGNET);
+    bool targetTarget = adjacentContains(targetPosition, MAT_MAGNET, MAT_MAGNET);
+    return targetTarget != sourceTarget ? targetTarget : (!sourceTarget && (randomValue & 63u) == 0u);
+}
+
+bool adjacentConductive(ivec2 p) {
+    return isConductive(sampleAt(p + ivec2(1, 0)).material) ||
+           isConductive(sampleAt(p + ivec2(-1, 0)).material) ||
+           isConductive(sampleAt(p + ivec2(0, 1)).material) ||
+           isConductive(sampleAt(p + ivec2(0, -1)).material);
+}
+
+bool lightningMoveAllowed(ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {
+    bool sourceTarget = adjacentConductive(sourcePosition);
+    bool targetTarget = adjacentConductive(targetPosition);
+    return targetTarget != sourceTarget ? targetTarget : ((randomValue & 1u) == 0u);
+}
+
+bool gasHorizontalAllows(uint material, uint randomValue) {
+    if (material == MAT_HYDROGEN) return true;
+    if (material == MAT_OXYGEN) return (randomValue & 1u) == 0u;
+    if (material == MAT_CARBON_DIOXIDE || material == MAT_STEAM || material == MAT_DIRTY_STEAM) {
+        return (randomValue & 3u) != 0u;
+    }
+    if (material == MAT_FIRE || material == MAT_RADIATION) return (randomValue & 1u) == 0u;
+    if (material == MAT_LIGHTNING) return true;
+    return (randomValue & 3u) == 0u;
+}
+
+bool isInsect(uint material) { return material == MAT_ANT || material == MAT_BEETLE; }
+
+bool insectGrounded(ivec2 p) {
+    Cell below = sampleAt(p + ivec2(0, 1));
+    return below.material != MAT_EMPTY && !isCellGas(below) && !isCellLiquid(below);
+}
+
+int insectTargetSignal(Cell insect, ivec2 p) {
+    if (insect.material == MAT_ANT) {
+        return localTargetSignal(p, MAT_WASTE, MAT_FERTILIZER) +
+               localTargetSignal(p, MAT_DIRT, MAT_GRASS) / 2;
+    }
+    return localTargetSignal(p, MAT_WASTE, MAT_WOOD) +
+           localTargetSignal(p, MAT_FERTILIZER, MAT_MUD) / 2;
+}
+
+bool insectMoveAllowed(Cell insect, ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {
+    if ((insect.aux & AUX_MOVED) != 0u) return false;
+    bool sourceWet = adjacentContains(sourcePosition, MAT_WATER, MAT_SALTWATER) || adjacentContains(sourcePosition, MAT_DIRTY_WATER, MAT_ACID);
+    bool targetWet = adjacentContains(targetPosition, MAT_WATER, MAT_SALTWATER) || adjacentContains(targetPosition, MAT_DIRTY_WATER, MAT_ACID);
+    if (sourceWet != targetWet) return sourceWet;
+    int sourceSignal = insectTargetSignal(insect, sourcePosition);
+    int targetSignal = insectTargetSignal(insect, targetPosition);
+    if (sourceSignal != targetSignal) return targetSignal > sourceSignal;
+
+    ivec2 delta = targetPosition - sourcePosition;
+    uint directionState = stateValue(insect);
+    int preferredDirection = directionState == 2u ? -1 :
+        (directionState == 1u ? 1 : (((insect.aux >> 8u) & 1u) != 0u ? 1 : -1));
+    if (delta.x == preferredDirection) return true;
+    return (randomValue & 7u) == 0u;
+}
+
+bool isConveyorCargo(Cell cell) {
+    return isConveyorPowderMaterial(cell.material) || isLooseSolid(cell);
+}
+
+int conveyorDirectionBelow(ivec2 p) {
+    Cell belt = sampleAt(p + ivec2(0, 1));
+    if (belt.material != MAT_CONVEYOR) return 0;
+    return (belt.aux & AUX_CHARGED) != 0u ? 1 : -1;
+}
+
+bool sleepSafe(ivec2 position, Cell cell) {
+    if (cell.material == MAT_EMPTY || cell.material == MAT_OXYGEN || isStructural(cell)) return true;
+    if (cell.material == MAT_BEE || isInsect(cell.material) || cell.material == MAT_SEED || cell.material == MAT_POLLEN) return false;
+    TileState tile = tiles[tileIndex(position, movePc.width)];
+    bool stabilizedRegion = tileHas(tile, TILE_STABLE) && tileHas(tile, TILE_SLEEPING) && tile.material == cell.material && tile.occupancy >= TILE_STABILITY_OCCUPANCY && (isBlockCapable(cell.material) || cell.material == MAT_DIRT ||
+                             cell.material == MAT_SAND || cell.material == MAT_SILT ||
+                             cell.material == MAT_SALT || cell.material == MAT_ICE);
+    if (stabilizedRegion) return true;
+    if (isCellGas(cell) || isCellLiquid(cell) || isCellPowder(cell) || isLooseSolid(cell)) return false;
+    return isCellImmovable(cell);
+}
+
+bool pairSleeping(ivec2 a, ivec2 b) {
+    TileState tileA = tiles[tileIndex(a, movePc.width)];
+    TileState tileB = tiles[tileIndex(b, movePc.width)];
+    if (!tileHas(tileA, TILE_SLEEPING) || !tileHas(tileB, TILE_SLEEPING)) return false;
+    return sleepSafe(a, moveAt(a)) && sleepSafe(b, moveAt(b));
+}
+
+void processVertical(ivec2 top, ivec2 bottom) {
+    if (pairSleeping(top, bottom)) return;
+    diffuseSalinityPair(top, bottom);
+    Cell a = moveAt(top);
+    Cell b = moveAt(bottom);
+    uint randomValue = moveHash(top, uint(movePc.phase) + 1u);
+
+    if (isHalfWaterCell(a) && isHalfWaterCell(b)) {
+        mergeHalfWaterPair(bottom, top, b, a);
+        return;
+    }
+
+    if (isInsect(a.material) && b.material == MAT_EMPTY && !insectGrounded(top) &&
+        (a.aux & AUX_MOVED) == 0u) {
+        swapCells(top, bottom);
+        return;
+    }
+
+    if (a.material == MAT_CARBON_DIOXIDE &&
+        (b.material == MAT_EMPTY || b.material == MAT_OXYGEN || b.material == MAT_SMOKE) &&
+        (randomValue & 1u) == 0u) {
+        swapCells(top, bottom);
+        return;
+    }
+
+
+    if ((isCellPowder(a) || isCellLiquid(a) || isLooseSolid(a)) && canCellFallInto(a, b) &&
+        movementAllows(a, randomValue)) {
+        swapCells(top, bottom);
+        return;
+    }
+
+    if (a.material == MAT_ICE && b.material == MAT_EMPTY && (randomValue & 1u) == 0u) {
+        swapCells(top, bottom);
+        return;
+    }
+    if (b.material == MAT_ICE &&
+        (a.material == MAT_WATER || a.material == MAT_SALTWATER || a.material == MAT_DIRTY_WATER)) {
+        swapCells(top, bottom);
+        return;
+    }
+
+    if (isCellGas(b) && (a.material == MAT_EMPTY ||
+        (isCellGas(a) && densityOf(b.material) < densityOf(a.material)))) {
+        if (b.material != MAT_LIGHTNING || lightningMoveAllowed(bottom, top, randomValue)) {
+            swapCells(top, bottom);
+            return;
+        }
+    }
+
+    if (b.material == MAT_BEE && a.material == MAT_EMPTY && beeMoveAllowed(b, bottom, top, randomValue)) {
+        swapCells(top, bottom);
+        return;
+    }
+    if (a.material == MAT_BEE && b.material == MAT_EMPTY && beeMoveAllowed(a, top, bottom, randomValue >> 1u)) {
+        swapCells(top, bottom);
+        return;
+    }
+
+    if (isMagnetic(b.material) && a.material == MAT_EMPTY && magneticMoveAllowed(bottom, top, randomValue)) {
+        swapCells(top, bottom);
+    } else if (isMagnetic(a.material) && b.material == MAT_EMPTY &&
+               magneticMoveAllowed(top, bottom, randomValue >> 1u)) {
+        swapCells(top, bottom);
+    }
+}
+
+void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
+    if (pairSleeping(sourcePosition, targetPosition)) return;
+    Cell source = moveAt(sourcePosition);
+    Cell target = moveAt(targetPosition);
+    uint randomValue = moveHash(sourcePosition, uint(movePc.phase) * 17u + 3u);
+
+    Cell below = sampleAt(sourcePosition + ivec2(0, 1));
+    if (!upward && isInsect(source.material) && target.material == MAT_EMPTY &&
+        !insectGrounded(sourcePosition) && (source.aux & AUX_MOVED) == 0u) {
+        swapCells(sourcePosition, targetPosition);
+        return;
+    }
+    if (upward && isInsect(source.material) && target.material == MAT_EMPTY &&
+        insectGrounded(sourcePosition) && insectGrounded(targetPosition) &&
+        insectMoveAllowed(source, sourcePosition, targetPosition, randomValue)) {
+        swapCells(sourcePosition, targetPosition);
+        return;
+    }
+
+    bool cohesiveMud = source.material == MAT_MUD &&
+        (below.material == MAT_DIRT || below.material == MAT_STONE || below.material == MAT_MUD);
+    if (!upward && source.material == MAT_WATER && supportedAt(sourcePosition, source) &&
+        isOpenGas(target)) {
+        int direction = targetPosition.x > sourcePosition.x ? 1 : -1;
+        Cell trailing = sampleAt(sourcePosition - ivec2(direction, 0));
+        if (waterHalfUnits(source) != 2u || waterHalfUnits(trailing) < 1u) return;
+    }
+    if (!upward && !cohesiveMud &&
+        (isCellPowder(source) || isCellLiquid(source) || isLooseSolid(source)) &&
+        supportedAt(sourcePosition, source) && canCellFallInto(source, target) &&
+        movementAllows(source, randomValue)) {
+        swapCells(sourcePosition, targetPosition);
+        return;
+    }
+
+    if (upward && source.material == MAT_LAVA && stateValue(source) >= 220u &&
+        target.material == MAT_EMPTY && (randomValue & 3u) == 0u) {
+        Cell pressured = source;
+        setStateValue(pressured, stateValue(source) - 48u);
+        cells[moveIndex(sourcePosition)] = target;
+        pressured.age = 0u;
+        pressured.aux |= AUX_MOVED;
+        cells[moveIndex(targetPosition)] = pressured;
+        return;
+    }
+
+    if (upward && isCellGas(source) &&
+        (target.material == MAT_EMPTY ||
+         (isCellGas(target) && densityOf(source.material) < densityOf(target.material)))) {
+        if (source.material != MAT_LIGHTNING ||
+            lightningMoveAllowed(sourcePosition, targetPosition, randomValue)) {
+            swapCells(sourcePosition, targetPosition);
+            return;
+        }
+    }
+
+
+    if (source.material == MAT_BEE && target.material == MAT_EMPTY &&
+        beeMoveAllowed(source, sourcePosition, targetPosition, randomValue)) {
+        swapCells(sourcePosition, targetPosition);
+        return;
+    }
+
+    if (isMagnetic(source.material) && target.material == MAT_EMPTY &&
+        magneticMoveAllowed(sourcePosition, targetPosition, randomValue)) {
+        swapCells(sourcePosition, targetPosition);
+    }
+}
+
+void processHorizontal(ivec2 left, ivec2 right) {
+    if (pairSleeping(left, right)) return;
+    diffuseSalinityPair(left, right);
+    Cell a = moveAt(left);
+    Cell b = moveAt(right);
+    uint randomValue = moveHash(left, uint(movePc.phase) * 31u + 5u);
+
+    int leftBelt = conveyorDirectionBelow(left);
+    int rightBelt = conveyorDirectionBelow(right);
+    if (isConveyorCargo(a) && b.material == MAT_EMPTY && leftBelt > 0) {
+        swapCells(left, right);
+        return;
+    }
+    if (isConveyorCargo(b) && a.material == MAT_EMPTY && rightBelt < 0) {
+        swapCells(left, right);
+        return;
+    }
+
+
+    if (isInsect(a.material) && b.material == MAT_EMPTY &&
+        insectGrounded(left) && insectGrounded(right) &&
+        insectMoveAllowed(a, left, right, randomValue)) {
+        swapCells(left, right);
+        return;
+    }
+    if (isInsect(b.material) && a.material == MAT_EMPTY &&
+        insectGrounded(right) && insectGrounded(left) &&
+        insectMoveAllowed(b, right, left, randomValue >> 1u)) {
+        swapCells(left, right);
+        return;
+    }
+
+    if (isHalfWaterCell(a) && isHalfWaterCell(b)) {
+        mergeHalfWaterPair((randomValue & 1u) == 0u ? left : right,
+                           (randomValue & 1u) == 0u ? right : left,
+                           (randomValue & 1u) == 0u ? a : b,
+                           (randomValue & 1u) == 0u ? b : a);
+        return;
+    }
+
+    if (movePc.reserved1 != 0u && !isHalfWaterCell(a) && !isHalfWaterCell(b)) return;
+
+    if (isCellLiquid(a) && isOpenGas(b) && liquidCanSpread(left, right, a, randomValue)) {
+        if (a.material == MAT_WATER && !isHalfWaterCell(a)) splitFullWaterPair(left, right, a, b);
+        else swapCells(left, right);
+    } else if (isCellLiquid(b) && isOpenGas(a) &&
+               liquidCanSpread(right, left, b, randomValue >> 1u)) {
+        if (b.material == MAT_WATER && !isHalfWaterCell(b)) splitFullWaterPair(right, left, b, a);
+        else swapCells(left, right);
+    } else if (isCellGas(a) && b.material == MAT_EMPTY && gasHorizontalAllows(a.material, randomValue) &&
+               (a.material != MAT_LIGHTNING || lightningMoveAllowed(left, right, randomValue))) {
+        swapCells(left, right);
+    } else if (isCellGas(b) && a.material == MAT_EMPTY && gasHorizontalAllows(b.material, randomValue >> 1u) &&
+               (b.material != MAT_LIGHTNING || lightningMoveAllowed(right, left, randomValue >> 1u))) {
+        swapCells(left, right);
+    } else if (a.material == MAT_BEE && b.material == MAT_EMPTY && beeMoveAllowed(a, left, right, randomValue)) {
+        swapCells(left, right);
+    } else if (b.material == MAT_BEE && a.material == MAT_EMPTY &&
+               beeMoveAllowed(b, right, left, randomValue >> 1u)) {
+        swapCells(left, right);
+    } else if (isMagnetic(a.material) && b.material == MAT_EMPTY &&
+               magneticMoveAllowed(left, right, randomValue)) {
+        swapCells(left, right);
+    } else if (isMagnetic(b.material) && a.material == MAT_EMPTY &&
+               magneticMoveAllowed(right, left, randomValue >> 1u)) {
+        swapCells(left, right);
+    }
+}
+
+void main() {
+    ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
+
+    if (movePc.phase == 0) {
+        ivec2 top = ivec2(gid.x, gid.y * 2 + movePc.parity);
+        ivec2 bottom = top + ivec2(0, 1);
+        if (moveInside(top) && moveInside(bottom)) processVertical(top, bottom);
+    } else if (movePc.phase == 1 || movePc.phase == 2) {
+        ivec2 source = ivec2(gid.x, gid.y * 2 + movePc.parity);
+        int direction = movePc.phase == 1 ? -1 : 1;
+        ivec2 target = source + ivec2(direction, 1);
+        if (moveInside(source) && moveInside(target)) processDiagonal(source, target, false);
+    } else if (movePc.phase == 3 || movePc.phase == 4) {
+        ivec2 source = ivec2(gid.x, gid.y * 2 + movePc.parity + 1);
+        int direction = movePc.phase == 3 ? -1 : 1;
+        ivec2 target = source + ivec2(direction, -1);
+        if (moveInside(source) && moveInside(target)) processDiagonal(source, target, true);
+    } else {
+        ivec2 left = ivec2(gid.x * 2 + movePc.parity, gid.y);
+        ivec2 right = left + ivec2(1, 0);
+        if (moveInside(left) && moveInside(right)) processHorizontal(left, right);
+    }
+}

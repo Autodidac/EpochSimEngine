@@ -1,0 +1,1108 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "materials.glsl"
+#include "tiles.glsl"
+#include "conservation.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
+layout(std430, binding = 1) writeonly buffer NextCells { Cell nextCells[]; };
+layout(std430, binding = 2) readonly buffer Sunlight { uint light[]; };
+layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
+
+const ivec2 neighborOffsets[8] = ivec2[8](
+    ivec2(-1, -1), ivec2(0, -1), ivec2(1, -1), ivec2(-1, 0),
+    ivec2(1, 0), ivec2(-1, 1), ivec2(0, 1), ivec2(1, 1));
+const ivec2 cardinalOffsets[4] = ivec2[4](
+    ivec2(0, -1), ivec2(1, 0), ivec2(0, 1), ivec2(-1, 0));
+
+Cell at(ivec2 p) {
+    return inside(p) ? cells[indexOf(p)] : makeCell(MAT_STONE);
+}
+
+void commitResult(uint index, Cell before, Cell after) {
+    if (!materialEnabled(after.material)) {
+        Cell canonical = makeCell(canonicalMaterial(after.material));
+        canonical.age = after.age;
+        canonical.temperature = after.temperature;
+        after = canonical;
+    }
+    recordConservation(before, after);
+    nextCells[index] = after;
+}
+
+uint neighborCount(ivec2 p, uint material) {
+    uint count = 0u;
+    for (uint i = 0u; i < 8u; ++i) {
+        if (at(p + neighborOffsets[i]).material == material) ++count;
+    }
+    return count;
+}
+
+bool hasNeighbor(ivec2 p, uint material) {
+    return neighborCount(p, material) != 0u;
+}
+
+bool hasHeat(ivec2 p) {
+    return hasNeighbor(p, MAT_FIRE) || hasNeighbor(p, MAT_LAVA) ||
+           hasNeighbor(p, MAT_EMBER) || hasNeighbor(p, MAT_LIGHTNING) ||
+           hasNeighbor(p, MAT_MAGMA_VENT);
+}
+
+bool hasFreshMoisture(ivec2 p) {
+    return hasNeighbor(p, MAT_WATER) || hasNeighbor(p, MAT_MUD) ||
+           hasNeighbor(p, MAT_DIRTY_WATER);
+}
+
+bool hasFreshMoistureRadius(ivec2 p, int radius) {
+    for (int y = -radius; y <= radius; ++y) {
+        for (int x = -radius; x <= radius; ++x) {
+            uint material = at(p + ivec2(x, y)).material;
+            if (material == MAT_WATER || material == MAT_DIRTY_WATER || material == MAT_MUD) return true;
+        }
+    }
+    return false;
+}
+
+bool hasAnyWater(ivec2 p) {
+    return hasNeighbor(p, MAT_WATER) || hasNeighbor(p, MAT_SALTWATER) ||
+           hasNeighbor(p, MAT_DIRTY_WATER);
+}
+
+bool hasCold(ivec2 p) {
+    return hasNeighbor(p, MAT_ICE) || hasNeighbor(p, MAT_SNOW);
+}
+
+bool hasBeeHazard(ivec2 p) {
+    return hasNeighbor(p, MAT_FIRE) || hasNeighbor(p, MAT_LAVA) ||
+           hasNeighbor(p, MAT_ACID) || hasNeighbor(p, MAT_SMOKE) ||
+           hasNeighbor(p, MAT_DIRTY_STEAM) || hasNeighbor(p, MAT_LIGHTNING) ||
+           hasNeighbor(p, MAT_RADIATION);
+}
+
+bool hasHungryBee(ivec2 p) {
+    for (uint i = 0u; i < 8u; ++i) {
+        Cell bee = at(p + neighborOffsets[i]);
+        if (bee.material == MAT_BEE && (bee.aux & AUX_BEE_POLLEN) == 0u && stateValue(bee) == 0u) return true;
+    }
+    return false;
+}
+
+int neighborTemperature(ivec2 p) {
+    return (at(p + ivec2(1, 0)).temperature + at(p + ivec2(-1, 0)).temperature +
+            at(p + ivec2(0, 1)).temperature + at(p + ivec2(0, -1)).temperature) / 4;
+}
+
+uint countWithin(ivec2 p, uint material, int radius) {
+    uint count = 0u;
+    for (int y = -radius; y <= radius; ++y) {
+        for (int x = -radius; x <= radius; ++x) {
+            if (x * x + y * y <= radius * radius && at(p + ivec2(x, y)).material == material) ++count;
+        }
+    }
+    return count;
+}
+
+ivec2 nearestOffset(ivec2 p, uint material, int radius) {
+    int best = 0x3fffffff;
+    ivec2 result = ivec2(0);
+    for (int y = -radius; y <= radius; ++y) {
+        for (int x = -radius; x <= radius; ++x) {
+            if (at(p + ivec2(x, y)).material == material) {
+                int distanceSquared = x * x + y * y;
+                if (distanceSquared < best) {
+                    best = distanceSquared;
+                    result = ivec2(x, y);
+                }
+            }
+        }
+    }
+    return result;
+}
+
+bool hasWithin(ivec2 p, uint material, int radius) {
+    ivec2 offset = nearestOffset(p, material, radius);
+    return any(notEqual(offset, ivec2(0))) || at(p).material == material;
+}
+
+bool seedHasGrowingConditions(ivec2 seedPosition) {
+    Cell seed = at(seedPosition);
+    if (seed.material != MAT_SEED || seed.age < 90u) return false;
+    uint soil = at(seedPosition + ivec2(0, 1)).material;
+    bool fertileSoil = soil == MAT_DIRT || soil == MAT_GRASS || soil == MAT_MUD ||
+                       soil == MAT_FERTILIZER;
+    bool moisture = hasFreshMoistureRadius(seedPosition, 4) ||
+                    hasWithin(seedPosition, MAT_FERTILIZER, 3);
+    return fertileSoil && moisture &&
+           !hasNeighbor(seedPosition, MAT_SALTWATER) &&
+           !hasNeighbor(seedPosition, MAT_ACID) &&
+           light[indexOf(seedPosition)] > 105u;
+}
+
+ivec2 flowerSeedTarget(ivec2 flowerPosition, Cell flower) {
+    uint choice = hash32(indexOf(flowerPosition) ^ flower.age ^ pc.seed ^ 0xf10a3u) & 3u;
+    return flowerPosition + cardinalOffsets[choice];
+}
+
+bool flowerDropsSeed(ivec2 targetPosition) {
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 flowerPosition = targetPosition - cardinalOffsets[i];
+        Cell flower = at(flowerPosition);
+        if (flower.material == MAT_FLOWER && flower.age > 900u &&
+            (cellHash(flowerPosition, 0x5eedu) & 1023u) == 0u &&
+            all(equal(flowerSeedTarget(flowerPosition, flower), targetPosition))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+ivec2 saltDissolutionTarget(ivec2 saltPosition, Cell saltCell) {
+    uint choice = hash32(indexOf(saltPosition) ^ saltCell.age ^ saltCell.aux ^ pc.seed) & 3u;
+    return saltPosition + cardinalOffsets[choice];
+}
+
+uint incomingSaltUnits(ivec2 waterPosition) {
+    uint incoming = 0u;
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 saltPosition = waterPosition - cardinalOffsets[i];
+        Cell saltCell = at(saltPosition);
+        if (saltCell.material == MAT_SALT && stateValue(saltCell) > 0u &&
+            (cellHash(saltPosition, saltCell.age ^ 0x5a17u) & 31u) == 0u &&
+            all(equal(saltDissolutionTarget(saltPosition, saltCell), waterPosition))) {
+            ++incoming;
+        }
+    }
+    return incoming;
+}
+
+ivec2 beeDepositTarget(ivec2 beePosition, Cell beeCell) {
+    ivec2 queenOffset = nearestOffset(beePosition, MAT_QUEEN_BEE, 6);
+    if (any(notEqual(queenOffset, ivec2(0)))) {
+        ivec2 direction = ivec2(
+            queenOffset.x == 0 ? 0 : (queenOffset.x > 0 ? 1 : -1),
+            queenOffset.y == 0 ? 0 : (queenOffset.y > 0 ? 1 : -1));
+        ivec2 preferred = beePosition + direction;
+        uint preferredMaterial = at(preferred).material;
+        if ((preferredMaterial == MAT_EMPTY || preferredMaterial == MAT_POLLEN) &&
+            (hasNeighbor(preferred, MAT_QUEEN_BEE) || hasNeighbor(preferred, MAT_BEE_NEST))) {
+            return preferred;
+        }
+    }
+
+    uint start = hash32(indexOf(beePosition) ^ beeCell.aux ^ beeCell.age ^ 0xb33f00du) & 7u;
+    for (uint offset = 0u; offset < 8u; ++offset) {
+        ivec2 candidate = beePosition + neighborOffsets[(start + offset) & 7u];
+        uint material = at(candidate).material;
+        if ((material == MAT_EMPTY || material == MAT_POLLEN) &&
+            (hasNeighbor(candidate, MAT_QUEEN_BEE) || hasNeighbor(candidate, MAT_BEE_NEST))) {
+            return candidate;
+        }
+    }
+    return beePosition;
+}
+
+bool pollenBeeTargets(ivec2 targetPosition) {
+    for (uint i = 0u; i < 8u; ++i) {
+        ivec2 beePosition = targetPosition - neighborOffsets[i];
+        Cell bee = at(beePosition);
+        if (bee.material == MAT_BEE && (bee.aux & AUX_BEE_POLLEN) != 0u &&
+            all(equal(beeDepositTarget(beePosition, bee), targetPosition)) &&
+            (hasNeighbor(beePosition, MAT_QUEEN_BEE) || hasNeighbor(beePosition, MAT_BEE_NEST))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool burningOilBelow(ivec2 p) {
+    ivec2 oilPosition = p + ivec2(0, 1);
+    Cell oil = at(oilPosition);
+    return oil.material == MAT_OIL && (hasHeat(oilPosition) || oil.temperature > 240);
+}
+
+bool hotWaterBelow(ivec2 p, uint material) {
+    Cell below = at(p + ivec2(0, 1));
+    return below.material == material && below.temperature >= (material == MAT_SALTWATER ? 102 : 100);
+}
+
+bool radioactiveSourceNear(ivec2 p) {
+    return hasNeighbor(p, MAT_URANIUM) && !hasNeighbor(p, MAT_ALUMINUM) && !hasNeighbor(p, MAT_IRON);
+}
+
+
+void applyStructuralHazards(ivec2 position, Cell source, inout Cell result,
+                            bool nearWater, bool nearSaltwater, bool nearLava,
+                            bool nearFire, bool nearAcid) {
+    if (!isStructural(source) || !isStructural(result)) return;
+
+    uint health = stateValue(result);
+    if (health == 0u) health = 255u;
+    uint damage = 0u;
+    uint randomValue = cellHash(position, source.age ^ 0x51f15e5u);
+
+    if (nearAcid && !acidImmune(source.material) && (randomValue & 63u) == 0u) {
+        damage += max(1u, (255u - acidResistance(source.material)) / 12u);
+    }
+    if ((nearLava || nearFire) && (randomValue & 31u) == 0u) {
+        if (source.material == MAT_WOOD || source.material == MAT_PLASTIC ||
+            source.material == MAT_BEESWAX || source.material == MAT_BEE_NEST) damage += 12u;
+        else if (source.material == MAT_GLASS || source.material == MAT_CRYSTAL) damage += 3u;
+        else damage += 1u;
+    }
+    if (nearSaltwater && (randomValue & 1023u) == 0u &&
+        (source.material == MAT_IRON || source.material == MAT_ALUMINUM ||
+         source.material == MAT_COPPER || source.material == MAT_CONVEYOR)) {
+        damage += 1u;
+    }
+    if (nearWater && source.material == MAT_WOOD) result.aux |= AUX_WET;
+
+    if (damage == 0u) return;
+    if (damage >= health) {
+        result.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED | AUX_MOVED);
+        setStateValue(result, 48u);
+        result.age = 0u;
+    } else {
+        setStateValue(result, health - damage);
+    }
+}
+
+
+bool isMachine(uint material) {
+    return material == MAT_SMELTER || material == MAT_ASSEMBLER;
+}
+
+bool isFactoryInputResource(uint material) {
+    return material == MAT_IRON || material == MAT_IRON_SHAVINGS ||
+           material == MAT_ALUMINUM || material == MAT_ALUMINUM_SHAVINGS ||
+           material == MAT_GOLD || material == MAT_STEEL || material == MAT_COPPER ||
+           material == MAT_POWER_CELL || material == MAT_PLASMA_AMMO;
+}
+
+bool isMachineController(ivec2 p, uint material) {
+    return isMachine(material) && (p.x & 7) == 3 && (p.y & 7) == 3;
+}
+
+int machineResourceSlot(uint machine, uint resourceMaterial) {
+    if (machine == MAT_SMELTER) {
+        if (resourceMaterial == MAT_IRON_SHAVINGS) return 0;
+        if (resourceMaterial == MAT_ALUMINUM_SHAVINGS) return 1;
+        return -1;
+    }
+    if (machine == MAT_ASSEMBLER) {
+        if (resourceMaterial == MAT_STEEL) return 0;
+        if (resourceMaterial == MAT_COPPER) return 1;
+        if (resourceMaterial == MAT_GOLD) return 2;
+        if (resourceMaterial == MAT_POWER_CELL) return 3;
+        return -1;
+    }
+    if (machine == MAT_INSECT_HABITAT) {
+        if (resourceMaterial == MAT_STEEL) return 0;
+        if (resourceMaterial == MAT_COPPER) return 1;
+        if (resourceMaterial == MAT_PLASMA_AMMO) return 2;
+    }
+    return -1;
+}
+
+uvec4 machineRecipe(uint machine) { if (machine == MAT_ASSEMBLER) return uvec4(2u,1u,1u,1u); return uvec4(15u); }
+bool machineReady(uint machine, uvec4 inventory) { if (machine == MAT_SMELTER) return inventory.x>=4u || inventory.y>=4u; return all(greaterThanEqual(inventory,machineRecipe(machine))); }
+uvec4 machineConsumption(uint machine, uvec4 inventory) { if(machine==MAT_SMELTER) return inventory.x>=4u?uvec4(4u,0u,0u,0u):uvec4(0u,4u,0u,0u); return machineRecipe(machine); }
+uint machineOutput(uint machine, uvec4 inventory) { if(machine==MAT_SMELTER) return inventory.x>=4u?MAT_IRON:MAT_ALUMINUM; if(machine==MAT_ASSEMBLER) return MAT_PLASMA_AMMO; return MAT_EMPTY; }
+
+ivec2 machineOutputPosition(ivec2 controller) {
+    return controller + ivec2(5, 0);
+}
+
+ivec2 nearestAcceptingMachine(ivec2 resourcePosition, uint resourceMaterial, int radius) {
+    int best = 0x3fffffff;
+    ivec2 result = resourcePosition;
+    for (int y = -radius; y <= radius; ++y) {
+        for (int x = -radius; x <= radius; ++x) {
+            ivec2 candidatePosition = resourcePosition + ivec2(x, y);
+            Cell candidate = at(candidatePosition);
+            if (isMachineController(candidatePosition, candidate.material) &&
+                machineResourceSlot(candidate.material, resourceMaterial) >= 0) {
+                int distanceSquared = x * x + y * y;
+                if (distanceSquared < best) {
+                    best = distanceSquared;
+                    result = candidatePosition;
+                }
+            }
+        }
+    }
+    return result;
+}
+
+uvec4 incomingMachineCounts(ivec2 controller, uint machine) {
+    uvec4 incoming = uvec4(0u);
+    for (int y = -6; y <= 6; ++y) {
+        for (int x = -6; x <= 6; ++x) {
+            ivec2 resourcePosition = controller + ivec2(x, y);
+            Cell resourceCell = at(resourcePosition);
+            int slot = machineResourceSlot(machine, resourceCell.material);
+            if (slot >= 0 &&
+                all(equal(nearestAcceptingMachine(resourcePosition, resourceCell.material, 6), controller))) {
+                incoming[slot] = min(incoming[slot] + 1u, 15u);
+            }
+        }
+    }
+    return incoming;
+}
+
+bool machineIsAllied(ivec2 controller) {
+    return (at(controller).aux & AUX_CHARGED) != 0u;
+}
+
+bool fallingWaterNear(ivec2 p) {
+    for (uint i = 0u; i < 8u; ++i) {
+        ivec2 waterPosition = p + neighborOffsets[i];
+        Cell water = at(waterPosition);
+        if ((water.material == MAT_WATER || water.material == MAT_DIRTY_WATER) &&
+            (at(waterPosition + ivec2(0, 1)).material == MAT_EMPTY ||
+             isGas(at(waterPosition + ivec2(0, 1)).material)) &&
+            at(waterPosition + ivec2(0, -1)).material == water.material) return true;
+    }
+    return false;
+}
+
+bool lineHasMaterial(ivec2 p, int direction, uint material, int distance) {
+    for (int offset = 1; offset <= distance; ++offset) {
+        uint current = at(p + ivec2(direction * offset, 0)).material;
+        if (current == material) return true;
+        if (isImmovable(current) || current == MAT_DIRT || current == MAT_SAND || current == MAT_MUD) return false;
+    }
+    return false;
+}
+
+bool opposingBoltNear(ivec2 p, bool allied) {
+    for (uint i = 0u; i < 8u; ++i) {
+        Cell bolt = at(p + neighborOffsets[i]);
+        if (bolt.material == MAT_PLANT_STEM && (((bolt.aux & AUX_CHARGED) != 0u) != allied)) return true;
+    }
+    return false;
+}
+
+
+bool dirtyWaterSeparationReady(ivec2 waterPosition, Cell water) {
+    if (water.material != MAT_DIRTY_WATER || water.age < 1800u) return false;
+    Cell above = at(waterPosition + ivec2(0, -1));
+    Cell below = at(waterPosition + ivec2(0, 1));
+    bool settled = above.material == MAT_EMPTY && below.material != MAT_EMPTY &&
+                   !isGas(below.material) && !isLiquid(below.material);
+    return settled && ((pc.step + indexOf(waterPosition)) & 255u) == 0u;
+}
+
+bool fertilizerBaseReady(ivec2 fertilizerPosition, Cell fertilizer) {
+    if (fertilizer.material != MAT_FERTILIZER || fertilizer.age < 1200u) return false;
+    if (at(fertilizerPosition + ivec2(0, -1)).material != MAT_EMPTY) return false;
+    bool crop = hasWithin(fertilizerPosition, MAT_GRASS, 3) ||
+                hasWithin(fertilizerPosition, MAT_FLOWER, 3);
+    return crop && ((pc.step + indexOf(fertilizerPosition) * 3u) & 511u) == 0u;
+}
+
+ivec2 harvestWaterTarget(ivec2 fertilizerPosition) {
+    uint bestIndex = 0xffffffffu;
+    ivec2 best = fertilizerPosition;
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 candidate = fertilizerPosition + cardinalOffsets[i];
+        if (!inside(candidate) || at(candidate).material != MAT_WATER) continue;
+        uint candidateIndex = indexOf(candidate);
+        if (candidateIndex < bestIndex) {
+            bestIndex = candidateIndex;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+ivec2 harvestFertilizerTarget(ivec2 waterPosition) {
+    uint bestIndex = 0xffffffffu;
+    ivec2 best = waterPosition;
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 candidate = waterPosition + cardinalOffsets[i];
+        if (!inside(candidate)) continue;
+        Cell fertilizer = at(candidate);
+        if (fertilizer.material != MAT_FERTILIZER ||
+            !fertilizerBaseReady(candidate, fertilizer) ||
+            any(notEqual(harvestWaterTarget(candidate), waterPosition))) continue;
+        uint candidateIndex = indexOf(candidate);
+        if (candidateIndex < bestIndex) {
+            bestIndex = candidateIndex;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+bool fertilizerHarvestReady(ivec2 fertilizerPosition, Cell fertilizer) {
+    if (!fertilizerBaseReady(fertilizerPosition, fertilizer)) return false;
+    ivec2 waterPosition = harvestWaterTarget(fertilizerPosition);
+    return any(notEqual(waterPosition, fertilizerPosition)) &&
+           all(equal(harvestFertilizerTarget(waterPosition), fertilizerPosition));
+}
+
+bool harvestConsumesWater(ivec2 waterPosition) {
+    if (at(waterPosition).material != MAT_WATER) return false;
+    ivec2 fertilizerPosition = harvestFertilizerTarget(waterPosition);
+    return any(notEqual(fertilizerPosition, waterPosition)) &&
+           all(equal(harvestWaterTarget(fertilizerPosition), waterPosition));
+}
+
+ivec2 firstOppositeGas(ivec2 position, uint material) {
+    uint wanted = material == MAT_SMOKE ? MAT_STEAM : MAT_SMOKE;
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 candidate = position + cardinalOffsets[i];
+        if (at(candidate).material == wanted) return candidate;
+    }
+    return position;
+}
+
+bool smokeSteamPair(ivec2 position, Cell source, out bool primary) {
+    if (source.material != MAT_SMOKE && source.material != MAT_STEAM) return false;
+    ivec2 partner = firstOppositeGas(position, source.material);
+    if (all(equal(partner, position))) return false;
+    Cell partnerCell = at(partner);
+    if (!all(equal(firstOppositeGas(partner, partnerCell.material), position))) return false;
+    primary = indexOf(position) < indexOf(partner);
+    return true;
+}
+
+
+bool sleepingStructuralNeighborhood(ivec2 position, Cell source) {
+    if (!isStructural(source)) return false;
+    uvec2 center = tileCoordinate(position);
+    uint columns = tileColumns(pc.width);
+    uint rows = (pc.height + TILE_SIZE - 1u) / TILE_SIZE;
+    TileState own = tiles[center.y * columns + center.x];
+    if (!tileHas(own, TILE_SLEEPING)) return false;
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+            ivec2 candidate = ivec2(center) + ivec2(x, y);
+            if (candidate.x < 0 || candidate.y < 0 ||
+                candidate.x >= int(columns) || candidate.y >= int(rows)) continue;
+            TileState nearby = tiles[uint(candidate.y) * columns + uint(candidate.x)];
+            if (tileHas(nearby, TILE_ACTIVE) || tileHas(nearby, TILE_COLLAPSING)) return false;
+        }
+    }
+    return true;
+}
+
+void main() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (!inside(p)) return;
+
+    uint index = indexOf(p);
+    Cell source = cells[index];
+    Cell result = source;
+    result.age = source.age + 1u;
+
+    if (sleepingStructuralNeighborhood(p, source)) {
+        result.aux &= ~AUX_MOVED;
+        commitResult(index, source, result);
+        return;
+    }
+
+    int ambientTemperature = 20 + int(light[index] / 48u);
+    int thermalTarget = (neighborTemperature(p) * 3 + ambientTemperature) / 4;
+    // Thermal response is canonical per material. High conductivity moves heat
+    // faster; no placement source, tile origin, or provenance changes it.
+    int thermalDivisor = clamp(36 - int(materialThermalConductivity(source.material)) / 9, 6, 36);
+    if (source.material == MAT_ICE || source.material == MAT_SNOW)
+        thermalDivisor = max(thermalDivisor, 20);
+    result.temperature += clamp((thermalTarget - result.temperature) / thermalDivisor, -20, 20);
+    result.temperature = clamp(result.temperature, -200, 5000);
+
+    // Tile analysis already consumed the previous movement marker.
+    result.aux &= ~AUX_MOVED;
+    TileState tile = tiles[tileIndex(p, pc.width)];
+    bool minorityStructural = isStructural(source) && tile.material != source.material;
+    if (isStructural(source) && !minorityStructural && tileHas(tile, TILE_DAMAGED) &&
+        tile.occupancy >= TILE_MIN_COHESIVE_CELLS &&
+        tile.occupancy < TILE_STABILITY_OCCUPANCY) {
+        uint health = stateValue(result);
+        if (health == 0u) health = 255u;
+        uint limitedHealth = max(64u, tile.occupancy * 255u / TILE_STABILITY_OCCUPANCY);
+        setStateValue(result, min(health, limitedHealth));
+    }
+    if (tileHas(tile, TILE_STABLE) && !isStructural(source) &&
+        source.material == tile.material && source.material != MAT_EMPTY &&
+        !isCellGas(source) && !isCellLiquid(source)) {
+        // Stability qualification never creates, replaces, fills, or snaps cells.
+        // It marks only the already represented pixels coherent and supported.
+        // Material, temperature, age, random variation, and damage are preserved.
+        result.aux |= AUX_SUPPORTED;
+        result.aux &= ~AUX_MOVED;
+    }
+    if (isStructural(source) && (cellPhase(result) == PHASE_MOLTEN ||
+        cellPhase(result) == PHASE_VAPOR || cellPhase(result) == PHASE_SOFTENED)) {
+        // Phase change releases the represented cell without changing material,
+        // temperature, or health. Placement provenance never participates.
+        result.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
+        result.aux |= AUX_MOVED;
+        result.age = 0u;
+    } else if (isStructural(source) && (minorityStructural || tileHas(tile, TILE_COLLAPSING))) {
+        result.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
+        result.aux |= AUX_MOVED;
+        result.age = 0u;
+    } else if (isStructural(source)) {
+        result.aux |= AUX_STRUCTURAL;
+        if (tileHas(tile, TILE_SUPPORTED)) result.aux |= AUX_SUPPORTED;
+        else result.aux &= ~AUX_SUPPORTED;
+    }
+    uint randomValue = cellHash(p, source.age ^ source.aux);
+    uint randomByte = (randomValue >> 8u) & 255u;
+    bool nearWater = hasNeighbor(p, MAT_WATER) || hasNeighbor(p, MAT_DIRTY_WATER);
+    bool nearSaltwater = hasNeighbor(p, MAT_SALTWATER);
+    bool nearLava = hasNeighbor(p, MAT_LAVA) || hasNeighbor(p, MAT_MAGMA_VENT);
+    bool nearFire = hasNeighbor(p, MAT_FIRE) || hasNeighbor(p, MAT_EMBER) || hasNeighbor(p, MAT_LIGHTNING);
+    bool nearAcid = hasNeighbor(p, MAT_ACID);
+    bool nearSmoke = hasNeighbor(p, MAT_SMOKE);
+    bool nearSteam = hasNeighbor(p, MAT_STEAM) || hasNeighbor(p, MAT_DIRTY_STEAM);
+    bool nearSalt = hasNeighbor(p, MAT_SALT);
+
+    // Canonical thermal behavior is material/temperature based. The material
+    // ID is retained through melting and vaporization; only chemical
+    // decomposition produces configured byproducts.
+    if ((source.material == MAT_PLASTIC || source.material == MAT_ACID_RESISTANT_PLASTIC) &&
+        result.temperature >= materialIgnitionPoint(source.material) &&
+        (nearFire || nearLava || hasNeighbor(p, MAT_OXYGEN))) {
+        uint route = randomValue & 3u;
+        if (route == 0u) result = makeCell(MAT_SMOKE);
+        else if (route == 1u) result = makeCell(MAT_OIL);
+        else if (route == 2u) result = makeCell(MAT_WASTE);
+        else result = makeCell(MAT_ASH);
+        result.temperature = max(source.temperature, 320);
+    }
+
+    if (source.material == MAT_EMPTY) {
+        // Source materials create effects into empty space without racing a
+        // neighbor write. Each destination cell decides its own transition.
+        Cell belowSource = at(p + ivec2(0, 1));
+        if (dirtyWaterSeparationReady(p + ivec2(0, 1), belowSource)) {
+            result = makeCell(MAT_WATER);
+        } else if (fertilizerHarvestReady(p + ivec2(0, 1), belowSource)) {
+            result = makeCell(MAT_FOOD);
+        } else if (at(p + ivec2(0, 1)).material == MAT_MAGMA_VENT) {
+            Cell vent = at(p + ivec2(0, 1));
+            uint pressure = stateValue(vent);
+            if (pressure >= 220u && (randomValue & 3u) == 0u) {
+                result = makeCell(MAT_LAVA);
+                setStateValue(result, pressure - 96u);
+            } else if (pressure >= 72u && (randomValue & 15u) == 0u) {
+                result = makeCell((randomValue & 16u) == 0u ? MAT_SMOKE : MAT_STEAM);
+                result.temperature = 240;
+            }
+        } else if (fallingWaterNear(p) && (randomValue & 31u) == 0u) {
+            result = makeCell(MAT_OXYGEN);
+        } else if (burningOilBelow(p) && (randomValue & 3u) == 0u) {
+            result = makeCell(MAT_SMOKE);
+        } else if (hotWaterBelow(p, MAT_SALTWATER) && (randomValue & 7u) == 0u) {
+            result = makeCell(MAT_STEAM);
+        } else if (radioactiveSourceNear(p) && (randomValue & 255u) == 0u) {
+            result = makeCell(MAT_RADIATION);
+        } else {
+            bool produced = false;
+            // An aligned 8x8 controller can only output at x mod 8 == 0 and
+            // y mod 8 == 3. Reject all other empty cells before any machine scan.
+            if ((p.x & 7) == 0 && (p.y & 7) == 3) {
+                for (int machineOffset = -5; machineOffset <= 5 && !produced; ++machineOffset) {
+                    ivec2 controller = p + ivec2(machineOffset, 0);
+                    Cell machine = at(controller);
+                    if (isMachineController(controller, machine.material) &&
+                        all(equal(machineOutputPosition(controller), p)) &&
+                        machineReady(machine.material, machineInventory(machine)) &&
+                        (machine.age % 24u) == 0u) {
+                        result = makeCell(machineOutput(machine.material, machineInventory(machine)));
+                        if (result.material == MAT_BEETLE) result.aux &= ~AUX_CHARGED;
+                        produced = true;
+                    }
+                }
+            }
+            if (!produced) {
+            }
+            if (produced) {
+                commitResult(index, source, result);
+                return;
+            }
+        }
+        // An empty destination that was filled by a physical or production
+        // transition is final for this tick. Later colony and plant rules must
+        // not overwrite newly separated water, food, smoke, lava, or machine output.
+        if (result.material != MAT_EMPTY) {
+            commitResult(index, source, result);
+            return;
+        }
+
+        if (flowerDropsSeed(p)) {
+            result = makeCell(MAT_SEED);
+            commitResult(index, source, result);
+            return;
+        }
+        if (hasNeighbor(p, MAT_INSECT_HABITAT) && countWithin(p, MAT_ANT, 5) + countWithin(p, MAT_BEETLE, 5) < 8u && (randomValue & 2047u) == 0u) {
+            result = makeCell((randomValue & 4096u) == 0u ? MAT_ANT : MAT_BEETLE);
+            commitResult(index, source, result);
+            return;
+        }
+        if (pollenBeeTargets(p)) {
+            result = makeCell(MAT_POLLEN);
+        } else {
+            bool nestFrontier = hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEE_NEST);
+            bool handledNest = false;
+            if (nestFrontier) {
+                ivec2 queenOffset = nearestOffset(p, MAT_QUEEN_BEE, 5);
+                int queenDistanceSquared = queenOffset.x * queenOffset.x + queenOffset.y * queenOffset.y;
+                if (any(notEqual(queenOffset, ivec2(0))) && queenDistanceSquared >= 7 &&
+                    queenDistanceSquared <= 21 && (randomValue & 7u) != 0u) {
+                    result = makeCell(MAT_BEE_NEST);
+                    handledNest = true;
+                } else if (any(notEqual(queenOffset, ivec2(0))) && queenDistanceSquared <= 6 &&
+                            (hasNeighbor(p, MAT_HONEY) || hasNeighbor(p, MAT_POLLEN)) &&
+                            countWithin(p, MAT_BEE, 6) < 12u && (randomValue & 4095u) == 0u) {
+                    result = makeCell(MAT_BEE);
+                    handledNest = true;
+                }
+            }
+            if (!handledNest) {
+                Cell below = at(p + ivec2(0, 1));
+                bool stemMoisture = hasFreshMoistureRadius(p, 4) ||
+                                    hasWithin(p, MAT_FERTILIZER, 3);
+                if (below.material == MAT_PLANT_STEM &&
+                    below.age > 60u && stemMoisture && light[index] > 105u) {
+                    uint stage = stateValue(below);
+                    if (stage < 3u) {
+                        result = makeCell(MAT_PLANT_STEM);
+                        setStateValue(result, stage + 1u);
+                    } else {
+                        result = makeCell(MAT_FLOWER);
+                    }
+                }
+            }
+        }
+        commitResult(index, source, result);
+        return;
+    }
+
+    // Fresh water visibly wets soil before mud forms; moisture remains on the
+    // dirt cell so drainage never silently deletes a water cell.
+    bool freshContact = hasNeighbor(p, MAT_WATER) || hasNeighbor(p, MAT_DIRTY_WATER);
+    uint supportBelow = at(p + ivec2(0, 1)).material;
+    bool stableSoil = supportBelow == MAT_DIRT || supportBelow == MAT_STONE || supportBelow == MAT_MUD;
+    if (source.material == MAT_DIRT) {
+        if (freshContact) result.aux |= AUX_WET;
+        bool saturatedSurface = (result.aux & AUX_WET) != 0u && stableSoil && neighborCount(p, MAT_MUD) <= 2u;
+        if (saturatedSurface && source.age > 90u && (randomValue & 63u) == 0u) { result = makeCell(MAT_MUD); result.aux |= AUX_WET; }
+        else if (!hasFreshMoistureRadius(p, 2) && (result.aux & AUX_WET) != 0u && source.age > 900u && (randomValue & 255u) == 0u) result.aux &= ~AUX_WET;
+    } else if (source.material == MAT_MUD && !hasAnyWater(p) && source.age > 600u && (light[index] > 105u || result.temperature > 30) && (randomValue & 63u) == 0u) result = makeCell(MAT_DIRT);
+
+
+    // Waterfall aeration and plant respiration use the same cell chemistry pass.
+    if (source.material == MAT_OXYGEN) {
+        if (nearFire || hasNeighbor(p, MAT_EMBER)) result = makeCell(MAT_CARBON_DIOXIDE);
+    } else if (source.material == MAT_CARBON_DIOXIDE) {
+        if (hasNeighbor(p, MAT_GRASS) && light[index] > 130u && (randomValue & 127u) == 0u)
+            result = makeCell(MAT_OXYGEN);
+    } else if (source.material == MAT_HYDROGEN) {
+        bool ignition = nearFire || hasNeighbor(p, MAT_EMBER) || hasNeighbor(p, MAT_LIGHTNING) ||
+                        result.temperature >= materialIgnitionPoint(MAT_HYDROGEN);
+        if (ignition && hasNeighbor(p, MAT_OXYGEN)) {
+            result = makeCell((randomValue & 3u) == 0u ? MAT_FIRE : MAT_STEAM);
+            result.temperature = max(result.temperature, 760);
+        }
+    }
+
+    // Resource cells are consumed only by one deterministic nearby machine controller.
+    bool storedInMachine = false;
+    if (isFactoryInputResource(source.material)) {
+        ivec2 acceptingMachine = nearestAcceptingMachine(p, source.material, 6);
+        if (any(notEqual(acceptingMachine, p))) {
+            result = makeCell(MAT_EMPTY);
+            storedInMachine = true;
+        }
+    }
+
+    if (isMachineController(p, source.material)) {
+        uvec4 inventory = min(machineInventory(source) + incomingMachineCounts(p, source.material), uvec4(15u));
+        bool canOutput = at(machineOutputPosition(p)).material == MAT_EMPTY &&
+                         machineReady(source.material, inventory) && (source.age % 24u) == 0u;
+        if (canOutput) inventory -= machineConsumption(source.material, inventory);
+        setMachineInventory(result, inventory);
+        result.temperature = source.material == MAT_SMELTER ? max(result.temperature, 260) : result.temperature;
+    }
+
+
+
+    // Insects are ecosystem agents, not placeholder combat bots. Ants move
+    // recoverable waste toward soil; beetles break dead biomass into fertilizer.
+    if (source.material == MAT_ANT) {
+        if (nearFire || nearAcid || nearLava) result = makeCell(MAT_WASTE);
+    } else if (source.material == MAT_BEETLE) {
+        if (nearFire || nearAcid || nearLava) result = makeCell(MAT_WASTE);
+    } else if (source.material == MAT_WASTE && (hasNeighbor(p, MAT_ANT) || hasNeighbor(p, MAT_BEETLE)) && (hasNeighbor(p, MAT_DIRT) || hasNeighbor(p, MAT_MUD)) && hasFreshMoistureRadius(p, 2) && (randomValue & 255u) == 0u) {
+        result = makeCell(MAT_FERTILIZER);
+    } else if (source.material == MAT_INSECT_HABITAT) {
+        result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
+    }
+
+    // Meager closed-system correction: wet ash/silt/waste are slowly reclaimed
+    // into fertilizer instead of being silently deleted. Every transition is
+    // one world cell to one world cell and therefore remains conservation-auditable.
+    if ((source.material == MAT_ASH || source.material == MAT_SILT || source.material == MAT_WASTE) &&
+        hasFreshMoistureRadius(p, 2) && hasNeighbor(p, MAT_OXYGEN) &&
+        light[index] > 80u && source.age > 1800u && (randomValue & 1023u) == 0u) {
+        result = makeCell(MAT_FERTILIZER);
+    }
+
+    // Structure chemistry only reduces integrity. It cannot replace a wall with
+    // saltwater, mud, ash, or another phase while the voxel remains structural.
+    applyStructuralHazards(p, source, result, nearWater, nearSaltwater, nearLava, nearFire, nearAcid);
+    if (isStructural(source) && isStructural(result) && source.material != MAT_MAGMA_VENT) {
+        commitResult(index, source, result);
+        return;
+    }
+
+    // Salt dissolution transfers one explicit concentration unit to exactly
+    // one adjacent water cell. No liquid cells are created and salt mass never
+    // chain-converts the entire body of water.
+    if (source.material == MAT_SALT) {
+        if (stateValue(result) == 0u) setStateValue(result, 255u);
+        ivec2 target = saltDissolutionTarget(p, source);
+        Cell targetCell = at(target);
+        if ((targetCell.material == MAT_WATER || targetCell.material == MAT_SALTWATER) &&
+            (cellHash(p, source.age ^ 0x5a17u) & 31u) == 0u) {
+            uint remaining = stateValue(result);
+            if (remaining <= 1u) result = makeCell(MAT_EMPTY);
+            else setStateValue(result, remaining - 1u);
+        }
+    } else if (source.material == MAT_WATER || source.material == MAT_SALTWATER) {
+        uint incoming = incomingSaltUnits(p);
+        if (incoming > 0u) setSalinity(result, salinity(source) + incoming);
+    }
+
+    // Burning oil supplies smoke as well as flame. Smoke and steam merge into
+    // dirty steam, which eventually condenses into dirty water.
+    if (source.material == MAT_OIL && nearFire && (randomValue & 7u) == 0u) {
+        result = makeCell(MAT_FIRE);
+    }
+    bool primaryGas = false;
+    if (smokeSteamPair(p, source, primaryGas)) {
+        result = makeCell(MAT_DIRTY_STEAM);
+    }
+
+    if (result.material == source.material && source.material == MAT_WATER &&
+        (nearLava || nearFire || result.temperature >= 100)) {
+        result = makeCell(MAT_STEAM);
+    } else if (source.material == MAT_SALTWATER &&
+               (nearLava || nearFire || result.temperature >= 102)) {
+        // Evaporation concentrates brine. At saturation it leaves salt behind.
+        uint concentration = salinity(source);
+        if (concentration >= 248u) result = makeCell(MAT_SALT);
+        else setSalinity(result, concentration + 2u);
+    } else if (source.material == MAT_DIRTY_WATER &&
+               (nearLava || nearFire || result.temperature >= 100)) {
+        result = makeCell(MAT_DIRTY_STEAM);
+    } else if (source.material == MAT_LAVA && (nearWater || nearSaltwater)) {
+        result = makeCell(MAT_STONE);
+    } else if (source.material == MAT_LAVA) {
+        result.temperature = max(result.temperature, 1100);
+        if (source.age > 7200u && (randomValue & 1023u) == 0u) result = makeCell(MAT_STONE);
+    } else if (source.material == MAT_MAGMA_VENT) {
+        result.temperature = 1350;
+        Cell outlet = at(p + ivec2(0, -1));
+        bool openOutlet = outlet.material == MAT_EMPTY || isGas(outlet.material) ||
+                          outlet.material == MAT_LAVA;
+        bool blocked = !openOutlet &&
+                       at(p + ivec2(-1, 0)).material != MAT_EMPTY &&
+                       at(p + ivec2(1, 0)).material != MAT_EMPTY;
+        uint pressure = stateValue(source);
+        if (blocked) pressure = min(255u, pressure + 5u);
+        else if (openOutlet) pressure = min(255u, pressure + 2u);
+        else pressure = min(255u, pressure + 3u);
+        setStateValue(result, pressure);
+    }
+
+    if (source.material == MAT_STEAM) {
+        if (source.age < 300u) result.temperature = max(result.temperature, 55);
+        bool condensationConditions = hasCold(p) || result.temperature < 34;
+        if (source.age > 1800u && condensationConditions && (randomValue & 255u) == 0u) {
+            result = makeCell(MAT_WATER);
+        }
+    } else if (source.material == MAT_DIRTY_STEAM) {
+        if (source.age > 2100u && (hasCold(p) || result.temperature < 32) &&
+            (randomValue & 255u) == 0u) {
+            result = makeCell(MAT_DIRTY_WATER);
+        }
+    } else if (source.material == MAT_SMOKE && source.age > 2400u &&
+               hasNeighbor(p, MAT_OXYGEN) && (randomValue & 255u) == 0u) {
+        result = makeCell(MAT_CARBON_DIOXIDE);
+    }
+
+    if (source.material == MAT_FIRE) {
+        result.temperature = max(result.temperature, 620);
+        if (nearWater || nearSaltwater) {
+            result = makeCell(MAT_STEAM);
+        } else if (source.age > 72u + (randomValue & 127u)) {
+            result = makeCell((randomValue & 3u) == 0u ? MAT_EMBER : MAT_SMOKE);
+        }
+    } else if (source.material == MAT_EMBER) {
+        result.temperature = max(result.temperature, 300);
+        if (source.age > 260u && (randomValue & 63u) == 0u) result = makeCell(MAT_ASH);
+    }
+
+    if (source.material == MAT_WATER && result.temperature <= -2 && hasCold(p) &&
+        source.age > 120u && (randomValue & 31u) == 0u) {
+        result = makeCell(MAT_ICE);
+    } else if (source.material == MAT_SALTWATER) {
+        int freezingPoint = -2 - int(min(salinity(source), 240u) / 8u);
+        if (result.temperature <= freezingPoint && hasCold(p) && salinity(source) < 48u &&
+            source.age > 240u && (randomValue & 127u) == 0u) {
+            result = makeCell(MAT_ICE);
+        }
+    } else if (source.material == MAT_ICE) {
+        uint brineStrength = 0u;
+        for (uint i = 0u; i < 8u; ++i) brineStrength = max(brineStrength, salinity(at(p + neighborOffsets[i])));
+        if (brineStrength > 24u && result.temperature > -20 && (randomValue & 15u) == 0u) {
+            result = makeCell(MAT_WATER);
+        } else if ((hasHeat(p) || result.temperature > 2) && source.age > 90u &&
+                   (randomValue & 31u) == 0u) {
+            result = makeCell(MAT_WATER);
+        }
+    } else if (source.material == MAT_SNOW) {
+        if ((nearSalt || nearSaltwater) && (randomValue & 15u) == 0u) {
+            result = makeCell(MAT_WATER);
+        } else if ((hasHeat(p) || result.temperature > 0) && (randomValue & 15u) == 0u) {
+            result = makeCell(MAT_WATER);
+        } else if (nearWater && result.temperature <= 0 && source.age > 300u &&
+                   (randomValue & 63u) == 0u) {
+            result = makeCell(MAT_ICE);
+        }
+    }
+
+    if (source.material == MAT_SAND && (nearLava || result.temperature > 1050) &&
+        (randomValue & 31u) == 0u) {
+        result = makeCell(MAT_GLASS);
+    }
+
+    if (source.material == MAT_ASH && hasAnyWater(p) && (randomValue & 511u) == 0u) {
+        result = makeCell(MAT_FERTILIZER);
+    }
+
+    // Grass is a surface cover on dirt, never a vertical dirt-like stem.
+    // Seeds independently grow a short stem before a flower can bloom.
+    if (source.material == MAT_SEED && seedHasGrowingConditions(p)) {
+        result = makeCell(MAT_PLANT_STEM);
+        setStateValue(result, 1u);
+    } else if (source.material == MAT_DIRT) {
+        bool exposedSurface = at(p + ivec2(0, -1)).material == MAT_EMPTY;
+        bool moisture = hasFreshMoistureRadius(p, 4) || hasWithin(p, MAT_FERTILIZER, 3);
+        bool grassFrontier = hasWithin(p, MAT_GRASS, 3);
+        uint spreadMask = grassFrontier ? 63u : 4095u;
+        if (exposedSurface && light[index] > 145u && moisture &&
+            source.age > 120u && (randomValue & spreadMask) == 0u) {
+            result = makeCell(MAT_GRASS);
+        }
+    } else if (source.material == MAT_GRASS) {
+        if (nearSaltwater || nearAcid || nearFire || nearLava || light[index] < 18u) {
+            if (source.age > 600u && (randomValue & 127u) == 0u) {
+                result = makeCell(nearFire || nearLava ? MAT_ASH : MAT_DIRT);
+            }
+        } else if (!hasFreshMoistureRadius(p, 5) && !hasWithin(p, MAT_FERTILIZER, 3) &&
+                   source.age > 7200u && (randomValue & 1023u) == 0u) {
+            result = makeCell(MAT_DIRT);
+        }
+    } else if (source.material == MAT_PLANT_STEM) {
+        Cell support = at(p + ivec2(0, 1));
+        bool validSupport = support.material == MAT_PLANT_STEM || support.material == MAT_GRASS ||
+                            support.material == MAT_DIRT || support.material == MAT_MUD ||
+                            support.material == MAT_FERTILIZER;
+        if (nearSaltwater || nearAcid || nearFire || nearLava) {
+            result = makeCell(nearFire || nearLava ? MAT_ASH : MAT_WASTE);
+        } else if (!validSupport && source.age > 600u) {
+            result = makeCell(MAT_WASTE);
+        } else {
+            if (nearWater) result.aux |= AUX_WET;
+            result.aux |= AUX_PLANT_STEM;
+            result.aux &= ~AUX_CHARGED;
+        }
+    } else if (source.material == MAT_FLOWER) {
+        Cell support = at(p + ivec2(0, 1));
+        bool validStem = support.material == MAT_PLANT_STEM;
+        if (nearSaltwater || nearAcid || nearFire || nearLava) {
+            result = makeCell(nearFire || nearLava ? MAT_ASH : MAT_WASTE);
+        } else if (!validStem && source.age > 600u) {
+            result = makeCell(MAT_WASTE);
+        } else if (nearWater) result.aux |= AUX_WET;
+    }
+
+    if (source.material == MAT_WOOD) {
+        if (nearWater || nearSaltwater) {
+            result.aux |= AUX_WET;
+        } else if ((source.aux & AUX_WET) != 0u && result.temperature > 28 &&
+                   (randomValue & 1023u) == 0u) {
+            result.aux &= ~AUX_WET;
+        }
+    }
+
+    // Bee cycle: feed at honey, form the curved nest swarm while the rest timer
+    // counts down, forage without consuming flowers, carry pollen home, deposit
+    // it near the queen, and repeat.
+    if (source.material == MAT_BEE) {
+        uint restTimer = stateValue(source);
+        if (restTimer > 0u) setStateValue(result, restTimer - 1u);
+
+        if (nearFire || nearLava || hasNeighbor(p, MAT_LIGHTNING)) {
+            result = makeCell(MAT_ASH);
+        } else if (nearAcid && (randomValue & 3u) == 0u) {
+            result = makeCell(MAT_WASTE);
+        } else if ((nearSmoke || hasNeighbor(p, MAT_DIRTY_STEAM) || hasNeighbor(p, MAT_RADIATION)) &&
+                   (randomValue & 127u) == 0u) {
+            result = makeCell(MAT_WASTE);
+        } else {
+            if ((source.aux & AUX_BEE_POLLEN) == 0u && hasNeighbor(p, MAT_FLOWER)) {
+                result.aux |= AUX_BEE_POLLEN;
+                result.aux &= ~AUX_BEE_FED;
+                setStateValue(result, 0u);
+                result.age = min(result.age, 1200u);
+            }
+
+            if ((source.aux & AUX_BEE_POLLEN) != 0u &&
+                (hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEE_NEST))) {
+                ivec2 target = beeDepositTarget(p, source);
+                uint targetMaterial = at(target).material;
+                if (targetMaterial == MAT_EMPTY || targetMaterial == MAT_POLLEN) {
+                    result.aux &= ~AUX_BEE_POLLEN;
+                }
+            }
+
+            if ((result.aux & AUX_BEE_POLLEN) == 0u && hasNeighbor(p, MAT_HONEY)) {
+                result.aux |= AUX_BEE_FED;
+                setStateValue(result, 480u);
+                result.age = min(result.age, 600u);
+            }
+
+            if (source.age > 220000u && (randomValue & 8191u) == 0u) {
+                result = makeCell(MAT_WASTE);
+            }
+        }
+    } else if (source.material == MAT_POLLEN) {
+        if ((hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEE_NEST)) &&
+            source.age > 3600u && (randomValue & 2047u) == 0u) {
+            result = makeCell(MAT_HONEY);
+        }
+    } else if (source.material == MAT_HONEY) {
+        if (stateValue(result) == 0u) setStateValue(result, 255u);
+        if (hasHungryBee(p) && (randomValue & 2047u) == 0u) {
+            uint remaining = stateValue(result);
+            if (remaining <= 1u) result = makeCell(MAT_EMPTY);
+            else setStateValue(result, remaining - 1u);
+        } else if (hasNeighbor(p, MAT_BEE) && source.age > 7200u && (randomValue & 32767u) == 0u) {
+            result = makeCell(MAT_BEESWAX);
+        }
+    } else if (source.material == MAT_BEESWAX) {
+        if (nearLava || result.temperature > 180) {
+            result = makeCell(MAT_EMBER);
+        } else if (source.age > 12000u && (randomValue & 65535u) == 0u &&
+                   countWithin(p, MAT_BEE, 5) >= 5u && hasWithin(p, MAT_HONEY, 4) &&
+                   !hasWithin(p, MAT_QUEEN_BEE, 18)) {
+            result = makeCell(MAT_QUEEN_BEE);
+        }
+    } else if (source.material == MAT_QUEEN_BEE) {
+        if (nearLava || nearFire || nearAcid || result.temperature > 160) {
+            result = makeCell(MAT_ASH);
+        } else if (source.age > 900000u && (randomValue & 16383u) == 0u) {
+            result = makeCell(MAT_WASTE);
+        }
+    } else if (source.material == MAT_BEE_NEST) {
+        if (nearLava || result.temperature > 220) {
+            result = makeCell(MAT_EMBER);
+        } else if (!hasWithin(p, MAT_QUEEN_BEE, 7) && source.age > 120000u &&
+                   (randomValue & 4095u) == 0u) {
+            result = makeCell(MAT_BEESWAX);
+        }
+    }
+
+    // Closed ecological loop: dirty water separates into clean water and silt;
+    // sediment becomes fertilizer; crops produce food; food becomes waste; waste
+    // returns to soil, dirty water, or combustion gases instead of disappearing.
+    if (result.material == source.material && source.material == MAT_WATER &&
+        harvestConsumesWater(p)) {
+        // The paired fertilizer cell returns to dirt while the cell above it
+        // becomes food. Consuming exactly one matched fresh-water cell keeps
+        // the crop conversion cell-count conservative.
+        result = makeCell(MAT_EMPTY);
+    } else if (result.material == source.material && source.material == MAT_DIRTY_WATER &&
+               dirtyWaterSeparationReady(p, source)) {
+        result = makeCell(MAT_SILT);
+    } else if (result.material == source.material && source.material == MAT_SILT) {
+        if ((hasFreshMoisture(p) || hasNeighbor(p, MAT_FERTILIZER)) &&
+            (hasNeighbor(p, MAT_GRASS) || hasNeighbor(p, MAT_FLOWER)) &&
+            source.age > 900u && (randomValue & 511u) == 0u) {
+            result = makeCell(MAT_FERTILIZER);
+        } else if (!hasAnyWater(p) && source.age > 7200u && (randomValue & 1023u) == 0u) {
+            result = makeCell(MAT_DIRT);
+        }
+    } else if (result.material == source.material && source.material == MAT_FERTILIZER &&
+               fertilizerHarvestReady(p, source)) {
+        result = makeCell(MAT_DIRT);
+    } else if (result.material == source.material && source.material == MAT_FOOD) {
+        if (nearFire || nearLava) result = makeCell(MAT_SMOKE);
+        else if (source.age > 7200u && (randomValue & 255u) == 0u) result = makeCell(MAT_WASTE);
+    } else if (result.material == source.material && source.material == MAT_WASTE) {
+        if (nearFire || nearLava) result = makeCell(MAT_SMOKE);
+        else if (hasAnyWater(p) && (randomValue & 255u) == 0u) result = makeCell(MAT_DIRTY_WATER);
+        else if (source.age > 5400u && (randomValue & 511u) == 0u) result = makeCell(MAT_DIRT);
+    }
+
+    // Conductors propagate a bounded charge state; insulators and surrounding
+    // metal shielding stop lightning and radiation propagation.
+    if (isConductive(source.material)) {
+        bool energized = hasNeighbor(p, MAT_LIGHTNING);
+        for (uint i = 0u; i < 8u && !energized; ++i) {
+            Cell neighbor = at(p + neighborOffsets[i]);
+            energized = isConductive(neighbor.material) && (neighbor.aux & AUX_CHARGED) != 0u;
+        }
+        if (energized) result.aux |= AUX_CHARGED;
+        else if ((source.aux & AUX_CHARGED) != 0u && (randomValue & 15u) == 0u) result.aux &= ~AUX_CHARGED;
+    }
+
+    if (source.material == MAT_LIGHTNING) {
+        result.temperature = max(result.temperature, 900);
+        if (source.age > 18u + (randomValue & 31u)) result = makeCell(MAT_EMPTY);
+    } else if (source.material == MAT_URANIUM) {
+        result.temperature = max(result.temperature, 42);
+    } else if (source.material == MAT_RADIATION) {
+        if (hasNeighbor(p, MAT_ALUMINUM) || hasNeighbor(p, MAT_IRON)) {
+            result = makeCell(MAT_EMPTY);
+        } else if (source.age > 180u + (randomValue & 255u)) {
+            result = makeCell(MAT_EMPTY);
+        }
+    }
+
+    if (result.material == source.material && isFlammable(source.material) && nearFire) {
+        uint ignitionStrength = flammability(source.material);
+        if (source.material == MAT_WOOD && (source.aux & AUX_WET) != 0u) ignitionStrength /= 5u;
+        if (randomByte < ignitionStrength) {
+            result = makeCell(source.material == MAT_GUNPOWDER ? MAT_FIRE : MAT_EMBER);
+            result.temperature = source.material == MAT_GUNPOWDER ? 1000 : 460;
+        }
+    }
+
+    if (result.material == source.material && nearAcid && !acidImmune(source.material) &&
+        (randomValue & 31u) == 0u && randomByte > acidResistance(source.material)) {
+        result = makeCell(isOrganic(source.material) ? MAT_WASTE : MAT_SILT);
+    }
+
+    if (source.material == MAT_ACID && (nearWater || nearSaltwater) && (randomValue & 511u) == 0u) {
+        result = makeCell(nearSaltwater ? MAT_SALTWATER : MAT_WATER);
+    }
+
+    if (storedInMachine) {
+        // Chemistry is a strict current -> next pass. Consumed factory inputs
+        // must never write back into the readonly snapshot or race neighboring
+        // invocations. The machine inventory accounts for the represented unit.
+        atomicAdd(conservation[CONS_CONVERTED], 1u);
+        if (!materialEnabled(result.material)) result = makeCell(canonicalMaterial(result.material));
+        nextCells[index] = result;
+    } else {
+        commitResult(index, source, result);
+    }
+}

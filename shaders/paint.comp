@@ -1,0 +1,85 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "materials.glsl"
+#include "conservation.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
+
+void main() {
+    ivec2 local = ivec2(gl_GlobalInvocationID.xy);
+    int diameter = int(pc.radius * 2u + 1u);
+    if (local.x >= diameter || local.y >= diameter) return;
+
+    ivec2 center = ivec2(pc.brushX, pc.brushY);
+    ivec2 p = center + local - ivec2(int(pc.radius));
+    if (!inside(p)) return;
+
+    uint material = pc.material < MATERIAL_COUNT ? pc.material : MAT_EMPTY;
+
+    if (isBlockCapable(material)) {
+        ivec2 blockOrigin = (center / int(STRUCTURAL_BLOCK_SIZE)) * int(STRUCTURAL_BLOCK_SIZE);
+        ivec2 blockEnd = blockOrigin + ivec2(int(STRUCTURAL_BLOCK_SIZE));
+        if (p.x < blockOrigin.x || p.y < blockOrigin.y || p.x >= blockEnd.x || p.y >= blockEnd.y) return;
+
+        bool anchored = blockEnd.y >= int(pc.height) - 1;
+        Cell cell = makeStructuralCell(material, anchored);
+        bool machineController = (material == MAT_SMELTER || material == MAT_ASSEMBLER ||
+                                  material == MAT_INSECT_HABITAT) &&
+                                 (p.x & 7) == 3 && (p.y & 7) == 3;
+        cell.aux = (cell.aux & ~AUX_RANDOM_MASK) |
+                   (cellHash(p, uint(local.x + local.y * diameter)) & AUX_RANDOM_MASK) |
+                   (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |
+                                AUX_PLANT_STEM | AUX_STRUCTURAL | AUX_SUPPORTED | AUX_STATE_MASK));
+        if (machineController) {
+            setMachineInventory(cell, uvec4(0u));
+            cell.aux |= AUX_CHARGED;
+        }
+        uint index = indexOf(p);
+        Cell previous = cells[index];
+        recordConservation(previous, cell);
+        cells[index] = cell;
+        return;
+    }
+
+    // Seeds and queens are precision tools: brush size never duplicates them.
+    if ((material == MAT_SEED || material == MAT_QUEEN_BEE) && any(notEqual(p, center))) return;
+
+    ivec2 delta = p - center;
+    int distanceSquared = delta.x * delta.x + delta.y * delta.y;
+    int radiusSquared = int(pc.radius * pc.radius);
+    if (distanceSquared > radiusSquared) return;
+
+    Cell cell;
+    if (material == MAT_BEE_NEST) {
+        int nestRadius = max(int(pc.radius), 4);
+        int innerRadius = max(nestRadius - 3, 1);
+        if (all(equal(p, center))) {
+            cell = makeCell(MAT_QUEEN_BEE);
+        } else if (delta.x >= 1 && delta.x <= nestRadius && abs(delta.y) <= 1) {
+            cell = makeCell(MAT_EMPTY);
+        } else if (distanceSquared <= innerRadius * innerRadius) {
+            uint chamberPattern = cellHash(p, 0xb33u);
+            if ((chamberPattern & 3u) == 0u) {
+                cell = makeCell(MAT_EMPTY);
+            } else {
+                cell = makeCell(((chamberPattern >> 2u) & 3u) == 0u ? MAT_POLLEN : MAT_HONEY);
+            }
+        } else if (distanceSquared <= nestRadius * nestRadius) {
+            cell = makeCell(MAT_BEE_NEST);
+        } else {
+            return;
+        }
+    } else {
+        cell = makeCell(material);
+    }
+
+    cell.aux = (cell.aux & ~AUX_RANDOM_MASK) |
+               (cellHash(p, uint(local.x + local.y * diameter)) & AUX_RANDOM_MASK) |
+               (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |
+                            AUX_PLANT_STEM | AUX_STRUCTURAL | AUX_SUPPORTED | AUX_STATE_MASK));
+    uint index = indexOf(p);
+    Cell previous = cells[index];
+    recordConservation(previous, cell);
+    cells[index] = cell;
+}

@@ -1,14 +1,14 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
-  "name": "fastfreddy-water-testbed",
+  "name": "epoch-sand",
   "version-string": "1.0.0",
   "builtin-baseline": "04a735608afac5844e86fc91d6ba2112cac613c1",
-  "description": "C++23 cross-platform Vulkan water and Terraria-block simulation testbed.",
+  "description": "Framework-free Vulkan falling-sand simulation for Windows and Linux.",
   "dependencies": [
+    "vulkan",
     {
-      "name": "sdl3",
-      "features": ["vulkan"]
-    },
-    "vulkan"
+      "name": "shaderc",
+      "host": true
+    }
   ]
 }
