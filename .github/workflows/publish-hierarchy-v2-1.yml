@@ -1,0 +1,81 @@
+name: Publish FastFreddy Hierarchy v2.1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-hierarchy-v2-1.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record release run
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          HEAD_SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          cat > hierarchy-release-status.json <<EOF
+          {
+            "run_id": ${RUN_ID},
+            "run_number": ${RUN_NUMBER},
+            "status": "running",
+            "head_sha": "${HEAD_SHA}",
+            "run_url": "${RUN_URL}"
+          }
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add hierarchy-release-status.json
+          git commit -m 'Record hierarchy v2.1 release [skip ci]'
+          git push origin HEAD:main
+      - name: Download validated Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fastfreddy-hierarchy-windows-x64
+          path: dist/windows
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 30544909173
+      - name: Download validated Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fastfreddy-hierarchy-linux-x64-retry
+          path: dist/linux
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 30546547216
+      - name: Assemble and verify release payload
+        run: |
+          set -euo pipefail
+          windows="$(find dist/windows -name FastFreddyHierarchy_Windows_x64.zip -print -quit)"
+          linux="$(find dist/linux -name FastFreddyHierarchy_Linux_x64.tar.gz -print -quit)"
+          test -n "$windows"
+          test -n "$linux"
+          cp "$windows" dist/FastFreddyHierarchy_Windows_x64.zip
+          cp "$linux" dist/FastFreddyHierarchy_Linux_x64.tar.gz
+          cd dist
+          sha256sum FastFreddyHierarchy_Windows_x64.zip FastFreddyHierarchy_Linux_x64.tar.gz > SHA256SUMS.txt
+          test -s FastFreddyHierarchy_Windows_x64.zip
+          test -s FastFreddyHierarchy_Linux_x64.tar.gz
+          test -s SHA256SUMS.txt
+      - name: Publish canonical v2.1.0 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete v2.1.0 --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes >/dev/null 2>&1 || true
+          gh release create v2.1.0 \
+            dist/FastFreddyHierarchy_Windows_x64.zip \
+            dist/FastFreddyHierarchy_Linux_x64.tar.gz \
+            dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target main \
+            --title 'FastFreddy Hierarchical Simulation v2.1.0' \
+            --notes 'Full FastFreddy Vulkan application with canonical per-cell storage, all-or-nothing 8x8 movable macro-cells that fall, slide, stack, displace, and spread in bulk under the same material rules as pixels, plus 64x64 dirty/active/sleeping chunks for fast large-map lookup and bounded wakeups. Mixed edges, structural regions, reactions, and fresh-water half-units remain fine-cell simulated. Includes oxygen-filled atmosphere, retained terrain and liquids, original scenes, EpochGui controls, scene I/O, hierarchy visualization, debug counters, Windows x64 and Linux x64 packages, and SHA-256 checksums.'
