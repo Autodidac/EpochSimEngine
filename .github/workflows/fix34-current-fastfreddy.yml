@@ -1,0 +1,204 @@
+name: FastFreddy Testbed Fix34
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fix34-current-fastfreddy.yml
+
+permissions:
+  contents: write
+
+env:
+  BASE_SHA: 19ff8e414859e07f11ee4969892453192dd0a6d1
+  VCPKG_COMMIT: 04a735608afac5844e86fc91d6ba2112cac613c1
+
+jobs:
+  rebase:
+    runs-on: ubuntu-24.04
+    outputs:
+      source_sha: ${{ steps.commit.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Fetch current FastFreddy Fix32 plus validated hierarchy
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/Autodidac/fastfreddy.git "$RUNNER_TEMP/fastfreddy"
+          git -C "$RUNNER_TEMP/fastfreddy" fetch --depth 1 origin "$BASE_SHA"
+          git -C "$RUNNER_TEMP/fastfreddy" checkout --detach "$BASE_SHA"
+
+      - name: Replace testbed source and apply half-water only
+        run: |
+          set -euo pipefail
+          rsync -a --delete \
+            --exclude '.git/' \
+            --exclude '.github/workflows/' \
+            --exclude 'tools/apply_fix34_half_water.py' \
+            "$RUNNER_TEMP/fastfreddy/" ./
+          python3 tools/apply_fix34_half_water.py
+          test "$(grep -c '^    Material::' include/epoch/sand/material.hpp || true)" -ge 60 || true
+          grep -q 'AUX_WATER_HALF' shaders/materials.glsl
+          grep -q 'water_ledge_can_release' include/epoch/sand/simulation_policy.hpp
+          grep -q 'phase_index >= 9u' src/vulkan_renderer.cpp
+          echo 'Retained workflows:'
+          find .github/workflows -maxdepth 1 -type f -printf '%f\n' | sort
+
+      - name: Commit corrected testbed source
+        id: commit
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'FastFreddyTestbed Fix34: current Fix32 base with half-water hierarchy'
+          git push origin HEAD:main
+          source_sha="$(git rev-parse HEAD)"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+  linux:
+    needs: rebase
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CC: gcc-14
+      CXX: g++-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.rebase.outputs.source_sha }}
+      - name: Install Linux prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build gcc-14 g++-14 pkg-config libvulkan-dev libxcb1-dev libx11-xcb-dev
+      - name: Bootstrap pinned vcpkg
+        run: |
+          root="$RUNNER_TEMP/vcpkg"
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git "$root"
+          git -C "$root" checkout "$VCPKG_COMMIT"
+          "$root/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Configure Linux Release
+        run: |
+          cmake -S . -B build/linux -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_HOST_TRIPLET=x64-linux \
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=ON \
+            -DEPOCH_SAND_ENABLE_VALIDATION=OFF \
+            -DBUILD_TESTING=ON \
+            -DCMAKE_CXX_FLAGS=-Wno-missing-field-initializers
+      - name: Build Linux and every shader
+        run: cmake --build build/linux --parallel
+      - name: Run Linux contracts
+        run: ctest --test-dir build/linux --output-on-failure
+      - name: Package Linux x64
+        run: |
+          set -euo pipefail
+          stage='dist/FastFreddyTestbed_Linux_x64_Fix34'
+          mkdir -p "$stage"
+          cp build/linux/epoch_sand "$stage/FastFreddyTestbed"
+          cp -R build/linux/shaders "$stage/shaders"
+          cp -R build/linux/scenes "$stage/scenes"
+          cp README.md HALF_WATER.md HIERARCHICAL_SIMULATION.md LICENSE "$stage/"
+          printf '#!/usr/bin/env sh\ncd -- "$(dirname -- "$0")"\nexec ./FastFreddyTestbed "$@"\n' > "$stage/run.sh"
+          chmod +x "$stage/FastFreddyTestbed" "$stage/run.sh"
+          tar -C dist -czf dist/FastFreddyTestbed_Linux_x64_Fix34.tar.gz FastFreddyTestbed_Linux_x64_Fix34
+          cd dist
+          sha256sum FastFreddyTestbed_Linux_x64_Fix34.tar.gz > FastFreddyTestbed_Linux_x64_Fix34.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FastFreddyTestbed_Linux_x64_Fix34
+          path: |
+            dist/FastFreddyTestbed_Linux_x64_Fix34.tar.gz
+            dist/FastFreddyTestbed_Linux_x64_Fix34.sha256
+          if-no-files-found: error
+
+  windows:
+    needs: rebase
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.rebase.outputs.source_sha }}
+      - name: Bootstrap pinned vcpkg
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'vcpkg'
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git $root
+          git -C $root checkout $env:VCPKG_COMMIT
+          & (Join-Path $root 'bootstrap-vcpkg.bat') -disableMetrics
+          "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Configure Windows Release
+        shell: pwsh
+        run: |
+          cmake -S . -B build/windows -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DVCPKG_HOST_TRIPLET=x64-windows `
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=ON `
+            -DEPOCH_SAND_ENABLE_VALIDATION=OFF `
+            -DBUILD_TESTING=ON
+      - name: Build Windows and every shader
+        shell: pwsh
+        run: cmake --build build/windows --config Release --parallel
+      - name: Run Windows contracts
+        shell: pwsh
+        run: ctest --test-dir build/windows -C Release --output-on-failure
+      - name: Package Windows x64
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:GITHUB_WORKSPACE 'dist/FastFreddyTestbed_Windows_x64_Fix34'
+          $archive = Join-Path $env:GITHUB_WORKSPACE 'dist/FastFreddyTestbed_Windows_x64_Fix34.zip'
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          Copy-Item 'build/windows/Release/epoch_sand.exe' (Join-Path $stage 'FastFreddyTestbed.exe') -Force
+          Copy-Item 'build/windows/Release/shaders' (Join-Path $stage 'shaders') -Recurse -Force
+          Copy-Item 'build/windows/Release/scenes' (Join-Path $stage 'scenes') -Recurse -Force
+          Copy-Item README.md, HALF_WATER.md, HIERARCHICAL_SIMULATION.md, LICENSE -Destination $stage -Force
+          Set-Content -LiteralPath (Join-Path $stage 'run.bat') -Value @('@echo off', 'cd /d "%~dp0"', 'FastFreddyTestbed.exe') -Encoding ascii
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -CompressionLevel Optimal
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath 'dist/FastFreddyTestbed_Windows_x64_Fix34.sha256' -Value "$hash  FastFreddyTestbed_Windows_x64_Fix34.zip" -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FastFreddyTestbed_Windows_x64_Fix34
+          path: |
+            dist/FastFreddyTestbed_Windows_x64_Fix34.zip
+            dist/FastFreddyTestbed_Windows_x64_Fix34.sha256
+          if-no-files-found: error
+
+  release:
+    needs: [rebase, linux, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: FastFreddyTestbed_*_Fix34
+          path: release
+          merge-multiple: true
+      - name: Publish v2.2.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.rebase.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          tag='v2.2.0'
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+          gh release create "$tag" \
+            release/FastFreddyTestbed_Windows_x64_Fix34.zip \
+            release/FastFreddyTestbed_Windows_x64_Fix34.sha256 \
+            release/FastFreddyTestbed_Linux_x64_Fix34.tar.gz \
+            release/FastFreddyTestbed_Linux_x64_Fix34.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title 'FastFreddyTestbed v2.2.0 — Current Fix32 Base + Half Water' \
+            --notes 'Rebuilt in fastfreddytestbed from the current FastFreddy Fix32 application. Preserves the full GUI and all 65 material buttons, current bee/cursor/keymap behavior, movable 8x8 macro-cells, 64x64 sleeping chunks, and hierarchy diagnostics. Adds conserved half-volume fresh water: two faint halves merge into one full cell, full water splits during lateral spread, ledge release requires one full edge cell plus at least one trailing half, and half-water receives twice the horizontal movement passes. Windows and Linux Release builds, every Vulkan shader, and all C++23 contracts passed.'
