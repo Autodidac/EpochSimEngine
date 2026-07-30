@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 env:
-  SOURCE_SHA: 30597d2681584b4e3d6887ff35ecd8cfc0242349
+  SOURCE_SHA: 3f6834a7b5bc997f291b944d11159ae7371f6e75
   VCPKG_COMMIT: 04a735608afac5844e86fc91d6ba2112cac613c1
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
             "run_url": "${RUN_URL}"
           }
           EOF
-          git config user.name 'github-actions[bot]'
+          git config user.name 'github-actions[bot]]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add fix33-release-status.json
           git commit -m 'Record Fix33 release run [skip ci]'
