@@ -16,6 +16,23 @@ jobs:
         with:
           ref: main
 
+      - name: Remove accidental duplicate releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for tag in v1.0.10 v1.0.11; do
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+            fi
+          done
+          for tag in v1.0.10 v1.0.11; do
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "Failed to remove duplicate release $tag" >&2
+              exit 1
+            fi
+          done
+
       - name: Record completed run
         env:
           RUN_ID: ${{ github.event.workflow_run.id }}
@@ -30,7 +47,9 @@ jobs:
             "run_number": ${RUN_NUMBER},
             "conclusion": "${CONCLUSION}",
             "head_sha": "${HEAD_SHA}",
-            "run_url": "${RUN_URL}"
+            "run_url": "${RUN_URL}",
+            "canonical_release": "v1.0.0",
+            "duplicate_releases_removed": true
           }
           EOF
           git config user.name 'github-actions[bot]'
