@@ -360,8 +360,6 @@ reset_path.write_text(reset, encoding="utf-8", newline="\n")
 
 move_path = ROOT / "shaders/move.comp"
 move = move_path.read_text(encoding="utf-8")
-move = move.replace("return beeOrbitTarget(bee.aux, movePc.step);",
-                    "return beeSwarmTarget(bee.aux, movePc.step);")
 old = '''    // A dense swarm deadlocks when every bee demands a strictly closer empty
     // cell. Permit only target-bounded tangential sidesteps, so blocked bees
     // circulate around their moving anchors without regaining random wandering.
@@ -386,8 +384,9 @@ new = '''    // Dense agents circulate around the moving hidden-mask target inst
                               : ivec2(sourceDelta.y, -sourceDelta.x);
     int tangentScore = stepDelta.x * tangent.x + stepDelta.y * tangent.y;
     int forwardScore = stepDelta.x * -sourceDelta.x + stepDelta.y * -sourceDelta.y;
-    if (targetDistance <= sourceDistance + 4 && forwardScore >= -1 && tangentScore > 0)
-        return true;
+    bool boundedSidestep = targetDistance <= sourceDistance + 4 &&
+                           forwardScore >= -1 && tangentScore > 0;
+    if (boundedSidestep) return true;
     return sourceDistance <= 4 && targetDistance <= 9 && tangentScore >= 0 &&
            ((randomValue ^ slot) & 7u) == 0u;
 '''
