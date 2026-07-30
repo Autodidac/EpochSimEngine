@@ -1,9 +1,10 @@
 from pathlib import Path
 
-path = Path(__file__).resolve().parents[1] / "shaders/move.comp"
-text = path.read_text(encoding="utf-8")
+root = Path(__file__).resolve().parents[1]
+move_path = root / "shaders/move.comp"
+move = move_path.read_text(encoding="utf-8")
 
-replacements = {
+move_replacements = {
 """    float angle = atan(float(sourceRadial.y), float(sourceRadial.x));
     float baseRadius = lane == 0u ? 18.0 : (lane == 1u ? 30.0 : 44.0);
 """: """    float absoluteX = float(abs(sourceRadial.x));
@@ -31,10 +32,26 @@ replacements = {
 """,
 }
 
-for old, new in replacements.items():
-    if text.count(old) != 1:
-        raise SystemExit(f"move.comp: expected exactly one compiler-correction block: {old.splitlines()[0]}")
-    text = text.replace(old, new, 1)
+for old, new in move_replacements.items():
+    if move.count(old) != 1:
+        raise SystemExit(f"move.comp: expected exactly one correction block: {old.splitlines()[0]}")
+    move = move.replace(old, new, 1)
+move_path.write_text(move, encoding="utf-8", newline="\n")
 
-path.write_text(text, encoding="utf-8", newline="\n")
-print("Applied atan-free and integer-safe Fix30 movement corrections.")
+chemistry_path = root / "shaders/chemistry.comp"
+chemistry = chemistry_path.read_text(encoding="utf-8")
+old_handshake = """            if ((result.aux & AUX_BEE_POLLEN) == 0u && (result.aux & AUX_BEE_FED) == 0u) {
+                ivec2 honeyTarget = beeHoneyTarget(p, source);
+"""
+new_handshake = """            // Feeding begins only when the source snapshot was already hungry.
+            // This leaves one full tick for the selected honey cell to remove 26/255.
+            if ((source.aux & AUX_BEE_POLLEN) == 0u && (source.aux & AUX_BEE_FED) == 0u &&
+                (result.aux & AUX_BEE_POLLEN) == 0u && (result.aux & AUX_BEE_FED) == 0u) {
+                ivec2 honeyTarget = beeHoneyTarget(p, source);
+"""
+if chemistry.count(old_handshake) != 1:
+    raise SystemExit("chemistry.comp: expected exactly one deposit-to-feeding handshake block")
+chemistry_path.write_text(chemistry.replace(old_handshake, new_handshake, 1),
+                          encoding="utf-8", newline="\n")
+
+print("Applied atan-free, integer-safe movement and synchronized honey-consumption corrections.")
