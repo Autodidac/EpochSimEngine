@@ -10,6 +10,7 @@ on:
       - "tests/scene_image_contract.cpp"
       - "scenes/README.txt"
       - "tools/apply_fix27.py"
+      - "tools/patch_fix27_apply.py"
       - "tools/audit_fix27.py"
       - ".github/workflows/sandhybrid-fix27.yml"
 
@@ -32,6 +33,12 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Patch Fix27 correction matcher
+        shell: pwsh
+        run: |
+          python tools/patch_fix27_apply.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix27 matcher patch failed.' }
 
       - name: Apply Fix27 scene and GUI corrections
         shell: pwsh
@@ -102,6 +109,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Remove-Item -LiteralPath 'tools/apply_fix27.py' -Force
+          Remove-Item -LiteralPath 'tools/patch_fix27_apply.py' -Force
           Remove-Item -LiteralPath 'tools/audit_fix27.py' -Force
           Remove-Item -LiteralPath '.github/workflows/sandhybrid-fix27.yml' -Force
           git config user.name 'github-actions[bot]'
