@@ -1,0 +1,85 @@
+name: Repack FastFreddyTestbed v2.2.0 Documentation
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - fix34-repack-trigger.txt
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+jobs:
+  repack:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download verified v2.2.0 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: Autodidac/fastfreddytestbed
+          run-id: 30572861071
+          pattern: FastFreddyTestbed_*_v2.2.0
+          path: release
+          merge-multiple: true
+
+      - name: Replace malformed documentation and recalculate hashes
+        run: |
+          set -euo pipefail
+          rm -rf repack
+          mkdir -p repack/windows repack/linux
+
+          unzip -q release/FastFreddyTestbed_Windows_x64_v2.2.0.zip -d repack/windows
+          cp HALF_WATER.md repack/windows/HALF_WATER.md
+          rm release/FastFreddyTestbed_Windows_x64_v2.2.0.zip
+          (cd repack/windows && zip -qr ../../release/FastFreddyTestbed_Windows_x64_v2.2.0.zip .)
+
+          tar -xzf release/FastFreddyTestbed_Linux_x64_v2.2.0.tar.gz -C repack/linux
+          cp HALF_WATER.md repack/linux/FastFreddyTestbed_Linux_x64_v2.2.0/HALF_WATER.md
+          rm release/FastFreddyTestbed_Linux_x64_v2.2.0.tar.gz
+          tar -C repack/linux -czf release/FastFreddyTestbed_Linux_x64_v2.2.0.tar.gz FastFreddyTestbed_Linux_x64_v2.2.0
+
+          (cd release && sha256sum FastFreddyTestbed_Windows_x64_v2.2.0.zip > FastFreddyTestbed_Windows_x64_v2.2.0.sha256)
+          (cd release && sha256sum FastFreddyTestbed_Linux_x64_v2.2.0.tar.gz > FastFreddyTestbed_Linux_x64_v2.2.0.sha256)
+          (cd release && sha256sum -c FastFreddyTestbed_Windows_x64_v2.2.0.sha256)
+          (cd release && sha256sum -c FastFreddyTestbed_Linux_x64_v2.2.0.sha256)
+
+      - name: Replace v2.2.0 release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          target="$(git rev-parse HEAD)"
+          gh release delete v2.2.0 --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          gh release create v2.2.0 \
+            release/FastFreddyTestbed_Windows_x64_v2.2.0.zip \
+            release/FastFreddyTestbed_Windows_x64_v2.2.0.sha256 \
+            release/FastFreddyTestbed_Linux_x64_v2.2.0.tar.gz \
+            release/FastFreddyTestbed_Linux_x64_v2.2.0.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$target" \
+            --title 'FastFreddyTestbed v2.2.0 — Current Fix32 Base + Half Water' \
+            --notes 'Correct target repository: fastfreddytestbed. Rebuilt from the current FastFreddy Fix32 application while preserving the full GUI, all 65 material buttons, current bee/cursor/keymap behavior, 8x8 macro-cell movement, 64x64 sleeping chunks, and hierarchy diagnostics. Fresh water alone uses conserved half-volume cells, a full-plus-half ledge threshold, and twice the horizontal movement passes. Windows and Linux Release builds, every Vulkan shader, package checksums, and all C++23 contracts passed. Documentation formatting was corrected without altering the verified binaries.'
+
+      - name: Remove one-time workflow and close trigger PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/fix34-doc-repack.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Remove one-time Fix34 documentation repack [skip ci]'
+          git push origin HEAD:main
+          gh pr close ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" \
+            --comment 'v2.2.0 packages were repacked with corrected HALF_WATER.md; verified binaries were unchanged.'
+          git push origin --delete '${{ github.event.pull_request.head.ref }}'
