@@ -22,7 +22,7 @@ constexpr std::uint32_t aux_structural = 0x04000000u;
 constexpr std::uint32_t aux_supported = 0x02000000u;
 constexpr std::uint32_t aux_moved = 0x01000000u;
 constexpr std::uint32_t aux_state_mask = 0x000000ffu;
-constexpr std::uint32_t aux_random_mask = 0x007fff00u;
+constexpr std::uint32_t aux_random_mask = 0x00ffff00u;
 constexpr std::uint32_t tile_size = 8u;
 constexpr std::uint32_t minimum_cohesive_cells = 32u;
 constexpr std::uint32_t full_strength_cells = 52u;
@@ -246,10 +246,9 @@ bool load_scene_ppm(const std::filesystem::path& path,
     for (std::uint32_t y = 0u; y < height; ++y) {
         for (std::uint32_t x = 0u; x < width; ++x) {
             const auto index = static_cast<std::size_t>(y) * width + x;
-            const auto decoded = static_cast<Material>(material_from_color(pixels[index]));
-            const auto typed = decoded == Material::empty ? Material::oxygen : canonical_material(decoded);
-            const auto material = static_cast<std::uint32_t>(typed);
+            const auto material = material_from_color(pixels[index]);
             materials[index] = material;
+            const auto typed = static_cast<Material>(material);
             if (material != 0u && structural_candidate(typed)) {
                 const auto tile = static_cast<std::size_t>(y / tile_size) * tile_columns + x / tile_size;
                 ++counts[tile * material_count + material];
@@ -342,7 +341,6 @@ bool write_scene_material_key(const std::filesystem::path& directory, std::strin
             "Any structural material with fewer than 32 represented pixels in its aligned 8x8 region crumbles.\n\n";
     constexpr char hex[] = "0123456789ABCDEF";
     for (std::uint32_t material = 0u; material < material_count; ++material) {
-        if (!is_enabled_material(static_cast<Material>(material))) continue;
         const auto color = scene_color(material);
         const std::array channels{color.r, color.g, color.b};
         text << material << "  #";

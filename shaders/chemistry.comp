@@ -3,6 +3,7 @@
 #include "materials.glsl"
 #include "tiles.glsl"
 #include "chunks.glsl"
+#include "bee_swarm.glsl"
 #include "conservation.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
@@ -23,12 +24,8 @@ Cell at(ivec2 p) {
 }
 
 void commitResult(uint index, Cell before, Cell after) {
-    if (!materialEnabled(after.material)) {
-        Cell canonical = makeCell(canonicalMaterial(after.material));
-        canonical.age = after.age;
-        canonical.temperature = after.temperature;
-        after = canonical;
-    }
+    if (after.material != MAT_WATER || before.material != MAT_WATER)
+        after.aux &= ~AUX_WATER_HALF;
     recordConservation(before, after);
     nextCells[index] = after;
 }
@@ -82,10 +79,129 @@ bool hasBeeHazard(ivec2 p) {
            hasNeighbor(p, MAT_RADIATION);
 }
 
-bool hasHungryBee(ivec2 p) {
+
+uint beeTileCount() {
+    return tileColumns(pc.width) * ((pc.height + TILE_SIZE - 1u) / TILE_SIZE);
+}
+
+bool beeTileIndexValid(uint index) { return index < beeTileCount(); }
+
+bool beeTileMatches(uint index, uint requiredFlags, uint forbiddenFlags) {
+    if (!beeTileIndexValid(index)) return false;
+    TileState state = tiles[index];
+    return (state.flags & requiredFlags) == requiredFlags &&
+           (state.flags & forbiddenFlags) == 0u;
+}
+
+uint nearestBeeTile(ivec2 originPosition, uint requiredFlags, uint forbiddenFlags,
+                    int minimumTileDistance, int maximumTileDistance) {
+    uint columns = tileColumns(pc.width);
+    uint rows = (pc.height + TILE_SIZE - 1u) / TILE_SIZE;
+    ivec2 originTile = ivec2(tileCoordinate(originPosition));
+    uint bestIndex = BEE_TARGET_NONE;
+    int bestDistance = 0x3fffffff;
+    for (uint y = 0u; y < rows; ++y) {
+        for (uint x = 0u; x < columns; ++x) {
+            ivec2 delta = ivec2(int(x), int(y)) - originTile;
+            int tileDistance = abs(delta.x) + abs(delta.y);
+            if (tileDistance < minimumTileDistance || tileDistance > maximumTileDistance) continue;
+            uint candidateIndex = y * columns + x;
+            if (!beeTileMatches(candidateIndex, requiredFlags, forbiddenFlags)) continue;
+            int distanceSquared = delta.x * delta.x + delta.y * delta.y;
+            if (distanceSquared < bestDistance ||
+                (distanceSquared == bestDistance && candidateIndex < bestIndex)) {
+                bestDistance = distanceSquared;
+                bestIndex = candidateIndex;
+            }
+        }
+    }
+    return bestIndex;
+}
+
+bool beeTileAreaHasFlag(uint centerIndex, uint wantedFlag, int radius) {
+    if (!beeTileIndexValid(centerIndex)) return false;
+    uint columns = tileColumns(pc.width);
+    uint rows = (pc.height + TILE_SIZE - 1u) / TILE_SIZE;
+    ivec2 center = ivec2(int(centerIndex % columns), int(centerIndex / columns));
+    for (int y = -radius; y <= radius; ++y) {
+        for (int x = -radius; x <= radius; ++x) {
+            ivec2 candidate = center + ivec2(x, y);
+            if (candidate.x < 0 || candidate.y < 0 ||
+                candidate.x >= int(columns) || candidate.y >= int(rows)) continue;
+            TileState state = tiles[uint(candidate.y) * columns + uint(candidate.x)];
+            if (tileHas(state, wantedFlag)) return true;
+        }
+    }
+    return false;
+}
+
+uint beePopulationAroundTile(uint centerIndex, int radius) {
+    if (!beeTileIndexValid(centerIndex)) return 0u;
+    uint columns = tileColumns(pc.width);
+    uint rows = (pc.height + TILE_SIZE - 1u) / TILE_SIZE;
+    ivec2 center = ivec2(int(centerIndex % columns), int(centerIndex / columns));
+    uint count = 0u;
+    for (int y = -radius; y <= radius; ++y) {
+        for (int x = -radius; x <= radius; ++x) {
+            ivec2 candidate = center + ivec2(x, y);
+            if (candidate.x < 0 || candidate.y < 0 ||
+                candidate.x >= int(columns) || candidate.y >= int(rows)) continue;
+            count += tileBeeCount(tiles[uint(candidate.y) * columns + uint(candidate.x)]);
+        }
+    }
+    return count;
+}
+
+uint refreshedMigratingQueenTile(uint previousTarget, ivec2 searchOrigin) {
+    if (beeTileIndexValid(previousTarget) &&
+        (tiles[previousTarget].flags & (TILE_HAS_MIGRATING_QUEEN | TILE_HAS_QUEEN)) != 0u)
+        return previousTarget;
+    return nearestBeeTile(searchOrigin, TILE_HAS_MIGRATING_QUEEN, 0u, 0, 64);
+}
+
+uint nearestFlowerTileForColony(ivec2 homeCenter) {
+    return nearestBeeTile(homeCenter, TILE_HAS_FLOWER,
+                          TILE_HAS_HIVE | TILE_HAS_QUEEN | TILE_HAS_MIGRATING_QUEEN |
+                          TILE_BEE_HAZARD,
+                          0, 48);
+}
+
+uint nearestHoneyTileForColony(ivec2 homeCenter) {
+    return nearestBeeTile(homeCenter, TILE_HAS_HONEY, TILE_BEE_HAZARD, 0, 12);
+}
+
+uint migrationDestinationTile(ivec2 queenPosition) {
+    return nearestBeeTile(queenPosition, TILE_HAS_FLOWER,
+                          TILE_HAS_HIVE | TILE_HAS_QUEEN | TILE_HAS_MIGRATING_QUEEN |
+                          TILE_BEE_HAZARD,
+                          8, 56);
+}
+
+bool beeHomeHasQueen(Cell bee) {
+    uint homeTile = tileIndex(beeHomeCenterFromAux(bee.aux), pc.width);
+    return beeTileAreaHasFlag(homeTile, TILE_HAS_QUEEN, 1);
+}
+
+bool hungryBeeTargetsHoney(ivec2 honeyPosition) {
+    uint honeyTile = tileIndex(honeyPosition, pc.width);
     for (uint i = 0u; i < 8u; ++i) {
-        Cell bee = at(p + neighborOffsets[i]);
-        if (bee.material == MAT_BEE && (bee.aux & AUX_BEE_POLLEN) == 0u && stateValue(bee) == 0u) return true;
+        ivec2 beePosition = honeyPosition - neighborOffsets[i];
+        Cell bee = at(beePosition);
+        if (bee.material == MAT_BEE &&
+            (bee.aux & BEE_AUX_POLLEN) == 0u &&
+            (bee.aux & BEE_AUX_FED) == 0u &&
+            beeTargetTileFromAge(bee.age) == honeyTile &&
+            beeTimerFromAge(bee.age) == 0u) return true;
+    }
+    return false;
+}
+
+bool beeBesideTargetMaterial(ivec2 beePosition, uint targetTile, uint material) {
+    if (!beeTileIndexValid(targetTile)) return false;
+    for (uint i = 0u; i < 8u; ++i) {
+        ivec2 candidate = beePosition + neighborOffsets[i];
+        if (at(candidate).material == material &&
+            tileIndex(candidate, pc.width) == targetTile) return true;
     }
     return false;
 }
@@ -541,11 +657,11 @@ void main() {
     TileState tile = tiles[tileIndex(p, pc.width)];
     bool minorityStructural = isStructural(source) && tile.material != source.material;
     if (isStructural(source) && !minorityStructural && tileHas(tile, TILE_DAMAGED) &&
-        tile.occupancy >= TILE_MIN_COHESIVE_CELLS &&
-        tile.occupancy < TILE_STABILITY_OCCUPANCY) {
+        tileOccupancy(tile) >= TILE_MIN_COHESIVE_CELLS &&
+        tileOccupancy(tile) < TILE_STABILITY_OCCUPANCY) {
         uint health = stateValue(result);
         if (health == 0u) health = 255u;
-        uint limitedHealth = max(64u, tile.occupancy * 255u / TILE_STABILITY_OCCUPANCY);
+        uint limitedHealth = max(64u, tileOccupancy(tile) * 255u / TILE_STABILITY_OCCUPANCY);
         setStateValue(result, min(health, limitedHealth));
     }
     if (tileHas(tile, TILE_STABLE) && !isStructural(source) &&
@@ -676,13 +792,18 @@ void main() {
                 ivec2 queenOffset = nearestOffset(p, MAT_QUEEN_BEE, 5);
                 int queenDistanceSquared = queenOffset.x * queenOffset.x + queenOffset.y * queenOffset.y;
                 if (any(notEqual(queenOffset, ivec2(0))) && queenDistanceSquared >= 7 &&
-                    queenDistanceSquared <= 21 && (randomValue & 7u) != 0u) {
+                    queenDistanceSquared <= 21 && countWithin(p, MAT_BEE_NEST, 5) < 36u &&
+                    (randomValue & 4095u) == 0u) {
                     result = makeCell(MAT_BEE_NEST);
                     handledNest = true;
                 } else if (any(notEqual(queenOffset, ivec2(0))) && queenDistanceSquared <= 6 &&
                             (hasNeighbor(p, MAT_HONEY) || hasNeighbor(p, MAT_POLLEN)) &&
-                            countWithin(p, MAT_BEE, 6) < 12u && (randomValue & 4095u) == 0u) {
+                            countWithin(p, MAT_BEE, 6) < 4u && (randomValue & 32767u) == 0u) {
                     result = makeCell(MAT_BEE);
+                    uint newbornSlot = hash32(indexOf(p) ^ pc.seed ^ result.aux) % BEE_FORMATION_COUNT;
+                    result.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
+                    result.aux = beePackMetadata(result.aux, p + queenOffset, newbornSlot);
+                    result.age = beePackAge(uint(newbornSlot * 13u) % 900u, BEE_TARGET_NONE);
                     handledNest = true;
                 }
             }
@@ -966,62 +1087,172 @@ void main() {
         }
     }
 
-    // Bee cycle: feed at honey, form the curved nest swarm while the rest timer
-    // counts down, forage without consuming flowers, carry pollen home, deposit
-    // it near the queen, and repeat.
+
+    // Authored colonies use explicit targets stored in each bee. Orbiting bees do
+    // no searches; only a lifecycle transition scans compact 8x8 tile metadata.
     if (source.material == MAT_BEE) {
-        uint restTimer = stateValue(source);
-        if (restTimer > 0u) setStateValue(result, restTimer - 1u);
+        bool authoredBee = (source.aux & BEE_AUX_SWARM) != 0u;
+        bool queenCarrier = (source.aux & BEE_AUX_QUEEN) != 0u;
+        bool migratingFollower = (source.aux & BEE_AUX_MIGRATING) != 0u;
+        uint timer = min(beeTimerFromAge(source.age) + 1u, 0xffffu);
+        uint targetTile = beeTargetTileFromAge(source.age);
+        result.age = beePackAge(timer, targetTile);
 
         if (nearFire || nearLava || hasNeighbor(p, MAT_LIGHTNING)) {
             result = makeCell(MAT_ASH);
         } else if (nearAcid && (randomValue & 3u) == 0u) {
             result = makeCell(MAT_WASTE);
-        } else if ((nearSmoke || hasNeighbor(p, MAT_DIRTY_STEAM) || hasNeighbor(p, MAT_RADIATION)) &&
-                   (randomValue & 127u) == 0u) {
+        } else if ((nearSmoke || hasNeighbor(p, MAT_DIRTY_STEAM) ||
+                    hasNeighbor(p, MAT_RADIATION)) && (randomValue & 127u) == 0u) {
             result = makeCell(MAT_WASTE);
+        } else if (queenCarrier) {
+            if (!beeTileMatches(targetTile, TILE_HAS_FLOWER,
+                                TILE_HAS_HIVE | TILE_HAS_QUEEN |
+                                TILE_HAS_MIGRATING_QUEEN | TILE_BEE_HAZARD)) {
+                targetTile = migrationDestinationTile(p);
+                result.age = beePackAge(0u, targetTile);
+                timer = 0u;
+            }
+            if (beeTileIndexValid(targetTile)) {
+                ivec2 destination = beeMigrationSite(
+                    tileFlowerPosition(targetTile, pc.width, tiles[targetTile]),
+                    pc.width, pc.height);
+                ivec2 delta = p - destination;
+                bool colonyArrived = delta.x * delta.x + delta.y * delta.y <= 4 &&
+                                      countWithin(p, MAT_BEE, 8) >= 10u;
+                if (colonyArrived && timer >= 180u &&
+                    !hasWithin(p, MAT_QUEEN_BEE, 12) &&
+                    !hasWithin(p, MAT_BEE_NEST, 10)) {
+                    result = makeCell(MAT_QUEEN_BEE);
+                    setStateValue(result, 0u);
+                    result.age = 0u;
+                }
+            }
         } else {
-            if ((source.aux & AUX_BEE_POLLEN) == 0u && hasNeighbor(p, MAT_FLOWER)) {
-                result.aux |= AUX_BEE_POLLEN;
-                result.aux &= ~AUX_BEE_FED;
-                setStateValue(result, 0u);
-                result.age = min(result.age, 1200u);
+            ivec2 nearbyQueen = nearestOffset(p, MAT_QUEEN_BEE, 6);
+            if (any(notEqual(nearbyQueen, ivec2(0)))) {
+                ivec2 queenPosition = p + nearbyQueen;
+                uint slot = authoredBee ? beeFormationSlotFromAux(source.aux)
+                                        : hash32(indexOf(p) ^ source.aux) % BEE_FORMATION_COUNT;
+                result.aux = beePackMetadata(
+                    result.aux | BEE_AUX_SWARM | BEE_AUX_FED,
+                    queenPosition, slot);
+                result.aux &= ~BEE_AUX_MIGRATING;
+                result.age = beePackAge(0u, BEE_TARGET_NONE);
+                authoredBee = true;
+                migratingFollower = false;
+                timer = 0u;
+                targetTile = BEE_TARGET_NONE;
             }
 
-            if ((source.aux & AUX_BEE_POLLEN) != 0u &&
-                (hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEE_NEST))) {
-                ivec2 target = beeDepositTarget(p, source);
-                uint targetMaterial = at(target).material;
-                if (targetMaterial == MAT_EMPTY || targetMaterial == MAT_POLLEN) {
-                    result.aux &= ~AUX_BEE_POLLEN;
+            if (authoredBee && !migratingFollower && !beeHomeHasQueen(result) &&
+                (timer & 63u) == 0u) {
+                uint queenTile = refreshedMigratingQueenTile(BEE_TARGET_NONE, p);
+                if (queenTile != BEE_TARGET_NONE) {
+                    result.aux |= BEE_AUX_MIGRATING;
+                    result.age = beePackAge(0u, queenTile);
+                    migratingFollower = true;
+                    targetTile = queenTile;
+                    timer = 0u;
+                }
+            } else if (migratingFollower) {
+                uint queenTile = refreshedMigratingQueenTile(targetTile, p);
+                if (queenTile != BEE_TARGET_NONE) {
+                    result.age = beePackAge(timer, queenTile);
+                    targetTile = queenTile;
                 }
             }
 
-            if ((result.aux & AUX_BEE_POLLEN) == 0u && hasNeighbor(p, MAT_HONEY)) {
-                result.aux |= AUX_BEE_FED;
-                setStateValue(result, 480u);
-                result.age = min(result.age, 600u);
+            if (authoredBee && !migratingFollower) {
+                bool carryingPollen = (source.aux & BEE_AUX_POLLEN) != 0u;
+                bool fed = (source.aux & BEE_AUX_FED) != 0u;
+                uint slot = beeFormationSlotFromAux(source.aux);
+                ivec2 homeCenter = beeHomeCenterFromAux(source.aux);
+
+                if (fed && !carryingPollen && targetTile == BEE_TARGET_NONE &&
+                    beeIsForager(source.aux) &&
+                    timer >= 1200u + ((slot * 29u) % 600u)) {
+                    uint flowerTile = nearestFlowerTileForColony(homeCenter);
+                    if (flowerTile != BEE_TARGET_NONE) {
+                        result.age = beePackAge(0u, flowerTile);
+                        targetTile = flowerTile;
+                        timer = 0u;
+                    }
+                }
+
+                if (fed && !carryingPollen && targetTile != BEE_TARGET_NONE) {
+                    if (!beeTileMatches(targetTile, TILE_HAS_FLOWER, TILE_BEE_HAZARD)) {
+                        result.age = beePackAge(0u, BEE_TARGET_NONE);
+                        targetTile = BEE_TARGET_NONE;
+                    } else if (beeBesideTargetMaterial(p, targetTile, MAT_FLOWER)) {
+                        result.aux |= BEE_AUX_POLLEN;
+                        result.aux &= ~BEE_AUX_FED;
+                        result.age = beePackAge(0u, BEE_TARGET_NONE);
+                        carryingPollen = true;
+                        fed = false;
+                        targetTile = BEE_TARGET_NONE;
+                        timer = 0u;
+                    }
+                }
+
+                if (carryingPollen &&
+                    (hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEE_NEST))) {
+                    ivec2 depositTarget = beeDepositTarget(p, source);
+                    uint depositMaterial = at(depositTarget).material;
+                    if (depositMaterial == MAT_EMPTY || depositMaterial == MAT_POLLEN) {
+                        result.aux &= ~(BEE_AUX_POLLEN | BEE_AUX_FED);
+                        uint honeyTile = nearestHoneyTileForColony(homeCenter);
+                        result.age = beePackAge(0u, honeyTile);
+                        carryingPollen = false;
+                        fed = false;
+                        targetTile = honeyTile;
+                        timer = 0u;
+                    }
+                }
+
+                if (!carryingPollen && !fed) {
+                    if (!beeTileMatches(targetTile, TILE_HAS_HONEY, TILE_BEE_HAZARD)) {
+                        targetTile = nearestHoneyTileForColony(homeCenter);
+                        result.age = beePackAge(0u, targetTile);
+                        timer = 0u;
+                    }
+                    bool besideTargetHoney =
+                        beeBesideTargetMaterial(p, targetTile, MAT_HONEY);
+                    if (besideTargetHoney) {
+                        if (timer == 0u) {
+                            result.age = beePackAge(1u, targetTile);
+                        } else {
+                            result.aux |= BEE_AUX_FED;
+                            result.age = beePackAge(0u, BEE_TARGET_NONE);
+                        }
+                    }
+                }
             }
 
-            if (source.age > 220000u && (randomValue & 8191u) == 0u) {
-                result = makeCell(MAT_WASTE);
+            if (!authoredBee) {
+                // A painted or orphaned bee without a queen does not wander.
+                result.aux &= ~AUX_MOVED;
             }
         }
     } else if (source.material == MAT_POLLEN) {
         if ((hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEE_NEST)) &&
-            source.age > 3600u && (randomValue & 2047u) == 0u) {
+            source.age > 90u && (randomValue & 63u) == 0u) {
             result = makeCell(MAT_HONEY);
+            setStateValue(result, 255u);
         }
     } else if (source.material == MAT_HONEY) {
         if (stateValue(result) == 0u) setStateValue(result, 255u);
-        if (hasHungryBee(p) && (randomValue & 2047u) == 0u) {
+        if (hungryBeeTargetsHoney(p)) {
             uint remaining = stateValue(result);
-            if (remaining <= 1u) result = makeCell(MAT_EMPTY);
-            else setStateValue(result, remaining - 1u);
-        } else if (hasNeighbor(p, MAT_BEE) && source.age > 7200u && (randomValue & 32767u) == 0u) {
+            uint portion = min(remaining, 26u);
+            if (remaining <= portion) result = makeCell(MAT_EMPTY);
+            else setStateValue(result, remaining - portion);
+        } else if (hasNeighbor(p, MAT_BEE) && source.age > 7200u &&
+                   (randomValue & 32767u) == 0u) {
             result = makeCell(MAT_BEESWAX);
         }
     } else if (source.material == MAT_BEESWAX) {
+
         if (nearLava || result.temperature > 180) {
             result = makeCell(MAT_EMBER);
         } else if (source.age > 12000u && (randomValue & 65535u) == 0u &&
@@ -1032,8 +1263,31 @@ void main() {
     } else if (source.material == MAT_QUEEN_BEE) {
         if (nearLava || nearFire || nearAcid || result.temperature > 160) {
             result = makeCell(MAT_ASH);
-        } else if (source.age > 900000u && (randomValue & 16383u) == 0u) {
-            result = makeCell(MAT_WASTE);
+        } else {
+            uint stress = stateValue(source);
+            uint queenTile = tileIndex(p, pc.width);
+            uint localBees = beePopulationAroundTile(queenTile, 6);
+            bool localHoney = beeTileAreaHasFlag(queenTile, TILE_HAS_HONEY, 2);
+            bool reproductiveSwarm = localBees >= 180u && localHoney;
+            bool resourceFailure = !localHoney;
+
+            if ((randomValue & 255u) == 0u) {
+                if (reproductiveSwarm || resourceFailure) stress = min(255u, stress + 8u);
+                else stress = stress > 0u ? stress - 1u : 0u;
+            }
+            setStateValue(result, stress);
+
+            uint destinationTile = BEE_TARGET_NONE;
+            if (stress >= 232u && source.age > 36000u)
+                destinationTile = migrationDestinationTile(p);
+            if (stress >= 240u && destinationTile != BEE_TARGET_NONE) {
+                result = makeCell(MAT_BEE);
+                result.aux |= BEE_AUX_SWARM | BEE_AUX_QUEEN | BEE_AUX_FED;
+                result.aux = beePackMetadata(result.aux, p, 0u);
+                result.age = beePackAge(0u, destinationTile);
+            } else if (source.age > 900000u && (randomValue & 16383u) == 0u) {
+                result = makeCell(MAT_WASTE);
+            }
         }
     } else if (source.material == MAT_BEE_NEST) {
         if (nearLava || result.temperature > 220) {
@@ -1124,7 +1378,6 @@ void main() {
         // must never write back into the readonly snapshot or race neighboring
         // invocations. The machine inventory accounts for the represented unit.
         atomicAdd(conservation[CONS_CONVERTED], 1u);
-        if (!materialEnabled(result.material)) result = makeCell(canonicalMaterial(result.material));
         nextCells[index] = result;
     } else {
         commitResult(index, source, result);

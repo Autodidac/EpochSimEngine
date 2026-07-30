@@ -409,12 +409,14 @@ def main() -> int:
              "palette_height", "group_tabs_height", "material_slots", "frames_per_second", "paused",
              "steps_per_frame", "selected_group", "hovered_group", "hovered_material", "selected_scene",
              "group_count", "scene_count", "mining_mode", "inspect_mode", "debug_mode", "tile_columns",
-             "tile_rows", "viewport_left", "viewport_top", "viewport_width", "viewport_height"],
+             "tile_rows", "viewport_left", "viewport_top", "viewport_width", "viewport_height",
+             "view_origin_x", "view_origin_y", "view_width", "view_height", "brush_shape"],
             ["gridWidth", "gridHeight", "windowWidth", "windowHeight", "selectedMaterial",
              "materialCount", "cursorX", "cursorY", "brushRadius", "statusHeight", "paletteHeight",
              "groupTabsHeight", "materialSlots", "framesPerSecond", "paused", "stepsPerFrame",
              "selectedGroup", "hoveredGroup", "hoveredMaterial", "selectedScene", "groupCount",
-             "sceneCount", "miningMode", "inspectMode", "debugMode", "tileColumns", "tileRows", "viewportLeft", "viewportTop", "viewportWidth", "viewportHeight"],
+             "sceneCount", "miningMode", "inspectMode", "debugMode", "tileColumns", "tileRows", "viewportLeft", "viewportTop", "viewportWidth", "viewportHeight",
+             "viewOriginX", "viewOriginY", "viewWidth", "viewHeight", "brushShape"],
             renderer,
             "renderPc",
         ),
@@ -459,7 +461,7 @@ def main() -> int:
             errors.append(f"authored scene contract missing {token!r}")
     if "MAT_GOLD_ORE" in reset or "MAT_IRON_ORE" in reset or "MAT_GOLD_ORE" in actor or "MAT_IRON_ORE" in actor:
         errors.append("ore blocks remain in authored scenes or player mining")
-    for token in ("previouslyDense", "previous.occupancy >= TILE_STABILITY_OCCUPANCY",
+    for token in ("previouslyDense", "tileOccupancy(previous) >= TILE_STABILITY_OCCUPANCY",
                   "dominantCount < TILE_MIN_COHESIVE_CELLS",
                    "structuralTile ? dominantCount"):
         if token not in tiles:
@@ -469,7 +471,8 @@ def main() -> int:
 
     motion_ecology_contracts = {
         "tiles": (tiles, ("activeContent", "!activeContent", "activeAgent", "activeLoose")),
-        "movement": (movement, ("sleepSafe", "localTargetSignal", "beeWaveVertical",
+        "movement": (movement, ("sleepSafe", "beeOrbitTarget", "beeMovementTarget",
+                                 "if (targetDistance < sourceDistance) return true;", "boundedSidestep",
                                  "insectMoveAllowed", "MAT_PLANT_STEM")),
         "chemistry": (chemistry, ("flowerDropsSeed", "stemMoisture", "grassFrontier",
                                   "source.material == MAT_PLANT_STEM")),

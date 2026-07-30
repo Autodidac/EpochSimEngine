@@ -50,6 +50,7 @@ public:
 
     [[nodiscard]] bool poll(WindowInput& input);
     void set_title(std::string_view title);
+    void show_startup_message(std::string_view message);
 
     [[nodiscard]] std::vector<const char*> required_instance_extensions() const;
     [[nodiscard]] VkSurfaceKHR create_surface(VkInstance instance) const;

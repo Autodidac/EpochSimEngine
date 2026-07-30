@@ -1,25 +1,3 @@
-# FastFreddy Reduced-Material Water Optimization Build
-
-This repository is the complete `Autodidac/fastfreddy` application architecture, not a replacement demo. Scenes, native Vulkan renderer, EpochGui interface, material cards, scene navigation, mining/build controls, save/load support, diagnostics, debug visualization, statistics and build layout are retained.
-
-The visible simulation catalog is intentionally bounded to:
-
-- Sand, dirt, stone and mud
-- Water, saltwater, dirty water, acid, lava, oil and honey
-- Oxygen as the background atmosphere
-
-Removed authored/reaction materials are conservatively remapped to oxygen, water, dirt or stone instead of being deleted. Empty scene space and erasing produce oxygen.
-
-## Half-water contract
-
-Fresh water stores either one or two half-units in the existing 16-byte cell; no larger per-cell buffer is introduced.
-
-- Two adjacent half-water cells merge into one full-color water cell plus oxygen.
-- A full water cell spreading sideways splits into two faint half-water cells.
-- Half water receives four additional horizontal pair passes and therefore flows exactly twice as fast as full water.
-- Water hanging at a supported ledge cannot fall diagonally until the edge is full and the trailing cell contributes at least one half-unit.
-- Oxygen-only regions participate in the existing sleeping-tile optimization, avoiding full-atmosphere movement cost.
-
 # SandHybrid
 
 SandHybrid is a standalone C++23 Vulkan material, terrain, ecology, factory, and combat sandbox. Fine particles, liquids, gases, machines, actors, and aligned Terraria-style terrain blocks share one deterministic cell simulation. There is no second rigid-body or voxel physics world.
@@ -311,3 +289,8 @@ The vendored backend-neutral subset is documented in `third_party/EpochGui/SNAPS
 ## Hierarchical simulation
 
 Uniform 8x8 material regions can now move as 64-cell macro-cells using the same fall, diagonal, density, and liquid-spread rules as fine pixels. Mixed edges and half-water remain pixel simulated. Above that, 64x64 chunks cache activity and sleep state for fast rejection and large-map lookup. See `HIERARCHICAL_SIMULATION.md`.
+
+
+## Half-volume fresh water
+
+Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and half-only extra horizontal passes. See `HALF_WATER.md`.

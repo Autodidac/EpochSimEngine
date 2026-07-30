@@ -3,6 +3,7 @@
 #include "material_ids.glsl"
 #include "tiles.glsl"
 #include "chunks.glsl"
+#include "bee_swarm.glsl"
 #include "debug_stats.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
@@ -17,6 +18,7 @@ struct Cell {
 const uint AUX_CHARGED = 0x40000000u;
 const uint AUX_BEE_POLLEN = 0x20000000u;
 const uint AUX_BEE_FED = 0x10000000u;
+const uint AUX_BEE_SWARM = 0x08000000u;
 const uint AUX_STRUCTURAL = 0x04000000u;
 const uint AUX_MOVED = 0x01000000u;
 const uint AUX_WATER_HALF = 0x00800000u;
@@ -70,17 +72,6 @@ uint moveIndex(ivec2 p) {
     return uint(p.y) * movePc.width + uint(p.x);
 }
 
-void markChunkDirty(ivec2 p) {
-    atomicOr(chunks[chunkIndex(p, movePc.width)].flags, CHUNK_DIRTY | CHUNK_ACTIVE);
-}
-
-bool pairChunksSleeping(ivec2 a, ivec2 b) {
-    ChunkState first = chunks[chunkIndex(a, movePc.width)];
-    ChunkState second = chunks[chunkIndex(b, movePc.width)];
-    return chunkHas(first, CHUNK_SLEEPING) && !chunkHas(first, CHUNK_DIRTY) &&
- chunkHas(second, CHUNK_SLEEPING) && !chunkHas(second, CHUNK_DIRTY);
-}
-
 Cell boundaryCell() {
     return Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
 }
@@ -93,6 +84,18 @@ Cell sampleAt(ivec2 p) {
     return moveInside(p) ? snapshotCells[moveIndex(p)] : boundaryCell();
 }
 
+void markChunkDirty(ivec2 p) {
+    if (!moveInside(p)) return;
+    atomicOr(chunks[chunkIndex(p, movePc.width)].flags, CHUNK_DIRTY | CHUNK_ACTIVE);
+}
+
+bool chunkPairSleeping(ivec2 a, ivec2 b) {
+    ChunkState first = chunks[chunkIndex(a, movePc.width)];
+    ChunkState second = chunks[chunkIndex(b, movePc.width)];
+    return chunkHas(first, CHUNK_SLEEPING) && !chunkHas(first, CHUNK_DIRTY) &&
+ chunkHas(second, CHUNK_SLEEPING) && !chunkHas(second, CHUNK_DIRTY);
+}
+
 uint stateValue(Cell cell) {
     return cell.aux & AUX_STATE_MASK;
 }
@@ -100,7 +103,6 @@ uint stateValue(Cell cell) {
 void setStateValue(inout Cell cell, uint value) {
     cell.aux = (cell.aux & ~AUX_STATE_MASK) | min(value, 255u);
 }
-
 
 bool isHalfWaterCell(Cell cell) {
     return cell.material == MAT_WATER && (cell.aux & AUX_WATER_HALF) != 0u;
@@ -110,9 +112,9 @@ uint waterHalfUnits(Cell cell) {
     return cell.material == MAT_WATER ? (isHalfWaterCell(cell) ? 1u : 2u) : 0u;
 }
 
-void setHalfWaterCell(inout Cell cell, bool half_state) {
+void setHalfWaterCell(inout Cell cell, bool halfState) {
     if (cell.material != MAT_WATER) return;
-    if (half_state) cell.aux |= AUX_WATER_HALF;
+    if (halfState) cell.aux |= AUX_WATER_HALF;
     else cell.aux &= ~AUX_WATER_HALF;
 }
 
@@ -143,10 +145,10 @@ void splitFullWaterPair(ivec2 sourcePosition, ivec2 targetPosition, Cell source,
     setHalfWaterCell(source, true);
     source.age = 0u;
     source.aux |= AUX_MOVED;
-    Cell half_cell = source;
-    half_cell.temperature = (source.temperature + target.temperature) / 2;
+    Cell halfCell = source;
+    halfCell.temperature = (source.temperature + target.temperature) / 2;
     cells[moveIndex(sourcePosition)] = source;
-    cells[moveIndex(targetPosition)] = half_cell;
+    cells[moveIndex(targetPosition)] = halfCell;
     markChunkDirty(sourcePosition);
     markChunkDirty(targetPosition);
 }
@@ -323,6 +325,8 @@ void diffuseSalinityPair(ivec2 aPosition, ivec2 bPosition) {
     }
     cells[aIndex] = a;
     cells[bIndex] = b;
+    markChunkDirty(aPosition);
+    markChunkDirty(bPosition);
 }
 
 uint flowInterval(Cell cell) {
@@ -359,7 +363,7 @@ bool movementAllows(Cell cell, uint randomValue) {
 
 bool canCellFallInto(Cell moving, Cell target) {
     if (isStructural(moving) || isCellImmovable(moving)) return false;
-    if (target.material == MAT_EMPTY) return true;
+    if (isOpenGas(target)) return true;
     if (isCellImmovable(target)) return false;
     if (moving.material == MAT_BEE || moving.material == MAT_QUEEN_BEE) return false;
     if (isCellGas(target) && !isCellGas(moving)) return true;
@@ -406,8 +410,11 @@ bool liquidCanSpread(ivec2 sourcePosition, ivec2 targetPosition, Cell source, ui
     int direction = targetPosition.x > sourcePosition.x ? 1 : -1;
     ivec2 next = targetPosition + ivec2(direction, 0);
     ivec2 next2 = targetPosition + ivec2(direction * 2, 0);
-    bool firstDrop = moveInside(next) && moveAt(next).material == MAT_EMPTY && canCellFallInto(source, moveAt(next + ivec2(0, 1)));
-    bool secondDrop = moveInside(next2) && moveAt(next).material == MAT_EMPTY && moveAt(next2).material == MAT_EMPTY && canCellFallInto(source, moveAt(next2 + ivec2(0, 1)));
+    bool firstDrop = moveInside(next) && isOpenGas(moveAt(next)) &&
+                     canCellFallInto(source, moveAt(next + ivec2(0, 1)));
+    bool secondDrop = moveInside(next2) && isOpenGas(moveAt(next)) &&
+                      isOpenGas(moveAt(next2)) &&
+                      canCellFallInto(source, moveAt(next2 + ivec2(0, 1)));
     return firstDrop || secondDrop || (randomValue & 7u) == 0u;
 }
 
@@ -454,58 +461,62 @@ int localTargetSignal(ivec2 p, uint first, uint second) {
     return score;
 }
 
-int regionalTargetSignal(ivec2 p, uint first, uint second) {
-    int score = localTargetSignal(p, first, second) * 12;
-    score += localTargetSignal(p + ivec2(8, 0), first, second) * 7;
-    score += localTargetSignal(p + ivec2(-8, 0), first, second) * 7;
-    score += localTargetSignal(p + ivec2(0, 8), first, second) * 7;
-    score += localTargetSignal(p + ivec2(0, -8), first, second) * 7;
-    score += localTargetSignal(p + ivec2(12, 12), first, second) * 5;
-    score += localTargetSignal(p + ivec2(-12, 12), first, second) * 5;
-    score += localTargetSignal(p + ivec2(12, -12), first, second) * 5;
-    score += localTargetSignal(p + ivec2(-12, -12), first, second) * 5;
-    score += localTargetSignal(p + ivec2(24, 0), first, second) * 4;
-    score += localTargetSignal(p + ivec2(-24, 0), first, second) * 4;
-    score += localTargetSignal(p + ivec2(0, 24), first, second) * 4;
-    score += localTargetSignal(p + ivec2(0, -24), first, second) * 4;
-    score += localTargetSignal(p + ivec2(40, 20), first, second) * 2;
-    score += localTargetSignal(p + ivec2(-40, 20), first, second) * 2;
-    score += localTargetSignal(p + ivec2(40, -20), first, second) * 2;
-    score += localTargetSignal(p + ivec2(-40, -20), first, second) * 2;
-    score += localTargetSignal(p + ivec2(64, 0), first, second);
-    score += localTargetSignal(p + ivec2(-64, 0), first, second);
-    score += localTargetSignal(p + ivec2(0, 64), first, second);
-    score += localTargetSignal(p + ivec2(0, -64), first, second);
-    return score;
+
+uint beeTargetTileCount() {
+    return tileColumns(movePc.width) * ((movePc.height + TILE_SIZE - 1u) / TILE_SIZE);
 }
 
-int beeTargetSignal(Cell bee, ivec2 p) {
-    bool carryingPollen = (bee.aux & AUX_BEE_POLLEN) != 0u;
-    bool resting = stateValue(bee) > 0u;
-    if (carryingPollen || resting) {
-        return regionalTargetSignal(p, MAT_QUEEN_BEE, MAT_BEE_NEST);
+bool beeTargetTileValid(uint index, uint requiredFlags) {
+    return index < beeTargetTileCount() && tileHas(tiles[index], requiredFlags);
+}
+
+ivec2 beeStoredFlowerTarget(Cell bee) {
+    uint targetTile = beeTargetTileFromAge(bee.age);
+    if (!beeTargetTileValid(targetTile, TILE_HAS_FLOWER)) return beeOrbitTarget(bee.aux, movePc.step);
+    TileState targetState = tiles[targetTile];
+    ivec2 flower = tileFlowerPosition(targetTile, movePc.width, targetState);
+    return beeApproachPosition(flower, beeHomeCenterFromAux(bee.aux));
+}
+
+ivec2 beeStoredHoneyTarget(Cell bee) {
+    uint targetTile = beeTargetTileFromAge(bee.age);
+    if (!beeTargetTileValid(targetTile, TILE_HAS_HONEY))
+        return beeHomeCenterFromAux(bee.aux) + beeLandingOffset(beeFormationSlotFromAux(bee.aux));
+    TileState targetState = tiles[targetTile];
+    ivec2 honey = tileHoneyPosition(targetTile, movePc.width, targetState);
+    return beeApproachPosition(honey, beeHomeCenterFromAux(bee.aux));
+}
+
+ivec2 beeStoredMigratingQueen(Cell bee) {
+    uint targetTile = beeTargetTileFromAge(bee.age);
+    if (!beeTargetTileValid(targetTile, TILE_HAS_MIGRATING_QUEEN) &&
+        !beeTargetTileValid(targetTile, TILE_HAS_QUEEN))
+        return beeHomeCenterFromAux(bee.aux);
+    TileState targetState = tiles[targetTile];
+    return tileQueenPosition(targetTile, movePc.width, targetState);
+}
+
+ivec2 beeMovementTarget(Cell bee) {
+    uint slot = beeFormationSlotFromAux(bee.aux);
+    if ((bee.aux & BEE_AUX_QUEEN) != 0u) {
+        uint targetTile = beeTargetTileFromAge(bee.age);
+        if (!beeTargetTileValid(targetTile, TILE_HAS_FLOWER))
+            return beeHomeCenterFromAux(bee.aux);
+        TileState targetState = tiles[targetTile];
+        return beeMigrationSite(tileFlowerPosition(targetTile, movePc.width, targetState),
+                                movePc.width, movePc.height);
     }
-    int flowerSignal = regionalTargetSignal(p, MAT_FLOWER, MAT_FLOWER);
-    if ((bee.aux & AUX_BEE_FED) == 0u) {
-        int foodSignal = regionalTargetSignal(p, MAT_HONEY, MAT_QUEEN_BEE);
-        return max(flowerSignal, foodSignal);
+    if ((bee.aux & BEE_AUX_MIGRATING) != 0u) {
+        ivec2 queen = beeStoredMigratingQueen(bee);
+        return queen + beeRotateOffset(beeFormationOffset(slot) / 2, movePc.step / 8u);
     }
-    return flowerSignal;
-}
-
-int beeWaveVertical(Cell bee, ivec2 p) {
-    uint lane = ((bee.aux >> 8u) & 1u) * 3u;
-    uint phase = (movePc.step / 2u + uint(max(p.x, 0)) * 2u + lane) % 32u;
-    if (phase < 8u) return -1;
-    if (phase < 16u) return 0;
-    if (phase < 24u) return 1;
-    return 0;
-}
-
-int beeWaveHorizontal(Cell bee, ivec2 p) {
-    uint lane = ((bee.aux >> 9u) & 3u) * 5u;
-    uint phase = (movePc.step / 3u + uint(max(p.y, 0)) * 2u + lane) % 64u;
-    return phase < 32u ? 1 : -1;
+    if ((bee.aux & BEE_AUX_POLLEN) != 0u)
+        return beeHomeCenterFromAux(bee.aux) + beeLandingOffset(slot);
+    if ((bee.aux & BEE_AUX_FED) == 0u)
+        return beeStoredHoneyTarget(bee);
+    if (beeTargetTileFromAge(bee.age) != BEE_TARGET_NONE)
+        return beeStoredFlowerTarget(bee);
+    return beeOrbitTarget(bee.aux, movePc.step);
 }
 
 bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {
@@ -513,18 +524,29 @@ bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint r
     bool sourceHazard = adjacentHazard(sourcePosition);
     bool targetHazard = adjacentHazard(targetPosition);
     if (sourceHazard != targetHazard) return sourceHazard;
+    if ((bee.aux & BEE_AUX_SWARM) == 0u) return false;
 
-    ivec2 delta = targetPosition - sourcePosition;
-    int sourceSignal = beeTargetSignal(bee, sourcePosition);
-    int targetSignal = beeTargetSignal(bee, targetPosition);
-    if (sourceSignal != targetSignal) return targetSignal > sourceSignal;
+    ivec2 destination = beeMovementTarget(bee);
+    ivec2 sourceDelta = sourcePosition - destination;
+    ivec2 targetDelta = targetPosition - destination;
+    int sourceDistance = sourceDelta.x * sourceDelta.x + sourceDelta.y * sourceDelta.y;
+    int targetDistance = targetDelta.x * targetDelta.x + targetDelta.y * targetDelta.y;
+    if (targetDistance < sourceDistance) return true;
 
-    int desiredVertical = beeWaveVertical(bee, sourcePosition);
-    int desiredHorizontal = beeWaveHorizontal(bee, sourcePosition);
-    if (delta.x == desiredHorizontal && delta.y == desiredVertical) return true;
-    if (delta.x == desiredHorizontal && delta.y == 0) return true;
-    if (delta.y == desiredVertical && delta.x == 0) return (randomValue & 1u) == 0u;
-    return (randomValue & 15u) == 0u;
+    // A dense swarm deadlocks when every bee demands a strictly closer empty
+    // cell. Permit only target-bounded tangential sidesteps, so blocked bees
+    // circulate around their moving anchors without regaining random wandering.
+    ivec2 stepDelta = targetPosition - sourcePosition;
+    uint slot = beeFormationSlotFromAux(bee.aux);
+    bool clockwise = ((slot * 17u + 3u) & 1u) == 0u;
+    ivec2 tangent = clockwise ? ivec2(-sourceDelta.y, sourceDelta.x)
+                              : ivec2(sourceDelta.y, -sourceDelta.x);
+    int tangentScore = stepDelta.x * tangent.x + stepDelta.y * tangent.y;
+    int forwardScore = stepDelta.x * -sourceDelta.x + stepDelta.y * -sourceDelta.y;
+    bool boundedSidestep = targetDistance <= sourceDistance + 2 &&
+                           targetDistance <= 49 && forwardScore >= 0 &&
+                           tangentScore > 0;
+    return boundedSidestep && ((randomValue ^ slot ^ movePc.step) & 1u) == 0u;
 }
 
 bool magneticMoveAllowed(ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {
@@ -601,10 +623,10 @@ int conveyorDirectionBelow(ivec2 p) {
 }
 
 bool sleepSafe(ivec2 position, Cell cell) {
-    if (cell.material == MAT_EMPTY || cell.material == MAT_OXYGEN || isStructural(cell)) return true;
+    if (cell.material == MAT_EMPTY || isStructural(cell)) return true;
     if (cell.material == MAT_BEE || isInsect(cell.material) || cell.material == MAT_SEED || cell.material == MAT_POLLEN) return false;
     TileState tile = tiles[tileIndex(position, movePc.width)];
-    bool stabilizedRegion = tileHas(tile, TILE_STABLE) && tileHas(tile, TILE_SLEEPING) && tile.material == cell.material && tile.occupancy >= TILE_STABILITY_OCCUPANCY && (isBlockCapable(cell.material) || cell.material == MAT_DIRT ||
+    bool stabilizedRegion = tileHas(tile, TILE_STABLE) && tileHas(tile, TILE_SLEEPING) && tile.material == cell.material && tileOccupancy(tile) >= TILE_STABILITY_OCCUPANCY && (isBlockCapable(cell.material) || cell.material == MAT_DIRT ||
                              cell.material == MAT_SAND || cell.material == MAT_SILT ||
                              cell.material == MAT_SALT || cell.material == MAT_ICE);
     if (stabilizedRegion) return true;
@@ -613,7 +635,10 @@ bool sleepSafe(ivec2 position, Cell cell) {
 }
 
 bool pairSleeping(ivec2 a, ivec2 b) {
-    if (pairChunksSleeping(a, b)) return true;
+    if (chunkPairSleeping(a, b)) {
+        if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], 2u);
+        return true;
+    }
     TileState tileA = tiles[tileIndex(a, movePc.width)];
     TileState tileB = tiles[tileIndex(b, movePc.width)];
     if (!tileHas(tileA, TILE_SLEEPING) || !tileHas(tileB, TILE_SLEEPING)) return false;
@@ -712,6 +737,8 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
         isOpenGas(target)) {
         int direction = targetPosition.x > sourcePosition.x ? 1 : -1;
         Cell trailing = sampleAt(sourcePosition - ivec2(direction, 0));
+        // A ledge does not release until the edge holds one full cell and
+        // the immediately trailing cell contributes at least one half-unit.
         if (waterHalfUnits(source) != 2u || waterHalfUnits(trailing) < 1u) return;
     }
     if (!upward && !cohesiveMud &&
@@ -791,13 +818,14 @@ void processHorizontal(ivec2 left, ivec2 right) {
     }
 
     if (isHalfWaterCell(a) && isHalfWaterCell(b)) {
-        mergeHalfWaterPair((randomValue & 1u) == 0u ? left : right,
-                           (randomValue & 1u) == 0u ? right : left,
-                           (randomValue & 1u) == 0u ? a : b,
-                           (randomValue & 1u) == 0u ? b : a);
+        bool keepLeft = (randomValue & 1u) == 0u;
+        mergeHalfWaterPair(keepLeft ? left : right, keepLeft ? right : left,
+                           keepLeft ? a : b, keepLeft ? b : a);
         return;
     }
 
+    // The final four horizontal passes are half-water-only. Full water and
+    // every other material keep the original pass count.
     if (movePc.reserved1 != 0u && !isHalfWaterCell(a) && !isHalfWaterCell(b)) return;
 
     if (isCellLiquid(a) && isOpenGas(b) && liquidCanSpread(left, right, a, randomValue)) {

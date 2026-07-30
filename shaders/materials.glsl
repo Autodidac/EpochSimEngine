@@ -12,8 +12,8 @@ const uint AUX_PLANT_STEM = 0x08000000u;
 const uint AUX_STRUCTURAL = 0x04000000u;
 const uint AUX_SUPPORTED = 0x02000000u;
 const uint AUX_MOVED = 0x01000000u;
-const uint AUX_STATE_MASK = 0x000000ffu;
 const uint AUX_WATER_HALF = 0x00800000u;
+const uint AUX_STATE_MASK = 0x000000ffu;
 const uint AUX_RANDOM_MASK = 0x007fff00u;
 const uint STRUCTURAL_BLOCK_SIZE = 8u;
 const uint STRUCTURAL_FULL_CELLS = STRUCTURAL_BLOCK_SIZE * STRUCTURAL_BLOCK_SIZE;
@@ -26,31 +26,6 @@ struct Cell {
     uint aux;
 };
 
-
-bool materialEnabled(uint material) {
-    return material == MAT_SAND || material == MAT_WATER || material == MAT_DIRT ||
-           material == MAT_STONE || material == MAT_MUD || material == MAT_ACID ||
-           material == MAT_LAVA || material == MAT_OIL || material == MAT_HONEY ||
-           material == MAT_SALTWATER || material == MAT_DIRTY_WATER ||
-           material == MAT_OXYGEN;
-}
-
-uint canonicalMaterial(uint material) {
-    if (materialEnabled(material)) return material;
-    if (material == MAT_EMPTY || material == MAT_SMOKE || material == MAT_STEAM ||
-        material == MAT_DIRTY_STEAM || material == MAT_FIRE || material == MAT_LIGHTNING ||
-        material == MAT_RADIATION || material == MAT_CARBON_DIOXIDE ||
-        material == MAT_HYDROGEN || material == MAT_BEE || material == MAT_QUEEN_BEE ||
-        material == MAT_ANT || material == MAT_BEETLE) return MAT_OXYGEN;
-    if (material == MAT_ICE || material == MAT_SNOW) return MAT_WATER;
-    if (material == MAT_SALT || material == MAT_ASH || material == MAT_EMBER ||
-        material == MAT_GUNPOWDER || material == MAT_SEED || material == MAT_POLLEN ||
-        material == MAT_SILT || material == MAT_FERTILIZER || material == MAT_FOOD ||
-        material == MAT_WASTE || material == MAT_ALUMINUM_SHAVINGS ||
-        material == MAT_IRON_SHAVINGS) return MAT_DIRT;
-    return MAT_STONE;
-}
-
 bool isHalfWater(Cell cell) {
     return cell.material == MAT_WATER && (cell.aux & AUX_WATER_HALF) != 0u;
 }
@@ -59,9 +34,9 @@ uint waterHalfUnits(Cell cell) {
     return cell.material == MAT_WATER ? (isHalfWater(cell) ? 1u : 2u) : 0u;
 }
 
-void setHalfWater(inout Cell cell, bool half_state) {
+void setHalfWater(inout Cell cell, bool halfState) {
     if (cell.material != MAT_WATER) return;
-    if (half_state) cell.aux |= AUX_WATER_HALF;
+    if (halfState) cell.aux |= AUX_WATER_HALF;
     else cell.aux &= ~AUX_WATER_HALF;
 }
 
@@ -122,7 +97,6 @@ void setSalinity(inout Cell cell, uint value) {
 }
 
 Cell makeCellWithEntropy(uint material, uint seed, uint step) {
-    material = canonicalMaterial(material);
     int temperature = 20;
     if (material == MAT_LAVA || material == MAT_MAGMA_VENT) temperature = 1300;
     else if (material == MAT_FIRE || material == MAT_LIGHTNING) temperature = 700;

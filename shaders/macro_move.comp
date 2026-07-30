@@ -6,8 +6,6 @@
 #include "chunks.glsl"
 #include "debug_stats.glsl"
 
-// One workgroup owns one pair of 8x8 macro-cells. Thread zero validates the
-// region; all 64 lanes then transfer the underlying canonical cells together.
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
@@ -32,7 +30,9 @@ shared ivec2 targetTileShared;
 bool macroInside(ivec2 p) {
     return p.x >= 0 && p.y >= 0 && p.x < int(macroPc.width) && p.y < int(macroPc.height);
 }
+
 uint macroIndex(ivec2 p) { return uint(p.y) * macroPc.width + uint(p.x); }
+
 Cell macroAt(ivec2 p) {
     return macroInside(p) ? cells[macroIndex(p)] : Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
 }
@@ -42,85 +42,72 @@ uint macroHash(ivec2 tile, uint salt) {
         macroPc.step * 83492791u ^ macroPc.seed ^ salt);
 }
 
-bool openAtmosphere(Cell cell) {
-    return cell.material == MAT_EMPTY || cell.material == MAT_OXYGEN;
-}
-
 bool bulkMovable(Cell cell) {
-    if ((cell.aux & AUX_STRUCTURAL) != 0u || isCellGas(cell)) return false;
-    return isCellLiquid(cell) || isCellPowder(cell);
+    return cell.material != MAT_EMPTY && cell.material < MATERIAL_COUNT &&
+ !isStructural(cell) && !isCellGas(cell) &&
+ (isCellLiquid(cell) || isCellPowder(cell));
 }
 
-bool bulkMovementAllows(uint material, uint randomValue) {
-    if (material == MAT_DIRT) return (randomValue & 3u) == 0u;
-    if (material == MAT_MUD) return (randomValue % 24u) == 0u;
-    if (material == MAT_HONEY) return (randomValue & 3u) == 0u;
-    if (material == MAT_LAVA) return (randomValue & 1u) == 0u;
+bool bulkMovementAllows(Cell cell, uint randomValue) {
+    if (cell.material == MAT_DIRT) return (randomValue & 3u) == 0u;
+    if (cell.material == MAT_MUD) return (randomValue % 24u) == 0u;
+    if (cell.material == MAT_HONEY) return (randomValue & 3u) == 0u;
+    if (cell.material == MAT_LAVA) return stateValue(cell) >= 160u || (randomValue & 1u) == 0u;
     return true;
 }
 
-bool sourceRegion(ivec2 origin, out uint material) {
-    Cell first = macroAt(origin);
-    material = first.material;
-    if (!bulkMovable(first) || !materialEnabled(material)) return false;
+bool sourceRegion(ivec2 origin, out Cell representative) {
+    representative = macroAt(origin);
+    if (!bulkMovable(representative) || (representative.aux & AUX_MOVED) != 0u) return false;
     for (int y = 0; y < int(TILE_SIZE); ++y) {
         for (int x = 0; x < int(TILE_SIZE); ++x) {
   Cell cell = macroAt(origin + ivec2(x, y));
-  if (cell.material != material || !bulkMovable(cell)) return false;
-  // Half-water is intentionally resolved by the fine passes. A macro
-  // move never hides or duplicates half-unit volume state.
-  if (material == MAT_WATER && isHalfWater(cell)) return false;
+            if (cell.material != representative.material || !bulkMovable(cell) ||
+                (cell.aux & AUX_MOVED) != 0u) return false;
+            if (cell.material == MAT_WATER && isHalfWater(cell)) return false;
         }
     }
     return true;
 }
 
-bool regionOpen(ivec2 origin) {
-    for (int y = 0; y < int(TILE_SIZE); ++y)
-        for (int x = 0; x < int(TILE_SIZE); ++x)
-  if (!openAtmosphere(macroAt(origin + ivec2(x, y)))) return false;
-    return true;
-}
-
-bool materialCanDisplace(uint sourceMaterial, uint targetMaterial) {
-    if (targetMaterial == MAT_EMPTY || targetMaterial == MAT_OXYGEN) return true;
-    Cell source = Cell(sourceMaterial, 0u, 20, 0u);
-    Cell target = Cell(targetMaterial, 0u, 20, 0u);
+bool materialCanDisplace(Cell source, Cell target) {
+    if (target.material == MAT_EMPTY) return true;
+    if (isStructural(target) || isCellImmovable(target)) return false;
     if (isCellGas(target) && !isCellGas(source)) return true;
     if (isCellPowder(source))
-        return isCellLiquid(target) && materialDensity(sourceMaterial) > materialDensity(targetMaterial);
+        return isCellLiquid(target) && materialDensity(source.material) > materialDensity(target.material);
     if (isCellLiquid(source))
         return isCellGas(target) ||
-     (isCellLiquid(target) && materialDensity(sourceMaterial) > materialDensity(targetMaterial));
+     (isCellLiquid(target) && materialDensity(source.material) > materialDensity(target.material));
     return false;
 }
 
-bool targetRegionAllows(ivec2 origin, uint sourceMaterial) {
-    if (regionOpen(origin)) return true;
+bool targetRegionAllows(ivec2 origin, Cell source) {
     Cell first = macroAt(origin);
-    uint targetMaterial = first.material;
-    if ((first.aux & AUX_STRUCTURAL) != 0u || !materialCanDisplace(sourceMaterial, targetMaterial)) return false;
+    if (!materialCanDisplace(source, first)) return false;
     for (int y = 0; y < int(TILE_SIZE); ++y) {
         for (int x = 0; x < int(TILE_SIZE); ++x) {
-  Cell cell = macroAt(origin + ivec2(x, y));
-  if (cell.material != targetMaterial || (cell.aux & AUX_STRUCTURAL) != 0u) return false;
+  Cell target = macroAt(origin + ivec2(x, y));
+  if (target.material != first.material || !materialCanDisplace(source, target)) return false;
         }
     }
     return true;
 }
 
-TileState tileStateAt(ivec2 tile) {
-    uint columns = tileColumns(macroPc.width);
-    return tiles[uint(tile.y) * columns + uint(tile.x)];
+bool targetRegionEmpty(ivec2 origin) {
+    for (int y = 0; y < int(TILE_SIZE); ++y)
+        for (int x = 0; x < int(TILE_SIZE); ++x)
+  if (macroAt(origin + ivec2(x, y)).material != MAT_EMPTY) return false;
+    return true;
 }
 
-bool macroSupported(ivec2 sourceTile, uint sourceMaterial) {
-    uint rows = (macroPc.height + TILE_SIZE - 1u) / TILE_SIZE;
-    ivec2 belowTile = sourceTile + ivec2(0, 1);
-    if (belowTile.y >= int(rows)) return true;
-    TileState below = tileStateAt(belowTile);
-    if (below.occupancy == 0u && below.material == MAT_EMPTY) return false;
-    if (below.occupancy == TILE_CELL_COUNT && materialCanDisplace(sourceMaterial, below.material)) return false;
+bool regionSupported(ivec2 origin, Cell source) {
+    int belowY = origin.y + int(TILE_SIZE);
+    if (belowY >= int(macroPc.height)) return true;
+    for (int x = 0; x < int(TILE_SIZE); ++x) {
+        Cell below = macroAt(ivec2(origin.x + x, belowY));
+        if (materialCanDisplace(source, below)) return false;
+    }
     return true;
 }
 
@@ -158,20 +145,19 @@ void main() {
   targetTileShared = targetTile;
   ivec2 sourceOrigin = sourceTile * int(TILE_SIZE);
   ivec2 targetOrigin = targetTile * int(TILE_SIZE);
-  uint sourceMaterial = MAT_EMPTY;
+  Cell source;
   uint randomValue = macroHash(sourceTile, uint(macroPc.phase) + 1u);
-  bool validSource = sourceRegion(sourceOrigin, sourceMaterial) &&
-                     bulkMovementAllows(sourceMaterial, randomValue);
+  bool validSource = sourceRegion(sourceOrigin, source) &&
+                     bulkMovementAllows(source, randomValue);
   bool allowed = false;
   if (validSource && macroPc.phase == 0) {
-      allowed = targetRegionAllows(targetOrigin, sourceMaterial);
+      allowed = targetRegionAllows(targetOrigin, source);
   } else if (validSource && (macroPc.phase == 1 || macroPc.phase == 2)) {
-      allowed = macroSupported(sourceTile, sourceMaterial) &&
-                targetRegionAllows(targetOrigin, sourceMaterial);
+      allowed = regionSupported(sourceOrigin, source) &&
+                targetRegionAllows(targetOrigin, source);
   } else if (validSource) {
-      Cell source = macroAt(sourceOrigin);
-      allowed = isCellLiquid(source) && macroSupported(sourceTile, sourceMaterial) &&
-                regionOpen(targetOrigin);
+      allowed = isCellLiquid(source) && regionSupported(sourceOrigin, source) &&
+                targetRegionEmpty(targetOrigin);
   }
   macroMoveAllowed = allowed ? 1u : 0u;
         }

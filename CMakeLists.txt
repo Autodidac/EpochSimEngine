@@ -26,11 +26,7 @@ function(epoch_sand_configure_warnings target_name)
             target_compile_options(${target_name} PRIVATE /WX)
         endif()
     else()
-        target_compile_options(${target_name} PRIVATE
-  -Wall -Wextra -Wpedantic -Wconversion -Wshadow
-  # Vulkan C structs are intentionally initialized with designated
-  # members; every omitted member is value-initialized to zero.
-  -Wno-missing-field-initializers)
+        target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
         if(EPOCH_SAND_WARNINGS_AS_ERRORS)
             target_compile_options(${target_name} PRIVATE -Werror)
         endif()
@@ -90,7 +86,27 @@ if(EPOCH_SAND_BUILD_APP)
 
     add_executable(epoch_sand ${EPOCH_SAND_SOURCES})
     target_include_directories(epoch_sand PRIVATE include)
-    target_link_libraries(epoch_sand PRIVATE Vulkan::Vulkan Threads::Threads Autodidac::EpochGui)
+
+    set(EPOCH_SAND_VULKAN_LIBRARY Vulkan::Vulkan)
+    if(UNIX AND NOT APPLE)
+        # vcpkg supplies Vulkan headers and shader tools, but its loader build may
+        # omit host-window-system exports such as vkCreateXcbSurfaceKHR. Prefer
+        # the distribution loader for Linux presentation while retaining the
+        # same Vulkan headers and API contract.
+        find_library(EPOCH_SAND_SYSTEM_VULKAN_LIBRARY
+            NAMES vulkan
+            PATHS /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib
+            NO_DEFAULT_PATH
+            NO_CMAKE_FIND_ROOT_PATH
+        )
+        if(EPOCH_SAND_SYSTEM_VULKAN_LIBRARY)
+            set(EPOCH_SAND_VULKAN_LIBRARY "${EPOCH_SAND_SYSTEM_VULKAN_LIBRARY}")
+        endif()
+    endif()
+
+    target_include_directories(epoch_sand SYSTEM PRIVATE ${Vulkan_INCLUDE_DIRS})
+    target_link_libraries(epoch_sand PRIVATE
+        ${EPOCH_SAND_VULKAN_LIBRARY} Threads::Threads Autodidac::EpochGui)
 
     target_compile_definitions(epoch_sand PRIVATE
         $<$<PLATFORM_ID:Windows>:VK_USE_PLATFORM_WIN32_KHR>
@@ -150,6 +166,7 @@ if(EPOCH_SAND_BUILD_APP)
                     "${SHADER_INPUT}"
                     -o "${SHADER_OUTPUT}"
             DEPENDS "${SHADER_INPUT}" "${SHADER_SOURCE_DIR}/materials.glsl"
+                    "${SHADER_SOURCE_DIR}/bee_swarm.glsl"
                     "${SHADER_SOURCE_DIR}/material_ids.glsl"
                     "${SHADER_SOURCE_DIR}/material_physics.glsl"
                     "${SHADER_SOURCE_DIR}/tiles.glsl"

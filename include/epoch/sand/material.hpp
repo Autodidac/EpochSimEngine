@@ -262,6 +262,12 @@ inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
 enum class MaterialGroup : std::uint32_t {
     ground = 0,
     fluids = 1,
+    life = 2,
+    colony = 3,
+    fire_chemistry = 4,
+    materials = 5,
+    engineering = 6,
+    industry = 7,
     count
 };
 
@@ -269,21 +275,36 @@ inline constexpr auto material_group_count = static_cast<std::uint32_t>(Material
 inline constexpr std::uint32_t material_slots_per_group = 10u;
 
 inline constexpr std::array<std::uint32_t, material_group_count> material_group_slot_counts{
-    5u,
     8u,
+    8u,
+    8u,
+    8u,
+    9u,
+    10u,
+    8u,
+    6u,
 };
 
 inline constexpr std::array<std::string_view, material_group_count> material_group_names{
     "Terrain",
-    "Liquids",
+    "Water",
+    "Life",
+    "Colony",
+    "Heat",
+    "Materials",
+    "Engineering",
+    "Industry",
 };
 
 inline constexpr std::array<std::array<Material, material_slots_per_group>, material_group_count> material_groups{{
-    {Material::empty, Material::sand, Material::dirt, Material::stone, Material::mud,
-     Material::count, Material::count, Material::count, Material::count, Material::count},
-    {Material::water, Material::saltwater, Material::dirty_water, Material::acid,
-     Material::lava, Material::oil, Material::honey, Material::oxygen,
-     Material::count, Material::count},
+    {Material::empty, Material::sand, Material::dirt, Material::stone, Material::mud, Material::silt, Material::crystal, Material::glass, Material::count, Material::count},
+    {Material::water, Material::saltwater, Material::dirty_water, Material::ice, Material::snow, Material::steam, Material::dirty_steam, Material::salt, Material::count, Material::count},
+    {Material::grass, Material::seed, Material::plant_stem, Material::flower, Material::wood, Material::food, Material::fertilizer, Material::pollen, Material::count, Material::count},
+    {Material::honey, Material::bee, Material::queen_bee, Material::bee_nest, Material::beeswax, Material::ant, Material::beetle, Material::insect_habitat, Material::count, Material::count},
+    {Material::fire, Material::lava, Material::oil, Material::ember, Material::ash, Material::gunpowder, Material::acid, Material::magma_vent, Material::smoke, Material::count},
+    {Material::plastic, Material::acid_resistant_plastic, Material::aluminum, Material::aluminum_shavings, Material::iron, Material::iron_shavings, Material::copper, Material::gold, Material::steel, Material::insulator},
+    {Material::magnet, Material::lightning, Material::power_cell, Material::plasma_ammo, Material::oxygen, Material::carbon_dioxide, Material::hydrogen, Material::radiation, Material::count, Material::count},
+    {Material::conveyor, Material::smelter, Material::assembler, Material::factory_core, Material::uranium, Material::waste, Material::count, Material::count, Material::count, Material::count},
 }};
 
 [[nodiscard]] constexpr std::string_view material_group_name(const MaterialGroup group) noexcept {
@@ -300,48 +321,6 @@ inline constexpr std::array<std::array<Material, material_slots_per_group>, mate
     const auto group_index = static_cast<std::uint32_t>(group);
     if (group_index >= material_groups.size() || slot >= material_group_size(group)) return Material::count;
     return material_groups[group_index][slot];
-}
-
-[[nodiscard]] constexpr bool is_enabled_material(const Material material) noexcept {
-    switch (material) {
-    case Material::empty:
-    case Material::sand:
-    case Material::water:
-    case Material::dirt:
-    case Material::stone:
-    case Material::mud:
-    case Material::acid:
-    case Material::lava:
-    case Material::oil:
-    case Material::honey:
-    case Material::saltwater:
-    case Material::dirty_water:
-    case Material::oxygen:
-        return true;
-    default:
-        return false;
-    }
-}
-
-[[nodiscard]] constexpr Material canonical_material(const Material material) noexcept {
-    if (is_enabled_material(material)) return material;
-    const auto phase = material_profile(material).base_phase;
-    switch (phase) {
-    case MaterialPhase::empty:
-    case MaterialPhase::gas:
-    case MaterialPhase::plasma:
-    case MaterialPhase::vapor:
-        return Material::oxygen;
-    case MaterialPhase::liquid:
-    case MaterialPhase::molten:
-        return Material::water;
-    case MaterialPhase::powder:
-        return Material::dirt;
-    case MaterialPhase::solid:
-    case MaterialPhase::softened:
-        return Material::stone;
-    }
-    return Material::oxygen;
 }
 
 [[nodiscard]] constexpr bool is_block_material(const Material material) noexcept {

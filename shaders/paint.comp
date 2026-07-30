@@ -22,7 +22,9 @@ void main() {
     ivec2 p = center + local - ivec2(int(pc.radius));
     if (!inside(p)) return;
 
-    uint material = pc.material < MATERIAL_COUNT ? pc.material : MAT_EMPTY;
+    uint material = pc.material & 0xffffu;
+    uint brushShape = (pc.material >> 16u) & 3u;
+    material = material < MATERIAL_COUNT ? material : MAT_EMPTY;
 
     if (isBlockCapable(material)) {
         ivec2 blockOrigin = (center / int(STRUCTURAL_BLOCK_SIZE)) * int(STRUCTURAL_BLOCK_SIZE);
@@ -55,12 +57,17 @@ void main() {
 
     ivec2 delta = p - center;
     int distanceSquared = delta.x * delta.x + delta.y * delta.y;
-    int radiusSquared = int(pc.radius * pc.radius);
-    if (distanceSquared > radiusSquared) return;
+    int radius = int(pc.radius);
+    bool insideBrush = false;
+    if (brushShape == 0u) insideBrush = distanceSquared <= radius * radius;
+    else if (brushShape == 1u) insideBrush = abs(delta.x) <= radius && abs(delta.y) <= radius;
+    else if (brushShape == 2u) insideBrush = abs(delta.x) <= radius && abs(delta.y) <= 1;
+    else insideBrush = abs(delta.x) <= 1 && abs(delta.y) <= radius;
+    if (!insideBrush) return;
 
     Cell cell;
     if (material == MAT_BEE_NEST) {
-        int nestRadius = max(int(pc.radius), 4);
+        int nestRadius = max(radius, 4);
         int innerRadius = max(nestRadius - 3, 1);
         if (all(equal(p, center))) {
             cell = makeCell(MAT_QUEEN_BEE);
@@ -68,11 +75,8 @@ void main() {
             cell = makeCell(MAT_EMPTY);
         } else if (distanceSquared <= innerRadius * innerRadius) {
             uint chamberPattern = cellHash(p, 0xb33u);
-            if ((chamberPattern & 3u) == 0u) {
-                cell = makeCell(MAT_EMPTY);
-            } else {
-                cell = makeCell(((chamberPattern >> 2u) & 3u) == 0u ? MAT_POLLEN : MAT_HONEY);
-            }
+            if ((chamberPattern & 3u) == 0u) cell = makeCell(MAT_EMPTY);
+            else cell = makeCell(((chamberPattern >> 2u) & 3u) == 0u ? MAT_POLLEN : MAT_HONEY);
         } else if (distanceSquared <= nestRadius * nestRadius) {
             cell = makeCell(MAT_BEE_NEST);
         } else {

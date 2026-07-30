@@ -12,7 +12,8 @@ errors = []
 required = {
     "materials": ["MAT_PLANT_STEM) temperature = 20", "AUX_PLANT_STEM | 1u"],
     "tiles": ["activeContent", "!activeContent", "activeAgent", "activeLoose"],
-    "move": ["sleepSafe", "beeWaveVertical", "insectMoveAllowed", "localTargetSignal"],
+    "move": ["sleepSafe", "beeOrbitTarget", "beeMovementTarget",
+             "if (targetDistance < sourceDistance) return true;", "boundedSidestep", "insectMoveAllowed"],
     "chemistry": ["flowerDropsSeed", "grassFrontier", "stemMoisture",
                   "source.material == MAT_PLANT_STEM"],
 }

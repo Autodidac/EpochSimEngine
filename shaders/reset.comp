@@ -1,6 +1,7 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 #include "materials.glsl"
+#include "bee_swarm.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
@@ -138,6 +139,7 @@ uint waterworksMaterial(ivec2 p) {
     return material;
 }
 
+
 uint ecosystemMaterial(ivec2 p) {
     int width = int(pc.width);
     int height = int(pc.height);
@@ -236,9 +238,11 @@ uint ecosystemMaterial(ivec2 p) {
         (p.x % 11) == 0)
         material = ((p.x / 11) & 1) == 0 ? MAT_BEETLE : MAT_ANT;
 
-    // Canonical new hive. The shell/chambers stay compact, while three curved
-    // authored bee bands establish the synchronized wave immediately on reset.
-    ivec2 queen = ivec2(width - 104, groundY - 72);
+    // Keep the compact Fix29 hive. The swarm is a separate 200-bee
+    // biohazard silhouette, so hive geometry and bee motion remain independent.
+    int queenX = width - 104;
+    int queenGroundY = floorY - 54 + int(hash32(uint(queenX) * 31u) % 5u);
+    ivec2 queen = ivec2(queenX, queenGroundY - 72);
     ivec2 q = p - queen;
     int q2 = q.x * q.x + q.y * q.y;
     if (q2 >= 28 && q2 < 108) material = MAT_BEE_NEST;
@@ -250,19 +254,8 @@ uint ecosystemMaterial(ivec2 p) {
             : ((chamber & 4u) == 0u ? MAT_HONEY : MAT_POLLEN);
     }
 
-    if (material == MAT_EMPTY && q2 > 130 && q2 < 6200) {
-        float radius = length(vec2(q));
-        float angle = atan(float(q.y), float(q.x));
-        float wavePhase = angle * 3.0 + radius * 0.14;
-        bool innerWave = abs(radius - (18.0 + sin(wavePhase) * 3.5)) < 1.15;
-        bool middleWave = abs(radius - (30.0 + sin(wavePhase + 1.7) * 5.0)) < 1.25;
-        bool outerWave = abs(radius - (44.0 + sin(wavePhase + 3.2) * 7.0)) < 1.35;
-        uint swarm = hash32(indexOf(p) ^ pc.seed ^ 0xbee51u);
-        if ((innerWave || middleWave || outerWave) && (swarm & 3u) != 0u)
-            material = MAT_BEE;
-        else if (radius < 58.0 && (swarm % 53u) == 0u)
-            material = MAT_BEE;
-    }
+    int formationSlot = beeFormationSlotFromOffset(q);
+    if (material == MAT_EMPTY && formationSlot >= 0) material = MAT_BEE;
 
     for (int flower = 0; flower < 6; ++flower) {
         int x = width - 240 + flower * 26;
@@ -641,7 +634,7 @@ void main() {
     if (!inside(p)) return;
 
     uint scene = pc.material % SCENE_COUNT;
-    uint material = canonicalMaterial(materialForScene(scene, p));
+    uint material = materialForScene(scene, p);
     bool structural = authoredStructuralCell(scene, p, material);
     bool anchored = p.y >= int(pc.height) - 9;
     Cell cell = structural ? makeStructuralCell(material, anchored) : makeCell(material);
@@ -652,6 +645,19 @@ void main() {
                (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |
                             AUX_PLANT_STEM | AUX_STRUCTURAL | AUX_SUPPORTED |
                             AUX_STATE_MASK));
+
+    if (scene == SCENE_ECOSYSTEM && material == MAT_BEE) {
+        int queenX = int(pc.width) - 104;
+        int queenGroundY = int(pc.height) - 64 +
+            int(hash32(uint(queenX) * 31u) % 5u);
+        ivec2 queen = ivec2(queenX, queenGroundY - 72);
+        int slot = beeFormationSlotFromOffset(p - queen);
+        if (slot >= 0) {
+            cell.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
+            cell.aux = beePackMetadata(cell.aux, queen, uint(slot));
+            cell.age = beePackAge(uint((slot * 17) % 900), BEE_TARGET_NONE);
+        }
+    }
 
     // Machine controllers use the texture-bit range as four packed inventory
     // counters. Initialize it after assigning static texture variation and keep
