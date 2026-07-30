@@ -122,3 +122,5 @@ jobs:
           git commit -m 'Rebase hierarchy and testbed GUI diagnostics onto Fix32'
           git pull --rebase origin main
           git push origin HEAD:main
+
+# retry 2
