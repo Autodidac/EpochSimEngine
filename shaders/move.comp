@@ -128,10 +128,10 @@ void splitFullWaterPair(ivec2 sourcePosition, ivec2 targetPosition, Cell source,
     setHalfWaterCell(source, true);
     source.age = 0u;
     source.aux |= AUX_MOVED;
-    Cell half = source;
-    half.temperature = (source.temperature + target.temperature) / 2;
+    Cell half_cell = source;
+    half_cell.temperature = (source.temperature + target.temperature) / 2;
     cells[moveIndex(sourcePosition)] = source;
-    cells[moveIndex(targetPosition)] = half;
+    cells[moveIndex(targetPosition)] = half_cell;
 }
 
 uint salinity(Cell cell) {
