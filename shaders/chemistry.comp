@@ -82,6 +82,32 @@ bool hasHungryBee(ivec2 p) {
     return false;
 }
 
+uint beeFormationSlot(Cell bee) { return (bee.aux >> 8u) & 255u; }
+bool isAuthoredBee(Cell bee) { return (bee.aux & AUX_PLANT_STEM) != 0u; }
+bool isAuthoredForager(Cell bee) {
+    return isAuthoredBee(bee) && (beeFormationSlot(bee) % 5u) == 0u;
+}
+
+ivec2 beeHoneyTarget(ivec2 beePosition, Cell bee) {
+    uint start = hash32(indexOf(beePosition) ^ bee.aux ^ 0x10bee10u) & 7u;
+    for (uint offset = 0u; offset < 8u; ++offset) {
+        ivec2 candidate = beePosition + neighborOffsets[(start + offset) & 7u];
+        if (at(candidate).material == MAT_HONEY) return candidate;
+    }
+    return beePosition;
+}
+
+bool hungryBeeTargetsHoney(ivec2 honeyPosition) {
+    for (uint i = 0u; i < 8u; ++i) {
+        ivec2 beePosition = honeyPosition - neighborOffsets[i];
+        Cell bee = at(beePosition);
+        if (bee.material == MAT_BEE && (bee.aux & AUX_BEE_POLLEN) == 0u &&
+            (bee.aux & AUX_BEE_FED) == 0u &&
+            all(equal(beeHoneyTarget(beePosition, bee), honeyPosition))) return true;
+    }
+    return false;
+}
+
 int neighborTemperature(ivec2 p) {
     return (at(p + ivec2(1, 0)).temperature + at(p + ivec2(-1, 0)).temperature +
             at(p + ivec2(0, 1)).temperature + at(p + ivec2(0, -1)).temperature) / 4;
@@ -937,12 +963,12 @@ void main() {
         }
     }
 
-    // Bee cycle: authored swarm bees remain in the three orbit lanes; worker
-    // bees forage, carry pollen home, feed, rest, and repeat without consuming flowers.
+    // Exactly 200 authored bees retain stable slots. Forty deterministic foragers
+    // leave on cooldown, collect pollen, deposit it, drink 26/255 honey, and rejoin.
     if (source.material == MAT_BEE) {
-        bool swarmBee = (source.aux & AUX_PLANT_STEM) != 0u;
+        bool authoredBee = isAuthoredBee(source);
         uint restTimer = stateValue(source);
-        if (!swarmBee && restTimer > 0u) setStateValue(result, restTimer - 1u);
+        if (restTimer > 0u) setStateValue(result, restTimer - 1u);
 
         if (nearFire || nearLava || hasNeighbor(p, MAT_LIGHTNING)) {
             result = makeCell(MAT_ASH);
@@ -951,44 +977,56 @@ void main() {
         } else if ((nearSmoke || hasNeighbor(p, MAT_DIRTY_STEAM) || hasNeighbor(p, MAT_RADIATION)) &&
                    (randomValue & 127u) == 0u) {
             result = makeCell(MAT_WASTE);
-        } else if (swarmBee) {
-            result.aux |= AUX_PLANT_STEM | AUX_BEE_FED;
-            result.aux &= ~AUX_BEE_POLLEN;
-            setStateValue(result, 255u);
         } else {
-            if ((source.aux & AUX_BEE_POLLEN) == 0u && hasNeighbor(p, MAT_FLOWER)) {
+            bool canForage = !authoredBee || (isAuthoredForager(source) && restTimer == 0u);
+            if ((source.aux & AUX_BEE_POLLEN) == 0u && (source.aux & AUX_BEE_FED) != 0u &&
+                canForage && hasNeighbor(p, MAT_FLOWER)) {
                 result.aux |= AUX_BEE_POLLEN;
                 result.aux &= ~AUX_BEE_FED;
                 setStateValue(result, 0u);
                 result.age = min(result.age, 1200u);
             }
+
             if ((source.aux & AUX_BEE_POLLEN) != 0u &&
                 (hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEE_NEST))) {
                 ivec2 target = beeDepositTarget(p, source);
                 uint targetMaterial = at(target).material;
-                if (targetMaterial == MAT_EMPTY || targetMaterial == MAT_POLLEN)
-                    result.aux &= ~AUX_BEE_POLLEN;
+                if (targetMaterial == MAT_EMPTY || targetMaterial == MAT_POLLEN) {
+                    result.aux &= ~(AUX_BEE_POLLEN | AUX_BEE_FED);
+                    setStateValue(result, 0u);
+                }
             }
-            if ((result.aux & AUX_BEE_POLLEN) == 0u && hasNeighbor(p, MAT_HONEY)) {
-                result.aux |= AUX_BEE_FED;
-                setStateValue(result, 240u);
-                result.age = min(result.age, 600u);
+
+            // Feeding begins only when the source snapshot was already hungry.
+            // This leaves one full tick for the selected honey cell to remove 26/255.
+            if ((source.aux & AUX_BEE_POLLEN) == 0u && (source.aux & AUX_BEE_FED) == 0u &&
+                (result.aux & AUX_BEE_POLLEN) == 0u && (result.aux & AUX_BEE_FED) == 0u) {
+                ivec2 honeyTarget = beeHoneyTarget(p, source);
+                if (any(notEqual(honeyTarget, p))) {
+                    result.aux |= AUX_BEE_FED;
+                    setStateValue(result, authoredBee
+                        ? 160u + (beeFormationSlot(source) % 80u) : 240u);
+                    result.age = min(result.age, 600u);
+                }
             }
             if (source.age > 220000u && (randomValue & 8191u) == 0u)
                 result = makeCell(MAT_WASTE);
         }
     } else if (source.material == MAT_POLLEN) {
         if ((hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEE_NEST)) &&
-            source.age > 3600u && (randomValue & 2047u) == 0u) {
+            source.age > 90u && (randomValue & 63u) == 0u) {
             result = makeCell(MAT_HONEY);
+            setStateValue(result, 255u);
         }
     } else if (source.material == MAT_HONEY) {
         if (stateValue(result) == 0u) setStateValue(result, 255u);
-        if (hasHungryBee(p) && (randomValue & 8191u) == 0u) {
+        if (hungryBeeTargetsHoney(p)) {
             uint remaining = stateValue(result);
-            if (remaining <= 1u) result = makeCell(MAT_EMPTY);
-            else setStateValue(result, remaining - 1u);
-        } else if (hasNeighbor(p, MAT_BEE) && source.age > 7200u && (randomValue & 32767u) == 0u) {
+            uint portion = min(remaining, 26u);
+            if (remaining <= portion) result = makeCell(MAT_EMPTY);
+            else setStateValue(result, remaining - portion);
+        } else if (hasNeighbor(p, MAT_BEE) && source.age > 7200u &&
+                   (randomValue & 32767u) == 0u) {
             result = makeCell(MAT_BEESWAX);
         }
     } else if (source.material == MAT_BEESWAX) {

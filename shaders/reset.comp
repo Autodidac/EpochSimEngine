@@ -138,6 +138,30 @@ uint waterworksMaterial(ivec2 p) {
     return material;
 }
 
+
+const uint BEE_FORMATION_COUNT = 200u;
+
+ivec2 beeFormationOffset(uint slot) {
+    uint lane = slot % 3u;
+    uint laneIndex = slot / 3u;
+    uint laneCount = lane == 2u ? 66u : 67u;
+    float angleOffset = lane == 0u ? 0.0 : (lane == 1u ? 0.7 : 1.4);
+    float angle = 6.28318530718 * float(laneIndex) / float(laneCount) + angleOffset;
+    float baseRadius = lane == 0u ? 18.0 : (lane == 1u ? 30.0 : 44.0);
+    float amplitude = lane == 0u ? 3.5 : (lane == 1u ? 5.0 : 7.0);
+    float phase = lane == 0u ? 0.0 : (lane == 1u ? 1.7 : 3.2);
+    float radius = baseRadius + sin(angle * 3.0 + baseRadius * 0.14 + phase) * amplitude;
+    return ivec2(round(vec2(cos(angle), sin(angle)) * radius));
+}
+
+int beeFormationSlot(ivec2 offset) {
+    int distanceSquared = offset.x * offset.x + offset.y * offset.y;
+    if (distanceSquared < 120 || distanceSquared > 3200) return -1;
+    for (uint slot = 0u; slot < BEE_FORMATION_COUNT; ++slot)
+        if (all(equal(offset, beeFormationOffset(slot)))) return int(slot);
+    return -1;
+}
+
 uint ecosystemMaterial(ivec2 p) {
     int width = int(pc.width);
     int height = int(pc.height);
@@ -236,9 +260,9 @@ uint ecosystemMaterial(ivec2 p) {
         (p.x % 11) == 0)
         material = ((p.x / 11) & 1) == 0 ? MAT_BEETLE : MAT_ANT;
 
-    // Canonical new hive. The shell/chambers stay compact, while three curved
-    // authored bee bands establish the synchronized wave immediately on reset.
-    ivec2 queen = ivec2(width - 104, groundY - 72);
+    // Canonical hive and exactly 200 deterministic bee slots. The slots reproduce
+    // the three authored wavy bands without hash-density drift between resets.
+    ivec2 queen = ivec2(width - 104, height - 136);
     ivec2 q = p - queen;
     int q2 = q.x * q.x + q.y * q.y;
     if (q2 >= 28 && q2 < 108) material = MAT_BEE_NEST;
@@ -250,19 +274,8 @@ uint ecosystemMaterial(ivec2 p) {
             : ((chamber & 4u) == 0u ? MAT_HONEY : MAT_POLLEN);
     }
 
-    if (material == MAT_EMPTY && q2 > 130 && q2 < 6200) {
-        float radius = length(vec2(q));
-        float angle = atan(float(q.y), float(q.x));
-        float wavePhase = angle * 3.0 + radius * 0.14;
-        bool innerWave = abs(radius - (18.0 + sin(wavePhase) * 3.5)) < 1.15;
-        bool middleWave = abs(radius - (30.0 + sin(wavePhase + 1.7) * 5.0)) < 1.25;
-        bool outerWave = abs(radius - (44.0 + sin(wavePhase + 3.2) * 7.0)) < 1.35;
-        uint swarm = hash32(indexOf(p) ^ pc.seed ^ 0xbee51u);
-        if ((innerWave || middleWave || outerWave) && (swarm & 7u) == 0u)
-            material = MAT_BEE;
-        else if (radius < 58.0 && (swarm % 211u) == 0u)
-            material = MAT_BEE;
-    }
+    int formationSlot = beeFormationSlot(q);
+    if (material == MAT_EMPTY && formationSlot >= 0) material = MAT_BEE;
 
     for (int flower = 0; flower < 6; ++flower) {
         int x = width - 240 + flower * 26;
@@ -654,17 +667,14 @@ void main() {
                             AUX_STATE_MASK));
 
     if (scene == SCENE_ECOSYSTEM && material == MAT_BEE) {
-        ivec2 queen = ivec2(int(pc.width) - 104, int(pc.height) - 10 - 54 - 72);
-        ivec2 q = p - queen;
-        float radius = length(vec2(q));
-        float angle = atan(float(q.y), float(q.x));
-        float wavePhase = angle * 3.0 + radius * 0.14;
-        bool authoredWave = abs(radius - (18.0 + sin(wavePhase) * 3.5)) < 1.15 ||
-                            abs(radius - (30.0 + sin(wavePhase + 1.7) * 5.0)) < 1.25 ||
-                            abs(radius - (44.0 + sin(wavePhase + 3.2) * 7.0)) < 1.35;
-        if (authoredWave) {
+        ivec2 queen = ivec2(int(pc.width) - 104, int(pc.height) - 136);
+        int slot = beeFormationSlot(p - queen);
+        if (slot >= 0) {
+            // AUX_PLANT_STEM is the existing authored-swarm bit. Bits 8..15 retain
+            // a stable formation slot so each bee can leave and rejoin its own lane.
             cell.aux |= AUX_PLANT_STEM | AUX_BEE_FED;
-            setStateValue(cell, 255u);
+            cell.aux = (cell.aux & ~0x0000ff00u) | (uint(slot) << 8u);
+            setStateValue(cell, 96u + uint(slot % 160));
         }
     }
 

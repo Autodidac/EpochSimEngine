@@ -414,17 +414,20 @@ int regionalTargetSignal(ivec2 p, uint first, uint second) {
     return score;
 }
 
+uint beeFormationSlot(Cell bee) { return (bee.aux >> 8u) & 255u; }
+bool isAuthoredBee(Cell bee) { return (bee.aux & AUX_BEE_SWARM) != 0u; }
+bool isAuthoredForager(Cell bee) {
+    return isAuthoredBee(bee) && (beeFormationSlot(bee) % 5u) == 0u;
+}
+
 int beeTargetSignal(Cell bee, ivec2 p) {
     bool carryingPollen = (bee.aux & AUX_BEE_POLLEN) != 0u;
     bool resting = stateValue(bee) > 0u;
-    if (carryingPollen || resting) {
+    if (carryingPollen || resting)
         return regionalTargetSignal(p, MAT_QUEEN_BEE, MAT_BEE_NEST);
-    }
     int flowerSignal = regionalTargetSignal(p, MAT_FLOWER, MAT_FLOWER);
-    if ((bee.aux & AUX_BEE_FED) == 0u) {
-        int foodSignal = regionalTargetSignal(p, MAT_HONEY, MAT_QUEEN_BEE);
-        return max(flowerSignal, foodSignal);
-    }
+    if ((bee.aux & AUX_BEE_FED) == 0u)
+        return max(flowerSignal, regionalTargetSignal(p, MAT_HONEY, MAT_QUEEN_BEE));
     return flowerSignal;
 }
 
@@ -443,6 +446,62 @@ int beeWaveHorizontal(Cell bee, ivec2 p) {
     return phase < 32u ? 1 : -1;
 }
 
+ivec2 authoredBeeTravelTarget(Cell bee) {
+    ivec2 hiveCenter = ivec2(int(movePc.width) - 104, int(movePc.height) - 136);
+    if ((bee.aux & AUX_BEE_POLLEN) != 0u || (bee.aux & AUX_BEE_FED) == 0u)
+        return hiveCenter;
+    uint flower = (beeFormationSlot(bee) / 5u) % 6u;
+    return ivec2(int(movePc.width) - 240 + int(flower) * 26,
+                 int(movePc.height) - 70);
+}
+
+bool authoredBeeTravelling(Cell bee) {
+    if ((bee.aux & AUX_BEE_POLLEN) != 0u || (bee.aux & AUX_BEE_FED) == 0u) return true;
+    return isAuthoredForager(bee) && stateValue(bee) == 0u;
+}
+
+bool authoredBeeOrbitAllowed(Cell bee, ivec2 sourcePosition,
+                             ivec2 targetPosition, uint randomValue) {
+    ivec2 center = ivec2(int(movePc.width) - 104, int(movePc.height) - 136);
+    ivec2 sourceRadial = sourcePosition - center;
+    ivec2 targetRadial = targetPosition - center;
+    int sourceRadiusSquared = sourceRadial.x * sourceRadial.x + sourceRadial.y * sourceRadial.y;
+    int targetRadiusSquared = targetRadial.x * targetRadial.x + targetRadial.y * targetRadial.y;
+
+    uint lane = beeFormationSlot(bee) % 3u;
+    float absoluteX = float(abs(sourceRadial.x));
+    float absoluteY = float(abs(sourceRadial.y));
+    float perimeter = max(absoluteX + absoluteY, 1.0);
+    float quarter = absoluteY / perimeter;
+    float angleTurns = sourceRadial.x >= 0
+        ? (sourceRadial.y >= 0 ? quarter : 4.0 - quarter)
+        : (sourceRadial.y >= 0 ? 2.0 - quarter : 2.0 + quarter);
+    float angle = angleTurns * 1.57079632679;
+    float baseRadius = lane == 0u ? 18.0 : (lane == 1u ? 30.0 : 44.0);
+    float amplitude = lane == 0u ? 3.5 : (lane == 1u ? 5.0 : 7.0);
+    float phase = lane == 0u ? 0.0 : (lane == 1u ? 1.7 : 3.2);
+    float desiredRadius = baseRadius +
+        sin(angle * 3.0 + baseRadius * 0.14 + phase - float(movePc.step) * 0.012) * amplitude;
+    int desiredRadiusSquared = int(round(desiredRadius * desiredRadius));
+    int tolerance = lane == 0u ? 72 : (lane == 1u ? 120 : 190);
+
+    if (sourceRadiusSquared < desiredRadiusSquared - tolerance &&
+        targetRadiusSquared != sourceRadiusSquared) return targetRadiusSquared > sourceRadiusSquared;
+    if (sourceRadiusSquared > desiredRadiusSquared + tolerance &&
+        targetRadiusSquared != sourceRadiusSquared) return targetRadiusSquared < sourceRadiusSquared;
+    if (targetRadiusSquared < desiredRadiusSquared - tolerance * 2 ||
+        targetRadiusSquared > desiredRadiusSquared + tolerance * 2) return false;
+
+    ivec2 delta = targetPosition - sourcePosition;
+    int radialX = sourceRadial.x > 0 ? 1 : (sourceRadial.x < 0 ? -1 : 0);
+    int radialY = sourceRadial.y > 0 ? 1 : (sourceRadial.y < 0 ? -1 : 0);
+    ivec2 tangent = ivec2(-radialY, radialX);
+    int tangentScore = (delta.x * tangent.x + delta.y * tangent.y) * 10;
+    if (delta.y == beeWaveVertical(bee, sourcePosition)) tangentScore += 3;
+    if (delta.x == beeWaveHorizontal(bee, sourcePosition)) tangentScore += 2;
+    return tangentScore > 0 || (tangentScore == 0 && (randomValue & 31u) == 0u);
+}
+
 bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {
     if ((bee.aux & AUX_MOVED) != 0u) return false;
     bool sourceHazard = adjacentHazard(sourcePosition);
@@ -450,46 +509,24 @@ bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint r
     if (sourceHazard != targetHazard) return sourceHazard;
 
     ivec2 delta = targetPosition - sourcePosition;
-    if ((bee.aux & AUX_BEE_SWARM) != 0u) {
-        // Authored ecosystem swarm bees use three persistent integer orbit lanes.
-        // This is intentionally constant-time: regional signal scans made glslc and
-        // the driver inline a huge movement path and left almost every bee stationary.
-        ivec2 authoredCenter = ivec2(int(movePc.width) - 104, int(movePc.height) - 136);
-        ivec2 sourceRadial = sourcePosition - authoredCenter;
-        ivec2 targetRadial = targetPosition - authoredCenter;
-        int sourceRadiusSquared = sourceRadial.x * sourceRadial.x + sourceRadial.y * sourceRadial.y;
-        int targetRadiusSquared = targetRadial.x * targetRadial.x + targetRadial.y * targetRadial.y;
-        uint lane = (bee.aux >> 8u) % 3u;
-        int desiredRadius = lane == 0u ? 18 : (lane == 1u ? 30 : 44);
-        int desiredRadiusSquared = desiredRadius * desiredRadius;
-        int tolerance = lane == 0u ? 90 : (lane == 1u ? 150 : 240);
-        if (sourceRadiusSquared < desiredRadiusSquared - tolerance &&
-            targetRadiusSquared != sourceRadiusSquared)
-            return targetRadiusSquared > sourceRadiusSquared;
-        if (sourceRadiusSquared > desiredRadiusSquared + tolerance &&
-            targetRadiusSquared != sourceRadiusSquared)
-            return targetRadiusSquared < sourceRadiusSquared;
-        if (targetRadiusSquared < desiredRadiusSquared - tolerance * 2 ||
-            targetRadiusSquared > desiredRadiusSquared + tolerance * 2)
-            return false;
-
-        int radialX = sourceRadial.x > 0 ? 1 : (sourceRadial.x < 0 ? -1 : 0);
-        int radialY = sourceRadial.y > 0 ? 1 : (sourceRadial.y < 0 ? -1 : 0);
-        bool clockwise = ((bee.aux >> 10u) & 1u) != 0u;
-        ivec2 tangent = clockwise ? ivec2(-radialY, radialX)
-                                  : ivec2(radialY, -radialX);
-        int tangentScore = (delta.x * tangent.x + delta.y * tangent.y) * 8;
-        int waveVertical = beeWaveVertical(bee, sourcePosition);
-        int waveHorizontal = beeWaveHorizontal(bee, sourcePosition);
-        if (delta.y == waveVertical) tangentScore += 3;
-        if (delta.x == waveHorizontal) tangentScore += 2;
-        return tangentScore > 0 || (tangentScore == 0 && (randomValue & 31u) == 0u);
+    if (isAuthoredBee(bee)) {
+        if (authoredBeeTravelling(bee)) {
+            ivec2 travelTarget = authoredBeeTravelTarget(bee);
+            ivec2 sourceDelta = sourcePosition - travelTarget;
+            ivec2 targetDelta = targetPosition - travelTarget;
+            int sourceDistance = sourceDelta.x * sourceDelta.x + sourceDelta.y * sourceDelta.y;
+            int targetDistance = targetDelta.x * targetDelta.x + targetDelta.y * targetDelta.y;
+            if (sourceDistance != targetDistance) return targetDistance < sourceDistance;
+            if (delta.x == beeWaveHorizontal(bee, sourcePosition) &&
+                delta.y == beeWaveVertical(bee, sourcePosition)) return true;
+            return (randomValue & 7u) == 0u;
+        }
+        return authoredBeeOrbitAllowed(bee, sourcePosition, targetPosition, randomValue);
     }
 
     int sourceSignal = beeTargetSignal(bee, sourcePosition);
     int targetSignal = beeTargetSignal(bee, targetPosition);
     if (sourceSignal != targetSignal) return targetSignal > sourceSignal;
-
     int desiredVertical = beeWaveVertical(bee, sourcePosition);
     int desiredHorizontal = beeWaveHorizontal(bee, sourcePosition);
     if (delta.x == desiredHorizontal && delta.y == desiredVertical) return true;
