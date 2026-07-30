@@ -102,10 +102,10 @@ replace_once(
 replace_once(
     tiles,
     """    bool sleeping = terrainStable && !damaged && !moving && !hot && !reacting &&
-                     dominantCount == stableCells;
+                    dominantCount == stableCells;
 """,
     """    bool sleeping = terrainStable && !damaged && !moving && !hot && !reacting &&
-                     !activeContent && dominantCount == stableCells;
+                    !activeContent && dominantCount == stableCells;
 """,
 )
 
