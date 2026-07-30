@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "fastfreddy-water-testbed",
+  "version-string": "1.0.0",
+  "builtin-baseline": "04a735608afac5844e86fc91d6ba2112cac613c1",
+  "description": "C++23 cross-platform Vulkan water and Terraria-block simulation testbed.",
+  "dependencies": [
+    {
+      "name": "sdl3",
+      "default-features": false,
+      "features": ["vulkan"]
+    },
+    {
+      "name": "sdl3",
+      "default-features": false,
+      "features": ["x11"],
+      "platform": "linux"
+    },
+    "vulkan"
+  ]
+}
