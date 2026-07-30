@@ -1,7 +1,6 @@
-import epoch.gui.font;
-import epoch.gui.rounded_rect;
-
 #include "epochwater/ui_bridge.hpp"
+
+#include <epochgui_snapshot.hpp>
 
 namespace fastfreddy::testbed
 {
