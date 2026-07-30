@@ -1,13 +1,14 @@
-name: Build
+name: Build and Release
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   windows:
@@ -19,6 +20,7 @@ jobs:
       - name: Bootstrap vcpkg
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $root = Join-Path $env:RUNNER_TEMP 'vcpkg'
           git clone --filter=blob:none https://github.com/microsoft/vcpkg.git $root
           git -C $root checkout 04a735608afac5844e86fc91d6ba2112cac613c1
@@ -34,13 +36,29 @@ jobs:
       - name: Test
         run: ctest --preset windows-release
 
-      - name: Upload Windows build
+      - name: Package Windows release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dist = Join-Path $env:GITHUB_WORKSPACE 'dist'
+          $stage = Join-Path $dist 'FastFreddyTestbed_Windows_x64'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item 'build/windows/Release/fastfreddy_testbed.exe' $stage -Force
+          Get-ChildItem 'build/windows/Release' -Filter '*.dll' -ErrorAction SilentlyContinue |
+            Copy-Item -Destination $stage -Force
+          Copy-Item 'README.md','LICENSE' -Destination $stage -Force
+          Set-Content -LiteralPath (Join-Path $stage 'run.bat') -Encoding ascii -Value @(
+            '@echo off',
+            'cd /d "%~dp0"',
+            'fastfreddy_testbed.exe'
+          )
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath (Join-Path $dist 'FastFreddyTestbed_Windows_x64.zip') -CompressionLevel Optimal -Force
+
+      - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:
           name: fastfreddy-testbed-windows-x64
-          path: |
-            build/windows/Release/fastfreddy_testbed.exe
-            build/windows/Release/*.dll
+          path: dist/FastFreddyTestbed_Windows_x64.zip
           if-no-files-found: error
 
   linux:
@@ -55,12 +73,18 @@ jobs:
       - name: Install prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build gcc-14 g++-14 \
+          sudo apt-get install -y \
+            ninja-build gcc-14 g++-14 pkg-config \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
-            libxi-dev libxfixes-dev libxkbcommon-dev
+            libxi-dev libxfixes-dev libxinerama-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev \
+            libibus-1.0-dev libdbus-1-dev libudev-dev \
+            libdrm-dev libgbm-dev libunwind-dev liburing-dev
 
       - name: Bootstrap vcpkg
         run: |
+          set -euo pipefail
           root="$RUNNER_TEMP/vcpkg"
           git clone --filter=blob:none https://github.com/microsoft/vcpkg.git "$root"
           git -C "$root" checkout 04a735608afac5844e86fc91d6ba2112cac613c1
@@ -76,9 +100,64 @@ jobs:
       - name: Test
         run: ctest --preset linux-release
 
-      - name: Upload Linux build
+      - name: Package Linux release
+        run: |
+          set -euo pipefail
+          mkdir -p dist/FastFreddyTestbed_Linux_x64
+          cp build/linux/fastfreddy_testbed dist/FastFreddyTestbed_Linux_x64/
+          cp README.md LICENSE dist/FastFreddyTestbed_Linux_x64/
+          cat > dist/FastFreddyTestbed_Linux_x64/run.sh <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -e
+          cd "$(dirname "$0")"
+          exec ./fastfreddy_testbed
+          SCRIPT
+          chmod +x dist/FastFreddyTestbed_Linux_x64/run.sh
+          tar -C dist -czf dist/FastFreddyTestbed_Linux_x64.tar.gz FastFreddyTestbed_Linux_x64
+
+      - name: Upload Linux package
         uses: actions/upload-artifact@v4
         with:
           name: fastfreddy-testbed-linux-x64
-          path: build/linux/fastfreddy_testbed
+          path: dist/FastFreddyTestbed_Linux_x64.tar.gz
           if-no-files-found: error
+
+  release:
+    if: github.event_name != 'pull_request'
+    needs: [windows, linux]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum FastFreddyTestbed_Windows_x64.zip FastFreddyTestbed_Linux_x64.tar.gz > SHA256SUMS.txt
+
+      - name: Select release tag
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag='v1.0.0'
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            tag="v1.0.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            dist/FastFreddyTestbed_Windows_x64.zip \
+            dist/FastFreddyTestbed_Linux_x64.tar.gz \
+            dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "FastFreddy Vulkan Water Testbed $RELEASE_TAG" \
+            --notes "Cross-platform C++23 Vulkan water testbed with vcpkg manifest builds, aligned Terraria-style 8x8 stone blocks, conserved half/full water mass, ledge hanging at 1.5 cells, 2x half-water movement, and EpochGui rounded-rectangle panels."
