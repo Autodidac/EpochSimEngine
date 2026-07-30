@@ -99,6 +99,8 @@ int run_application() {
         } else if (input.reset) {
             shared_state.reset.store(true, std::memory_order_release);
         }
+        if (input.save_scene) shared_state.save_scene_image.store(true, std::memory_order_release);
+        if (input.load_scene) shared_state.load_scene_image.store(true, std::memory_order_release);
 
         const auto layout = ui::make_layout(input.width, input.height);
         const auto simulation_viewport = ui::make_simulation_viewport(
@@ -135,12 +137,19 @@ int run_application() {
                                                std::memory_order_release);
             } else if (epochengine::gui_lib::contains(layout.reset_scene, pointer)) {
                 shared_state.reset.store(true, std::memory_order_release);
+            } else if (epochengine::gui_lib::contains(layout.save_scene, pointer)) {
+                shared_state.save_scene_image.store(true, std::memory_order_release);
+            } else if (epochengine::gui_lib::contains(layout.load_scene, pointer)) {
+                shared_state.load_scene_image.store(true, std::memory_order_release);
             } else if (epochengine::gui_lib::contains(layout.mode_toggle, pointer)) {
                 const bool mining = shared_state.mining_mode.load(std::memory_order_relaxed);
                 shared_state.mining_mode.store(!mining, std::memory_order_release);
             } else if (epochengine::gui_lib::contains(layout.debug_toggle, pointer)) {
                 const bool debug = shared_state.debug_visualization.load(std::memory_order_relaxed);
                 shared_state.debug_visualization.store(!debug, std::memory_order_release);
+            } else if (epochengine::gui_lib::contains(layout.eraser, pointer)) {
+                shared_state.selected_material.store(static_cast<std::uint32_t>(Material::empty),
+                                                     std::memory_order_relaxed);
             } else if (hovered_group < material_group_count) {
                 shared_state.selected_group.store(hovered_group, std::memory_order_relaxed);
             } else if (hovered_material != Material::count) {

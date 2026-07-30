@@ -72,6 +72,7 @@ if(EPOCH_SAND_BUILD_APP)
     set(EPOCH_SAND_SOURCES
         src/main.cpp
         src/app.cpp
+        src/scene_image.cpp
         src/vulkan_renderer.cpp
     )
 
@@ -162,10 +163,15 @@ if(EPOCH_SAND_BUILD_APP)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${EPOCH_SAND_SHADER_BINARIES}
                 "$<TARGET_FILE_DIR:epoch_sand>/shaders"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:epoch_sand>/scenes"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/scenes/README.txt"
+                "$<TARGET_FILE_DIR:epoch_sand>/scenes/README.txt"
     )
 
     install(TARGETS epoch_sand RUNTIME DESTINATION bin)
     install(FILES ${EPOCH_SAND_SHADER_BINARIES} DESTINATION bin/shaders)
+    install(FILES scenes/README.txt DESTINATION bin/scenes)
 endif()
 
 if(BUILD_TESTING)
@@ -181,4 +187,10 @@ if(BUILD_TESTING)
     target_compile_features(epoch_sand_behavior_contract PRIVATE cxx_std_23)
     epoch_sand_configure_warnings(epoch_sand_behavior_contract)
     add_test(NAME epoch_sand_behavior_contract COMMAND epoch_sand_behavior_contract)
+
+    add_executable(epoch_sand_scene_image_contract tests/scene_image_contract.cpp src/scene_image.cpp)
+    target_include_directories(epoch_sand_scene_image_contract PRIVATE include)
+    target_compile_features(epoch_sand_scene_image_contract PRIVATE cxx_std_23)
+    epoch_sand_configure_warnings(epoch_sand_scene_image_contract)
+    add_test(NAME epoch_sand_scene_image_contract COMMAND epoch_sand_scene_image_contract)
 endif()

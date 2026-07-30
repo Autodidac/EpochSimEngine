@@ -50,6 +50,8 @@ struct NativeWindow::Impl final {
     bool toggle_pause{};
     bool single_step{};
     bool reset{};
+    bool save_scene{};
+    bool load_scene{};
     bool next_scene{};
     bool previous_scene{};
     bool move_left{};
@@ -127,6 +129,12 @@ struct NativeWindow::Impl final {
                 return 0;
             case VK_F3:
                 self->toggle_debug = true;
+                return 0;
+            case VK_F5:
+                self->save_scene = true;
+                return 0;
+            case VK_F9:
+                self->load_scene = true;
                 return 0;
             case VK_ESCAPE:
                 self->close_requested = true;
@@ -240,6 +248,8 @@ bool NativeWindow::poll(WindowInput& input) {
     impl_->toggle_pause = false;
     impl_->single_step = false;
     impl_->reset = false;
+    impl_->save_scene = false;
+    impl_->load_scene = false;
     impl_->next_scene = false;
     impl_->previous_scene = false;
     impl_->toggle_mining = false;
@@ -282,6 +292,8 @@ bool NativeWindow::poll(WindowInput& input) {
         .toggle_pause = impl_->toggle_pause,
         .single_step = impl_->single_step,
         .reset = impl_->reset,
+        .save_scene = impl_->save_scene,
+        .load_scene = impl_->load_scene,
         .next_scene = impl_->next_scene,
         .previous_scene = impl_->previous_scene,
         .move_left = impl_->move_left,

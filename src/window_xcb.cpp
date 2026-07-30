@@ -46,6 +46,8 @@ constexpr std::uint32_t keysym_upper_m = 0x004du;
 constexpr std::uint32_t keysym_alt_l = 0xFFE9u;
 constexpr std::uint32_t keysym_alt_r = 0xFFEAu;
 constexpr std::uint32_t keysym_f3 = 0xFFC0u;
+constexpr std::uint32_t keysym_f5 = 0xFFC2u;
+constexpr std::uint32_t keysym_f9 = 0xFFC6u;
 
 std::uint32_t lookup_keysym(xcb_connection_t* connection, const xcb_keycode_t keycode) {
     const auto cookie = xcb_get_keyboard_mapping(connection, keycode, 1);
@@ -89,6 +91,8 @@ struct NativeWindow::Impl final {
     bool toggle_pause{};
     bool single_step{};
     bool reset{};
+    bool save_scene{};
+    bool load_scene{};
     bool next_scene{};
     bool previous_scene{};
     bool move_left{};
@@ -194,6 +198,8 @@ bool NativeWindow::poll(WindowInput& input) {
     impl_->toggle_pause = false;
     impl_->single_step = false;
     impl_->reset = false;
+    impl_->save_scene = false;
+    impl_->load_scene = false;
     impl_->next_scene = false;
     impl_->previous_scene = false;
     impl_->toggle_mining = false;
@@ -257,6 +263,10 @@ bool NativeWindow::poll(WindowInput& input) {
                 impl_->inspect_material = true;
             } else if (keysym == keysym_f3) {
                 impl_->toggle_debug = true;
+            } else if (keysym == keysym_f5) {
+                impl_->save_scene = true;
+            } else if (keysym == keysym_f9) {
+                impl_->load_scene = true;
             } else if (keysym == keysym_escape) {
                 impl_->close_requested = true;
             } else if (keysym == keysym_space) {
@@ -320,6 +330,8 @@ bool NativeWindow::poll(WindowInput& input) {
         .toggle_pause = impl_->toggle_pause,
         .single_step = impl_->single_step,
         .reset = impl_->reset,
+        .save_scene = impl_->save_scene,
+        .load_scene = impl_->load_scene,
         .next_scene = impl_->next_scene,
         .previous_scene = impl_->previous_scene,
         .move_left = impl_->move_left,

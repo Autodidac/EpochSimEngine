@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <fstream>
 #include <limits>
+#include <exception>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -14,7 +15,6 @@
 namespace epoch::sand {
 namespace {
 
-constexpr std::uint32_t aux_wet = 0x80000000u;
 constexpr std::uint32_t aux_charged = 0x40000000u;
 constexpr std::uint32_t aux_bee_fed = 0x10000000u;
 constexpr std::uint32_t aux_plant_stem = 0x08000000u;
@@ -209,10 +209,17 @@ bool load_scene_ppm(const std::filesystem::path& path,
         error = "scene image must be binary PPM P6";
         return false;
     }
-    if (!read_token(stream, token)) { error = "missing scene width"; return false; }
-    const auto file_width = static_cast<std::uint32_t>(std::stoul(token));
-    if (!read_token(stream, token)) { error = "missing scene height"; return false; }
-    const auto file_height = static_cast<std::uint32_t>(std::stoul(token));
+    std::uint32_t file_width{};
+    std::uint32_t file_height{};
+    try {
+        if (!read_token(stream, token)) { error = "missing scene width"; return false; }
+        file_width = static_cast<std::uint32_t>(std::stoul(token));
+        if (!read_token(stream, token)) { error = "missing scene height"; return false; }
+        file_height = static_cast<std::uint32_t>(std::stoul(token));
+    } catch (const std::exception&) {
+        error = "scene image dimensions are invalid";
+        return false;
+    }
     if (!read_token(stream, token) || token != "255") {
         error = "scene image must use 8-bit RGB channels";
         return false;

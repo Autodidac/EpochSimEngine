@@ -509,6 +509,15 @@ void main() {
     // Tile analysis already consumed the previous movement marker.
     result.aux &= ~AUX_MOVED;
     TileState tile = tiles[tileIndex(p, pc.width)];
+    bool minorityStructural = isStructural(source) && tile.material != source.material;
+    if (isStructural(source) && !minorityStructural && tileHas(tile, TILE_DAMAGED) &&
+        tile.occupancy >= TILE_MIN_COHESIVE_CELLS &&
+        tile.occupancy < TILE_STABILITY_OCCUPANCY) {
+        uint health = stateValue(result);
+        if (health == 0u) health = 255u;
+        uint limitedHealth = max(64u, tile.occupancy * 255u / TILE_STABILITY_OCCUPANCY);
+        setStateValue(result, min(health, limitedHealth));
+    }
     if (tileHas(tile, TILE_STABLE) && !isStructural(source) &&
         source.material == tile.material && source.material != MAT_EMPTY &&
         !isCellGas(source) && !isCellLiquid(source)) {
@@ -525,7 +534,7 @@ void main() {
         result.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
         result.aux |= AUX_MOVED;
         result.age = 0u;
-    } else if (isStructural(source) && tileHas(tile, TILE_COLLAPSING)) {
+    } else if (isStructural(source) && (minorityStructural || tileHas(tile, TILE_COLLAPSING))) {
         result.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
         result.aux |= AUX_MOVED;
         result.age = 0u;

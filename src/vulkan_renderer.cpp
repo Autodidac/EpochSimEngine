@@ -2,6 +2,7 @@
 
 #include "epoch/sand/material.hpp"
 #include "epoch/sand/scene.hpp"
+#include "epoch/sand/scene_image.hpp"
 #include "epoch/sand/ui_layout.hpp"
 #include "epoch/sand/ui_text_data.hpp"
 
@@ -290,6 +291,7 @@ struct VulkanRenderer::Impl final {
     Buffer tile_buffer{};
     Buffer conservation_buffer{};
     Buffer ui_text_buffer{};
+    Buffer scene_staging_buffer{};
     std::uint32_t current_set{};
     std::uint32_t simulation_step{};
     std::uint32_t random_seed{0xD17A5EEDu};
@@ -297,6 +299,7 @@ struct VulkanRenderer::Impl final {
     bool gpu_stalled{false};
     bool first_submission_logged{false};
     bool first_present_logged{false};
+    std::optional<std::uint32_t> pending_scene_export{};
 #if EPOCH_SAND_ENABLE_VALIDATION
     std::chrono::steady_clock::time_point next_conservation_log{};
 #endif
@@ -378,6 +381,7 @@ struct VulkanRenderer::Impl final {
             if (descriptor_pool != VK_NULL_HANDLE) vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
             if (descriptor_set_layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(device, descriptor_set_layout, nullptr);
 
+            destroy_buffer(scene_staging_buffer);
             destroy_buffer(ui_text_buffer);
             destroy_buffer(conservation_buffer);
             destroy_buffer(tile_buffer);
@@ -684,6 +688,9 @@ struct VulkanRenderer::Impl final {
         for (auto& buffer : cell_buffers) {
             buffer = create_buffer(cells_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         }
+        scene_staging_buffer = create_buffer(cells_size,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         sunlight_buffer = create_buffer(light_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         actor_buffer = create_buffer(sizeof(std::uint32_t) * 20u, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         tile_buffer = create_buffer(tile_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -1258,6 +1265,136 @@ struct VulkanRenderer::Impl final {
                                 compute_pipeline_layout, 0, 1, &descriptor_sets[set_index], 0, nullptr);
     }
 
+    template <typename Recorder>
+    void immediate_submit(Recorder&& recorder) {
+        const VkCommandBufferAllocateInfo allocate_info{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = command_pool,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 1,
+        };
+        VkCommandBuffer command_buffer{};
+        check_vk(vkAllocateCommandBuffers(device, &allocate_info, &command_buffer),
+                 "vkAllocateCommandBuffers(scene I/O)");
+        try {
+            const VkCommandBufferBeginInfo begin_info{
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            };
+            check_vk(vkBeginCommandBuffer(command_buffer, &begin_info),
+                     "vkBeginCommandBuffer(scene I/O)");
+            recorder(command_buffer);
+            check_vk(vkEndCommandBuffer(command_buffer), "vkEndCommandBuffer(scene I/O)");
+            const VkSubmitInfo submit_info{
+                .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                .commandBufferCount = 1,
+                .pCommandBuffers = &command_buffer,
+            };
+            check_vk(vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE),
+                     "vkQueueSubmit(scene I/O)");
+            check_vk(vkQueueWaitIdle(graphics_queue), "vkQueueWaitIdle(scene I/O)");
+        } catch (...) {
+            vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
+            throw;
+        }
+        vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
+    }
+
+    [[nodiscard]] std::filesystem::path scene_directory() const {
+        return executable_directory() / "scenes";
+    }
+
+    void upload_scene_cells(const std::span<const SceneCell> cells) {
+        if (cells.size_bytes() != scene_staging_buffer.size)
+            throw std::runtime_error("Scene image produced an unexpected cell count.");
+        void* mapped = nullptr;
+        check_vk(vkMapMemory(device, scene_staging_buffer.memory, 0,
+                             scene_staging_buffer.size, 0, &mapped),
+                 "vkMapMemory(scene upload)");
+        std::memcpy(mapped, cells.data(), cells.size_bytes());
+        vkUnmapMemory(device, scene_staging_buffer.memory);
+
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
+            const VkBufferCopy copy{.size = scene_staging_buffer.size};
+            for (const auto& destination : cell_buffers) {
+                vkCmdCopyBuffer(command_buffer, scene_staging_buffer.handle,
+                                destination.handle, 1, &copy);
+                buffer_barrier(command_buffer, destination, VK_ACCESS_TRANSFER_WRITE_BIT,
+                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            }
+            vkCmdFillBuffer(command_buffer, tile_buffer.handle, 0, tile_buffer.size, 0u);
+            buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            vkCmdFillBuffer(command_buffer, conservation_buffer.handle, 0,
+                            conservation_buffer.size, 0u);
+            buffer_barrier(command_buffer, conservation_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        });
+        current_set = 0u;
+        simulation_step = 0u;
+        needs_reset = false;
+    }
+
+    [[nodiscard]] bool load_scene_image(const std::uint32_t scene_index) {
+        const auto scene = static_cast<Scene>(scene_index % scene_count);
+        const auto path = scene_image_path(scene_directory(), scene);
+        std::vector<SceneCell> cells(
+            static_cast<std::size_t>(config.grid_width) * config.grid_height);
+        std::string error;
+        if (!load_scene_ppm(path, config.grid_width, config.grid_height, cells, error)) {
+            startup_log("Scene image load skipped: " + error);
+            return false;
+        }
+        upload_scene_cells(cells);
+        std::string key_error;
+        if (!write_scene_material_key(scene_directory(), key_error))
+            startup_log("Scene material-key warning: " + key_error);
+        startup_log("Loaded moddable scene image: " + path.string());
+        return true;
+    }
+
+    void save_scene_image(const std::uint32_t scene_index) {
+        std::vector<SceneCell> cells(
+            static_cast<std::size_t>(config.grid_width) * config.grid_height);
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
+            buffer_barrier(command_buffer, cell_buffers[current_set],
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT);
+            const VkBufferCopy copy{.size = scene_staging_buffer.size};
+            vkCmdCopyBuffer(command_buffer, cell_buffers[current_set].handle,
+                            scene_staging_buffer.handle, 1, &copy);
+            buffer_barrier(command_buffer, scene_staging_buffer,
+                           VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT);
+        });
+        void* mapped = nullptr;
+        check_vk(vkMapMemory(device, scene_staging_buffer.memory, 0,
+                             scene_staging_buffer.size, 0, &mapped),
+                 "vkMapMemory(scene save)");
+        std::memcpy(cells.data(), mapped, cells.size() * sizeof(SceneCell));
+        vkUnmapMemory(device, scene_staging_buffer.memory);
+
+        const auto scene = static_cast<Scene>(scene_index % scene_count);
+        const auto path = scene_image_path(scene_directory(), scene);
+        std::string error;
+        if (!save_scene_ppm(path, config.grid_width, config.grid_height, cells, error))
+            throw std::runtime_error("Unable to save scene image: " + error);
+        if (!write_scene_material_key(scene_directory(), error))
+            throw std::runtime_error("Unable to save scene material key: " + error);
+        startup_log("Saved moddable scene image: " + path.string());
+    }
+
     void record_reset(const VkCommandBuffer command_buffer, const std::uint32_t scene_index) {
         SimulationPush push{
             .width = config.grid_width,
@@ -1599,6 +1736,20 @@ struct VulkanRenderer::Impl final {
         }
         check_vk(fence_result, "vkWaitForFences");
 
+        const auto selected_scene = state.selected_scene.load(std::memory_order_relaxed) % scene_count;
+        if (state.save_scene_image.exchange(false, std::memory_order_acq_rel)) {
+            if (!needs_reset) save_scene_image(selected_scene);
+            else startup_log("Scene save skipped until the initial scene exists.");
+        }
+        const bool explicit_load = state.load_scene_image.exchange(false, std::memory_order_acq_rel);
+        const bool reset_requested = needs_reset || state.reset.exchange(false, std::memory_order_acq_rel);
+        bool image_loaded = false;
+        if (explicit_load || reset_requested) {
+            const auto selected = static_cast<Scene>(selected_scene);
+            if (scene_image_exists(scene_directory(), selected)) image_loaded = load_scene_image(selected_scene);
+            else if (explicit_load) startup_log("No saved PPM exists for the selected scene.");
+        }
+
         std::uint32_t image_index{};
         const auto acquire_result = vkAcquireNextImageKHR(device, swapchain, gpu_timeout_ns,
                                                            frame.image_available, VK_NULL_HANDLE,
@@ -1638,10 +1789,11 @@ struct VulkanRenderer::Impl final {
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         }
 
-        bool reset_actor = false;
-        bool reset_this_frame = false;
-        if (needs_reset || state.reset.exchange(false, std::memory_order_acq_rel)) {
-            record_reset(frame.command_buffer, state.selected_scene.load(std::memory_order_relaxed));
+        bool reset_actor = image_loaded;
+        bool reset_this_frame = image_loaded;
+        if (reset_requested && !image_loaded) {
+            record_reset(frame.command_buffer, selected_scene);
+            pending_scene_export = selected_scene;
             reset_actor = true;
             reset_this_frame = true;
         }
@@ -1699,6 +1851,11 @@ struct VulkanRenderer::Impl final {
         if (!first_present_logged) {
             startup_log("First frame presented.");
             first_present_logged = true;
+        }
+        if (pending_scene_export.has_value()) {
+            const auto scene_to_export = *pending_scene_export;
+            pending_scene_export.reset();
+            save_scene_image(scene_to_export);
         }
 
         frame_index = (frame_index + 1u) % static_cast<std::uint32_t>(frames.size());

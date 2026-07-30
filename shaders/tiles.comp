@@ -87,10 +87,10 @@ void main() {
     // An aligned region never fills gaps, synthesizes pixels, or becomes a second
     // tile object. Existing represented cells may only qualify as stable terrain.
     bool previouslyDense = tileHas(previous, TILE_STRUCTURAL) &&
-                           previous.occupancy >= TILE_STABILITY_OCCUPANCY;
-    bool denseStructural = structural >= TILE_STABILITY_OCCUPANCY || previouslyDense;
-    bool damaged = structuralTile && denseStructural &&
-                   (structural < TILE_CELL_COUNT ||
+                            previous.occupancy >= TILE_STABILITY_OCCUPANCY;
+    bool reducedDurability = structuralTile && dominantCount < TILE_STABILITY_OCCUPANCY;
+    bool damaged = structuralTile &&
+                   (reducedDurability || dominantCount < TILE_CELL_COUNT ||
                     (structural > 0u && healthSum / structural < 240u));
     bool candidate = !structuralTile && cooldown == 0u && stabilizable &&
                      occupied >= TILE_STABILITY_OCCUPANCY && stable == occupied &&
@@ -100,7 +100,7 @@ void main() {
 
     // More than half dislodged means fewer than 32 represented structural cells.
     // The chemistry pass releases every remaining cell in the same simulation tick.
-    bool collapsing = structuralTile && previouslyDense && structural < TILE_COLLAPSE_OCCUPANCY;
+    bool collapsing = structuralTile && dominantCount < TILE_MIN_COHESIVE_CELLS;
     bool terrainStable = (structuralTile || stableRegion) && !collapsing;
     bool anchored = origin.y + int(TILE_SIZE) >= int(pc.height);
     bool supported = terrainStable || anchored;
@@ -113,13 +113,13 @@ void main() {
     if (collapsing) flags |= TILE_COLLAPSING;
     if (damaged) flags |= TILE_DAMAGED;
 
-    uint stableCells = structuralTile ? structural : occupied;
+    uint stableCells = structuralTile ? dominantCount : occupied;
     bool sleeping = terrainStable && !damaged && !moving && !hot && !reacting &&
                     !activeContent && dominantCount == stableCells;
     if (sleeping) flags |= TILE_SLEEPING;
     else flags |= TILE_ACTIVE;
 
     if (collapsing) cooldown = TILE_RESTABILIZE_COOLDOWN;
-    tiles[index] = TileState(dominant, structuralTile ? structural : occupied,
+    tiles[index] = TileState(dominant, structuralTile ? dominantCount : occupied,
                              flags, packTileCounters(stableTicks, cooldown));
 }

@@ -20,6 +20,8 @@ FIXED = [
     "F3 DEBUG", "HOLD ALT", "PREV", "NEXT", "TOOLS", "MATERIALS",
     "HP", "O2", "AMMO", "GOLD", "IRON", "LMB TOOL", "RMB DROP", "AL", "CU", "DRILL", "RANGE", "JUMP", "PLASMA", "LOCKED", "READY",
     "SPACE JUMP", "P PAUSE", "LMB USE", "RMB DROP ERASE", "ALT CELL CARD",
+    "SAVE", "LOAD", "ERASER", "KEYMAP", "WHEEL BRUSH", "N STEP", "R RESET",
+    "BRACKETS SCENE", "F5 SAVE PPM", "F9 LOAD PPM",
 ]
 SCENES = [
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",

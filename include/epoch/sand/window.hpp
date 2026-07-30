@@ -24,6 +24,8 @@ struct WindowInput final {
     bool toggle_pause{};
     bool single_step{};
     bool reset{};
+    bool save_scene{};
+    bool load_scene{};
     bool next_scene{};
     bool previous_scene{};
     bool move_left{};

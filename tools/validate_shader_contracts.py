@@ -289,11 +289,11 @@ def main() -> int:
         "sidebarWidth",
         "groupMaterialCount(renderPc.selectedGroup)",
         "materialPixel(pixel",
-        "3,cardMaterial",
+        "3, cardMaterial",
         "cardPixel(pixel",
-        "2,cardMaterial",
-        "2,60u",
-        "2,61u",
+        "2, cardMaterial",
+        "2, 60u",
+        "2, 61u",
     ):
         if token not in fullscreen:
             errors.append(f"compact sidebar shader contract missing {token!r}")
@@ -460,7 +460,8 @@ def main() -> int:
     if "MAT_GOLD_ORE" in reset or "MAT_IRON_ORE" in reset or "MAT_GOLD_ORE" in actor or "MAT_IRON_ORE" in actor:
         errors.append("ore blocks remain in authored scenes or player mining")
     for token in ("previouslyDense", "previous.occupancy >= TILE_STABILITY_OCCUPANCY",
-                  "structuralTile && previouslyDense && structural < TILE_COLLAPSE_OCCUPANCY"):
+                  "dominantCount < TILE_MIN_COHESIVE_CELLS",
+                   "structuralTile ? dominantCount"):
         if token not in tiles:
             errors.append(f"bounded structural collapse contract missing {token!r}")
     if "sameNeighbors" not in renderer or "sameNeighbors == 0u" not in renderer:
