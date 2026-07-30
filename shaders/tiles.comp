@@ -47,7 +47,7 @@ void main() {
             ivec2 p = origin + ivec2(x, y);
             if (!tileInside(p)) continue;
             Cell cell = cells[indexOf(p)];
-            if (cell.material == MAT_EMPTY) continue;
+            if (cell.material == MAT_EMPTY || cell.material == MAT_OXYGEN) continue;
             ivec2 local = ivec2(x, y);
             if (cell.material == MAT_QUEEN_BEE) {
                 if (!hasQueen) queenLocal = local;
@@ -154,12 +154,13 @@ void main() {
     if (hasHoney) flags |= TILE_HAS_HONEY;
     if (beeCount > 0u) flags |= TILE_HAS_BEES;
     if (hasMigratingQueen) flags |= TILE_HAS_MIGRATING_QUEEN;
-    if (beeHazard) flags |= TILE_BEE_HAZARD;
-
-    uint stableCells = structuralTile ? dominantCount : occupied;
-    bool sleeping = terrainStable && !damaged && !moving && !hot && !reacting &&
-                    !activeContent && dominantCount == stableCells;
-    if (sleeping) flags |= TILE_SLEEPING;
+    if (beeHazard) flags |= TILE_BEE_HAZARD;    uint stableCells = structuralTile ? dominantCount : occupied;
+    bool sleepingTerrain = terrainStable && !damaged && !moving && !hot && !reacting &&
+                 !activeContent && dominantCount == stableCells;
+    bool sleepingAtmosphere = occupied == 0u && structural == 0u &&
+                    !moving && !hot && !reacting && !activeContent;
+    bool sleeping = sleepingTerrain || sleepingAtmosphere;
+if (sleeping) flags |= TILE_SLEEPING;
     else flags |= TILE_ACTIVE;
 
     if (collapsing) cooldown = TILE_RESTABILIZE_COOLDOWN;

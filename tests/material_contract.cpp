@@ -62,6 +62,12 @@ static_assert(!epoch::sand::policy::should_collapse(32u));
 static_assert(epoch::sand::policy::should_collapse(31u));
 static_assert(epoch::sand::policy::update_vent_pressure(100u, true, false) == 103u);
 static_assert(epoch::sand::policy::update_vent_pressure(100u, false, true) == 96u);
+static_assert(epoch::sand::policy::bulk_region_eligible(64u, true, false, false));
+static_assert(!epoch::sand::policy::bulk_region_eligible(63u, true, false, false));
+static_assert(!epoch::sand::policy::bulk_region_eligible(64u, false, false, false));
+static_assert(epoch::sand::policy::chunk_can_sleep(64u, 64u, false, 30u));
+static_assert(!epoch::sand::policy::chunk_can_sleep(63u, 64u, false, 30u));
+static_assert(!epoch::sand::policy::chunk_can_sleep(64u, 64u, true, 30u));
 
 constexpr bool palette_materials_are_unique() {
     std::array<std::uint32_t, epoch::sand::material_count> counts{};

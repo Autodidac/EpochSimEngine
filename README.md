@@ -284,3 +284,8 @@ Each cell is 16 bytes: material ID, age, signed temperature, and packed material
 ## EpochGui snapshot
 
 The vendored backend-neutral subset is documented in `third_party/EpochGui/SNAPSHOT.md`.
+
+
+## Hierarchical simulation
+
+Uniform 8x8 material regions can now move as 64-cell macro-cells using the same fall, diagonal, density, and liquid-spread rules as fine pixels. Mixed edges and half-water remain pixel simulated. Above that, 64x64 chunks cache activity and sleep state for fast rejection and large-map lookup. See `HIERARCHICAL_SIMULATION.md`.

@@ -1,0 +1,48 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "materials.glsl"
+#include "tiles.glsl"
+#include "chunks.glsl"
+
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
+layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
+
+void main() {
+    uvec2 chunk = gl_GlobalInvocationID.xy;
+    uint columns = chunkColumns(pc.width);
+    uint rows = chunkRows(pc.height);
+    if (chunk.x >= columns || chunk.y >= rows) return;
+
+    uint index = chunk.y * columns + chunk.x;
+    ChunkState previous = chunks[index];
+    uint tileColumnsValue = tileColumns(pc.width);
+    uint tileRowsValue = (pc.height + TILE_SIZE - 1u) / TILE_SIZE;
+    uvec2 tileOrigin = chunk * CHUNK_TILES_PER_AXIS;
+
+    uint presentTiles = 0u;
+    uint activeTiles = 0u;
+    uint sleepingTiles = 0u;
+    for (uint y = 0u; y < CHUNK_TILES_PER_AXIS; ++y) {
+        for (uint x = 0u; x < CHUNK_TILES_PER_AXIS; ++x) {
+  uvec2 tile = tileOrigin + uvec2(x, y);
+  if (tile.x >= tileColumnsValue || tile.y >= tileRowsValue) continue;
+  ++presentTiles;
+  TileState state = tiles[tile.y * tileColumnsValue + tile.x];
+  if (tileHas(state, TILE_SLEEPING)) ++sleepingTiles;
+  if (tileHas(state, TILE_ACTIVE) || tileHas(state, TILE_COLLAPSING) ||
+      tileHas(state, TILE_DAMAGED)) ++activeTiles;
+        }
+    }
+
+    bool dirty = chunkHas(previous, CHUNK_DIRTY);
+    bool quiet = presentTiles != 0u && sleepingTiles == presentTiles &&
+       activeTiles == 0u && !dirty;
+    uint quietTicks = quiet ? min(chunkQuietTicks(previous) + 1u, CHUNK_SLEEP_TICKS) : 0u;
+    bool sleeping = quiet && quietTicks >= CHUNK_SLEEP_TICKS;
+
+    uint flags = sleeping ? CHUNK_SLEEPING : CHUNK_ACTIVE;
+    if (presentTiles != CHUNK_TILE_COUNT) flags |= CHUNK_BOUNDARY;
+    chunks[index] = ChunkState(flags, activeTiles, sleepingTiles,
+                     packChunkCounters(quietTicks, presentTiles));
+}

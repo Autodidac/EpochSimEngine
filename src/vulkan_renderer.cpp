@@ -283,7 +283,9 @@ struct VulkanRenderer::Impl final {
     VkPipeline paint_pipeline{};
     VkPipeline sunlight_pipeline{};
     VkPipeline tile_pipeline{};
+    VkPipeline chunk_pipeline{};
     VkPipeline chemistry_pipeline{};
+    VkPipeline macro_movement_pipeline{};
     VkPipeline movement_pipeline{};
     VkPipeline actor_pipeline{};
     VkPipeline debug_stats_pipeline{};
@@ -297,6 +299,7 @@ struct VulkanRenderer::Impl final {
     Buffer sunlight_buffer{};
     Buffer actor_buffer{};
     Buffer tile_buffer{};
+    Buffer chunk_buffer{};
     Buffer conservation_buffer{};
     Buffer ui_text_buffer{};
     Buffer scene_staging_buffer{};
@@ -381,7 +384,9 @@ struct VulkanRenderer::Impl final {
             if (paint_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, paint_pipeline, nullptr);
             if (sunlight_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, sunlight_pipeline, nullptr);
             if (tile_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, tile_pipeline, nullptr);
+            if (chunk_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chunk_pipeline, nullptr);
             if (chemistry_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_pipeline, nullptr);
+            if (macro_movement_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, macro_movement_pipeline, nullptr);
             if (movement_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, movement_pipeline, nullptr);
             if (actor_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, actor_pipeline, nullptr);
             if (debug_stats_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, debug_stats_pipeline, nullptr);
@@ -393,6 +398,7 @@ struct VulkanRenderer::Impl final {
             destroy_buffer(scene_staging_buffer);
             destroy_buffer(ui_text_buffer);
             destroy_buffer(conservation_buffer);
+            destroy_buffer(chunk_buffer);
             destroy_buffer(tile_buffer);
             destroy_buffer(actor_buffer);
             destroy_buffer(sunlight_buffer);
@@ -687,12 +693,14 @@ struct VulkanRenderer::Impl final {
         constexpr VkDeviceSize cell_size = sizeof(std::uint32_t) * 4u;
         const auto cell_count = static_cast<VkDeviceSize>(config.grid_width) * config.grid_height;
         const auto cells_size = cell_count * cell_size;
-        const auto light_size = cell_count * sizeof(std::uint32_t);
-        const auto tile_count = static_cast<VkDeviceSize>(divide_round_up(config.grid_width, 8u)) *
-                                divide_round_up(config.grid_height, 8u);
+        const auto light_size = cell_count * sizeof(std::uint32_t);        const auto tile_columns = divide_round_up(config.grid_width, 8u);
+        const auto tile_rows = divide_round_up(config.grid_height, 8u);
+        const auto tile_count = static_cast<VkDeviceSize>(tile_columns) * tile_rows;
         const auto tile_size = tile_count * sizeof(std::uint32_t) * 4u;
-
-        const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+        const auto chunk_count = static_cast<VkDeviceSize>(divide_round_up(tile_columns, 8u)) *
+                                  divide_round_up(tile_rows, 8u);
+        const auto chunk_size = chunk_count * sizeof(std::uint32_t) * 4u;
+const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                                    VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         for (auto& buffer : cell_buffers) {
             buffer = create_buffer(cells_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -703,6 +711,7 @@ struct VulkanRenderer::Impl final {
         sunlight_buffer = create_buffer(light_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         actor_buffer = create_buffer(sizeof(std::uint32_t) * 20u, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         tile_buffer = create_buffer(tile_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        chunk_buffer = create_buffer(chunk_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         conservation_buffer = create_buffer(sizeof(std::uint32_t) * debug_stat_word_count, storage_usage,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
@@ -760,6 +769,12 @@ struct VulkanRenderer::Impl final {
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
             },
+            VkDescriptorSetLayoutBinding{
+                .binding = 7,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
         };
         const VkDescriptorSetLayoutCreateInfo layout_info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -803,7 +818,7 @@ struct VulkanRenderer::Impl final {
     void create_descriptors() {
         const VkDescriptorPoolSize pool_size{
             .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 14,
+            .descriptorCount = 16,
         };
         const VkDescriptorPoolCreateInfo pool_info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -831,6 +846,7 @@ struct VulkanRenderer::Impl final {
             const VkDescriptorBufferInfo actor_info{actor_buffer.handle, 0, actor_buffer.size};
             const VkDescriptorBufferInfo tile_info{tile_buffer.handle, 0, tile_buffer.size};
             const VkDescriptorBufferInfo conservation_info{conservation_buffer.handle, 0, conservation_buffer.size};
+            const VkDescriptorBufferInfo chunk_info{chunk_buffer.handle, 0, chunk_buffer.size};
             const VkDescriptorBufferInfo ui_text_info{ui_text_buffer.handle, 0, ui_text_buffer.size};
             const std::array writes{
                 VkWriteDescriptorSet{
@@ -889,6 +905,14 @@ struct VulkanRenderer::Impl final {
                     .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                     .pBufferInfo = &ui_text_info,
                 },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptor_sets[index],
+                    .dstBinding = 7,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .pBufferInfo = &chunk_info,
+                },
             };
             vkUpdateDescriptorSets(device, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
         }
@@ -937,7 +961,9 @@ struct VulkanRenderer::Impl final {
         paint_pipeline = create_compute_pipeline("paint.comp.spv");
         sunlight_pipeline = create_compute_pipeline("sunlight.comp.spv");
         tile_pipeline = create_compute_pipeline("tiles.comp.spv");
+        chunk_pipeline = create_compute_pipeline("chunks.comp.spv");
         chemistry_pipeline = create_compute_pipeline("chemistry.comp.spv");
+        macro_movement_pipeline = create_compute_pipeline("macro_move.comp.spv");
         movement_pipeline = create_compute_pipeline("move.comp.spv");
         actor_pipeline = create_compute_pipeline("actor.comp.spv");
         debug_stats_pipeline = create_compute_pipeline("debug_stats.comp.spv");
@@ -1336,6 +1362,11 @@ struct VulkanRenderer::Impl final {
                                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
             }
             vkCmdFillBuffer(command_buffer, tile_buffer.handle, 0, tile_buffer.size, 0u);
+            vkCmdFillBuffer(command_buffer, chunk_buffer.handle, 0, chunk_buffer.size, 0u);
+            buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
             buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -1430,6 +1461,10 @@ struct VulkanRenderer::Impl final {
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         vkCmdFillBuffer(command_buffer, tile_buffer.handle, 0, tile_buffer.size, 0u);
+        vkCmdFillBuffer(command_buffer, chunk_buffer.handle, 0, chunk_buffer.size, 0u);
+        buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -1525,6 +1560,9 @@ struct VulkanRenderer::Impl final {
         buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     }
 
 
@@ -1586,8 +1624,20 @@ struct VulkanRenderer::Impl final {
         vkCmdDispatch(command_buffer, divide_round_up(divide_round_up(config.grid_width, 8u), 8u),
                       divide_round_up(divide_round_up(config.grid_height, 8u), 8u), 1);
         buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
-                       VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+             VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+        bind_compute(command_buffer, chunk_pipeline, current_set);
+        vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
+                 0, sizeof(simulation_push), &simulation_push);
+        const auto chunk_columns = divide_round_up(config.grid_width, 64u);
+        const auto chunk_rows = divide_round_up(config.grid_height, 64u);
+        vkCmdDispatch(command_buffer, divide_round_up(chunk_columns, 8u),
+            divide_round_up(chunk_rows, 8u), 1);
+        buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+             VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
         const auto next_set = current_set ^ 1u;
         buffer_barrier(command_buffer, cell_buffers[next_set],
@@ -1604,7 +1654,44 @@ struct VulkanRenderer::Impl final {
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         current_set = next_set;
 
-        // Freeze the post-chemistry state for all neighborhood decisions in
+        // Full uniform 8x8 regions use the same fall/diagonal/spread decisions
+        // as cells, but transfer all 64 canonical cells in parallel. Mixed,
+        // partial, structural, reacting, or half-water regions fall through to
+        // the ordinary fine-grained movement passes below.
+        bind_compute(command_buffer, macro_movement_pipeline, current_set);
+        const std::array<std::int32_t, 5> macro_phases = (simulation_step & 1u) == 0u
+  ? std::array<std::int32_t, 5>{0, 1, 2, 3, 4}
+  : std::array<std::int32_t, 5>{0, 2, 1, 4, 3};
+        const auto tile_columns = divide_round_up(config.grid_width, 8u);
+        const auto tile_rows = divide_round_up(config.grid_height, 8u);
+        for (std::size_t phase_index = 0; phase_index < macro_phases.size(); ++phase_index) {
+  const auto phase = macro_phases[phase_index];
+  const MovementPush macro_push{
+      .width = config.grid_width,
+      .height = config.grid_height,
+      .step = simulation_step,
+      .seed = random_seed,
+      .phase = phase,
+      .parity = static_cast<std::int32_t>(
+          (simulation_step + static_cast<std::uint32_t>(phase_index)) & 1u),
+      .reserved0 = collect_debug_stats ? 1u : 0u,
+  };
+  vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
+                     0, sizeof(macro_push), &macro_push);
+  if (phase <= 2) {
+      vkCmdDispatch(command_buffer, tile_columns, divide_round_up(tile_rows, 2u), 1);
+  } else {
+      vkCmdDispatch(command_buffer, divide_round_up(tile_columns, 2u), tile_rows, 1);
+  }
+  buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
+                 VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+  buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                 VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        }
+
+        // Freeze the post-chemistry and macro-movement state for all neighborhood decisions in
         // the movement passes. Pair endpoints still use the writable current
         // buffer, while pressure, support, and bee attraction read this exact
         // immutable snapshot, eliminating cross-invocation read/write races.
@@ -1657,6 +1744,9 @@ struct VulkanRenderer::Impl final {
             buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         }
         ++simulation_step;
     }
@@ -1692,6 +1782,9 @@ struct VulkanRenderer::Impl final {
         buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         buffer_barrier(command_buffer, actor_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -1707,6 +1800,9 @@ struct VulkanRenderer::Impl final {
                        VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
         buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
         buffer_barrier(command_buffer, conservation_buffer,

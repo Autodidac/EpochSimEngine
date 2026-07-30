@@ -2,12 +2,14 @@
 #extension GL_GOOGLE_include_directive : require
 #include "materials.glsl"
 #include "tiles.glsl"
+#include "chunks.glsl"
 #include "debug_stats.glsl"
 
 layout(local_size_x = 256) in;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
 layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };
+layout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };
 
 void main() {
     uint linearIndex = gl_GlobalInvocationID.x;
@@ -47,5 +49,25 @@ void main() {
         TileState tile = tiles[linearIndex];
         if (tileHas(tile, TILE_SLEEPING)) atomicAdd(debugStats[STAT_SLEEPING_TILES], 1u);
         if (tileHas(tile, TILE_ACTIVE)) atomicAdd(debugStats[STAT_ACTIVE_TILES], 1u);
+    }
+
+    uint chunksAcross = chunkColumns(pc.width);
+    uint chunksDown = chunkRows(pc.height);
+    uint chunkCount = chunksAcross * chunksDown;
+    if (linearIndex < chunkCount) {
+        ChunkState chunk = chunks[linearIndex];
+        if (chunkHas(chunk, CHUNK_SLEEPING)) {
+  atomicAdd(debugStats[STAT_SLEEPING_CHUNKS], 1u);
+  uint chunkX = linearIndex % chunksAcross;
+  uint chunkY = linearIndex / chunksAcross;
+  uint originX = chunkX * CHUNK_CELL_SIZE;
+  uint originY = chunkY * CHUNK_CELL_SIZE;
+  uint width = min(CHUNK_CELL_SIZE, pc.width - originX);
+  uint height = min(CHUNK_CELL_SIZE, pc.height - originY);
+  atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], width * height);
+        } else {
+  atomicAdd(debugStats[STAT_ACTIVE_CHUNKS], 1u);
+        }
+        if (chunkHas(chunk, CHUNK_DIRTY)) atomicAdd(debugStats[STAT_DIRTY_CHUNKS], 1u);
     }
 }

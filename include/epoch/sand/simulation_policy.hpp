@@ -4,8 +4,23 @@
 
 namespace epoch::sand::policy {
 
+// Fine cells remain the canonical simulation state. An aligned 8x8 region may
+// be transferred as one macro-cell only while every represented cell can make
+// the same move. Any mixed or partially blocked region falls back to pixels.
 inline constexpr std::uint32_t tile_size = 8u;
 inline constexpr std::uint32_t tile_cells = tile_size * tile_size;
+inline constexpr std::uint32_t macro_tile_size = tile_size;
+inline constexpr std::uint32_t macro_tile_cells = tile_cells;
+
+// Eight macro tiles form one 64x64-cell scheduling chunk. Chunks never replace
+// cell storage; they cache activity so large inactive areas can be rejected by
+// one lookup and their tile scans can be skipped until explicitly dirtied.
+inline constexpr std::uint32_t chunk_tiles_per_axis = 8u;
+inline constexpr std::uint32_t chunk_size = tile_size * chunk_tiles_per_axis;
+inline constexpr std::uint32_t chunk_tile_count =
+    chunk_tiles_per_axis * chunk_tiles_per_axis;
+inline constexpr std::uint32_t chunk_sleep_ticks = 30u;
+
 inline constexpr std::uint32_t stability_occupancy = 52u;
 inline constexpr std::uint32_t collapse_occupancy = tile_cells / 2u;
 inline constexpr std::uint32_t stability_ticks = 120u;
@@ -19,6 +34,24 @@ inline constexpr std::uint32_t sunlight_update_interval = 4u;
 inline constexpr std::uint32_t vent_eruption_pressure = 220u;
 inline constexpr std::uint32_t vent_gas_release_pressure = 72u;
 
+[[nodiscard]] constexpr bool bulk_region_eligible(
+    const std::uint32_t represented_cells,
+    const bool uniform_material,
+    const bool structural,
+    const bool reacting) noexcept {
+    return represented_cells == macro_tile_cells && uniform_material &&
+ !structural && !reacting;
+}
+
+[[nodiscard]] constexpr bool chunk_can_sleep(
+    const std::uint32_t sleeping_tiles,
+    const std::uint32_t present_tiles,
+    const bool dirty,
+    const std::uint32_t quiet_ticks) noexcept {
+    return present_tiles != 0u && sleeping_tiles == present_tiles && !dirty &&
+ quiet_ticks >= chunk_sleep_ticks;
+}
+
 [[nodiscard]] constexpr bool stability_ready(
     const std::uint32_t occupancy,
     const std::uint32_t settled_ticks,
@@ -28,7 +61,7 @@ inline constexpr std::uint32_t vent_gas_release_pressure = 72u;
     const bool reacting,
     const std::uint32_t cooldown) noexcept {
     return occupancy >= stability_occupancy && settled_ticks >= stability_ticks &&
-           compatible && stable_phase && !moving && !reacting && cooldown == 0u;
+ compatible && stable_phase && !moving && !reacting && cooldown == 0u;
 }
 
 [[nodiscard]] constexpr bool should_collapse(const std::uint32_t represented_cells) noexcept {

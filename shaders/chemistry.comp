@@ -2,6 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 #include "materials.glsl"
 #include "tiles.glsl"
+#include "chunks.glsl"
 #include "bee_swarm.glsl"
 #include "conservation.glsl"
 
@@ -10,6 +11,7 @@ layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 1) writeonly buffer NextCells { Cell nextCells[]; };
 layout(std430, binding = 2) readonly buffer Sunlight { uint light[]; };
 layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
+layout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };
 
 const ivec2 neighborOffsets[8] = ivec2[8](
     ivec2(-1, -1), ivec2(0, -1), ivec2(1, -1), ivec2(-1, 0),
@@ -582,6 +584,22 @@ bool smokeSteamPair(ivec2 position, Cell source, out bool primary) {
 }
 
 
+bool sleepingChunkNeighborhood(ivec2 position) {
+    uvec2 center = chunkCoordinate(position);
+    uint columns = chunkColumns(pc.width);
+    uint rows = chunkRows(pc.height);
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+  ivec2 candidate = ivec2(center) + ivec2(x, y);
+  if (candidate.x < 0 || candidate.y < 0 ||
+      candidate.x >= int(columns) || candidate.y >= int(rows)) continue;
+  ChunkState state = chunks[uint(candidate.y) * columns + uint(candidate.x)];
+  if (!chunkHas(state, CHUNK_SLEEPING) || chunkHas(state, CHUNK_DIRTY)) return false;
+        }
+    }
+    return true;
+}
+
 bool sleepingStructuralNeighborhood(ivec2 position, Cell source) {
     if (!isStructural(source)) return false;
     uvec2 center = tileCoordinate(position);
@@ -609,6 +627,12 @@ void main() {
     Cell source = cells[index];
     Cell result = source;
     result.age = source.age + 1u;
+
+    if (sleepingChunkNeighborhood(p)) {
+        result.aux &= ~AUX_MOVED;
+        nextCells[index] = result;
+        return;
+    }
 
     if (sleepingStructuralNeighborhood(p, source)) {
         result.aux &= ~AUX_MOVED;

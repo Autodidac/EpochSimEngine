@@ -2,6 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 #include "material_ids.glsl"
 #include "tiles.glsl"
+#include "chunks.glsl"
 #include "bee_swarm.glsl"
 #include "debug_stats.glsl"
 
@@ -26,6 +27,7 @@ layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 1) readonly buffer SnapshotCells { Cell snapshotCells[]; };
 layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
 layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };
+layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
 
 layout(push_constant) uniform MovementPush {
     uint width;
@@ -79,6 +81,18 @@ Cell moveAt(ivec2 p) {
 
 Cell sampleAt(ivec2 p) {
     return moveInside(p) ? snapshotCells[moveIndex(p)] : boundaryCell();
+}
+
+void markChunkDirty(ivec2 p) {
+    if (!moveInside(p)) return;
+    atomicOr(chunks[chunkIndex(p, movePc.width)].flags, CHUNK_DIRTY | CHUNK_ACTIVE);
+}
+
+bool chunkPairSleeping(ivec2 a, ivec2 b) {
+    ChunkState first = chunks[chunkIndex(a, movePc.width)];
+    ChunkState second = chunks[chunkIndex(b, movePc.width)];
+    return chunkHas(first, CHUNK_SLEEPING) && !chunkHas(first, CHUNK_DIRTY) &&
+ chunkHas(second, CHUNK_SLEEPING) && !chunkHas(second, CHUNK_DIRTY);
 }
 
 uint stateValue(Cell cell) {
@@ -228,6 +242,8 @@ void swapCells(ivec2 aPosition, ivec2 bPosition) {
     b.aux |= AUX_MOVED;
     cells[aIndex] = b;
     cells[bIndex] = a;
+    markChunkDirty(aPosition);
+    markChunkDirty(bPosition);
     if (movePc.reserved0 != 0u) {
         atomicAdd(debugStats[STAT_MOVE_SWAPS], 1u);
         uint movedMaterial = a.material != MAT_EMPTY ? a.material : b.material;
@@ -259,6 +275,8 @@ void diffuseSalinityPair(ivec2 aPosition, ivec2 bPosition) {
     }
     cells[aIndex] = a;
     cells[bIndex] = b;
+    markChunkDirty(aPosition);
+    markChunkDirty(bPosition);
 }
 
 uint flowInterval(Cell cell) {
@@ -555,7 +573,7 @@ bool sleepSafe(ivec2 position, Cell cell) {
     if (cell.material == MAT_EMPTY || isStructural(cell)) return true;
     if (cell.material == MAT_BEE || isInsect(cell.material) || cell.material == MAT_SEED || cell.material == MAT_POLLEN) return false;
     TileState tile = tiles[tileIndex(position, movePc.width)];
-    bool stabilizedRegion = tileHas(tile, TILE_STABLE) && tileHas(tile, TILE_SLEEPING) && tile.material == cell.material && tile.occupancy >= TILE_STABILITY_OCCUPANCY && (isBlockCapable(cell.material) || cell.material == MAT_DIRT ||
+    bool stabilizedRegion = tileHas(tile, TILE_STABLE) && tileHas(tile, TILE_SLEEPING) && tile.material == cell.material && tileOccupancy(tile) >= TILE_STABILITY_OCCUPANCY && (isBlockCapable(cell.material) || cell.material == MAT_DIRT ||
                              cell.material == MAT_SAND || cell.material == MAT_SILT ||
                              cell.material == MAT_SALT || cell.material == MAT_ICE);
     if (stabilizedRegion) return true;
@@ -564,6 +582,10 @@ bool sleepSafe(ivec2 position, Cell cell) {
 }
 
 bool pairSleeping(ivec2 a, ivec2 b) {
+    if (chunkPairSleeping(a, b)) {
+        if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], 2u);
+        return true;
+    }
     TileState tileA = tiles[tileIndex(a, movePc.width)];
     TileState tileB = tiles[tileIndex(b, movePc.width)];
     if (!tileHas(tileA, TILE_SLEEPING) || !tileHas(tileB, TILE_SLEEPING)) return false;
@@ -669,6 +691,8 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
         pressured.age = 0u;
         pressured.aux |= AUX_MOVED;
         cells[moveIndex(targetPosition)] = pressured;
+        markChunkDirty(sourcePosition);
+        markChunkDirty(targetPosition);
         return;
     }
 

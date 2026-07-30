@@ -25,6 +25,12 @@ const uint STAT_BEETLE_COUNT = 26u;
 const uint STAT_HABITAT_COUNT = 27u;
 const uint STAT_SIMULATION_STEP = 28u;
 const uint STAT_MOVED_CELLS = 29u;
+const uint STAT_SLEEPING_CHUNKS = 30u;
+const uint STAT_ACTIVE_CHUNKS = 31u;
 const uint STAT_MATERIAL_BASE = 32u;
+const uint STAT_MACRO_TILE_MOVES = 97u;
+const uint STAT_MACRO_CELL_MOVES = 98u;
+const uint STAT_DIRTY_CHUNKS = 99u;
+const uint STAT_CHUNK_SKIPPED_CELLS = 100u;
 
 #endif
