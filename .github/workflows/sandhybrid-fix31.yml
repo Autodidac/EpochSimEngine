@@ -9,6 +9,7 @@ on:
       - "tools/fix31_swarm.py"
       - "tools/fix31_prepare.py"
       - "tools/fix31_tiles.py"
+      - "tools/fix31_audit_contracts.py"
       - "tools/audit_fix31.py"
       - ".github/workflows/sandhybrid-fix31.yml"
 
@@ -35,7 +36,7 @@ jobs:
       - name: Apply Fix31 colony patch
         shell: pwsh
         run: |
-          python -m py_compile tools/fix31.py tools/fix31_swarm.py tools/fix31_prepare.py tools/fix31_tiles.py tools/audit_fix31.py
+          python -m py_compile tools/fix31.py tools/fix31_swarm.py tools/fix31_prepare.py tools/fix31_tiles.py tools/fix31_audit_contracts.py tools/audit_fix31.py
           if ($LASTEXITCODE -ne 0) { throw 'Fix31 Python validation failed.' }
           python tools/fix31_prepare.py
           if ($LASTEXITCODE -ne 0) { throw 'Fix31 orchestration preparation failed.' }
@@ -45,6 +46,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Fix31 tile metadata patch failed.' }
           python tools/fix31_swarm.py
           if ($LASTEXITCODE -ne 0) { throw 'Fix31 swarm generation failed.' }
+          python tools/fix31_audit_contracts.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix31 ecology audit update failed.' }
 
       - name: Regenerate material and UI data
         shell: pwsh
@@ -112,6 +115,7 @@ jobs:
           Remove-Item -LiteralPath 'tools/fix31_swarm.py' -Force
           Remove-Item -LiteralPath 'tools/fix31_prepare.py' -Force
           Remove-Item -LiteralPath 'tools/fix31_tiles.py' -Force
+          Remove-Item -LiteralPath 'tools/fix31_audit_contracts.py' -Force
           Remove-Item -LiteralPath 'tools/audit_fix31.py' -Force
           Remove-Item -LiteralPath '.github/workflows/sandhybrid-fix31.yml' -Force
           git config user.name 'github-actions[bot]'
