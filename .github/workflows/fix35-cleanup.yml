@@ -1,0 +1,31 @@
+name: Clean Fix35 Temporary Refs
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/fix35-cleanup.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Remove temporary branches and close cleanup PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          gh pr close ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" \
+            --comment 'Fix35 temporary refs removed; main and v2.3.0 remain unchanged.'
+          for branch in publish/fix35-source release/fix35-finalize release/fix35-testbed release/fix35-finalize2 "$CURRENT_BRANCH"; do
+            git push origin --delete "$branch" || true
+          done
