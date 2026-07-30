@@ -1,0 +1,46 @@
+name: Cleanup Hierarchy Task
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/cleanup-hierarchy-task.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Remove temporary task infrastructure
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f --ignore-unmatch \
+            .github/workflows/cleanup-hierarchy-task.yml \
+            .github/workflows/apply-hierarchical-simulation.yml \
+            .github/workflows/run-hierarchy-patch.yml \
+            .github/scripts/run_hierarchy_patch.py \
+            .github/workflows/quick-hierarchy-check.yml \
+            .github/workflows/apply-vulkan-warning-fix.yml \
+            .github/workflows/build-hierarchy-linux-retry.yml \
+            .github/workflows/publish-hierarchy-v2-1.yml \
+            .github/workflows/apply-glsl-fix.yml \
+            .github/workflows/build-v2-final.yml \
+            hierarchy-patch-status.json \
+            hierarchy-quick-status.json \
+            hierarchy-linux-status.json \
+            hierarchy-release-status.json \
+            hierarchy-build-status.json \
+            active-full-build.json \
+            full-build-status.json \
+            v2-build-status.json \
+            build-trigger.txt
+          git commit -m 'Remove temporary hierarchy build infrastructure'
+          git push origin HEAD:main
+
+# trigger
