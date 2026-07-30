@@ -27,8 +27,8 @@ replacements = {
     '"2,cardMaterial"': '"2, cardMaterial"',
     '"2,60u"': '"2, 60u"',
     '"2,61u"': '"2, 61u"',
-    'for token in ("previouslyDense", "previous.occupancy >= TILE_STABILITY_OCCUPANCY",\n                   "structuralTile && previouslyDense && structural < TILE_COLLAPSE_OCCUPANCY"):\n':
-        'for token in ("previouslyDense", "previous.occupancy >= TILE_STABILITY_OCCUPANCY",\n                   "dominantCount < TILE_MIN_COHESIVE_CELLS",\n                   "structuralTile ? dominantCount"):\n',
+    '"structuralTile && previouslyDense && structural < TILE_COLLAPSE_OCCUPANCY"':
+        '"dominantCount < TILE_MIN_COHESIVE_CELLS",\n                   "structuralTile ? dominantCount"',
 }
 for previous, replacement in replacements.items():
     matches = validator.count(previous)
