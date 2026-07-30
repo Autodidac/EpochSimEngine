@@ -34,4 +34,25 @@ count = app.count(old_app)
 if count != 1:
     raise SystemExit(f'Fix26 app compile patch expected one match, found {count}')
 app_path.write_text(app.replace(old_app, '', 1), encoding='utf-8', newline='\n')
-print('Fix26 GLSL and C++ compile contracts patched.')
+
+test_path = Path('tests/material_contract.cpp')
+test = test_path.read_text(encoding='utf-8')
+old_test = '''    const auto compact = epoch::sand::ui::make_layout(480u, 320u);
+    if (compact.simulation.size.y <= 0.0f) return 7;
+    if (compact.previous_scene.size.x != 0.0f || compact.next_scene.size.x != 0.0f ||
+        compact.reset_scene.size.x != 0.0f) return 8;
+    if (compact.mode_toggle.position.x < 0.0f || compact.debug_toggle.position.x < 0.0f) return 9;
+'''
+new_test = '''    const auto compact = epoch::sand::ui::make_layout(480u, 320u);
+    if (compact.simulation.size.y <= 0.0f || compact.status.size.x < 300.0f) return 7;
+    if (compact.previous_scene.size.x <= 0.0f || compact.next_scene.size.x <= 0.0f ||
+        compact.reset_scene.size.x <= 0.0f) return 8;
+    if (compact.mode_toggle.position.x < compact.simulation.size.x ||
+        compact.debug_toggle.position.x < compact.simulation.size.x ||
+        compact.material_card.position.x < compact.simulation.size.x) return 9;
+'''
+count = test.count(old_test)
+if count != 1:
+    raise SystemExit(f'Fix26 material-contract patch expected one match, found {count}')
+test_path.write_text(test.replace(old_test, new_test, 1), encoding='utf-8', newline='\n')
+print('Fix26 GLSL, C++, and sidebar-test contracts patched.')
