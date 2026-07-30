@@ -4,6 +4,15 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# The generated slow-pan denominator must use the platform's exact int64_t type;
+# GCC maps int64_t to long while the original literal was long long.
+app_path = ROOT / "src/app.cpp"
+app = app_path.read_text(encoding="utf-8")
+old_literal = ", 1ll);"
+if app.count(old_literal) != 2:
+    raise SystemExit(f"src/app.cpp: expected two slow-pan integer literals, found {app.count(old_literal)}")
+app_path.write_text(app.replace(old_literal, ", std::int64_t{1});"), encoding="utf-8", newline="\n")
+
 
 def text(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
@@ -60,6 +69,7 @@ require("src/window_xcb.cpp", "keysym_f")
 require("src/app.cpp", "Four-to-one damping")
 require("src/app.cpp", "input.middle_down")
 require("src/app.cpp", "shared_state.fill_region.store")
+require("src/app.cpp", "std::int64_t{1}")
 
 require("src/vulkan_renderer.cpp", "void fill_connected_region")
 require("src/vulkan_renderer.cpp", "download_scene_cells")
