@@ -1,1 +1,0 @@
-Full FastFreddy architecture build after all reserved GLSL half identifiers were removed.
