@@ -1,7 +1,9 @@
 {
-  "run_id": 30532405055,
-  "run_number": 11,
+  "run_id": 30532643937,
+  "run_number": 12,
   "conclusion": "success",
-  "head_sha": "fa76138379e03c1ac798659c15b7f2ade4f792e5",
-  "run_url": "https://github.com/Autodidac/fastfreddytestbed/actions/runs/30532405055"
+  "head_sha": "5a9fd5020554a648b5f2b3cc90cbd5f531215c8b",
+  "run_url": "https://github.com/Autodidac/fastfreddytestbed/actions/runs/30532643937",
+  "canonical_release": "v1.0.0",
+  "duplicate_releases_removed": true
 }
