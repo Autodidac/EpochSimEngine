@@ -16,19 +16,27 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Rename reserved half identifier
+      - name: Rename reserved half identifiers
         run: |
           python3 - <<'PY'
+          import re
           from pathlib import Path
-          for name in ('shaders/materials.glsl', 'shaders/move.comp'):
-              path = Path(name)
-              text = path.read_text()
-              text = text.replace('bool half)', 'bool half_state)')
-              text = text.replace('if (half) ', 'if (half_state) ')
-              path.write_text(text)
+
+          materials = Path('shaders/materials.glsl')
+          text = materials.read_text()
+          text = text.replace('bool half)', 'bool half_state)')
+          text = text.replace('if (half) ', 'if (half_state) ')
+          materials.write_text(text)
+
+          movement = Path('shaders/move.comp')
+          text = movement.read_text()
+          text = text.replace('bool half)', 'bool half_state)')
+          text = text.replace('if (half) ', 'if (half_state) ')
+          text = re.sub(r'\bhalf\b', 'half_cell', text)
+          movement.write_text(text)
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add shaders/materials.glsl shaders/move.comp
-          git commit -m 'Fix reserved GLSL half identifier [release]'
+          git commit -m 'Remove remaining reserved GLSL half identifiers [release]'
           git push origin HEAD:main
