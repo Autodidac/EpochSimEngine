@@ -1884,9 +1884,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
         bind_compute(command_buffer, movement_pipeline, current_set);
-        const std::array<std::int32_t, 9> phases = (simulation_step & 1u) == 0u
-            ? std::array<std::int32_t, 9>{0, 1, 2, 3, 4, 5, 5, 5, 5}
-            : std::array<std::int32_t, 9>{0, 2, 1, 4, 3, 5, 5, 5, 5};
+        const std::array<std::int32_t, 13> phases = (simulation_step & 1u) == 0u
+            ? std::array<std::int32_t, 13>{0, 1, 2, 3, 4, 5, 5, 5, 5, 5, 5, 5, 5}
+            : std::array<std::int32_t, 13>{0, 2, 1, 4, 3, 5, 5, 5, 5, 5, 5, 5, 5};
         for (std::size_t phase_index = 0; phase_index < phases.size(); ++phase_index) {
             const auto phase = phases[phase_index];
             const MovementPush movement_push{
@@ -1900,6 +1900,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         ? ((simulation_step + static_cast<std::uint32_t>(phase_index)) & 1u)
                         : ((simulation_step + static_cast<std::uint32_t>(phase)) & 1u)),
                 .reserved0 = collect_debug_stats ? 1u : 0u,
+                .reserved1 = phase_index >= 9u ? 1u : 0u,
             };
             vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
                                0, sizeof(movement_push), &movement_push);

@@ -64,6 +64,7 @@ bool sourceRegion(ivec2 origin, out Cell representative) {
   Cell cell = macroAt(origin + ivec2(x, y));
   if (cell.material != representative.material || !bulkMovable(cell) ||
       (cell.aux & AUX_MOVED) != 0u) return false;
+  if (cell.material == MAT_WATER && isHalfWater(cell)) return false;
         }
     }
     return true;

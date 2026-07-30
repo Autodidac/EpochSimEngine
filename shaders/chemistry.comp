@@ -24,6 +24,8 @@ Cell at(ivec2 p) {
 }
 
 void commitResult(uint index, Cell before, Cell after) {
+    if (after.material != MAT_WATER || before.material != MAT_WATER)
+        after.aux &= ~AUX_WATER_HALF;
     recordConservation(before, after);
     nextCells[index] = after;
 }

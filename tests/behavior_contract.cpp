@@ -101,6 +101,12 @@ static_assert(epoch::sand::policy::laser_hits_to_dislodge == 2u);
 static_assert(!epoch::sand::policy::should_collapse(32u));
 static_assert(epoch::sand::policy::should_collapse(31u));
 static_assert(epoch::sand::policy::water_pressure_depth == 8u);
+static_assert(epoch::sand::policy::water_half_units_per_full_cell == 2u);
+static_assert(!epoch::sand::policy::water_ledge_can_release(2u, 0u));
+static_assert(epoch::sand::policy::water_ledge_can_release(2u, 1u));
+static_assert(epoch::sand::policy::water_ledge_can_release(2u, 2u));
+static_assert(epoch::sand::policy::water_half_horizontal_passes ==
+              epoch::sand::policy::water_full_horizontal_passes * 2u);
 static_assert(epoch::sand::policy::vent_eruption_pressure > epoch::sand::policy::vent_gas_release_pressure);
 static_assert(epoch::sand::policy::restabilization_cooldown_ticks > epoch::sand::policy::stability_ticks);
 

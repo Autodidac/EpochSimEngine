@@ -21,6 +21,7 @@ const uint AUX_BEE_FED = 0x10000000u;
 const uint AUX_BEE_SWARM = 0x08000000u;
 const uint AUX_STRUCTURAL = 0x04000000u;
 const uint AUX_MOVED = 0x01000000u;
+const uint AUX_WATER_HALF = 0x00800000u;
 const uint AUX_STATE_MASK = 0x000000ffu;
 
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
@@ -101,6 +102,55 @@ uint stateValue(Cell cell) {
 
 void setStateValue(inout Cell cell, uint value) {
     cell.aux = (cell.aux & ~AUX_STATE_MASK) | min(value, 255u);
+}
+
+bool isHalfWaterCell(Cell cell) {
+    return cell.material == MAT_WATER && (cell.aux & AUX_WATER_HALF) != 0u;
+}
+
+uint waterHalfUnits(Cell cell) {
+    return cell.material == MAT_WATER ? (isHalfWaterCell(cell) ? 1u : 2u) : 0u;
+}
+
+void setHalfWaterCell(inout Cell cell, bool halfState) {
+    if (cell.material != MAT_WATER) return;
+    if (halfState) cell.aux |= AUX_WATER_HALF;
+    else cell.aux &= ~AUX_WATER_HALF;
+}
+
+bool isOpenGas(Cell cell) {
+    return cell.material == MAT_EMPTY || cell.material == MAT_OXYGEN;
+}
+
+Cell oxygenFrom(Cell source) {
+    source.material = MAT_OXYGEN;
+    source.age = 0u;
+    source.temperature = 20;
+    source.aux &= ~(AUX_WATER_HALF | AUX_MOVED | AUX_STATE_MASK);
+    source.aux |= 220u;
+    return source;
+}
+
+void mergeHalfWaterPair(ivec2 keepPosition, ivec2 releasePosition, Cell keep, Cell released) {
+    setHalfWaterCell(keep, false);
+    keep.age = 0u;
+    keep.aux |= AUX_MOVED;
+    cells[moveIndex(keepPosition)] = keep;
+    cells[moveIndex(releasePosition)] = oxygenFrom(released);
+    markChunkDirty(keepPosition);
+    markChunkDirty(releasePosition);
+}
+
+void splitFullWaterPair(ivec2 sourcePosition, ivec2 targetPosition, Cell source, Cell target) {
+    setHalfWaterCell(source, true);
+    source.age = 0u;
+    source.aux |= AUX_MOVED;
+    Cell halfCell = source;
+    halfCell.temperature = (source.temperature + target.temperature) / 2;
+    cells[moveIndex(sourcePosition)] = source;
+    cells[moveIndex(targetPosition)] = halfCell;
+    markChunkDirty(sourcePosition);
+    markChunkDirty(targetPosition);
 }
 
 uint salinity(Cell cell) {
@@ -315,7 +365,7 @@ bool movementAllows(Cell cell, uint randomValue) {
 
 bool canCellFallInto(Cell moving, Cell target) {
     if (isStructural(moving) || isCellImmovable(moving)) return false;
-    if (target.material == MAT_EMPTY) return true;
+    if (isOpenGas(target)) return true;
     if (isCellImmovable(target)) return false;
     if (moving.material == MAT_BEE || moving.material == MAT_QUEEN_BEE) return false;
     if (isCellGas(target) && !isCellGas(moving)) return true;
@@ -350,7 +400,7 @@ int liquidColumnPressure(ivec2 position, uint material) {
 }
 
 bool liquidCanSpread(ivec2 sourcePosition, ivec2 targetPosition, Cell source, uint randomValue) {
-    if (moveAt(targetPosition).material != MAT_EMPTY || !movementAllows(source, randomValue)) return false;
+    if (!isOpenGas(moveAt(targetPosition)) || !movementAllows(source, randomValue)) return false;
     if (!supportedAt(sourcePosition, source)) return false;
     if (!supportedAt(targetPosition, source)) return true;
     bool sourceCovered = isCellLiquid(moveAt(sourcePosition + ivec2(0, -1)));
@@ -362,8 +412,11 @@ bool liquidCanSpread(ivec2 sourcePosition, ivec2 targetPosition, Cell source, ui
     int direction = targetPosition.x > sourcePosition.x ? 1 : -1;
     ivec2 next = targetPosition + ivec2(direction, 0);
     ivec2 next2 = targetPosition + ivec2(direction * 2, 0);
-    bool firstDrop = moveInside(next) && moveAt(next).material == MAT_EMPTY && canCellFallInto(source, moveAt(next + ivec2(0, 1)));
-    bool secondDrop = moveInside(next2) && moveAt(next).material == MAT_EMPTY && moveAt(next2).material == MAT_EMPTY && canCellFallInto(source, moveAt(next2 + ivec2(0, 1)));
+    bool firstDrop = moveInside(next) && isOpenGas(moveAt(next)) &&
+                     canCellFallInto(source, moveAt(next + ivec2(0, 1)));
+    bool secondDrop = moveInside(next2) && isOpenGas(moveAt(next)) &&
+                      isOpenGas(moveAt(next2)) &&
+                      canCellFallInto(source, moveAt(next2 + ivec2(0, 1)));
     return firstDrop || secondDrop || (randomValue & 7u) == 0u;
 }
 
@@ -610,6 +663,11 @@ void processVertical(ivec2 top, ivec2 bottom) {
     Cell b = moveAt(bottom);
     uint randomValue = moveHash(top, uint(movePc.phase) + 1u);
 
+    if (isHalfWaterCell(a) && isHalfWaterCell(b)) {
+        mergeHalfWaterPair(bottom, top, b, a);
+        return;
+    }
+
     if (isInsect(a.material) && b.material == MAT_EMPTY && !insectGrounded(top) &&
         (a.aux & AUX_MOVED) == 0u) {
         swapCells(top, bottom);
@@ -686,6 +744,12 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
 
     bool cohesiveMud = source.material == MAT_MUD &&
         (below.material == MAT_DIRT || below.material == MAT_STONE || below.material == MAT_MUD);
+    if (!upward && source.material == MAT_WATER && supportedAt(sourcePosition, source) &&
+        isOpenGas(target)) {
+        int direction = targetPosition.x > sourcePosition.x ? 1 : -1;
+        Cell trailing = sampleAt(sourcePosition - ivec2(direction, 0));
+        if (waterHalfUnits(source) != 2u || waterHalfUnits(trailing) < 1u) return;
+    }
     if (!upward && !cohesiveMud &&
         (isCellPowder(source) || isCellLiquid(source) || isLooseSolid(source)) &&
         supportedAt(sourcePosition, source) && canCellFallInto(source, target) &&
@@ -762,11 +826,22 @@ void processHorizontal(ivec2 left, ivec2 right) {
         return;
     }
 
-    if (isCellLiquid(a) && b.material == MAT_EMPTY && liquidCanSpread(left, right, a, randomValue)) {
-        swapCells(left, right);
-    } else if (isCellLiquid(b) && a.material == MAT_EMPTY &&
+    if (isHalfWaterCell(a) && isHalfWaterCell(b)) {
+        bool keepLeft = (randomValue & 1u) == 0u;
+        mergeHalfWaterPair(keepLeft ? left : right, keepLeft ? right : left,
+                           keepLeft ? a : b, keepLeft ? b : a);
+        return;
+    }
+
+    if (movePc.reserved1 != 0u && !isHalfWaterCell(a) && !isHalfWaterCell(b)) return;
+
+    if (isCellLiquid(a) && isOpenGas(b) && liquidCanSpread(left, right, a, randomValue)) {
+        if (a.material == MAT_WATER && !isHalfWaterCell(a)) splitFullWaterPair(left, right, a, b);
+        else swapCells(left, right);
+    } else if (isCellLiquid(b) && isOpenGas(a) &&
                liquidCanSpread(right, left, b, randomValue >> 1u)) {
-        swapCells(left, right);
+        if (b.material == MAT_WATER && !isHalfWaterCell(b)) splitFullWaterPair(right, left, b, a);
+        else swapCells(left, right);
     } else if (isCellGas(a) && b.material == MAT_EMPTY && gasHorizontalAllows(a.material, randomValue) &&
                (a.material != MAT_LIGHTNING || lightningMoveAllowed(left, right, randomValue))) {
         swapCells(left, right);

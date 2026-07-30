@@ -289,3 +289,8 @@ The vendored backend-neutral subset is documented in `third_party/EpochGui/SNAPS
 ## Hierarchical simulation
 
 Uniform 8x8 material regions can now move as 64-cell macro-cells using the same fall, diagonal, density, and liquid-spread rules as fine pixels. Mixed edges and half-water remain pixel simulated. Above that, 64x64 chunks cache activity and sleep state for fast rejection and large-map lookup. See `HIERARCHICAL_SIMULATION.md`.
+
+
+## Half-volume fresh water
+
+Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and half-only extra horizontal passes. See `HALF_WATER.md`.

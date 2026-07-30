@@ -201,6 +201,7 @@ vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
 
 vec4 worldColor(Cell cell, ivec2 grid) {
     vec4 base = materialColor(cell.material, cell.age, cell.aux, grid);
+    if (isHalfWater(cell)) base.rgb = mix(backgroundColor(grid), base.rgb, 0.50);
     bool metalSurface = cell.material == MAT_ALUMINUM || cell.material == MAT_IRON ||
                         cell.material == MAT_COPPER || cell.material == MAT_GOLD ||
                         cell.material == MAT_STEEL || cell.material == MAT_ALUMINUM_SHAVINGS ||

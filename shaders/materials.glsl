@@ -12,8 +12,9 @@ const uint AUX_PLANT_STEM = 0x08000000u;
 const uint AUX_STRUCTURAL = 0x04000000u;
 const uint AUX_SUPPORTED = 0x02000000u;
 const uint AUX_MOVED = 0x01000000u;
+const uint AUX_WATER_HALF = 0x00800000u;
 const uint AUX_STATE_MASK = 0x000000ffu;
-const uint AUX_RANDOM_MASK = 0x00ffff00u;
+const uint AUX_RANDOM_MASK = 0x007fff00u;
 const uint STRUCTURAL_BLOCK_SIZE = 8u;
 const uint STRUCTURAL_FULL_CELLS = STRUCTURAL_BLOCK_SIZE * STRUCTURAL_BLOCK_SIZE;
 const uint STRUCTURAL_COLLAPSE_CELLS = STRUCTURAL_FULL_CELLS / 2u;
@@ -24,6 +25,20 @@ struct Cell {
     int temperature;
     uint aux;
 };
+
+bool isHalfWater(Cell cell) {
+    return cell.material == MAT_WATER && (cell.aux & AUX_WATER_HALF) != 0u;
+}
+
+uint waterHalfUnits(Cell cell) {
+    return cell.material == MAT_WATER ? (isHalfWater(cell) ? 1u : 2u) : 0u;
+}
+
+void setHalfWater(inout Cell cell, bool halfState) {
+    if (cell.material != MAT_WATER) return;
+    if (halfState) cell.aux |= AUX_WATER_HALF;
+    else cell.aux &= ~AUX_WATER_HALF;
+}
 
 #ifndef EPOCH_SAND_NO_SIM_PUSH
 layout(push_constant) uniform SimulationPush {

@@ -30,9 +30,20 @@ inline constexpr std::uint32_t laser_damage_per_hit = 144u;
 inline constexpr std::uint32_t laser_hits_to_dislodge =
     (terrain_cell_integrity + laser_damage_per_hit - 1u) / laser_damage_per_hit;
 inline constexpr std::uint32_t water_pressure_depth = 8u;
+inline constexpr std::uint32_t water_half_units_per_full_cell = 2u;
+inline constexpr std::uint32_t water_ledge_release_units = 3u;
+inline constexpr std::uint32_t water_full_horizontal_passes = 4u;
+inline constexpr std::uint32_t water_half_horizontal_passes = 8u;
 inline constexpr std::uint32_t sunlight_update_interval = 4u;
 inline constexpr std::uint32_t vent_eruption_pressure = 220u;
 inline constexpr std::uint32_t vent_gas_release_pressure = 72u;
+
+[[nodiscard]] constexpr bool water_ledge_can_release(
+    const std::uint32_t edge_units,
+    const std::uint32_t trailing_units) noexcept {
+    return edge_units == water_half_units_per_full_cell &&
+           edge_units + trailing_units >= water_ledge_release_units;
+}
 
 [[nodiscard]] constexpr bool bulk_region_eligible(
     const std::uint32_t represented_cells,
