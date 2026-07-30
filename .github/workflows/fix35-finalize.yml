@@ -1,0 +1,113 @@
+name: Finalize FastFreddyTestbed Fix35
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'tools/apply_fix35_half_water.py'
+      - '.github/workflows/fix35-finalize.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: fastfreddytestbed-fix35-finalize
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: 5505bdfb3cd77c955d5a4b9804338c6fdf6b9789
+  VERIFIED_RUN_ID: '30587938445'
+  RELEASE_TAG: v2.3.0
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out finalizer controls
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+
+      - name: Check out exact testbed Fix35 base
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+          path: work
+
+      - name: Materialize audited half-water child commit
+        run: |
+          set -euo pipefail
+          test "$(git -C work rev-parse HEAD)" = "$SOURCE_SHA"
+          cp control/tools/apply_fix35_half_water.py work/tools/
+          cd work
+          python3 tools/apply_fix35_half_water.py
+          rm -f tools/apply_fix35_half_water.py
+          python3 tools/audit_material_behaviors.py
+          python3 tools/audit_ecology_motion.py
+          python3 tools/validate_shader_contracts.py
+          expected=$(printf '%s\n' HALF_WATER.md README.md include/epoch/sand/simulation_policy.hpp shaders/chemistry.comp shaders/fullscreen.frag shaders/macro_move.comp shaders/materials.glsl shaders/move.comp src/vulkan_renderer.cpp tests/behavior_contract.cpp | sort)
+          actual=$(git status --porcelain=v1 | cut -c4- | sort)
+          test "$actual" = "$expected" || { printf 'Unexpected source delta:\n%s\n' "$actual"; exit 1; }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'FastFreddyTestbed Fix35: exact Fix35 source with conserved half-water'
+          release_sha=$(git rev-parse HEAD)
+          git push origin HEAD:main
+          echo "RELEASE_SHA=$release_sha" >> "$GITHUB_ENV"
+
+      - name: Download verified Windows package
+        uses: actions/download-artifact@v4
+        with:
+          name: FastFreddyTestbed-Windows-x64-Fix35
+          path: artifacts/windows
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.VERIFIED_RUN_ID }}
+
+      - name: Download verified Linux package
+        uses: actions/download-artifact@v4
+        with:
+          name: FastFreddyTestbed-Linux-x64-Fix35
+          path: artifacts/linux
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.VERIFIED_RUN_ID }}
+
+      - name: Verify checksums and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          (cd artifacts/windows && sha256sum -c SHA256SUMS-Windows.txt)
+          (cd artifacts/linux && sha256sum -c SHA256SUMS-Linux.txt)
+          mkdir -p release
+          cp artifacts/windows/FastFreddyTestbed_Windows_x64_Fix35.zip release/
+          cp artifacts/linux/FastFreddyTestbed_Linux_x64_Fix35.tar.gz release/
+          (cd release && sha256sum FastFreddyTestbed_Windows_x64_Fix35.zip FastFreddyTestbed_Linux_x64_Fix35.tar.gz > SHA256SUMS.txt)
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && \
+            gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create "$RELEASE_TAG" \
+            release/FastFreddyTestbed_Windows_x64_Fix35.zip \
+            release/FastFreddyTestbed_Linux_x64_Fix35.tar.gz \
+            release/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$RELEASE_SHA" \
+            --title 'FastFreddyTestbed v2.3.0 — Fix35 + Conserved Half Water' \
+            --notes 'Source base: exact FastFreddy Fix35 commit 5505bdfb3cd77c955d5a4b9804338c6fdf6b9789. Preserves the complete Fix35 GUI and material palette, live colony-mask bee behavior, cursor shapes, zoom/pan/fill input, keymap, 8x8 macro-cell hierarchy, 64x64 sleeping chunks, scenes, and diagnostics. The only simulation change is conserved half-volume fresh water. Windows and Linux C++23 Release packages, all twelve Vulkan shaders, three contract tests per platform, source audits, and package checksums passed.'
+
+      - name: Remove finalizer branch and close PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGER_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          gh pr close ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" \
+            --comment 'Fix35 testbed source and v2.3.0 release published; finalizer controls removed.'
+          git -C work push origin --delete "$TRIGGER_BRANCH"
