@@ -22,7 +22,7 @@ FIXED = [
 ]
 SCENES = [
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",
-    "Gold mine", "Demolition", "Frontier base",
+    "Platformer", "Demolition", "Frontier base",
 ]
 PHASES = ["EMPTY", "SOLID", "POWDER", "LIQUID", "GAS", "PLASMA", "SOFT", "MOLTEN", "VAPOR"]
 

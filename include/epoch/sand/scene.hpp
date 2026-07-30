@@ -23,7 +23,7 @@ inline constexpr auto scene_count = static_cast<std::uint32_t>(Scene::count);
 
 inline constexpr std::array<std::string_view, scene_count> scene_names{
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",
-    "Gold mine", "Demolition", "Frontier base"
+    "Platformer", "Demolition", "Frontier base"
 };
 
 [[nodiscard]] constexpr std::string_view scene_name(const Scene scene) noexcept {

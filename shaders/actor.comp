@@ -47,11 +47,14 @@ Cell actorAt(ivec2 p) {
 
 bool blocksActor(Cell cell) {
     if (cell.material == MAT_EMPTY || isGas(cell.material) || isLiquid(cell.material) ||
-        cell.material == MAT_BEE || cell.material == MAT_POLLEN || cell.material == MAT_GOLD ||
-        cell.material == MAT_IRON || cell.material == MAT_POWER_CELL ||
-        cell.material == MAT_PLASMA_AMMO || cell.material == MAT_FLOWER ||
-        cell.material == MAT_GRASS || cell.material == MAT_ALLY_BOT) return false;
-    return true;
+        cell.material == MAT_BEE || cell.material == MAT_POLLEN ||
+        cell.material == MAT_FLOWER || cell.material == MAT_GRASS ||
+        cell.material == MAT_ALLY_BOT) return false;
+    bool loosePickup = !isStructural(cell) &&
+        (cell.material == MAT_GOLD || cell.material == MAT_IRON ||
+         cell.material == MAT_COPPER || cell.material == MAT_METAL ||
+         cell.material == MAT_POWER_CELL || cell.material == MAT_PLASMA_AMMO);
+    return !loosePickup;
 }
 
 bool bodyClear(ivec2 center) {
@@ -83,12 +86,15 @@ void collectResources(inout ActorState state) {
             ivec2 p = center + ivec2(x, y);
             if (!actorInside(p)) continue;
             uint index = actorIndex(p);
-            uint material = cells[index].material;
+            Cell resourceCell = cells[index];
+            if (isStructural(resourceCell)) continue;
+            uint material = resourceCell.material;
             if (material == MAT_GOLD) {
                 atomicAdd(conservation[CONS_CONVERTED], 1u);
                 cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
                 state.gold = min(state.gold + 1u, 9999u);
-            } else if (material == MAT_IRON || material == MAT_STEEL) {
+            } else if (material == MAT_IRON || material == MAT_COPPER ||
+                       material == MAT_METAL || material == MAT_STEEL) {
                 atomicAdd(conservation[CONS_CONVERTED], 1u);
                 cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
                 state.iron = min(state.iron + 1u, 9999u);
@@ -122,14 +128,10 @@ void damageCell(ivec2 p, uint damage) {
         if (health == 0u) health = 255u;
         if (health <= damage) {
             Cell fragment = cell;
-            if (cell.material == MAT_GOLD_ORE) fragment = makeCellWithEntropy(MAT_GOLD, actorPc.seed, actorPc.step);
-            else if (cell.material == MAT_IRON_ORE) fragment = makeCellWithEntropy(MAT_IRON, actorPc.seed, actorPc.step);
-            else {
-                fragment.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
-                fragment.aux |= AUX_MOVED;
-                fragment.age = 0u;
-                setStateValue(fragment, 1u);
-            }
+            fragment.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
+            fragment.aux |= AUX_MOVED;
+            fragment.age = 0u;
+            setStateValue(fragment, 1u);
             recordConservation(cell, fragment);
             cells[index] = fragment;
         } else {
@@ -141,12 +143,8 @@ void damageCell(ivec2 p, uint damage) {
     }
 
     Cell fragment = cell;
-    if (cell.material == MAT_GOLD_ORE) fragment = makeCellWithEntropy(MAT_GOLD, actorPc.seed, actorPc.step);
-    else if (cell.material == MAT_IRON_ORE) fragment = makeCellWithEntropy(MAT_IRON, actorPc.seed, actorPc.step);
-    else {
-        fragment.age = 0u;
-        fragment.aux |= AUX_MOVED;
-    }
+    fragment.age = 0u;
+    fragment.aux |= AUX_MOVED;
     recordConservation(cell, fragment);
     cells[index] = fragment;
 }
@@ -242,16 +240,13 @@ void updateBreathing(inout ActorState state) {
         }
     }
 
-    // Empty world cells represent ordinary ambient air. Explicit oxygen matters in
-    // sealed or gas-filled rooms, but an open cave must not suffocate the player.
     bool ambientAir = emptyCells >= 12u && toxicCells < 18u;
     bool breathable = ambientAir || oxygenCells >= 2u;
     bool toxicPocket = toxicCells >= 18u && toxicCells > emptyCells + oxygenCells;
-
     if (breathable && !toxicPocket) {
         state.oxygen = min(255u, state.oxygen + 3u);
         state.exposureTicks = 0u;
-        if (!ambientAir && oxygenCells > 0u && (actorPc.step % 120u) == 0u && actorInside(oxygenCell)) {
+        if (!ambientAir && oxygenCells > 0u && (actorPc.step % 180u) == 0u && actorInside(oxygenCell)) {
             uint oxygenIndex = actorIndex(oxygenCell);
             Cell carbonDioxide = makeCellWithEntropy(MAT_CARBON_DIOXIDE, actorPc.seed, actorPc.step);
             recordConservation(cells[oxygenIndex], carbonDioxide);
@@ -259,25 +254,20 @@ void updateBreathing(inout ActorState state) {
         }
     } else {
         state.exposureTicks = min(state.exposureTicks + 1u, 4095u);
-        if ((actorPc.step % 30u) == 0u && state.oxygen > 0u) {
+        if ((actorPc.step % 60u) == 0u && state.oxygen > 0u)
             state.oxygen -= toxicPocket ? min(state.oxygen, 2u) : 1u;
-        }
-        // Passive health cannot disappear from a transient classification or an
-        // open cave. Damage starts only after prolonged zero-oxygen exposure in
-        // a genuinely concentrated toxic pocket.
-        if (toxicPocket && state.oxygen == 0u && state.exposureTicks >= 600u &&
-            (actorPc.step % 120u) == 0u && state.health > 0u) {
-            state.health -= 1u;
-        }
     }
+    // Atmosphere affects the oxygen meter only. Health is reserved for explicit
+    // contact damage, so classification noise can never kill the player.
 }
 
 void resetActor(inout ActorState state) {
     state = ActorState(0, 0, 0, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
                        255u, 255u, 0, 0, actorPc.scene, 0u);
     if (actorPc.scene == SCENE_GOLD_MINE) {
-        state.x = int(actorPc.width / 9u);
-        state.y = int(actorPc.height) - 42;
+        state.x = 78;
+        state.y = 127;
+        state.ammo = 18u;
         state.enabled = 1u;
     } else if (actorPc.scene == SCENE_DEMOLITION) {
         state.x = int(actorPc.width / 8u);
@@ -317,7 +307,7 @@ void main() {
             ivec2 horizontal = center + ivec2(actorPc.moveX, 0);
             if (bodyClear(horizontal)) {
                 center = horizontal;
-                state.moveCooldown = 1u;
+                state.moveCooldown = 2u;
             } else {
                 ivec2 stepUp = center + ivec2(actorPc.moveX, -1);
                 if (bodyClear(stepUp)) center = stepUp;

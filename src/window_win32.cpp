@@ -250,6 +250,19 @@ bool NativeWindow::poll(WindowInput& input) {
         DispatchMessageW(&message);
     }
 
+    // Refresh continuous movement from physical key state. This prevents focus,
+    // capture, or message coalescing from dropping a key-up/down transition and
+    // silently disabling player movement.
+    const bool focused = GetForegroundWindow() == impl_->handle;
+    const auto key_down = [focused](const int key) noexcept {
+        return focused && (GetAsyncKeyState(key) & 0x8000) != 0;
+    };
+    impl_->move_left = key_down('A') || key_down(VK_LEFT);
+    impl_->move_right = key_down('D') || key_down(VK_RIGHT);
+    impl_->move_up = key_down('W') || key_down(VK_UP);
+    impl_->move_down = key_down('S') || key_down(VK_DOWN);
+    impl_->jump = impl_->move_up;
+
     input = WindowInput{
         .width = impl_->width,
         .height = impl_->height,

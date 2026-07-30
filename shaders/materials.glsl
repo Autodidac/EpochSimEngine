@@ -191,9 +191,7 @@ bool isLiquid(uint material) {
 bool isPowder(uint material) {
     return material == MAT_SAND || material == MAT_DIRT || material == MAT_MUD || material == MAT_SALT ||
            material == MAT_ASH || material == MAT_GUNPOWDER || material == MAT_SNOW ||
-           material == MAT_SEED || material == MAT_POLLEN || material == MAT_GOLD ||
-           material == MAT_IRON || material == MAT_STEEL || material == MAT_POWER_CELL ||
-           material == MAT_PLASMA_AMMO || material == MAT_SILT ||
+           material == MAT_SEED || material == MAT_POLLEN || material == MAT_SILT ||
            material == MAT_FERTILIZER || material == MAT_FOOD || material == MAT_WASTE;
 }
 
@@ -227,8 +225,7 @@ bool isImmovable(uint material) {
            material == MAT_BEESWAX || material == MAT_FLOWER || material == MAT_BEE_NEST ||
            material == MAT_QUEEN_BEE || material == MAT_IRON || material == MAT_COPPER ||
            material == MAT_MAGNET || material == MAT_INSULATOR || material == MAT_MAGMA_VENT ||
-           material == MAT_URANIUM || material == MAT_GOLD_ORE || material == MAT_IRON_ORE ||
-           material == MAT_STEEL || material == MAT_CONVEYOR || material == MAT_SMELTER ||
+           material == MAT_URANIUM || material == MAT_STEEL || material == MAT_CONVEYOR || material == MAT_SMELTER ||
            material == MAT_ASSEMBLER || material == MAT_BOT_FABRICATOR ||
            material == MAT_FACTORY_CORE;
 }
@@ -344,9 +341,8 @@ bool isBlockCapable(uint material) {
     return material == MAT_STONE || material == MAT_CRYSTAL || material == MAT_WOOD ||
            material == MAT_PLASTIC || material == MAT_ACID_RESISTANT_PLASTIC ||
            material == MAT_METAL || material == MAT_GLASS || material == MAT_IRON ||
-           material == MAT_COPPER || material == MAT_MAGNET || material == MAT_INSULATOR ||
-           material == MAT_URANIUM || material == MAT_GOLD_ORE || material == MAT_IRON_ORE ||
-           material == MAT_STEEL || material == MAT_CONVEYOR || material == MAT_SMELTER ||
+           material == MAT_COPPER || material == MAT_GOLD || material == MAT_MAGNET || material == MAT_INSULATOR ||
+           material == MAT_URANIUM || material == MAT_STEEL || material == MAT_CONVEYOR || material == MAT_SMELTER ||
            material == MAT_ASSEMBLER || material == MAT_BOT_FABRICATOR ||
            material == MAT_FACTORY_CORE;
 }

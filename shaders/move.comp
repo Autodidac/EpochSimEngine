@@ -122,8 +122,9 @@ bool isPowderCellMaterial(uint material) {
 
 bool isConveyorPowderMaterial(uint material) {
     return isPowderCellMaterial(material) || material == MAT_GOLD ||
-           material == MAT_IRON || material == MAT_STEEL ||
-           material == MAT_POWER_CELL || material == MAT_PLASMA_AMMO;
+           material == MAT_IRON || material == MAT_COPPER || material == MAT_METAL ||
+           material == MAT_STEEL || material == MAT_POWER_CELL ||
+           material == MAT_PLASMA_AMMO;
 }
 
 bool isBlockCapable(uint material) {

@@ -181,10 +181,13 @@ def main() -> int:
             group_values.extend(row[:count])
             if any(value != material_count for value in row[count:]):
                 errors.append(f"generated group {group} has non-sentinel padding")
-    if len(group_values) != material_count:
-        errors.append(f"generated group map has {len(group_values)} active entries, expected {material_count}")
-    if sorted(group_values) != list(range(material_count)):
-        errors.append("generated group map is not a permutation of every material ID")
+    if any(value >= material_count for value in group_values):
+        errors.append("generated group map contains an invalid material ID")
+    if len(group_values) != len(set(group_values)):
+        errors.append("generated group map contains duplicate material IDs")
+    for hidden in (cpp_ids.get("gold_ore"), cpp_ids.get("iron_ore")):
+        if hidden in group_values:
+            errors.append("legacy ore/concentrate IDs must not appear in the palette")
 
     group_count_function = extract_uint_function(ui_text, "groupMaterialCount")
     for token in ("uiTextStorage", "GROUP_MATERIAL_COUNTS_BASE"):
@@ -241,13 +244,11 @@ def main() -> int:
     ):
         if token not in actor_comp:
             errors.append(f"context-sensitive tool contract missing {token!r}")
-    for token in (
-        "toxicPocket && state.oxygen == 0u",
-        "state.exposureTicks >= 600u",
-        "ambientAir",
-    ):
+    for token in ("ambientAir", "Atmosphere affects the oxygen meter only"):
         if token not in actor_comp:
-            errors.append(f"bounded health contract missing {token!r}")
+            errors.append(f"nonlethal atmosphere contract missing {token!r}")
+    if "state.health -=" in actor_comp:
+        errors.append("passive atmosphere still drains player health")
     for token in ("bool primary_pressed{}", "bool secondary_pressed{}"):
         if token not in window_hpp:
             errors.append(f"window press-edge contract missing {token!r}")
@@ -260,10 +261,10 @@ def main() -> int:
     for token in ("looseAuthoredTerrain", "material == MAT_DIRT", "material == MAT_GRASS"):
         if token not in reset_comp:
             errors.append(f"authored terrain stability contract missing {token!r}")
-    for token in ("status_height = 60u", "group_tabs_height = 40u", "palette_items_height = 64u"):
+    for token in ("status_height = 72u", "group_tabs_height = 48u", "palette_items_height = 76u"):
         if token not in ui_layout:
             errors.append(f"large UI layout contract missing {token!r}")
-    for token in ("int[5](68, 68, 92, 124, 92)", "ivec2(10, 11), 3, 0u", "hudTop + 78u"):
+    for token in ("int[5](78, 78, 104, 136, 104)", "ivec2(12, 12), 4, 0u", "hudTop + 78u"):
         if token not in fullscreen:
             errors.append(f"large UI shader contract missing {token!r}")
 
@@ -416,17 +417,18 @@ def main() -> int:
         errors.append("actor respiration silently deletes oxygen instead of converting it")
     if "state.y < 112" in actor:
         errors.append("actor breathing regressed to a hard-coded world-height suffocation rule")
-    for token in ("state.exposureTicks >= 600u", "actorPc.step % 120u", "toxicPocket && state.oxygen == 0u"):
-        if token not in actor:
-            errors.append(f"actor bounded suffocation contract missing {token!r}")
+    if "state.health -=" in actor:
+        errors.append("actor health is still reduced by passive atmosphere classification")
     for token in ("fire_tool_pressed", "deposit_resource_pressed"):
         if token not in app_cpp or token not in renderer_cpp:
             errors.append(f"latched player action contract missing {token!r}")
     if "segmentDistance" not in renderer or "actor.hitX" not in renderer or "actor.hitY" not in renderer:
         errors.append("tool beam/impact feedback is missing from the renderer")
-    for token in ("authoredStructuralCell", "looseAuthoredCargo"):
+    for token in ("authoredStructuralCell", "looseAuthoredCargo", "Large upper reservoir", "real sediment sifter"):
         if token not in reset:
-            errors.append(f"authored scene stability contract missing {token!r}")
+            errors.append(f"authored scene contract missing {token!r}")
+    if "MAT_GOLD_ORE" in reset or "MAT_IRON_ORE" in reset or "MAT_GOLD_ORE" in actor or "MAT_IRON_ORE" in actor:
+        errors.append("ore blocks remain in authored scenes or player mining")
     for token in ("previouslyDense", "previous.occupancy >= TILE_STABILITY_OCCUPANCY",
                   "structuralTile && previouslyDense && structural < TILE_COLLAPSE_OCCUPANCY"):
         if token not in tiles:

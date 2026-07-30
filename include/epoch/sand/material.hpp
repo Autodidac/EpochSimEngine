@@ -150,11 +150,11 @@ inline constexpr std::array<std::string_view, material_count> material_names{
     "Magma vent",
     "Uranium",
     "Radiation",
-    "Gold ore",
+    "Gold concentrate",
     "Gold",
     "Oxygen",
     "CO2",
-    "Iron ore",
+    "Iron concentrate",
     "Steel",
     "Conveyor",
     "Smelter",
@@ -212,20 +212,20 @@ inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
     {30u, 0u, 30u, 125u, 60, 32767, 32767, 32767, 120, 32767, 3u, MaterialPhase::solid, "Colony", "STRONG: COLONY CONTROL", "WEAK: HEAT / TOXINS", "TO: WASTE / NEW NEST", "ROLE: COLONY REPRODUCTION", "DANGER: COLONY LOSS"},
     {88u, 80u, 225u, 244u, 1538, 1200, 1538, 2862, 2862, 32767, 200u, MaterialPhase::solid, "Materials", "STRONG: MAGNETIC / SUPPORT", "WEAK: ACID / CORROSION", "TO: STEEL / SCRAP", "ROLE: MACHINE FEED", "DANGER: HEAVY FALL"},
     {86u, 78u, 215u, 242u, 1085, 850, 1085, 2562, 2562, 32767, 255u, MaterialPhase::solid, "Materials", "STRONG: CONDUCTION", "WEAK: ACID / HEAT", "TO: CIRCUITS / SCRAP", "ROLE: POWER NETWORK", "DANGER: ELECTRIC SHOCK"},
-    {210u, 190u, 230u, 240u, 800, 650, 800, 2500, 2500, 32767, 180u, MaterialPhase::solid, "Engineering", "STRONG: FIELD CONTROL", "WEAK: HEAT / IMPACT", "TO: SCRAP", "ROLE: ORE SEPARATION", "DANGER: PINCH / FIELD"},
+    {210u, 190u, 230u, 240u, 800, 650, 800, 2500, 2500, 32767, 180u, MaterialPhase::solid, "Engineering", "STRONG: FIELD CONTROL", "WEAK: HEAT / IMPACT", "TO: SCRAP", "ROLE: METAL SEPARATION", "DANGER: PINCH / FIELD"},
     {180u, 170u, 180u, 255u, 600, 450, 900, 32767, 2200, 650, 2u, MaterialPhase::solid, "Materials", "STRONG: ELECTRIC ISOLATION", "WEAK: HEAT / IMPACT", "TO: WASTE", "ROLE: CIRCUIT SAFETY", "DANGER: BREAKDOWN"},
     {1u, 0u, 1u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 255u, MaterialPhase::plasma, "Engineering", "STRONG: ELECTRIC ENERGY", "WEAK: GROUND / INSULATION", "TO: HEAT / CHARGE", "ROLE: TRANSIENT FORCE", "DANGER: LETHAL VOLTAGE"},
     {255u, 255u, 255u, 255u, 2000, 32767, 32767, 32767, 32767, 32767, 255u, MaterialPhase::solid, "Heat", "STRONG: PERMANENT HEAT", "WEAK: NONE", "TO: LAVA / STONE", "ROLE: GEOLOGIC SOURCE", "DANGER: EXTREME HEAT"},
-    {230u, 215u, 230u, 250u, 1132, 1000, 1132, 4131, 4131, 32767, 115u, MaterialPhase::solid, "Engineering", "STRONG: ENERGY DENSITY", "WEAK: SHIELDING / ACID", "TO: HEAT / RADIATION", "ROLE: NUCLEAR FUEL", "DANGER: RADIATION"},
-    {1u, 0u, 1u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 0u, MaterialPhase::gas, "Engineering", "STRONG: PENETRATION", "WEAK: METAL SHIELDING", "TO: HEAT / DAMAGE", "ROLE: NUCLEAR FIELD", "DANGER: IONIZING"},
-    {225u, 205u, 225u, 250u, 1064, 900, 1064, 2856, 2856, 32767, 120u, MaterialPhase::solid, "Engineering", "STRONG: MINERAL VALUE", "WEAK: MINING DAMAGE", "TO: GOLD / SILT", "ROLE: RESOURCE DEPOSIT", "DANGER: CAVE IN"},
+    {230u, 215u, 230u, 250u, 1132, 1000, 1132, 4131, 4131, 32767, 115u, MaterialPhase::solid, "Unknown", "STRONG: ENERGY DENSITY", "WEAK: SHIELDING / ACID", "TO: HEAT / RADIATION", "ROLE: NUCLEAR FUEL", "DANGER: RADIATION"},
+    {1u, 0u, 1u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 0u, MaterialPhase::gas, "Unknown", "STRONG: PENETRATION", "WEAK: METAL SHIELDING", "TO: HEAT / DAMAGE", "ROLE: NUCLEAR FIELD", "DANGER: IONIZING"},
+    {96u, 20u, 225u, 246u, 1064, 900, 1064, 2856, 2856, 32767, 120u, MaterialPhase::solid, "Unknown", "STRONG: LEGACY SAVE COMPATIBILITY", "WEAK: NOT AUTHORED", "TO: GOLD PIXELS", "ROLE: DEPRECATED RESOURCE ID", "DANGER: NONE"},
     {96u, 90u, 210u, 246u, 1064, 850, 1064, 2856, 2856, 32767, 250u, MaterialPhase::solid, "Materials", "STRONG: CONDUCTION / ACID", "WEAK: SOFTNESS", "TO: CIRCUITS / SCRAP", "ROLE: ADVANCED COMPONENT", "DANGER: HEAVY FALL"},
     {7u, 0u, 7u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 4u, MaterialPhase::gas, "Colony", "STRONG: RESPIRATION", "WEAK: FIRE CONSUMPTION", "TO: CO2 / STEAM", "ROLE: BREATHABLE GAS", "DANGER: FIRE ACCELERATION"},
     {11u, 0u, 11u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 4u, MaterialPhase::gas, "Colony", "STRONG: FIRE SUPPRESSION", "WEAK: PLANTS / WATER", "TO: OXYGEN / FOOD", "ROLE: CARBON RESERVOIR", "DANGER: ASPHYXIATION"},
-    {225u, 205u, 225u, 242u, 1450, 1200, 1538, 2862, 2862, 32767, 90u, MaterialPhase::solid, "Engineering", "STRONG: IRON FEED", "WEAK: MINING DAMAGE", "TO: IRON / SILT", "ROLE: RESOURCE DEPOSIT", "DANGER: CAVE IN"},
+    {88u, 20u, 225u, 244u, 1450, 1200, 1538, 2862, 2862, 32767, 90u, MaterialPhase::solid, "Unknown", "STRONG: LEGACY SAVE COMPATIBILITY", "WEAK: NOT AUTHORED", "TO: IRON PIXELS", "ROLE: DEPRECATED RESOURCE ID", "DANGER: NONE"},
     {245u, 240u, 245u, 252u, 1450, 1250, 1450, 2900, 2900, 32767, 185u, MaterialPhase::solid, "Materials", "STRONG: SUPPORT / TOUGHNESS", "WEAK: EXTREME HEAT", "TO: SCRAP / MACHINES", "ROLE: PRIMARY STRUCTURE", "DANGER: HEAVY COLLAPSE"},
     {220u, 215u, 220u, 250u, 850, 700, 1350, 2800, 2800, 32767, 190u, MaterialPhase::solid, "Industry", "STRONG: MATERIAL ROUTING", "WEAK: POWER LOSS / DAMAGE", "TO: SCRAP", "ROLE: FACTORY TRANSPORT", "DANGER: PINCH POINT"},
-    {240u, 230u, 240u, 252u, 1500, 1000, 1500, 3000, 3000, 32767, 175u, MaterialPhase::solid, "Industry", "STRONG: ORE PROCESSING", "WEAK: COOLANT LOSS", "TO: STEEL / SMOKE / SLAG", "ROLE: THERMAL FACTORY", "DANGER: HEAT / FIRE"},
+    {240u, 230u, 240u, 252u, 1500, 1000, 1500, 3000, 3000, 32767, 175u, MaterialPhase::solid, "Industry", "STRONG: METAL PROCESSING", "WEAK: COOLANT LOSS", "TO: STEEL / SMOKE / SLAG", "ROLE: THERMAL FACTORY", "DANGER: HEAT / FIRE"},
     {225u, 215u, 225u, 250u, 700, 550, 1200, 2600, 2600, 32767, 170u, MaterialPhase::solid, "Industry", "STRONG: COMPONENT BUILD", "WEAK: POWER LOSS", "TO: POWER CELLS / AMMO", "ROLE: MANUFACTURING", "DANGER: MOVING PARTS"},
     {230u, 220u, 230u, 250u, 700, 550, 1200, 2600, 2600, 32767, 170u, MaterialPhase::solid, "Industry", "STRONG: BOT PRODUCTION", "WEAK: POWER / INPUT LOSS", "TO: ALLY / ENEMY BOT", "ROLE: AUTOMATION", "DANGER: HOSTILE OUTPUT"},
     {92u, 40u, 92u, 210u, 220, 120, 220, 350, 450, 180, 150u, MaterialPhase::solid, "Engineering", "STRONG: STORED ENERGY", "WEAK: HEAT / IMPACT", "TO: AMMO / FIRE / SCRAP", "ROLE: ENERGY STORAGE", "DANGER: THERMAL RUNAWAY"},
@@ -281,7 +281,7 @@ inline constexpr std::array<std::uint32_t, material_group_count> material_group_
     9u,
     8u,
     8u,
-    8u,
+    4u,
     8u,
 };
 
@@ -303,7 +303,7 @@ inline constexpr std::array<std::array<Material, material_slots_per_group>, mate
     {Material::honey, Material::bee, Material::queen_bee, Material::bee_nest, Material::beeswax, Material::oxygen, Material::carbon_dioxide, Material::smoke, Material::hydrogen},
     {Material::fire, Material::lava, Material::oil, Material::ember, Material::ash, Material::gunpowder, Material::acid, Material::magma_vent, Material::count},
     {Material::plastic, Material::acid_resistant_plastic, Material::metal, Material::iron, Material::copper, Material::gold, Material::steel, Material::insulator, Material::count},
-    {Material::magnet, Material::lightning, Material::uranium, Material::radiation, Material::gold_ore, Material::iron_ore, Material::power_cell, Material::plasma_ammo, Material::count},
+    {Material::magnet, Material::lightning, Material::power_cell, Material::plasma_ammo, Material::count, Material::count, Material::count, Material::count, Material::count},
     {Material::conveyor, Material::smelter, Material::assembler, Material::bot_fabricator, Material::ally_bot, Material::enemy_bot, Material::plasma_bolt, Material::factory_core, Material::count},
 }};
 
@@ -334,11 +334,10 @@ inline constexpr std::array<std::array<Material, material_slots_per_group>, mate
     case Material::glass:
     case Material::iron:
     case Material::copper:
+    case Material::gold:
     case Material::magnet:
     case Material::insulator:
     case Material::uranium:
-    case Material::gold_ore:
-    case Material::iron_ore:
     case Material::steel:
     case Material::conveyor:
     case Material::smelter:

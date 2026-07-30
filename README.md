@@ -154,6 +154,10 @@ The interface was rebuilt as a pixel-aligned EpochGui layout. The native title b
 - `F3` debug controls visually separated from normal gameplay UI
 - compact layouts hide nonessential scene buttons rather than overlapping them
 
+## Resource pixels and sifting
+
+EpochSand has no authored ore blocks. Gold, iron, copper, and generic metal exist as independent material pixels mixed sparsely through sand or silt. Gravity, filters, conveyors, and magnets separate those pixels without changing them into nuclear fuel or radiation particles. Structural steel, iron, or copper is never collected merely because the player walks nearby.
+
 ## Default scenes
 
 Cycle with `[` and `]` or the on-screen controls.
@@ -163,8 +167,8 @@ Cycle with `[` and `]` or the on-screen controls.
 3. Volcano
 4. Waterworks
 5. Ecosystem
-6. Engineering Lab
-7. Gold Mine
+6. Engineering Lab — contained thermal vessel, sediment/metal sifter, and sealed gas cell
+7. Platformer — multi-level playable structure based on the supplied reference
 8. Demolition
 9. Frontier Base
 
@@ -178,7 +182,7 @@ All scenes use the same canonical material and structural rules.
 - `R`: reset scene
 - Space: pause or resume
 - `N`: one simulation step while paused
-- `M`: Mine/Build mode
+- `M`: Mine/Build mode in sandbox scenes; character scenes always keep player tools active
 - `F3`: structural/debug overlay
 - Hold `Alt`: inspect exact cell
 - Mouse wheel over world: brush radius

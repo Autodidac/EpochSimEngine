@@ -1643,8 +1643,13 @@ struct VulkanRenderer::Impl final {
                                   state.deposit_resource.load(std::memory_order_relaxed) ||
                                   state.fire_tool_pressed.load(std::memory_order_acquire) ||
                                   state.deposit_resource_pressed.load(std::memory_order_acquire);
-        if (run_simulation || reset_actor || actor_action)
-            record_actor(frame.command_buffer, state, reset_actor, run_simulation);
+        const bool actor_motion = state.move_x.load(std::memory_order_relaxed) != 0 ||
+                                  state.move_y.load(std::memory_order_relaxed) != 0 ||
+                                  state.jump.load(std::memory_order_relaxed);
+        const bool actor_simulation = run_simulation ||
+                                      (actor_motion && !state.paused.load(std::memory_order_relaxed));
+        if (run_simulation || reset_actor || actor_action || actor_motion)
+            record_actor(frame.command_buffer, state, reset_actor, actor_simulation);
 
         record_render(frame.command_buffer, image_index, state);
         check_vk(vkEndCommandBuffer(frame.command_buffer), "vkEndCommandBuffer");

@@ -209,7 +209,7 @@ void main() {
         vec3 color = vec3(0.035, 0.046, 0.065);
         if (y + 2u >= renderPc.statusHeight) color = vec3(0.14, 0.23, 0.32);
 
-        const int widths[5] = int[5](68, 68, 92, 124, 92);
+        const int widths[5] = int[5](78, 78, 104, 136, 104);
         int starts[5];
         int rightEdge = int(renderPc.windowWidth) - 5;
         starts[4] = rightEdge - widths[4];
@@ -217,18 +217,18 @@ void main() {
         starts[2] = starts[3] - 4 - widths[2];
         starts[1] = starts[2] - 4 - widths[1];
         starts[0] = starts[1] - 4 - widths[0];
-        bool fullControls = renderPc.windowWidth >= 920u;
+        bool fullControls = renderPc.windowWidth >= 1040u;
         int firstControl = fullControls ? 0 : 3;
         for (int i = firstControl; i < 5; ++i) {
-            if (int(x) >= starts[i] && int(x) < starts[i] + widths[i] && y >= 10u && y < 50u)
+            if (int(x) >= starts[i] && int(x) < starts[i] + widths[i] && y >= 12u && y < 60u)
                 color = i == 4 && renderPc.debugMode != 0u ? vec3(0.24, 0.40, 0.22) : vec3(0.075, 0.105, 0.145);
         }
 
-        bool text = fixedPixel(pixel, ivec2(10, 11), 3, 0u);
+        bool text = fixedPixel(pixel, ivec2(12, 12), 4, 0u);
         int fpsX = fullControls ? starts[0] - 178 : starts[3] - 178;
         fpsX = max(fpsX, 208);
-        text = text || fixedPixel(pixel, ivec2(fpsX, 11), 3, 1u) ||
-               numberPixel(pixel, ivec2(fpsX + 62, 11), 3, renderPc.framesPerSecond);
+        text = text || fixedPixel(pixel, ivec2(fpsX, 12), 4, 1u) ||
+               numberPixel(pixel, ivec2(fpsX + 82, 12), 4, renderPc.framesPerSecond);
 
         if (renderPc.windowWidth >= 1250u) {
             int sceneX = 204;
@@ -243,14 +243,14 @@ void main() {
         }
 
         if (fullControls) {
-            text = text || fixedPixel(pixel, ivec2(starts[0] + 11, 23), 2, 41u) ||
-                   fixedPixel(pixel, ivec2(starts[1] + 11, 23), 2, 42u) ||
-                   fixedPixel(pixel, ivec2(starts[2] + 17, 23), 2, 6u);
+            text = text || fixedPixel(pixel, ivec2(starts[0] + 12, 29), 2, 41u) ||
+                   fixedPixel(pixel, ivec2(starts[1] + 12, 29), 2, 42u) ||
+                   fixedPixel(pixel, ivec2(starts[2] + 21, 29), 2, 6u);
         }
         text = text || fixedPixel(pixel, ivec2(starts[3] +
-                   (renderPc.miningMode != 0u ? 39 : 33), 23), 2,
+                   (renderPc.miningMode != 0u ? 43 : 37), 29), 2,
                    renderPc.miningMode != 0u ? 8u : 7u) ||
-               fixedPixel(pixel, ivec2(starts[4] + 17, 23), 2, 9u);
+               fixedPixel(pixel, ivec2(starts[4] + 23, 29), 2, 9u);
         if (text) color = vec3(0.93, 0.96, 0.98);
         outColor = vec4(color, 1.0);
         return;
@@ -273,7 +273,8 @@ void main() {
             vec3 color = group == renderPc.selectedGroup ? vec3(0.14, 0.30, 0.45) : panel;
             if (group == renderPc.hoveredGroup) color += vec3(0.045);
             if (borderPixel(x, y, left, top, right, bottom)) color *= 0.55;
-            int labelScale = int(right - left) >= int(groupTextLength(group)) * 12 + 8 ? 2 : 1;
+            int labelScale = int(right - left) >= int(groupTextLength(group)) * 18 + 8 ? 3 :
+                             (int(right - left) >= int(groupTextLength(group)) * 12 + 8 ? 2 : 1);
             int labelWidth = int(groupTextLength(group)) * 6 * labelScale - labelScale;
             int labelX = int(left + right) / 2 - labelWidth / 2;
             int labelY = int(top + bottom) / 2 - (7 * labelScale) / 2;
@@ -297,7 +298,8 @@ void main() {
         if (materialId == renderPc.selectedMaterial) color = min(color * 1.12 + vec3(0.12), vec3(1.0));
         if (materialId == renderPc.hoveredMaterial) color = min(color + vec3(0.08), vec3(1.0));
         if (borderPixel(x, y, left, itemTop, right, bottom)) color *= materialId == renderPc.selectedMaterial ? 0.36 : 0.52;
-        int labelScale = int(right - left) >= int(materialTextLength(materialId)) * 12 + 8 ? 2 : 1;
+        int labelScale = int(right - left) >= int(materialTextLength(materialId)) * 18 + 8 ? 3 :
+                             (int(right - left) >= int(materialTextLength(materialId)) * 12 + 8 ? 2 : 1);
         int labelWidth = int(materialTextLength(materialId)) * 6 * labelScale - labelScale;
         int labelX = int(left + right) / 2 - labelWidth / 2;
         int labelY = int(itemTop + bottom) / 2 - (7 * labelScale) / 2;

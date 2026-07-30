@@ -10,9 +10,9 @@
 
 namespace epoch::sand::ui {
 
-inline constexpr std::uint32_t status_height = 60u;
-inline constexpr std::uint32_t group_tabs_height = 40u;
-inline constexpr std::uint32_t palette_items_height = 64u;
+inline constexpr std::uint32_t status_height = 72u;
+inline constexpr std::uint32_t group_tabs_height = 48u;
+inline constexpr std::uint32_t palette_items_height = 76u;
 inline constexpr std::uint32_t palette_height = group_tabs_height + palette_items_height + 6u;
 inline constexpr float margin = 5.0f;
 inline constexpr float gap = 3.0f;
@@ -52,12 +52,12 @@ struct Layout final {
     };
 
     const float right = static_cast<float>(safe_width) - margin;
-    layout.debug_toggle = {{(std::max)(margin, right - 92.0f), 10.0f}, {92.0f, 40.0f}};
-    layout.mode_toggle = {{(std::max)(margin, right - 220.0f), 10.0f}, {124.0f, 40.0f}};
-    if (safe_width >= 920u) {
-        layout.reset_scene = {{right - 316.0f, 10.0f}, {92.0f, 40.0f}};
-        layout.next_scene = {{right - 388.0f, 10.0f}, {68.0f, 40.0f}};
-        layout.previous_scene = {{right - 460.0f, 10.0f}, {68.0f, 40.0f}};
+    layout.debug_toggle = {{(std::max)(margin, right - 104.0f), 12.0f}, {104.0f, 48.0f}};
+    layout.mode_toggle = {{(std::max)(margin, right - 244.0f), 12.0f}, {136.0f, 48.0f}};
+    if (safe_width >= 1040u) {
+        layout.reset_scene = {{right - 352.0f, 12.0f}, {104.0f, 48.0f}};
+        layout.next_scene = {{right - 434.0f, 12.0f}, {78.0f, 48.0f}};
+        layout.previous_scene = {{right - 516.0f, 12.0f}, {78.0f, 48.0f}};
     } else {
         constexpr float hidden = -4096.0f;
         layout.reset_scene = {{hidden, hidden}, {0.0f, 0.0f}};

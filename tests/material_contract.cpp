@@ -20,9 +20,11 @@ static_assert(epoch::sand::material_group_count == 8u);
 static_assert(epoch::sand::material_slots_per_group == 9u);
 static_assert(epoch::sand::material_group_size(MaterialGroup::ground) == 8u);
 static_assert(epoch::sand::material_group_size(MaterialGroup::colony) == 9u);
+static_assert(epoch::sand::material_group_size(MaterialGroup::engineering) == 4u);
 static_assert(epoch::sand::scene_count == 9u);
 static_assert(epoch::sand::next_scene(Scene::frontier_base) == Scene::sandbox);
 static_assert(epoch::sand::scene_has_character(Scene::frontier_base));
+static_assert(epoch::sand::scene_name(Scene::gold_mine) == "Platformer");
 static_assert(epoch::sand::grouped_material(MaterialGroup::ground, 0u) == Material::empty);
 static_assert(epoch::sand::grouped_material(MaterialGroup::industry, 3u) == Material::bot_fabricator);
 static_assert(epoch::sand::grouped_material(MaterialGroup::colony, 8u) == Material::hydrogen);
@@ -61,17 +63,19 @@ static_assert(epoch::sand::policy::should_collapse(31u));
 static_assert(epoch::sand::policy::update_vent_pressure(100u, true, false) == 103u);
 static_assert(epoch::sand::policy::update_vent_pressure(100u, false, true) == 96u);
 
-constexpr bool every_material_is_grouped_once() {
+constexpr bool palette_materials_are_unique() {
     std::array<std::uint32_t, epoch::sand::material_count> counts{};
     for (const auto& group : epoch::sand::material_groups) {
         for (const auto material : group) {
-            if (material != Material::count) ++counts[static_cast<std::uint32_t>(material)];
+            if (material == Material::count) continue;
+            auto& count = counts[static_cast<std::uint32_t>(material)];
+            if (++count != 1u) return false;
         }
     }
-    for (const auto count : counts) if (count != 1u) return false;
-    return true;
+    return counts[static_cast<std::uint32_t>(Material::gold_ore)] == 0u &&
+           counts[static_cast<std::uint32_t>(Material::iron_ore)] == 0u;
 }
-static_assert(every_material_is_grouped_once());
+static_assert(palette_materials_are_unique());
 
 int main() {
     const auto layout = epoch::sand::ui::make_layout(1280u, 720u);
