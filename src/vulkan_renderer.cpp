@@ -1420,9 +1420,9 @@ struct VulkanRenderer::Impl final {
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
         bind_compute(command_buffer, movement_pipeline, current_set);
-        const std::array<std::int32_t, 7> phases = (simulation_step & 1u) == 0u
-            ? std::array<std::int32_t, 7>{0, 1, 2, 3, 4, 5, 5}
-            : std::array<std::int32_t, 7>{0, 2, 1, 4, 3, 5, 5};
+        const std::array<std::int32_t, 9> phases = (simulation_step & 1u) == 0u
+            ? std::array<std::int32_t, 9>{0, 1, 2, 3, 4, 5, 5, 5, 5}
+            : std::array<std::int32_t, 9>{0, 2, 1, 4, 3, 5, 5, 5, 5};
         for (std::size_t phase_index = 0; phase_index < phases.size(); ++phase_index) {
             const auto phase = phases[phase_index];
             const MovementPush movement_push{
@@ -1432,8 +1432,8 @@ struct VulkanRenderer::Impl final {
                 .seed = random_seed,
                 .phase = phase,
                 .parity = static_cast<std::int32_t>(
-                    phase == 5 && phase_index == phases.size() - 1u
-                        ? ((simulation_step + 1u) & 1u)
+                    phase == 5
+                        ? ((simulation_step + static_cast<std::uint32_t>(phase_index)) & 1u)
                         : ((simulation_step + static_cast<std::uint32_t>(phase)) & 1u)),
             };
             vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
@@ -1558,8 +1558,8 @@ struct VulkanRenderer::Impl final {
                 return is_block_material(material) ? 8u : state.brush_radius.load(std::memory_order_relaxed);
             }(),
             .status_height = static_cast<std::uint32_t>(layout.status.size.y),
-            .palette_height = swapchain_extent.height -
-                static_cast<std::uint32_t>(layout.status.size.y + layout.simulation.size.y),
+            // Existing push slot carries compact sidebar width.
+            .palette_height = static_cast<std::uint32_t>(layout.status.size.x),
             .group_tabs_height = static_cast<std::uint32_t>(layout.group_tabs.size.y),
             .material_slots = material_slots_per_group,
             .frames_per_second = state.frames_per_second.load(std::memory_order_relaxed),

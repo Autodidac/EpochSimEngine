@@ -19,6 +19,7 @@ FIXED = [
     "PRESSURE", "CONSERVATION", "CREATED", "DESTROYED", "CONVERTED", "BOUNDARY",
     "F3 DEBUG", "HOLD ALT", "PREV", "NEXT", "TOOLS", "MATERIALS",
     "HP", "O2", "AMMO", "GOLD", "IRON", "LMB TOOL", "RMB DROP", "AL", "CU", "DRILL", "RANGE", "JUMP", "PLASMA", "LOCKED", "READY",
+    "SPACE JUMP", "P PAUSE", "LMB USE", "RMB DROP ERASE", "ALT CELL CARD",
 ]
 SCENES = [
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",

@@ -139,48 +139,18 @@ uint waterworksMaterial(ivec2 p) {
 }
 
 uint ecosystemMaterial(ivec2 p) {
-    uint terrain = pc.height - 54u + (hash32(uint(p.x) * 31u) % 7u);
-    uint material = MAT_EMPTY;
-    if (uint(p.y) >= pc.height - 8u) material = MAT_STONE;
-    else if (uint(p.y) >= terrain) material = uint(p.y) == terrain ? MAT_GRASS : MAT_DIRT;
-
-    ivec2 pond = ivec2(int(pc.width / 3u), int(pc.height - 58u));
-    ivec2 pd = p - pond;
-    if (pd.y >= -18 && pd.y <= 18 && pd.x * pd.x / 5 + pd.y * pd.y < 1300) {
-        material = pd.y >= 14 ? MAT_SILT : MAT_WATER;
-    }
-
-    // Planted seeds demonstrate the real staged growth path instead of pre-spawned flowers.
-    for (int seedIndex = 0; seedIndex < 6; ++seedIndex) {
-        int x = int(pc.width / 2u) + seedIndex * 22 - 55;
-        if (p.x == x && p.y == int(terrain) - 1) material = MAT_SEED;
-        // Exposed compost cells beside irrigation demonstrate the conservative
-        // fertilizer + fresh-water -> dirt + food transfer.
-        if (p.x == x + 2 && p.y == int(terrain) - 1) material = MAT_FERTILIZER;
-        if (p.x == x + 3 && p.y == int(terrain) - 1) material = MAT_WATER;
-    }
-
-    ivec2 queen = ivec2(int(pc.width * 4u / 5u), int(pc.height - 128u));
-    ivec2 q = p - queen;
-    int q2 = q.x * q.x + q.y * q.y;
-    if (p.x > queen.x - 38 && p.x < queen.x + 30 && p.y > queen.y - 17 && p.y < queen.y - 12) material = MAT_WOOD;
-    if (q2 >= 25 && q2 < 92) material = MAT_BEE_NEST;
-    if (q2 == 0) material = MAT_QUEEN_BEE;
-    else if (q.x >= 1 && q.x <= 10 && abs(q.y) <= 1) material = MAT_EMPTY;
-    else if (q2 < 25) {
-        uint chamberPattern = hash32(indexOf(p) ^ pc.seed);
-        material = (chamberPattern & 3u) == 0u ? MAT_EMPTY
-            : (((chamberPattern >> 2u) & 1u) == 0u ? MAT_HONEY : MAT_POLLEN);
-    }
-    if (q2 > 100 && q2 < 900 && (hash32(indexOf(p) ^ pc.seed ^ 0xb33u) % 31u) == 0u) material = MAT_BEE;
-    if (rectContains(p, ivec2(int(pc.width / 2u) - 16, int(pc.height - 86u)),
-                         ivec2(int(pc.width / 2u) + 16, int(pc.height - 72u)))) material = MAT_INSECT_HABITAT;
-    if (p.y == int(terrain) - 1 && p.x > int(pc.width / 2u) - 90 && p.x < int(pc.width / 2u) + 90) {
-        uint insectRoll = hash32(indexOf(p) ^ pc.seed ^ 0x1a5ecu);
-        if ((insectRoll % 47u) == 0u) material = MAT_ANT;
-        else if ((insectRoll % 79u) == 0u) material = MAT_BEETLE;
-    }
-    return material;
+ int width=int(pc.width),height=int(pc.height),floorY=height-10; uint material=MAT_EMPTY;
+ if(p.y>=floorY) return MAT_STONE; if((p.x<8||p.x>=width-8)&&p.y>=8) material=MAT_STONE;
+ int groundY=floorY-54+int(hash32(uint(p.x)*31u)%5u); if(p.y>=groundY&&p.y<floorY) material=p.y==groundY?MAT_GRASS:MAT_DIRT;
+ int tankLeft=22,tankRight=148,tankTop=54,tankBottom=groundY-8; bool tankWall=(p.x==tankLeft||p.x==tankRight||p.y==tankTop||p.y==tankBottom)&&p.x>=tankLeft&&p.x<=tankRight&&p.y>=tankTop&&p.y<=tankBottom; bool outlet=p.x>=tankRight-5&&p.x<=tankRight&&p.y>=tankBottom-8&&p.y<=tankBottom; if(tankWall&&!outlet) material=MAT_GLASS; if(p.x>tankLeft&&p.x<tankRight&&p.y>tankTop+12&&p.y<tankBottom) material=MAT_WATER;
+ int trenchY=groundY-5; if(p.y==trenchY+4&&p.x>=tankRight&&p.x<430) material=MAT_GLASS; if(p.y>trenchY&&p.y<trenchY+4&&p.x>=tankRight&&p.x<430) material=MAT_WATER;
+ for(int bed=0;bed<3;++bed){int left=178+bed*78,right=left+58;if(p.x>=left&&p.x<right&&p.y>=groundY-8&&p.y<=groundY)material=p.y==groundY-8?MAT_GRASS:MAT_DIRT;int seedX=left+14,matureX=left+38;if(p.x==seedX&&p.y==groundY-9)material=MAT_SEED;if(p.x==matureX&&p.y>=groundY-12&&p.y<=groundY-9)material=MAT_PLANT_STEM;if(p.x==matureX&&p.y==groundY-13)material=MAT_FLOWER;if(p.x==right-4&&p.y==groundY-9)material=MAT_FERTILIZER;}
+ int compostLeft=250,compostRight=392,compostTop=groundY+12,compostBottom=floorY-8; bool compostWall=(p.x==compostLeft||p.x==compostRight||p.y==compostTop||p.y==compostBottom)&&p.x>=compostLeft&&p.x<=compostRight&&p.y>=compostTop&&p.y<=compostBottom;if(compostWall)material=MAT_WOOD;if(rectContains(p,ivec2(compostLeft+10,compostBottom-18),ivec2(compostLeft+34,compostBottom)))material=MAT_INSECT_HABITAT;if(p.y==compostBottom-2&&p.x>compostLeft+42&&p.x<compostRight-8){uint c=hash32(indexOf(p)^pc.seed^0xc0a9057u);material=(c&3u)==0u?MAT_FERTILIZER:MAT_WASTE;}if(p.y==compostTop-1&&p.x>compostLeft+18&&p.x<compostRight-18&&(hash32(indexOf(p)^pc.seed)%29u)==0u)material=MAT_ANT;
+ ivec2 queen=ivec2(width-104,groundY-72),q=p-queen;int q2=q.x*q.x+q.y*q.y;if(q2>=28&&q2<108)material=MAT_BEE_NEST;if(q2==0)material=MAT_QUEEN_BEE;else if(q.x>=1&&q.x<=12&&abs(q.y)<=1)material=MAT_EMPTY;else if(q2<28){uint c=hash32(indexOf(p)^pc.seed^0xb33u);material=(c&3u)==0u?MAT_EMPTY:((c&4u)==0u?MAT_HONEY:MAT_POLLEN);}if(q2>130&&q2<1350&&(hash32(indexOf(p)^pc.seed^0xbee51u)%37u)==0u)material=MAT_BEE;
+ for(int f=0;f<4;++f){int xx=width-210+f*28;if(p.x==xx&&p.y>=groundY-5&&p.y<=groundY-2)material=MAT_PLANT_STEM;if(p.x==xx&&p.y==groundY-6)material=MAT_FLOWER;}
+ if(material==MAT_EMPTY&&p.y>groundY-62&&p.y<groundY-12&&p.x>150&&p.x<430&&(hash32(indexOf(p)^pc.seed^0x02u)%17u)==0u)material=MAT_OXYGEN;if(material==MAT_EMPTY&&p.y>=groundY-16&&p.y<groundY&&(hash32(indexOf(p)^pc.seed^0xc02u)%13u)==0u)material=MAT_CARBON_DIOXIDE;
+ int gasLeft=width-188,gasRight=width-20,gasTop=18,gasBottom=72;bool gasWall=(p.x==gasLeft||p.x==gasRight||p.y==gasTop||p.y==gasBottom)&&p.x>=gasLeft&&p.x<=gasRight&&p.y>=gasTop&&p.y<=gasBottom;if(gasWall)material=MAT_GLASS;if(p.x>gasLeft&&p.x<gasRight&&p.y>gasTop&&p.y<gasBottom&&(hash32(indexOf(p)^pc.seed^0x4a2u)&1u)==0u)material=MAT_HYDROGEN;
+ return material;
 }
 
 uint engineeringMaterial(ivec2 p) {

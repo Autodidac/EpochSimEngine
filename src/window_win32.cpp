@@ -132,6 +132,9 @@ struct NativeWindow::Impl final {
                 self->close_requested = true;
                 return 0;
             case VK_SPACE:
+                self->jump = true;
+                return 0;
+            case 'P':
                 self->toggle_pause = true;
                 return 0;
             case 'N':
@@ -148,7 +151,7 @@ struct NativeWindow::Impl final {
                 return 0;
             case 'A': self->move_left = true; return 0;
             case 'D': self->move_right = true; return 0;
-            case 'W': self->move_up = true; self->jump = true; return 0;
+            case 'W': self->move_up = true; return 0;
             case 'S': self->move_down = true; return 0;
             case 'M': self->toggle_mining = true; return 0;
             default:
@@ -161,7 +164,8 @@ struct NativeWindow::Impl final {
             case VK_MENU: self->inspect_material = false; return 0;
             case 'A': self->move_left = false; return 0;
             case 'D': self->move_right = false; return 0;
-            case 'W': self->move_up = false; self->jump = false; return 0;
+            case VK_SPACE: self->jump = false; return 0;
+            case 'W': self->move_up = false; return 0;
             case 'S': self->move_down = false; return 0;
             default: break;
             }
@@ -261,7 +265,7 @@ bool NativeWindow::poll(WindowInput& input) {
     impl_->move_right = key_down('D') || key_down(VK_RIGHT);
     impl_->move_up = key_down('W') || key_down(VK_UP);
     impl_->move_down = key_down('S') || key_down(VK_DOWN);
-    impl_->jump = impl_->move_up;
+    impl_->jump = key_down(VK_SPACE);
 
     input = WindowInput{
         .width = impl_->width,

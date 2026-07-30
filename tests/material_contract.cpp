@@ -102,9 +102,11 @@ int main() {
     if (viewport.rect.position.x < 0.0f || viewport.rect.position.y < layout.simulation.position.y) return 6;
 
     const auto compact = epoch::sand::ui::make_layout(480u, 320u);
-    if (compact.simulation.size.y <= 0.0f) return 7;
-    if (compact.previous_scene.size.x != 0.0f || compact.next_scene.size.x != 0.0f ||
-        compact.reset_scene.size.x != 0.0f) return 8;
-    if (compact.mode_toggle.position.x < 0.0f || compact.debug_toggle.position.x < 0.0f) return 9;
+    if (compact.simulation.size.y <= 0.0f || compact.status.size.x < 300.0f) return 7;
+    if (compact.previous_scene.size.x <= 0.0f || compact.next_scene.size.x <= 0.0f ||
+        compact.reset_scene.size.x <= 0.0f) return 8;
+    if (compact.mode_toggle.position.x < compact.simulation.size.x ||
+        compact.debug_toggle.position.x < compact.simulation.size.x ||
+        compact.material_card.position.x < compact.simulation.size.x) return 9;
     return 0;
 }

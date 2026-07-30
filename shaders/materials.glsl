@@ -415,7 +415,7 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
     case MAT_EMPTY: color = vec4(0.025, 0.035, 0.055, 1.0); break;
     case MAT_SAND: color = vec4(0.88 + variation, 0.72 + variation, 0.34, 1.0); break;
     case MAT_WATER: color = vec4(0.08, 0.34 + variation, 0.92, 0.88); break;
-    case MAT_DIRT: color = vec4(0.34 + variation, 0.19, 0.08, 1.0); break;
+    case MAT_DIRT: { float wetDarken=(aux&AUX_WET)!=0u?-0.10:0.0; color=vec4(0.34+variation+wetDarken,0.19+wetDarken*0.55,0.08+wetDarken*0.30,1.0); break; }
     case MAT_STONE: {
         float speckle = float(textureHash & 7u) * 0.012;
         color = vec4(0.30 + speckle, 0.32 + speckle, 0.35 + speckle, 1.0); break;

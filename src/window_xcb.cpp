@@ -25,6 +25,8 @@ xcb_atom_t intern_atom(xcb_connection_t* connection, const char* name) {
 
 constexpr std::uint32_t keysym_escape = 0xFF1Bu;
 constexpr std::uint32_t keysym_space = 0x0020u;
+constexpr std::uint32_t keysym_p = 0x0070u;
+constexpr std::uint32_t keysym_upper_p = 0x0050u;
 constexpr std::uint32_t keysym_n = 0x006Eu;
 constexpr std::uint32_t keysym_upper_n = 0x004Eu;
 constexpr std::uint32_t keysym_r = 0x0072u;
@@ -258,6 +260,8 @@ bool NativeWindow::poll(WindowInput& input) {
             } else if (keysym == keysym_escape) {
                 impl_->close_requested = true;
             } else if (keysym == keysym_space) {
+                impl_->jump = true;
+            } else if (keysym == keysym_p || keysym == keysym_upper_p) {
                 impl_->toggle_pause = true;
             } else if (keysym == keysym_n || keysym == keysym_upper_n) {
                 impl_->single_step = true;
@@ -273,7 +277,6 @@ bool NativeWindow::poll(WindowInput& input) {
                 impl_->move_right = true;
             } else if (keysym == keysym_w || keysym == keysym_upper_w) {
                 impl_->move_up = true;
-                impl_->jump = true;
             } else if (keysym == keysym_s || keysym == keysym_upper_s) {
                 impl_->move_down = true;
             } else if (keysym == keysym_m || keysym == keysym_upper_m) {
@@ -287,7 +290,8 @@ bool NativeWindow::poll(WindowInput& input) {
             if (keysym == keysym_alt_l || keysym == keysym_alt_r) impl_->inspect_material = false;
             else if (keysym == keysym_a || keysym == keysym_upper_a) impl_->move_left = false;
             else if (keysym == keysym_d || keysym == keysym_upper_d) impl_->move_right = false;
-            else if (keysym == keysym_w || keysym == keysym_upper_w) { impl_->move_up = false; impl_->jump = false; }
+            else if (keysym == keysym_space) impl_->jump = false;
+            else if (keysym == keysym_w || keysym == keysym_upper_w) impl_->move_up = false;
             else if (keysym == keysym_s || keysym == keysym_upper_s) impl_->move_down = false;
             break;
         }

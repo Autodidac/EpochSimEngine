@@ -276,12 +276,27 @@ def main() -> int:
     for token in ("looseAuthoredTerrain", "material == MAT_DIRT", "material == MAT_GRASS"):
         if token not in reset_comp:
             errors.append(f"authored terrain stability contract missing {token!r}")
-    for token in ("status_height = 72u", "group_tabs_height = 48u", "palette_items_height = 76u"):
+    for token in (
+        "preferred_sidebar_width = 384u",
+        "status_height = 126u",
+        "group_tabs_height = 112u",
+        "palette_items_height = 136u",
+        "material_card",
+    ):
         if token not in ui_layout:
-            errors.append(f"large UI layout contract missing {token!r}")
-    for token in ("int[5](78, 78, 104, 136, 104)", "ivec2(12, 15), titleScale, 0u", "hudTop + 112u"):
+            errors.append(f"compact sidebar layout contract missing {token!r}")
+    for token in (
+        "sidebarWidth",
+        "groupMaterialCount(renderPc.selectedGroup)",
+        "materialPixel(pixel",
+        "3,cardMaterial",
+        "cardPixel(pixel",
+        "2,cardMaterial",
+        "2,60u",
+        "2,61u",
+    ):
         if token not in fullscreen:
-            errors.append(f"large UI shader contract missing {token!r}")
+            errors.append(f"compact sidebar shader contract missing {token!r}")
 
     renderer_cpp = (ROOT / "src/vulkan_renderer.cpp").read_text(encoding="utf-8")
     cmake_text = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
@@ -348,7 +363,7 @@ def main() -> int:
     architecture_contracts = {
         "movement": (movement, ("isStructural(moving)", "liquidColumnPressure", "TILE_SLEEPING")),
         "tiles": (tiles, ("TILE_STABILITY_OCCUPANCY", "TILE_STABILIZE_TICKS", "TILE_RESTABILIZE_COOLDOWN", "TILE_SLEEPING")),
-        "renderer": (renderer, ("renderPc.inspectMode", "renderPc.debugMode", "gasPresentation", "TILE_CANDIDATE")),
+        "renderer": (renderer, ("renderPc.inspectMode", "renderPc.debugMode", "gasPresentation", "sidebarWidth", "cardPixel")),
         "materials": (materials, ("cellPhase", "materialMeltingPoint", "materialVaporizationPoint", "isReconstructableMaterial", "STRUCTURAL_COLLAPSE_CELLS")),
         "chemistry": (chemistry, ("materialThermalConductivity", "MAT_MAGMA_VENT", "AUX_STRUCTURAL", "recordConservation")),
     }

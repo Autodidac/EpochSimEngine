@@ -279,7 +279,9 @@ bool isMachineController(ivec2 p, uint material) {
 
 int machineResourceSlot(uint machine, uint resourceMaterial) {
     if (machine == MAT_SMELTER) {
-        return (resourceMaterial == MAT_IRON || resourceMaterial == MAT_IRON_SHAVINGS) ? 0 : -1;
+        if (resourceMaterial == MAT_IRON_SHAVINGS) return 0;
+        if (resourceMaterial == MAT_ALUMINUM_SHAVINGS) return 1;
+        return -1;
     }
     if (machine == MAT_ASSEMBLER) {
         if (resourceMaterial == MAT_STEEL) return 0;
@@ -296,23 +298,10 @@ int machineResourceSlot(uint machine, uint resourceMaterial) {
     return -1;
 }
 
-uvec4 machineRecipe(uint machine) {
-    if (machine == MAT_SMELTER) return uvec4(4u, 0u, 0u, 0u);
-    if (machine == MAT_ASSEMBLER) return uvec4(2u, 1u, 1u, 1u);
-    if (machine == MAT_INSECT_HABITAT) return uvec4(3u, 1u, 2u, 0u);
-    return uvec4(15u);
-}
-
-bool machineReady(uint machine, uvec4 inventory) {
-    return all(greaterThanEqual(inventory, machineRecipe(machine)));
-}
-
-uint machineOutput(uint machine, bool allied) {
-    if (machine == MAT_SMELTER) return MAT_STEEL;
-    if (machine == MAT_ASSEMBLER) return MAT_PLASMA_AMMO;
-    if (machine == MAT_INSECT_HABITAT) return allied ? MAT_ANT : MAT_BEETLE;
-    return MAT_EMPTY;
-}
+uvec4 machineRecipe(uint machine) { if (machine == MAT_ASSEMBLER) return uvec4(2u,1u,1u,1u); return uvec4(15u); }
+bool machineReady(uint machine, uvec4 inventory) { if (machine == MAT_SMELTER) return inventory.x>=4u || inventory.y>=4u; return all(greaterThanEqual(inventory,machineRecipe(machine))); }
+uvec4 machineConsumption(uint machine, uvec4 inventory) { if(machine==MAT_SMELTER) return inventory.x>=4u?uvec4(4u,0u,0u,0u):uvec4(0u,4u,0u,0u); return machineRecipe(machine); }
+uint machineOutput(uint machine, uvec4 inventory) { if(machine==MAT_SMELTER) return inventory.x>=4u?MAT_IRON:MAT_ALUMINUM; if(machine==MAT_ASSEMBLER) return MAT_PLASMA_AMMO; return MAT_EMPTY; }
 
 ivec2 machineOutputPosition(ivec2 controller) {
     return controller + ivec2(5, 0);
@@ -608,7 +597,7 @@ void main() {
                         all(equal(machineOutputPosition(controller), p)) &&
                         machineReady(machine.material, machineInventory(machine)) &&
                         (machine.age % 24u) == 0u) {
-                        result = makeCell(machineOutput(machine.material, machineIsAllied(controller)));
+                        result = makeCell(machineOutput(machine.material, machineInventory(machine)));
                         if (result.material == MAT_BEETLE) result.aux &= ~AUX_CHARGED;
                         produced = true;
                     }
@@ -634,8 +623,8 @@ void main() {
             commitResult(index, source, result);
             return;
         }
-        if (hasNeighbor(p, MAT_INSECT_HABITAT) && (randomValue & 1023u) == 0u) {
-            result = makeCell((randomValue & 2048u) == 0u ? MAT_ANT : MAT_BEETLE);
+        if (hasNeighbor(p, MAT_INSECT_HABITAT) && countWithin(p, MAT_ANT, 5) + countWithin(p, MAT_BEETLE, 5) < 8u && (randomValue & 2047u) == 0u) {
+            result = makeCell((randomValue & 4096u) == 0u ? MAT_ANT : MAT_BEETLE);
             commitResult(index, source, result);
             return;
         }
@@ -653,7 +642,7 @@ void main() {
                     handledNest = true;
                 } else if (any(notEqual(queenOffset, ivec2(0))) && queenDistanceSquared <= 6 &&
                             (hasNeighbor(p, MAT_HONEY) || hasNeighbor(p, MAT_POLLEN)) &&
-                            (randomValue & 255u) == 0u) {
+                            countWithin(p, MAT_BEE, 6) < 12u && (randomValue & 4095u) == 0u) {
                     result = makeCell(MAT_BEE);
                     handledNest = true;
                 }
@@ -678,20 +667,17 @@ void main() {
         return;
     }
 
-    // Mud is a thin saturation layer. Only dirt directly touching free liquid can
-    // convert; mud never acts as water and therefore cannot propagate down a soil column.
-    uint liquidAbove = at(p + ivec2(0, -1)).material;
+    // Fresh water visibly wets soil before mud forms; moisture remains on the
+    // dirt cell so drainage never silently deletes a water cell.
+    bool freshContact = hasNeighbor(p, MAT_WATER) || hasNeighbor(p, MAT_DIRTY_WATER);
     uint supportBelow = at(p + ivec2(0, 1)).material;
-    bool wetSurface = liquidAbove == MAT_WATER || liquidAbove == MAT_DIRTY_WATER;
-    bool stableSoil = supportBelow == MAT_DIRT || supportBelow == MAT_STONE;
-    if (source.material == MAT_DIRT && source.age > 360u && wetSurface && stableSoil &&
-        neighborCount(p, MAT_MUD) == 0u && (randomValue & 4095u) == 0u) {
-        result = makeCell(MAT_MUD);
-        result.aux |= AUX_WET;
-    } else if (source.material == MAT_MUD && !hasAnyWater(p) && source.age > 600u &&
-               (light[index] > 105u || result.temperature > 30) && (randomValue & 63u) == 0u) {
-        result = makeCell(MAT_DIRT);
-    }
+    bool stableSoil = supportBelow == MAT_DIRT || supportBelow == MAT_STONE || supportBelow == MAT_MUD;
+    if (source.material == MAT_DIRT) {
+        if (freshContact) result.aux |= AUX_WET;
+        bool saturatedSurface = (result.aux & AUX_WET) != 0u && stableSoil && neighborCount(p, MAT_MUD) <= 2u;
+        if (saturatedSurface && source.age > 90u && (randomValue & 63u) == 0u) { result = makeCell(MAT_MUD); result.aux |= AUX_WET; }
+        else if (!hasFreshMoistureRadius(p, 2) && (result.aux & AUX_WET) != 0u && source.age > 900u && (randomValue & 255u) == 0u) result.aux &= ~AUX_WET;
+    } else if (source.material == MAT_MUD && !hasAnyWater(p) && source.age > 600u && (light[index] > 105u || result.temperature > 30) && (randomValue & 63u) == 0u) result = makeCell(MAT_DIRT);
 
 
     // Waterfall aeration and plant respiration use the same cell chemistry pass.
@@ -723,7 +709,7 @@ void main() {
         uvec4 inventory = min(machineInventory(source) + incomingMachineCounts(p, source.material), uvec4(15u));
         bool canOutput = at(machineOutputPosition(p)).material == MAT_EMPTY &&
                          machineReady(source.material, inventory) && (source.age % 24u) == 0u;
-        if (canOutput) inventory -= machineRecipe(source.material);
+        if (canOutput) inventory -= machineConsumption(source.material, inventory);
         setMachineInventory(result, inventory);
         result.temperature = source.material == MAT_SMELTER ? max(result.temperature, 260) : result.temperature;
     }
@@ -733,14 +719,11 @@ void main() {
     // Insects are ecosystem agents, not placeholder combat bots. Ants move
     // recoverable waste toward soil; beetles break dead biomass into fertilizer.
     if (source.material == MAT_ANT) {
-        if (nearWater || nearFire || nearAcid || nearLava) result = makeCell(MAT_WASTE);
-        else if (hasNeighbor(p, MAT_WASTE) && hasNeighbor(p, MAT_DIRT) && (randomValue & 255u) == 0u)
-            result = makeCell(MAT_FERTILIZER);
+        if (nearFire || nearAcid || nearLava) result = makeCell(MAT_WASTE);
     } else if (source.material == MAT_BEETLE) {
         if (nearFire || nearAcid || nearLava) result = makeCell(MAT_WASTE);
-        else if ((hasNeighbor(p, MAT_WASTE) || hasNeighbor(p, MAT_WOOD)) &&
-                 hasFreshMoistureRadius(p, 2) && (randomValue & 255u) == 0u)
-            result = makeCell(MAT_FERTILIZER);
+    } else if (source.material == MAT_WASTE && (hasNeighbor(p, MAT_ANT) || hasNeighbor(p, MAT_BEETLE)) && (hasNeighbor(p, MAT_DIRT) || hasNeighbor(p, MAT_MUD)) && hasFreshMoistureRadius(p, 2) && (randomValue & 255u) == 0u) {
+        result = makeCell(MAT_FERTILIZER);
     } else if (source.material == MAT_INSECT_HABITAT) {
         result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
     }
@@ -916,18 +899,23 @@ void main() {
         bool validSupport = support.material == MAT_PLANT_STEM || support.material == MAT_GRASS ||
                             support.material == MAT_DIRT || support.material == MAT_MUD ||
                             support.material == MAT_FERTILIZER;
-        if (!validSupport || nearSaltwater || nearAcid || nearFire || nearLava || light[index] < 24u) {
+        if (nearSaltwater || nearAcid || nearFire || nearLava) {
             result = makeCell(nearFire || nearLava ? MAT_ASH : MAT_WASTE);
+        } else if (!validSupport && source.age > 600u) {
+            result = makeCell(MAT_WASTE);
         } else {
+            if (nearWater) result.aux |= AUX_WET;
             result.aux |= AUX_PLANT_STEM;
             result.aux &= ~AUX_CHARGED;
         }
     } else if (source.material == MAT_FLOWER) {
         Cell support = at(p + ivec2(0, 1));
         bool validStem = support.material == MAT_PLANT_STEM;
-        if (!validStem || nearSaltwater || nearAcid || nearFire || nearLava || light[index] < 30u) {
+        if (nearSaltwater || nearAcid || nearFire || nearLava) {
             result = makeCell(nearFire || nearLava ? MAT_ASH : MAT_WASTE);
-        }
+        } else if (!validStem && source.age > 600u) {
+            result = makeCell(MAT_WASTE);
+        } else if (nearWater) result.aux |= AUX_WET;
     }
 
     if (source.material == MAT_WOOD) {
@@ -972,7 +960,7 @@ void main() {
 
             if ((result.aux & AUX_BEE_POLLEN) == 0u && hasNeighbor(p, MAT_HONEY)) {
                 result.aux |= AUX_BEE_FED;
-                setStateValue(result, 220u);
+                setStateValue(result, 480u);
                 result.age = min(result.age, 600u);
             }
 
@@ -982,16 +970,16 @@ void main() {
         }
     } else if (source.material == MAT_POLLEN) {
         if ((hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEE_NEST)) &&
-            source.age > 2400u && (randomValue & 511u) == 0u) {
+            source.age > 3600u && (randomValue & 2047u) == 0u) {
             result = makeCell(MAT_HONEY);
         }
     } else if (source.material == MAT_HONEY) {
         if (stateValue(result) == 0u) setStateValue(result, 255u);
-        if (hasHungryBee(p) && (randomValue & 255u) == 0u) {
+        if (hasHungryBee(p) && (randomValue & 2047u) == 0u) {
             uint remaining = stateValue(result);
             if (remaining <= 1u) result = makeCell(MAT_EMPTY);
             else setStateValue(result, remaining - 1u);
-        } else if (hasNeighbor(p, MAT_BEE) && source.age > 1800u && (randomValue & 4095u) == 0u) {
+        } else if (hasNeighbor(p, MAT_BEE) && source.age > 7200u && (randomValue & 32767u) == 0u) {
             result = makeCell(MAT_BEESWAX);
         }
     } else if (source.material == MAT_BEESWAX) {
