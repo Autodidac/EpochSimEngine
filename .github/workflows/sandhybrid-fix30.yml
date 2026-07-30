@@ -7,6 +7,7 @@ on:
     paths:
       - "tools/fix30.py"
       - "tools/audit_fix30.py"
+      - "tools/fix30_compile_fix.py"
       - ".github/workflows/sandhybrid-fix30.yml"
 
 permissions:
@@ -34,6 +35,8 @@ jobs:
         run: |
           python tools/fix30.py
           if ($LASTEXITCODE -ne 0) { throw 'Fix30 patch failed.' }
+          python tools/fix30_compile_fix.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix30 movement compiler correction failed.' }
 
       - name: Regenerate material and UI data
         shell: pwsh
@@ -99,6 +102,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Remove-Item -LiteralPath 'tools/fix30.py' -Force
           Remove-Item -LiteralPath 'tools/audit_fix30.py' -Force
+          Remove-Item -LiteralPath 'tools/fix30_compile_fix.py' -Force
           Remove-Item -LiteralPath '.github/workflows/sandhybrid-fix30.yml' -Force
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
