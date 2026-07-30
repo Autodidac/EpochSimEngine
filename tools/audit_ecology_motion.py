@@ -13,8 +13,8 @@ errors = []
 required = {
     "materials": ["MAT_PLANT_STEM) temperature = 20", "AUX_PLANT_STEM | 1u"],
     "tiles": ["activeContent", "!activeContent", "activeAgent", "activeLoose"],
-    "move": ["sleepSafe", "beeMovementTarget", "return beeSwarmTarget(bee.aux, movePc.step);",
-             "if (targetDistance < sourceDistance) return true;",
+    "move": ["sleepSafe", "beeMovementTarget", "return beeOrbitTarget(bee.aux, movePc.step);",
+             "if (targetDistance < sourceDistance) return true;", "boundedSidestep",
              "Dense agents circulate around the moving hidden-mask target", "insectMoveAllowed"],
     "swarm": ["beeOrbitTarget", "beeSwarmTarget", "beeBiohazardTargetOffset",
               "BEE_SWARM_BIOHAZARD_TICKS", "BEE_SWARM_ALTERNATE_TICKS"],
