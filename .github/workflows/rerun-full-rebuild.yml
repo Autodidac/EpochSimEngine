@@ -29,6 +29,7 @@ jobs:
           line = next(line for line in workflow.splitlines() if line.lstrip().startswith('PATCH_B64:'))
           Path(os.environ['RUNNER_TEMP'], 'fastfreddy_patch.b64').write_text(line.split('PATCH_B64:', 1)[1].strip())
           PY
+          cp -a .github/workflows "$RUNNER_TEMP/preserved-workflows"
 
       - name: Clone complete FastFreddy source
         run: git clone --depth 1 https://github.com/Autodidac/fastfreddy.git "$RUNNER_TEMP/fastfreddy"
@@ -43,6 +44,9 @@ jobs:
             "$RUNNER_TEMP/fastfreddy/" ./
           base64 --decode "$RUNNER_TEMP/fastfreddy_patch.b64" | gzip --decompress > "$RUNNER_TEMP/patch_full_repo.py"
           python3 "$RUNNER_TEMP/patch_full_repo.py"
+          rm -rf .github/workflows
+          mkdir -p .github
+          cp -a "$RUNNER_TEMP/preserved-workflows" .github/workflows
 
       - name: Commit full architecture replacement
         run: |
