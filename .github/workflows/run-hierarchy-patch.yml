@@ -51,6 +51,9 @@ jobs:
           stripped = stripped.replace(
               "                     !activeContent && dominantCount == stableCells;\\n",
               "                    !activeContent && dominantCount == stableCells;\\n")
+          stripped = stripped.replace(
+              "                              flags, packTileCounters(stableTicks, cooldown));\\n",
+              "                             flags, packTileCounters(stableTicks, cooldown));\\n")
           Path('/tmp/apply_hierarchy.py').write_text(stripped, encoding='utf-8')
           PY
       - name: Apply hierarchy implementation
@@ -64,4 +67,4 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
 
-# trigger 3
+# trigger 4
