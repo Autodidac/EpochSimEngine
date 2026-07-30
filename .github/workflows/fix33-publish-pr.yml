@@ -1,0 +1,57 @@
+name: Publish Verified SandHybrid Fix33
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "publish-fix33.trigger"
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download verified Windows and Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: Autodidac/fastfreddy
+          run-id: 30567064296
+          pattern: SandHybrid_*_Fix33
+          path: release
+          merge-multiple: true
+
+      - name: Publish v1.8.0-fix33
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -f release/SandHybrid_Windows_x64_Fix33.zip
+          test -f release/SandHybrid_Windows_x64_Fix33.sha256
+          test -f release/SandHybrid_Linux_x64_Fix33.tar.gz
+          test -f release/SandHybrid_Linux_x64_Fix33.sha256
+          tag='v1.8.0-fix33'
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+          gh release create "$tag" \
+            release/SandHybrid_Windows_x64_Fix33.zip \
+            release/SandHybrid_Windows_x64_Fix33.sha256 \
+            release/SandHybrid_Linux_x64_Fix33.tar.gz \
+            release/SandHybrid_Linux_x64_Fix33.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target 9111f432d619c0d4a76c7951388e4ce05c91a012 \
+            --title 'SandHybrid Fix33 — Hierarchical Simulation on Fix32' \
+            --notes 'Fix33 starts from the current Fix32 FastFreddy source. It preserves the living biohazard bee swarm, zoomable cursor editor, readable keymap, all eight GUI material groups, and all 65 material buttons. It adds homogeneous 8x8 macro-cell bulk movement, 64x64 sleeping chunks, bounded chunk wakeups, hierarchy diagnostics in the existing debug GUI, and correct Linux XCB Vulkan-loader selection. Windows and Linux Release builds and all C++23 contracts passed before publication.'
+
+      - name: Close publishing PR and delete trigger branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr close ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" --comment 'Fix33 verified artifacts published.'
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" --delete "${{ github.event.pull_request.head.ref }}"
