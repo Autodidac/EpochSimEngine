@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
+# This temporary pre-pass keeps the correction script and inherited validator
+# aligned with the verified Fix27 source contract.
 apply_path = Path('tools/apply_fix27.py')
 text = apply_path.read_text(encoding='utf-8')
 old = '''tiles = one(tiles,
