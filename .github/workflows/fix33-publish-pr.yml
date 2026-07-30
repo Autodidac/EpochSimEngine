@@ -16,10 +16,10 @@ jobs:
   publish:
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out verified source
+      - name: Check out current main
         uses: actions/checkout@v4
         with:
-          ref: 9111f432d619c0d4a76c7951388e4ce05c91a012
+          ref: main
           fetch-depth: 0
 
       - name: Download verified Windows and Linux artifacts
@@ -32,12 +32,37 @@ jobs:
           path: release
           merge-multiple: true
 
-      - name: Precreate verified release tag
+      - name: Commit clean Fix33 source without temporary workflows
         run: |
           set -euo pipefail
+          rm -f \
+            .github/workflows/rebase-testbed-hierarchy.yml \
+            .github/workflows/run-rebase-testbed-hierarchy.yml \
+            .github/workflows/run-rebase-testbed-hierarchy-v2.yml \
+            .github/workflows/fix33-pr-validator.yml \
+            .github/workflows/run-fix33-hierarchy-valid.yml \
+            .github/workflows/fix33-linux-warning-fix.yml \
+            .github/workflows/fix33-linux-vulkan-link.yml \
+            .github/workflows/fix33-release.yml \
+            .github/workflows/fix33-publish-pr.yml \
+            hierarchy-rebase-status.json \
+            hierarchy-rebase-resolved-status.json \
+            hierarchy-rebase-v2-status.json \
+            hierarchy-quick-status.json \
+            fix33-status.json \
+            fix33-release-status.json
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git tag -f -a v1.8.0-fix33 9111f432d619c0d4a76c7951388e4ce05c91a012 \
+          git add -A
+          git commit -m 'Finalize SandHybrid Fix33 source [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
+          echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Create clean verified release tag
+        run: |
+          set -euo pipefail
+          git tag -f -a v1.8.0-fix33 "$RELEASE_SHA" \
             -m 'SandHybrid Fix33 verified Windows and Linux build'
           git push --force origin refs/tags/v1.8.0-fix33
 
@@ -64,9 +89,12 @@ jobs:
             --title 'SandHybrid Fix33 — Hierarchical Simulation on Fix32' \
             --notes 'Fix33 starts from the current Fix32 FastFreddy source. It preserves the living biohazard bee swarm, zoomable cursor editor, readable keymap, all eight GUI material groups, and all 65 material buttons. It adds homogeneous 8x8 macro-cell bulk movement, 64x64 sleeping chunks, bounded chunk wakeups, hierarchy diagnostics in the existing debug GUI, and correct Linux XCB Vulkan-loader selection. Windows and Linux Release builds and all C++23 contracts passed before publication.'
 
-      - name: Close publishing PR and delete trigger branch
+      - name: Close temporary PRs and delete trigger branches
+        if: success()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh pr close ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" --comment 'Fix33 verified artifacts published.'
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" --delete "${{ github.event.pull_request.head.ref }}"
+          gh pr close ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" --comment 'Fix33 verified artifacts published.' || true
+          gh pr close 26 --repo "$GITHUB_REPOSITORY" --comment 'Superseded by the completed Fix33 publication.' || true
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" --delete "${{ github.event.pull_request.head.ref }}" || true
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" --delete fix33-hierarchy-rebase || true
