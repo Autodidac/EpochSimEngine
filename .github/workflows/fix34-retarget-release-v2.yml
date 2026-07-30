@@ -1,0 +1,79 @@
+name: Clean and Retarget FastFreddyTestbed v2.2.0
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - fix34-retarget-v2-trigger.txt
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cleanup-retarget:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download corrected release assets outside repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          assets="$RUNNER_TEMP/fix34-release-assets"
+          rm -rf "$assets"
+          mkdir -p "$assets"
+          gh release download v2.2.0 --repo "$GITHUB_REPOSITORY" --dir "$assets" --clobber
+          cd "$assets"
+          sha256sum -c FastFreddyTestbed_Windows_x64_v2.2.0.sha256
+          sha256sum -c FastFreddyTestbed_Linux_x64_v2.2.0.sha256
+          echo "ASSET_DIR=$assets" >> "$GITHUB_ENV"
+
+      - name: Commit genuinely clean repository state
+        id: clean
+        run: |
+          set -euo pipefail
+          rm -rf release repack
+          rm -f .github/workflows/fix34-retarget-release.yml
+          rm -f .github/workflows/fix34-retarget-release-v2.yml
+          rm -f fix34-retarget-trigger.txt fix34-retarget-v2-trigger.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Clean final FastFreddyTestbed Fix34 repository [skip ci]'
+          git push origin HEAD:main
+          clean_sha="$(git rev-parse HEAD)"
+          echo "clean_sha=$clean_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Retarget v2.2.0 to clean commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLEAN_SHA: ${{ steps.clean.outputs.clean_sha }}
+        run: |
+          set -euo pipefail
+          gh release delete v2.2.0 --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          gh release create v2.2.0 \
+            "$ASSET_DIR/FastFreddyTestbed_Windows_x64_v2.2.0.zip" \
+            "$ASSET_DIR/FastFreddyTestbed_Windows_x64_v2.2.0.sha256" \
+            "$ASSET_DIR/FastFreddyTestbed_Linux_x64_v2.2.0.tar.gz" \
+            "$ASSET_DIR/FastFreddyTestbed_Linux_x64_v2.2.0.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$CLEAN_SHA" \
+            --title 'FastFreddyTestbed v2.2.0 — Current Fix32 Base + Half Water' \
+            --notes 'Correct target repository: fastfreddytestbed. Rebuilt from the current FastFreddy Fix32 application while preserving the full GUI, all 65 material buttons, current bee/cursor/keymap behavior, 8x8 macro-cell movement, 64x64 sleeping chunks, and hierarchy diagnostics. Fresh water alone uses conserved half-volume cells, a full-plus-half ledge threshold, and twice the horizontal movement passes. Windows and Linux Release builds, every Vulkan shader, package checksums, and all C++23 contracts passed. Documentation formatting is corrected, and the release targets the clean final repository commit.'
+
+      - name: Close PR and delete all remaining Fix34 trigger branches
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr close ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" \
+            --comment 'v2.2.0 now targets the genuinely clean final Fix34 repository commit.' || true
+          git push origin --delete '${{ github.event.pull_request.head.ref }}' || true
+          git push origin --delete fix34-retarget-trigger || true
+          git push origin --delete fix34-current-base-trigger || true
