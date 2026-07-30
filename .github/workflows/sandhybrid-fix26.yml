@@ -6,6 +6,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "tools/apply_fix26_systems.py"
+      - "tools/patch_fix26_apply.py"
       - "tools/audit_fix26_systems.py"
       - ".github/workflows/sandhybrid-fix26.yml"
 
@@ -28,6 +29,12 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Patch Fix26 source matcher
+        shell: pwsh
+        run: |
+          python tools/patch_fix26_apply.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix26 apply-script patch failed.' }
 
       - name: Apply Fix26 systems and sidebar correction
         shell: pwsh
@@ -98,6 +105,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Remove-Item -LiteralPath 'tools/apply_fix26_systems.py' -Force
+          Remove-Item -LiteralPath 'tools/patch_fix26_apply.py' -Force
           Remove-Item -LiteralPath 'tools/audit_fix26_systems.py' -Force
           Remove-Item -LiteralPath '.github/workflows/sandhybrid-fix26.yml' -Force
           git config user.name 'github-actions[bot]'
