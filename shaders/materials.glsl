@@ -59,9 +59,9 @@ uint waterHalfUnits(Cell cell) {
     return cell.material == MAT_WATER ? (isHalfWater(cell) ? 1u : 2u) : 0u;
 }
 
-void setHalfWater(inout Cell cell, bool half) {
+void setHalfWater(inout Cell cell, bool half_state) {
     if (cell.material != MAT_WATER) return;
-    if (half) cell.aux |= AUX_WATER_HALF;
+    if (half_state) cell.aux |= AUX_WATER_HALF;
     else cell.aux &= ~AUX_WATER_HALF;
 }
 
