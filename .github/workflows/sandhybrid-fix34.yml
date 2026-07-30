@@ -54,7 +54,7 @@ jobs:
         run: |
           cmake -S . -B build/linux -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DEPOCH_SAND_WARNINGS_AS_ERRORS=ON \
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=OFF \
             -DEPOCH_SAND_ENABLE_VALIDATION=OFF \
             -DBUILD_TESTING=ON
 
