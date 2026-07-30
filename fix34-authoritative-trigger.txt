@@ -1,0 +1,1 @@
+Replace fastfreddytestbed with the current Fix32 hierarchy source plus half-water, then remove all temporary infrastructure.
