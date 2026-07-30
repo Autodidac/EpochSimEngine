@@ -1,0 +1,107 @@
+name: PR FastFreddyTestbed Fix34 Rebase
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - fix34-trigger.txt
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  BASE_SHA: 19ff8e414859e07f11ee4969892453192dd0a6d1
+
+jobs:
+  rebase:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Record run
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          cat > fix34-rebase-status.json <<EOF
+          {
+            "run_id": ${RUN_ID},
+            "status": "running",
+            "head_sha": "${HEAD_SHA}",
+            "run_url": "${RUN_URL}"
+          }
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add fix34-rebase-status.json
+          git commit -m 'Record Fix34 rebase run [skip ci]'
+          git push origin HEAD:main
+
+      - name: Fetch current FastFreddy Fix32 hierarchy source
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/Autodidac/fastfreddy.git "$RUNNER_TEMP/fastfreddy"
+          git -C "$RUNNER_TEMP/fastfreddy" fetch --depth 1 origin "$BASE_SHA"
+          git -C "$RUNNER_TEMP/fastfreddy" checkout --detach "$BASE_SHA"
+
+      - name: Replace testbed and apply half-water
+        run: |
+          set -euo pipefail
+          rsync -a --delete \
+            --exclude '.git/' \
+            --exclude '.github/workflows/' \
+            --exclude 'tools/apply_fix34_half_water.py' \
+            --exclude 'fix34-rebase-status.json' \
+            "$RUNNER_TEMP/fastfreddy/" ./
+          python3 tools/apply_fix34_half_water.py
+          grep -q 'AUX_WATER_HALF' shaders/materials.glsl
+          grep -q 'water_ledge_can_release' include/epoch/sand/simulation_policy.hpp
+          grep -q 'phase_index >= 9u' src/vulkan_renderer.cpp
+          grep -q 'isHalfWater(cell)' shaders/macro_move.comp
+          grep -q 'mix(backgroundColor(grid), base.rgb, 0.50)' shaders/fullscreen.frag
+
+      - name: Validate shaders and C++ contracts quickly
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y glslc gcc-14 g++-14
+          mkdir -p /tmp/fix34-spv
+          for shader in shaders/*.comp shaders/*.vert shaders/*.frag; do
+            glslc --target-env=vulkan1.2 -O -I shaders "$shader" -o "/tmp/fix34-spv/$(basename "$shader").spv"
+          done
+          g++-14 -std=c++23 -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror \
+            -Iinclude tests/behavior_contract.cpp -o /tmp/fix34_behavior_contract
+          /tmp/fix34_behavior_contract
+
+      - name: Commit corrected testbed source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('fix34-rebase-status.json')
+          data = json.loads(path.read_text())
+          data['status'] = 'validated'
+          path.write_text(json.dumps(data, indent=2) + '\n')
+          PY
+          rm -f tools/apply_fix34_half_water.py
+          rm -f fix34-trigger.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'FastFreddyTestbed Fix34: current Fix32 base with half-water hierarchy'
+          git push origin HEAD:main
+
+      - name: Close trigger PR and delete branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr close ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" \
+            --comment 'Fix34 source rebase validated and committed to fastfreddytestbed/main.'
+          git push origin --delete '${{ github.event.pull_request.head.ref }}'
