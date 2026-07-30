@@ -23,4 +23,8 @@ elif new not in validator:
     raise SystemExit("shader validator has neither the 14- nor 16-descriptor contract")
 validator_path.write_text(validator, encoding="utf-8")
 
+reset_lines = (root / "shaders/reset.comp").read_text(encoding="utf-8").splitlines()
+for line_number in range(190, min(202, len(reset_lines) + 1)):
+    print(f"RESET[{line_number}]: {reset_lines[line_number - 1]}")
+
 print(f"Fix34 post-patch contracts ready: renamed {renamed} shader file(s); 16-descriptor chunk layout.")
