@@ -12,6 +12,10 @@ A focused C++23 cross-platform testbed extracted from the useful parts of `fastf
 
 The application refuses to start if SDL does not create the `vulkan` renderer. It queries the renderer's Vulkan physical device and prints the device and API version.
 
+## EpochGui integration
+
+The testbed uses a bounded conventional-source snapshot of EpochGui's rounded-rectangle geometry and embedded bitmap font, pinned to `Autodidac/EpochGui` commit `347ad52e8fc27deb08dea97e56a9b6d8c0db3af2`. This keeps the actual `epochengine::gui_lib` algorithms while avoiding a GCC 14 internal compiler error in the unrelated full EpochGui C++ module library.
+
 ## Water contract
 
 Water mass is stored in half-units:
@@ -60,9 +64,13 @@ build\windows\Release\fastfreddy_testbed.exe
 
 ```bash
 sudo apt update
-sudo apt install -y git cmake ninja-build g++-14 \
+sudo apt install -y git cmake ninja-build g++-14 pkg-config \
   libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
-  libxi-dev libxfixes-dev libxkbcommon-dev
+  libxi-dev libxfixes-dev libxinerama-dev libxss-dev libxtst-dev \
+  libxkbcommon-dev libxkbcommon-x11-dev \
+  libwayland-dev wayland-protocols libdecor-0-dev \
+  libibus-1.0-dev libdbus-1-dev libudev-dev \
+  libdrm-dev libgbm-dev libunwind-dev liburing-dev
 CXX=g++-14 ./build_linux.sh
 ./run_linux.sh
 ```
