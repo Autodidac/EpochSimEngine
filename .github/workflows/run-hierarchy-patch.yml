@@ -48,6 +48,9 @@ jobs:
           end = source.index(end_marker, begin)
           lines = source[begin:end].splitlines()
           stripped = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+          stripped = stripped.replace(
+              "                     !activeContent && dominantCount == stableCells;\\n",
+              "                    !activeContent && dominantCount == stableCells;\\n")
           Path('/tmp/apply_hierarchy.py').write_text(stripped, encoding='utf-8')
           PY
       - name: Apply hierarchy implementation
@@ -61,4 +64,4 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
 
-# trigger 2
+# trigger 3
