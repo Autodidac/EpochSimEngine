@@ -7,6 +7,7 @@ on:
     paths:
       - "tools/apply_fix26_systems.py"
       - "tools/patch_fix26_apply.py"
+      - "tools/patch_fix26_validator.py"
       - "tools/audit_fix26_systems.py"
       - ".github/workflows/sandhybrid-fix26.yml"
 
@@ -66,6 +67,12 @@ jobs:
           python tools/audit_fix26_systems.py
           if ($LASTEXITCODE -ne 0) { throw 'Fix26 systems audit failed.' }
 
+      - name: Migrate shader validator to sidebar contracts
+        shell: pwsh
+        run: |
+          python tools/patch_fix26_validator.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix26 shader-validator migration failed.' }
+
       - name: Validate generated shader contracts
         shell: pwsh
         run: |
@@ -106,6 +113,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Remove-Item -LiteralPath 'tools/apply_fix26_systems.py' -Force
           Remove-Item -LiteralPath 'tools/patch_fix26_apply.py' -Force
+          Remove-Item -LiteralPath 'tools/patch_fix26_validator.py' -Force
           Remove-Item -LiteralPath 'tools/audit_fix26_systems.py' -Force
           Remove-Item -LiteralPath '.github/workflows/sandhybrid-fix26.yml' -Force
           git config user.name 'github-actions[bot]'
