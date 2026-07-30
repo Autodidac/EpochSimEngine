@@ -5,7 +5,6 @@ project(FastFreddyWaterTestbed VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(FASTFREDDY_BUILD_APP "Build the SDL3 Vulkan water testbed" ON)
@@ -34,18 +33,14 @@ target_include_directories(fastfreddy_water_core PUBLIC include)
 fastfreddy_configure_target(fastfreddy_water_core)
 
 if(FASTFREDDY_BUILD_APP)
-    include(FetchContent)
-
-    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-    set(EPOCHGUI_ENABLE_ROUNDED_RECT ON CACHE BOOL "" FORCE)
-    set(EPOCHGUI_ENABLE_INPUT OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(
-        epochgui
-        GIT_REPOSITORY https://github.com/Autodidac/EpochGui.git
-        GIT_TAG 347ad52e8fc27deb08dea97e56a9b6d8c0db3af2
-        GIT_SHALLOW FALSE
+    add_library(epochgui_snapshot STATIC
+        third_party/EpochGuiSnapshot/src/epochgui_snapshot.cpp
     )
-    FetchContent_MakeAvailable(epochgui)
+    target_include_directories(epochgui_snapshot PUBLIC
+        third_party/EpochGuiSnapshot/include
+    )
+    fastfreddy_configure_target(epochgui_snapshot)
+    add_library(Autodidac::EpochGuiSnapshot ALIAS epochgui_snapshot)
 
     find_package(SDL3 CONFIG REQUIRED)
     find_package(Vulkan REQUIRED)
@@ -58,7 +53,7 @@ if(FASTFREDDY_BUILD_APP)
     target_include_directories(fastfreddy_testbed PRIVATE include)
     target_link_libraries(fastfreddy_testbed PRIVATE
         fastfreddy_water_core
-        Autodidac::EpochGui
+        Autodidac::EpochGuiSnapshot
         SDL3::SDL3
         Vulkan::Vulkan
     )
