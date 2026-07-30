@@ -46,5 +46,12 @@ text, stem_count = stem_pattern.subn(stem_replacement, text, count=1)
 if stem_count != 1:
     raise SystemExit(f'Fix25 stem source contract patch found {stem_count} matches')
 
+old_audit = '    "move": ["bool pairSleeping(ivec2 a, ivec2 b) {\\\\n    TileState"],'
+new_audit = '    "move": ["return tileHas(tileA, TILE_SLEEPING) && tileHas(tileB, TILE_SLEEPING);"],'
+audit_count = text.count(old_audit)
+if audit_count != 1:
+    raise SystemExit(f'Fix25 sleeping-audit patch found {audit_count} matches')
+text = text.replace(old_audit, new_audit, 1)
+
 path.write_text(text, encoding='utf-8', newline='\n')
 print('Fix25 apply-script source contracts patched.')
