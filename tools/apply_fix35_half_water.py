@@ -194,11 +194,11 @@ replace_once(
 )
 replace_once(
     "shaders/macro_move.comp",
-    "            if (cell.material != representative.material || !bulkMovable(cell) ||\n"
-    "                (cell.aux & AUX_MOVED) != 0u) return false;\n",
-    "            if (cell.material != representative.material || !bulkMovable(cell) ||\n"
-    "                (cell.aux & AUX_MOVED) != 0u) return false;\n"
-    "            if (cell.material == MAT_WATER && isHalfWater(cell)) return false;\n",
+    "  if (cell.material != representative.material || !bulkMovable(cell) ||\n"
+    "      (cell.aux & AUX_MOVED) != 0u) return false;\n",
+    "  if (cell.material != representative.material || !bulkMovable(cell) ||\n"
+    "      (cell.aux & AUX_MOVED) != 0u) return false;\n"
+    "  if (cell.material == MAT_WATER && isHalfWater(cell)) return false;\n",
 )
 replace_once(
     "shaders/fullscreen.frag",
