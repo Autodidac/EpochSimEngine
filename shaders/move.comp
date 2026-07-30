@@ -460,7 +460,22 @@ bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint r
     ivec2 targetDelta = targetPosition - destination;
     int sourceDistance = sourceDelta.x * sourceDelta.x + sourceDelta.y * sourceDelta.y;
     int targetDistance = targetDelta.x * targetDelta.x + targetDelta.y * targetDelta.y;
-    return targetDistance < sourceDistance;
+    if (targetDistance < sourceDistance) return true;
+
+    // A dense swarm deadlocks when every bee demands a strictly closer empty
+    // cell. Permit only target-bounded tangential sidesteps, so blocked bees
+    // circulate around their moving anchors without regaining random wandering.
+    ivec2 stepDelta = targetPosition - sourcePosition;
+    uint slot = beeFormationSlotFromAux(bee.aux);
+    bool clockwise = ((slot * 17u + 3u) & 1u) == 0u;
+    ivec2 tangent = clockwise ? ivec2(-sourceDelta.y, sourceDelta.x)
+                              : ivec2(sourceDelta.y, -sourceDelta.x);
+    int tangentScore = stepDelta.x * tangent.x + stepDelta.y * tangent.y;
+    int forwardScore = stepDelta.x * -sourceDelta.x + stepDelta.y * -sourceDelta.y;
+    bool boundedSidestep = targetDistance <= sourceDistance + 2 &&
+                           targetDistance <= 49 && forwardScore >= 0 &&
+                           tangentScore > 0;
+    return boundedSidestep && ((randomValue ^ slot ^ movePc.step) & 1u) == 0u;
 }
 
 bool magneticMoveAllowed(ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {

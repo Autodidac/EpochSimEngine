@@ -13,7 +13,7 @@ required = {
     "materials": ["MAT_PLANT_STEM) temperature = 20", "AUX_PLANT_STEM | 1u"],
     "tiles": ["activeContent", "!activeContent", "activeAgent", "activeLoose"],
     "move": ["sleepSafe", "beeOrbitTarget", "beeMovementTarget",
-             "return targetDistance < sourceDistance;", "insectMoveAllowed"],
+             "if (targetDistance < sourceDistance) return true;", "boundedSidestep", "insectMoveAllowed"],
     "chemistry": ["flowerDropsSeed", "grassFrontier", "stemMoisture",
                   "source.material == MAT_PLANT_STEM"],
 }

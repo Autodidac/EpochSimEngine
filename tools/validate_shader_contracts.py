@@ -472,7 +472,7 @@ def main() -> int:
     motion_ecology_contracts = {
         "tiles": (tiles, ("activeContent", "!activeContent", "activeAgent", "activeLoose")),
         "movement": (movement, ("sleepSafe", "beeOrbitTarget", "beeMovementTarget",
-                                 "return targetDistance < sourceDistance;",
+                                 "if (targetDistance < sourceDistance) return true;", "boundedSidestep",
                                  "insectMoveAllowed", "MAT_PLANT_STEM")),
         "chemistry": (chemistry, ("flowerDropsSeed", "stemMoisture", "grassFrontier",
                                   "source.material == MAT_PLANT_STEM")),
