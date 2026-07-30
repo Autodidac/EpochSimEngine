@@ -15,8 +15,84 @@
 #include <exception>
 #include <mutex>
 #include <thread>
+#include <utility>
 
 namespace epoch::sand {
+
+namespace {
+
+struct CameraView final {
+    std::uint32_t origin_x{};
+    std::uint32_t origin_y{};
+    std::uint32_t width{};
+    std::uint32_t height{};
+};
+
+[[nodiscard]] CameraView camera_view(const SharedState& state, const SimulationConfig& config,
+                                     const std::uint32_t requested_zoom) noexcept {
+    const auto zoom = std::clamp(requested_zoom, 1u, 8u);
+    const auto visible_width = (std::max)(8u, config.grid_width / zoom);
+    const auto visible_height = (std::max)(8u, config.grid_height / zoom);
+    const auto center_x = std::clamp(state.camera_center_x.load(std::memory_order_relaxed),
+                                     0, static_cast<int>(config.grid_width - 1u));
+    const auto center_y = std::clamp(state.camera_center_y.load(std::memory_order_relaxed),
+                                     0, static_cast<int>(config.grid_height - 1u));
+    const auto max_x = config.grid_width - visible_width;
+    const auto max_y = config.grid_height - visible_height;
+    const auto origin_x = static_cast<std::uint32_t>(std::clamp(
+        center_x - static_cast<int>(visible_width / 2u), 0, static_cast<int>(max_x)));
+    const auto origin_y = static_cast<std::uint32_t>(std::clamp(
+        center_y - static_cast<int>(visible_height / 2u), 0, static_cast<int>(max_y)));
+    return {origin_x, origin_y, visible_width, visible_height};
+}
+
+[[nodiscard]] std::pair<std::int32_t, std::int32_t> pointer_grid(
+    const SharedState& state, const SimulationConfig& config,
+    const ui::SimulationViewport& viewport, const std::int32_t mouse_x,
+    const std::int32_t mouse_y) noexcept {
+    const auto zoom = state.camera_zoom.load(std::memory_order_relaxed);
+    const auto view = camera_view(state, config, zoom);
+    const auto viewport_width = (std::max)(1u, static_cast<std::uint32_t>(viewport.rect.size.x));
+    const auto viewport_height = (std::max)(1u, static_cast<std::uint32_t>(viewport.rect.size.y));
+    const auto local_x = std::clamp(mouse_x - static_cast<int>(viewport.rect.position.x),
+                                    0, static_cast<int>(viewport_width - 1u));
+    const auto local_y = std::clamp(mouse_y - static_cast<int>(viewport.rect.position.y),
+                                    0, static_cast<int>(viewport_height - 1u));
+    return {
+        static_cast<std::int32_t>(view.origin_x +
+            static_cast<std::uint64_t>(local_x) * view.width / viewport_width),
+        static_cast<std::int32_t>(view.origin_y +
+            static_cast<std::uint64_t>(local_y) * view.height / viewport_height),
+    };
+}
+
+void zoom_at_pointer(SharedState& state, const SimulationConfig& config,
+                     const ui::SimulationViewport& viewport, const std::int32_t mouse_x,
+                     const std::int32_t mouse_y, const int delta) noexcept {
+    const auto old_zoom = std::clamp(state.camera_zoom.load(std::memory_order_relaxed), 1u, 8u);
+    const auto new_zoom = static_cast<std::uint32_t>(std::clamp(static_cast<int>(old_zoom) + delta, 1, 8));
+    if (new_zoom == old_zoom) return;
+    const auto [target_x, target_y] = pointer_grid(state, config, viewport, mouse_x, mouse_y);
+    const auto viewport_width = (std::max)(1u, static_cast<std::uint32_t>(viewport.rect.size.x));
+    const auto viewport_height = (std::max)(1u, static_cast<std::uint32_t>(viewport.rect.size.y));
+    const auto local_x = std::clamp(mouse_x - static_cast<int>(viewport.rect.position.x),
+                                    0, static_cast<int>(viewport_width - 1u));
+    const auto local_y = std::clamp(mouse_y - static_cast<int>(viewport.rect.position.y),
+                                    0, static_cast<int>(viewport_height - 1u));
+    const auto new_width = (std::max)(8u, config.grid_width / new_zoom);
+    const auto new_height = (std::max)(8u, config.grid_height / new_zoom);
+    const auto desired_origin_x = target_x - static_cast<int>(
+        static_cast<std::uint64_t>(local_x) * new_width / viewport_width);
+    const auto desired_origin_y = target_y - static_cast<int>(
+        static_cast<std::uint64_t>(local_y) * new_height / viewport_height);
+    const auto origin_x = std::clamp(desired_origin_x, 0, static_cast<int>(config.grid_width - new_width));
+    const auto origin_y = std::clamp(desired_origin_y, 0, static_cast<int>(config.grid_height - new_height));
+    state.camera_zoom.store(new_zoom, std::memory_order_relaxed);
+    state.camera_center_x.store(origin_x + static_cast<int>(new_width / 2u), std::memory_order_relaxed);
+    state.camera_center_y.store(origin_y + static_cast<int>(new_height / 2u), std::memory_order_relaxed);
+}
+
+} // namespace
 
 int run_application() {
     std::fprintf(stderr, "[EpochSand] Creating native window...\n");
@@ -24,6 +100,8 @@ int run_application() {
     std::fprintf(stderr, "[EpochSand] Native window created.\n");
     SharedState shared_state{};
     const SimulationConfig simulation_config{};
+    shared_state.camera_center_x.store(static_cast<int>(simulation_config.grid_width / 2u), std::memory_order_relaxed);
+    shared_state.camera_center_y.store(static_cast<int>(simulation_config.grid_height / 2u), std::memory_order_relaxed);
     std::atomic_bool renderer_ready{false};
 
     std::exception_ptr render_error;
@@ -111,6 +189,16 @@ int run_application() {
         };
         const bool primary_pressed = input.primary_pressed;
         const bool secondary_pressed = input.secondary_pressed;
+        const bool over_simulation = epochengine::gui_lib::contains(simulation_viewport.rect, pointer);
+        if (input.wheel_delta != 0 && over_simulation)
+            zoom_at_pointer(shared_state, simulation_config, simulation_viewport,
+                            input.mouse_x, input.mouse_y, input.wheel_delta);
+
+        const auto adjust_zoom_centered = [&shared_state](const int delta) {
+            const auto current = static_cast<int>(shared_state.camera_zoom.load(std::memory_order_relaxed));
+            shared_state.camera_zoom.store(static_cast<std::uint32_t>(std::clamp(current + delta, 1, 8)),
+                                           std::memory_order_relaxed);
+        };
 
         const auto hovered_group = ui::group_at(layout, pointer);
         shared_state.hovered_group.store(hovered_group, std::memory_order_relaxed);
@@ -147,6 +235,26 @@ int run_application() {
             } else if (epochengine::gui_lib::contains(layout.debug_toggle, pointer)) {
                 const bool debug = shared_state.debug_visualization.load(std::memory_order_relaxed);
                 shared_state.debug_visualization.store(!debug, std::memory_order_release);
+            } else if (epochengine::gui_lib::contains(layout.cursor_circle, pointer)) {
+                shared_state.brush_shape.store(0u, std::memory_order_relaxed);
+            } else if (epochengine::gui_lib::contains(layout.cursor_square, pointer)) {
+                shared_state.brush_shape.store(1u, std::memory_order_relaxed);
+            } else if (epochengine::gui_lib::contains(layout.cursor_horizontal, pointer)) {
+                shared_state.brush_shape.store(2u, std::memory_order_relaxed);
+            } else if (epochengine::gui_lib::contains(layout.cursor_vertical, pointer)) {
+                shared_state.brush_shape.store(3u, std::memory_order_relaxed);
+            } else if (epochengine::gui_lib::contains(layout.brush_smaller, pointer)) {
+                const auto radius = static_cast<int>(shared_state.brush_radius.load(std::memory_order_relaxed));
+                shared_state.brush_radius.store(static_cast<std::uint32_t>(std::clamp(radius - 1, 1, 48)),
+                                                std::memory_order_relaxed);
+            } else if (epochengine::gui_lib::contains(layout.brush_larger, pointer)) {
+                const auto radius = static_cast<int>(shared_state.brush_radius.load(std::memory_order_relaxed));
+                shared_state.brush_radius.store(static_cast<std::uint32_t>(std::clamp(radius + 1, 1, 48)),
+                                                std::memory_order_relaxed);
+            } else if (epochengine::gui_lib::contains(layout.zoom_out, pointer)) {
+                adjust_zoom_centered(-1);
+            } else if (epochengine::gui_lib::contains(layout.zoom_in, pointer)) {
+                adjust_zoom_centered(1);
             } else if (epochengine::gui_lib::contains(layout.eraser, pointer)) {
                 shared_state.selected_material.store(static_cast<std::uint32_t>(Material::empty),
                                                      std::memory_order_relaxed);
@@ -158,7 +266,6 @@ int run_application() {
             }
         }
 
-        const bool over_simulation = epochengine::gui_lib::contains(simulation_viewport.rect, pointer);
         const bool mining = shared_state.mining_mode.load(std::memory_order_relaxed);
         const bool inspecting = input.inspect_material;
         const bool paint_active = over_simulation && !mining && !inspecting;
@@ -181,11 +288,6 @@ int run_application() {
                                   std::memory_order_relaxed);
         shared_state.jump.store(input.jump, std::memory_order_relaxed);
 
-        if (input.wheel_delta != 0 && over_simulation) {
-            const auto current = static_cast<int>(shared_state.brush_radius.load(std::memory_order_relaxed));
-            const auto next = std::clamp(current + input.wheel_delta, 1, 48);
-            shared_state.brush_radius.store(static_cast<std::uint32_t>(next), std::memory_order_relaxed);
-        }
 
         std::this_thread::sleep_for(std::chrono::milliseconds{1});
     }

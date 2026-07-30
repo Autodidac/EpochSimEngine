@@ -16,6 +16,7 @@ struct Cell {
 const uint AUX_CHARGED = 0x40000000u;
 const uint AUX_BEE_POLLEN = 0x20000000u;
 const uint AUX_BEE_FED = 0x10000000u;
+const uint AUX_BEE_SWARM = 0x08000000u;
 const uint AUX_STRUCTURAL = 0x04000000u;
 const uint AUX_MOVED = 0x01000000u;
 const uint AUX_STATE_MASK = 0x000000ffu;
@@ -449,6 +450,42 @@ bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint r
     if (sourceHazard != targetHazard) return sourceHazard;
 
     ivec2 delta = targetPosition - sourcePosition;
+    if ((bee.aux & AUX_BEE_SWARM) != 0u) {
+        // Authored ecosystem swarm bees use three persistent integer orbit lanes.
+        // This is intentionally constant-time: regional signal scans made glslc and
+        // the driver inline a huge movement path and left almost every bee stationary.
+        ivec2 authoredCenter = ivec2(int(movePc.width) - 104, int(movePc.height) - 136);
+        ivec2 sourceRadial = sourcePosition - authoredCenter;
+        ivec2 targetRadial = targetPosition - authoredCenter;
+        int sourceRadiusSquared = sourceRadial.x * sourceRadial.x + sourceRadial.y * sourceRadial.y;
+        int targetRadiusSquared = targetRadial.x * targetRadial.x + targetRadial.y * targetRadial.y;
+        uint lane = (bee.aux >> 8u) % 3u;
+        int desiredRadius = lane == 0u ? 18 : (lane == 1u ? 30 : 44);
+        int desiredRadiusSquared = desiredRadius * desiredRadius;
+        int tolerance = lane == 0u ? 90 : (lane == 1u ? 150 : 240);
+        if (sourceRadiusSquared < desiredRadiusSquared - tolerance &&
+            targetRadiusSquared != sourceRadiusSquared)
+            return targetRadiusSquared > sourceRadiusSquared;
+        if (sourceRadiusSquared > desiredRadiusSquared + tolerance &&
+            targetRadiusSquared != sourceRadiusSquared)
+            return targetRadiusSquared < sourceRadiusSquared;
+        if (targetRadiusSquared < desiredRadiusSquared - tolerance * 2 ||
+            targetRadiusSquared > desiredRadiusSquared + tolerance * 2)
+            return false;
+
+        int radialX = sourceRadial.x > 0 ? 1 : (sourceRadial.x < 0 ? -1 : 0);
+        int radialY = sourceRadial.y > 0 ? 1 : (sourceRadial.y < 0 ? -1 : 0);
+        bool clockwise = ((bee.aux >> 10u) & 1u) != 0u;
+        ivec2 tangent = clockwise ? ivec2(-radialY, radialX)
+                                  : ivec2(radialY, -radialX);
+        int tangentScore = (delta.x * tangent.x + delta.y * tangent.y) * 8;
+        int waveVertical = beeWaveVertical(bee, sourcePosition);
+        int waveHorizontal = beeWaveHorizontal(bee, sourcePosition);
+        if (delta.y == waveVertical) tangentScore += 3;
+        if (delta.x == waveHorizontal) tangentScore += 2;
+        return tangentScore > 0 || (tangentScore == 0 && (randomValue & 31u) == 0u);
+    }
+
     int sourceSignal = beeTargetSignal(bee, sourcePosition);
     int targetSignal = beeTargetSignal(bee, targetPosition);
     if (sourceSignal != targetSignal) return targetSignal > sourceSignal;

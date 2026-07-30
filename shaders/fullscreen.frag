@@ -46,6 +46,11 @@ layout(push_constant) uniform RenderPush {
     uint viewportTop;
     uint viewportWidth;
     uint viewportHeight;
+    uint viewOriginX;
+    uint viewOriginY;
+    uint viewWidth;
+    uint viewHeight;
+    uint brushShape;
 } renderPc;
 
 uint glyphRow(uint code, uint row) {
@@ -364,7 +369,7 @@ void main() {
         }
 
         uint keymapTop = eraserBottom + 3u;
-        uint keymapBottom = keymapTop + 100u;
+        uint keymapBottom = keymapTop + 76u;
         if (y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {
             color = vec3(0.035, 0.047, 0.064);
             if (borderPixel(x, y, contentLeft, keymapTop, contentLeft + contentWidth, keymapBottom))
@@ -381,7 +386,45 @@ void main() {
             return;
         }
 
-        uint cardTop = keymapBottom + 3u;
+        uint cursorTop = keymapBottom + 3u;
+        uint cursorBottom = cursorTop + 92u;
+        if (y >= cursorTop && y < cursorBottom && x >= contentLeft && x < contentLeft + contentWidth) {
+            color = vec3(0.035, 0.047, 0.064);
+            if (borderPixel(x, y, contentLeft, cursorTop, contentLeft + contentWidth, cursorBottom))
+                color = vec3(0.12, 0.20, 0.28);
+            bool cursorText = fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(cursorTop + 5u)), 2, 99u);
+            uint shapeTop = cursorTop + 23u;
+            uint shapeWidth = max(contentWidth / 4u, 1u);
+            uint shapeIds[4] = uint[4](100u, 101u, 102u, 103u);
+            for (uint shape = 0u; shape < 4u; ++shape) {
+                uint left = contentLeft + shape * shapeWidth;
+                uint right = shape == 3u ? contentLeft + contentWidth : left + shapeWidth;
+                if (x >= left && x < right && y >= shapeTop && y < shapeTop + 24u) {
+                    color = shape == renderPc.brushShape ? vec3(0.14, 0.30, 0.45) : vec3(0.055, 0.07, 0.09);
+                    if (borderPixel(x, y, left, shapeTop, right, shapeTop + 24u)) color *= 0.55;
+                }
+                int labelWidth = int(fixedTextLength(shapeIds[shape])) * 6 - 1;
+                cursorText = cursorText || fixedPixel(pixel,
+                    ivec2(int(left + right) / 2 - labelWidth / 2, int(shapeTop + 8u)), 1, shapeIds[shape]);
+            }
+            uint controlTop = cursorTop + 60u;
+            uint halfWidth = contentWidth / 2u;
+            cursorText = cursorText || fixedPixel(pixel, ivec2(int(contentLeft + 39u), int(controlTop + 2u)), 1, 104u) ||
+                numberPixel(pixel, ivec2(int(contentLeft + halfWidth / 2u - 8u), int(controlTop + 13u)), 1, renderPc.brushRadius) ||
+                fixedPixel(pixel, ivec2(int(contentLeft + halfWidth + 39u), int(controlTop + 2u)), 1, 105u) ||
+                numberPixel(pixel, ivec2(int(contentLeft + halfWidth + halfWidth / 2u - 8u), int(controlTop + 13u)), 1,
+                            max(renderPc.gridWidth / max(renderPc.viewWidth, 1u), 1u));
+            bool minusLeft = glyphPixel(pixel, ivec2(int(contentLeft + 13u), int(controlTop + 9u)), 2, 45u);
+            bool plusLeft = glyphPixel(pixel, ivec2(int(contentLeft + halfWidth - 25u), int(controlTop + 9u)), 2, 43u);
+            bool minusRight = glyphPixel(pixel, ivec2(int(contentLeft + halfWidth + 13u), int(controlTop + 9u)), 2, 45u);
+            bool plusRight = glyphPixel(pixel, ivec2(int(contentLeft + contentWidth - 25u), int(controlTop + 9u)), 2, 43u);
+            if (minusLeft || plusLeft || minusRight || plusRight) cursorText = true;
+            if (cursorText) color = vec3(0.93, 0.96, 0.99);
+            outColor = vec4(color, 1.0);
+            return;
+        }
+
+        uint cardTop = cursorBottom + 3u;
         uint actorPanel = actor.enabled != 0u ? 102u : 5u;
         uint cardBottom = renderPc.windowHeight > actorPanel + 5u
             ? renderPc.windowHeight - actorPanel - 5u : renderPc.windowHeight;
@@ -449,10 +492,10 @@ void main() {
     uint simulationHeight = max(renderPc.viewportHeight, 1u);
     uint simulationX = x - renderPc.viewportLeft;
     uint simulationY = y - renderPc.viewportTop;
-    uint gridX = min(renderPc.gridWidth - 1u,
-                     simulationX * renderPc.gridWidth / max(renderPc.viewportWidth, 1u));
-    uint gridY = min(renderPc.gridHeight - 1u,
-                     simulationY * renderPc.gridHeight / simulationHeight);
+    uint gridX = min(renderPc.gridWidth - 1u, renderPc.viewOriginX +
+                      simulationX * max(renderPc.viewWidth, 1u) / max(renderPc.viewportWidth, 1u));
+    uint gridY = min(renderPc.gridHeight - 1u, renderPc.viewOriginY +
+                      simulationY * max(renderPc.viewHeight, 1u) / simulationHeight);
     ivec2 grid = ivec2(int(gridX), int(gridY));
     Cell cell = cellAt(grid);
     TileState tile = tileAt(grid);
@@ -460,7 +503,7 @@ void main() {
 
     if (renderPc.debugMode != 0u) {
         ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));
-        if (local.x == 0 || local.y == 0) color.rgb *= 0.45;
+        if (local.x == 0 || local.y == 0) color.rgb *= renderPc.viewWidth < renderPc.gridWidth ? 0.72 : 0.88;
         vec3 overlay = vec3(0.0);
         float alpha = 0.0;
         if (tileHas(tile, TILE_COLLAPSING) || tileHas(tile, TILE_DAMAGED)) { overlay = vec3(0.95, 0.15, 0.10); alpha = 0.34; }
@@ -552,10 +595,20 @@ void main() {
             bool ring = distanceSquared >= 8 && distanceSquared <= 14;
             if (cross || ring) color.rgb = vec3(1.0, 0.88, 0.26);
         } else {
-            int outer = int(renderPc.brushRadius * renderPc.brushRadius);
-            int innerRadius = max(int(renderPc.brushRadius) - 1, 0);
-            if (distanceSquared <= outer && distanceSquared >= innerRadius * innerRadius)
-                color.rgb = vec3(1.0) - color.rgb;
+            int radius = int(renderPc.brushRadius);
+            bool cursorEdge = false;
+            if (renderPc.brushShape == 0u) {
+                int outer = radius * radius;
+                int innerRadius = max(radius - 1, 0);
+                cursorEdge = distanceSquared <= outer && distanceSquared >= innerRadius * innerRadius;
+            } else if (renderPc.brushShape == 1u) {
+                cursorEdge = max(abs(delta.x), abs(delta.y)) == radius;
+            } else if (renderPc.brushShape == 2u) {
+                cursorEdge = abs(delta.x) <= radius && abs(delta.y) <= 1;
+            } else {
+                cursorEdge = abs(delta.x) <= 1 && abs(delta.y) <= radius;
+            }
+            if (cursorEdge) color.rgb = vec3(1.0) - color.rgb;
         }
     }
 

@@ -229,8 +229,13 @@ struct RenderPush final {
     std::uint32_t viewport_top{};
     std::uint32_t viewport_width{};
     std::uint32_t viewport_height{};
+    std::uint32_t view_origin_x{};
+    std::uint32_t view_origin_y{};
+    std::uint32_t view_width{};
+    std::uint32_t view_height{};
+    std::uint32_t brush_shape{};
 };
-static_assert(sizeof(RenderPush) == 124);
+static_assert(sizeof(RenderPush) == 144);
 
 bool contains_extension(const std::vector<VkExtensionProperties>& extensions, const char* name) {
     return std::ranges::any_of(extensions, [name](const VkExtensionProperties& extension) {
@@ -1439,6 +1444,30 @@ struct VulkanRenderer::Impl final {
         needs_reset = false;
     }
 
+    struct GridView final {
+        std::uint32_t origin_x{};
+        std::uint32_t origin_y{};
+        std::uint32_t width{};
+        std::uint32_t height{};
+    };
+
+    [[nodiscard]] GridView grid_view(const SharedState& state) const {
+        const auto zoom = std::clamp(state.camera_zoom.load(std::memory_order_relaxed), 1u, 8u);
+        const auto visible_width = (std::max)(8u, config.grid_width / zoom);
+        const auto visible_height = (std::max)(8u, config.grid_height / zoom);
+        const auto center_x = std::clamp(state.camera_center_x.load(std::memory_order_relaxed),
+                                         0, static_cast<int>(config.grid_width - 1u));
+        const auto center_y = std::clamp(state.camera_center_y.load(std::memory_order_relaxed),
+                                         0, static_cast<int>(config.grid_height - 1u));
+        const auto origin_x = static_cast<std::uint32_t>(std::clamp(
+            center_x - static_cast<int>(visible_width / 2u), 0,
+            static_cast<int>(config.grid_width - visible_width)));
+        const auto origin_y = static_cast<std::uint32_t>(std::clamp(
+            center_y - static_cast<int>(visible_height / 2u), 0,
+            static_cast<int>(config.grid_height - visible_height)));
+        return {origin_x, origin_y, visible_width, visible_height};
+    }
+
     std::pair<std::int32_t, std::int32_t> grid_cursor(const SharedState& state) const {
         const auto width = (std::max)(state.window_width.load(std::memory_order_relaxed), 1u);
         const auto height = (std::max)(state.window_height.load(std::memory_order_relaxed), 1u);
@@ -1452,10 +1481,11 @@ struct VulkanRenderer::Impl final {
         const auto mouse_y = std::clamp(
             state.mouse_y.load(std::memory_order_relaxed) - static_cast<int>(viewport.rect.position.y),
             0, static_cast<int>(viewport_height - 1u));
-        const auto grid_x = static_cast<std::int32_t>(
-            static_cast<std::uint64_t>(mouse_x) * config.grid_width / viewport_width);
-        const auto grid_y = static_cast<std::int32_t>(
-            static_cast<std::uint64_t>(mouse_y) * config.grid_height / viewport_height);
+        const auto view = grid_view(state);
+        const auto grid_x = static_cast<std::int32_t>(view.origin_x +
+            static_cast<std::uint64_t>(mouse_x) * view.width / viewport_width);
+        const auto grid_y = static_cast<std::int32_t>(view.origin_y +
+            static_cast<std::uint64_t>(mouse_y) * view.height / viewport_height);
         return {grid_x, grid_y};
     }
 
@@ -1472,6 +1502,9 @@ struct VulkanRenderer::Impl final {
         const auto radius = material == static_cast<std::uint32_t>(Material::bee_nest)
             ? (std::max)(requested_radius, 4u)
             : (is_block_material(selected) ? 8u : requested_radius);
+        const auto shape = is_block_material(selected)
+            ? 1u : state.brush_shape.load(std::memory_order_relaxed) % 4u;
+        const auto packed_material = material | (shape << 16u);
         SimulationPush push{
             .width = config.grid_width,
             .height = config.grid_height,
@@ -1480,7 +1513,7 @@ struct VulkanRenderer::Impl final {
             .brush_x = grid_x,
             .brush_y = grid_y,
             .radius = radius,
-            .material = material,
+            .material = packed_material,
         };
 
         bind_compute(command_buffer, paint_pipeline, current_set);
@@ -1716,6 +1749,7 @@ struct VulkanRenderer::Impl final {
         const auto layout = ui::make_layout(swapchain_extent.width, swapchain_extent.height);
         const auto simulation_viewport = ui::make_simulation_viewport(
             layout, config.grid_width, config.grid_height);
+        const auto view = grid_view(state);
         const epochengine::gui_lib::Vec2 pointer{
             static_cast<float>(state.mouse_x.load(std::memory_order_relaxed)),
             static_cast<float>(state.mouse_y.load(std::memory_order_relaxed))
@@ -1760,6 +1794,15 @@ struct VulkanRenderer::Impl final {
             .viewport_top = static_cast<std::uint32_t>(simulation_viewport.rect.position.y),
             .viewport_width = static_cast<std::uint32_t>(simulation_viewport.rect.size.x),
             .viewport_height = static_cast<std::uint32_t>(simulation_viewport.rect.size.y),
+            .view_origin_x = view.origin_x,
+            .view_origin_y = view.origin_y,
+            .view_width = view.width,
+            .view_height = view.height,
+            .brush_shape = [&state]() {
+                const auto material_id = state.selected_material.load(std::memory_order_relaxed);
+                const auto material = static_cast<Material>(material_id < material_count ? material_id : 0u);
+                return is_block_material(material) ? 1u : state.brush_shape.load(std::memory_order_relaxed) % 4u;
+            }(),
         };
         vkCmdPushConstants(command_buffer, graphics_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                            0, sizeof(push), &push);

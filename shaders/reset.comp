@@ -258,9 +258,9 @@ uint ecosystemMaterial(ivec2 p) {
         bool middleWave = abs(radius - (30.0 + sin(wavePhase + 1.7) * 5.0)) < 1.25;
         bool outerWave = abs(radius - (44.0 + sin(wavePhase + 3.2) * 7.0)) < 1.35;
         uint swarm = hash32(indexOf(p) ^ pc.seed ^ 0xbee51u);
-        if ((innerWave || middleWave || outerWave) && (swarm & 3u) != 0u)
+        if ((innerWave || middleWave || outerWave) && (swarm & 7u) == 0u)
             material = MAT_BEE;
-        else if (radius < 58.0 && (swarm % 53u) == 0u)
+        else if (radius < 58.0 && (swarm % 211u) == 0u)
             material = MAT_BEE;
     }
 
@@ -652,6 +652,21 @@ void main() {
                (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |
                             AUX_PLANT_STEM | AUX_STRUCTURAL | AUX_SUPPORTED |
                             AUX_STATE_MASK));
+
+    if (scene == SCENE_ECOSYSTEM && material == MAT_BEE) {
+        ivec2 queen = ivec2(int(pc.width) - 104, int(pc.height) - 10 - 54 - 72);
+        ivec2 q = p - queen;
+        float radius = length(vec2(q));
+        float angle = atan(float(q.y), float(q.x));
+        float wavePhase = angle * 3.0 + radius * 0.14;
+        bool authoredWave = abs(radius - (18.0 + sin(wavePhase) * 3.5)) < 1.15 ||
+                            abs(radius - (30.0 + sin(wavePhase + 1.7) * 5.0)) < 1.25 ||
+                            abs(radius - (44.0 + sin(wavePhase + 3.2) * 7.0)) < 1.35;
+        if (authoredWave) {
+            cell.aux |= AUX_PLANT_STEM | AUX_BEE_FED;
+            setStateValue(cell, 255u);
+        }
+    }
 
     // Machine controllers use the texture-bit range as four packed inventory
     // counters. Initialize it after assigning static texture variation and keep

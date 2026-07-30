@@ -12,7 +12,8 @@ inline constexpr std::uint32_t status_height = 126u;
 inline constexpr std::uint32_t group_tabs_height = 112u;
 inline constexpr std::uint32_t palette_items_height = 136u;
 inline constexpr std::uint32_t eraser_height = 24u;
-inline constexpr std::uint32_t keymap_height = 100u;
+inline constexpr std::uint32_t keymap_height = 76u;
+inline constexpr std::uint32_t cursor_editor_height = 92u;
 inline constexpr std::uint32_t palette_height = 0u;
 inline constexpr float margin = 5.0f;
 inline constexpr float gap = 3.0f;
@@ -20,7 +21,9 @@ inline constexpr float gap = 3.0f;
 struct Layout final {
     epochengine::gui_lib::Rect status{}, simulation{}, group_tabs{}, palette{};
     epochengine::gui_lib::Rect previous_scene{}, next_scene{}, reset_scene{}, save_scene{}, load_scene{};
-    epochengine::gui_lib::Rect mode_toggle{}, debug_toggle{}, eraser{}, keymap{}, material_card{};
+    epochengine::gui_lib::Rect mode_toggle{}, debug_toggle{}, eraser{}, keymap{}, cursor_editor{}, material_card{};
+    epochengine::gui_lib::Rect cursor_circle{}, cursor_square{}, cursor_horizontal{}, cursor_vertical{};
+    epochengine::gui_lib::Rect brush_smaller{}, brush_larger{}, zoom_out{}, zoom_in{};
 };
 struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32_t tile_pixel_size{}; };
 
@@ -73,14 +76,32 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
     layout.debug_toggle = {{layout.mode_toggle.position.x + layout.mode_toggle.size.x + 4.0f, 100.0f},
                            {(std::max)(1.0f, side - layout.mode_toggle.size.x - 24.0f), 22.0f}};
 
+    const float content_left = left + margin;
+    const float content_width = (std::max)(1.0f, side - margin * 2.0f);
     const float eraser_top = layout.palette.position.y + layout.palette.size.y + gap;
-    layout.eraser = {{left + margin, eraser_top}, {(std::max)(1.0f, side - margin * 2.0f), float(eraser_height)}};
+    layout.eraser = {{content_left, eraser_top}, {content_width, float(eraser_height)}};
     const float keymap_top = eraser_top + float(eraser_height) + gap;
-    layout.keymap = {{left + margin, keymap_top}, {(std::max)(1.0f, side - margin * 2.0f), float(keymap_height)}};
-    const float card_top = keymap_top + float(keymap_height) + gap;
-    layout.material_card = {{left + margin, card_top},
-                            {(std::max)(1.0f, side - margin * 2.0f),
-                             (std::max)(1.0f, float(screen_height) - card_top - margin)}};
+    layout.keymap = {{content_left, keymap_top}, {content_width, float(keymap_height)}};
+    const float cursor_top = keymap_top + float(keymap_height) + gap;
+    layout.cursor_editor = {{content_left, cursor_top}, {content_width, float(cursor_editor_height)}};
+
+    const float shape_top = cursor_top + 23.0f;
+    const float shape_width = content_width / 4.0f;
+    layout.cursor_circle = {{content_left, shape_top}, {shape_width, 24.0f}};
+    layout.cursor_square = {{content_left + shape_width, shape_top}, {shape_width, 24.0f}};
+    layout.cursor_horizontal = {{content_left + shape_width * 2.0f, shape_top}, {shape_width, 24.0f}};
+    layout.cursor_vertical = {{content_left + shape_width * 3.0f, shape_top}, {shape_width, 24.0f}};
+
+    const float control_top = cursor_top + 60.0f;
+    const float half = content_width / 2.0f;
+    layout.brush_smaller = {{content_left + 4.0f, control_top}, {30.0f, 26.0f}};
+    layout.brush_larger = {{content_left + half - 34.0f, control_top}, {30.0f, 26.0f}};
+    layout.zoom_out = {{content_left + half + 4.0f, control_top}, {30.0f, 26.0f}};
+    layout.zoom_in = {{content_left + content_width - 34.0f, control_top}, {30.0f, 26.0f}};
+
+    const float card_top = cursor_top + float(cursor_editor_height) + gap;
+    layout.material_card = {{content_left, card_top},
+                            {content_width, (std::max)(1.0f, float(screen_height) - card_top - margin)}};
     return layout;
 }
 
