@@ -17,4 +17,21 @@ frag = frag_path.read_text(encoding='utf-8')
 frag = frag.replace('const uint bx[5]=uint[5](', 'uint bx[5]=uint[5](', 1)
 frag = frag.replace('const uint bw[5]=uint[5](', 'uint bw[5]=uint[5](', 1)
 frag_path.write_text(frag, encoding='utf-8', newline='\n')
-print('Fix26 GLSL compile contracts patched.')
+
+layout_path = Path('include/epoch/sand/ui_layout.hpp')
+layout = layout_path.read_text(encoding='utf-8')
+old_layout = 'auto tc=(std::max)(1u,(grid_width+7u)/8u); auto tr=(std::max)(1u,(grid_height+7u)/8u);'
+new_layout = 'auto tc=(std::max)(1u,(grid_width+cells_per_tile-1u)/cells_per_tile); auto tr=(std::max)(1u,(grid_height+cells_per_tile-1u)/cells_per_tile);'
+count = layout.count(old_layout)
+if count != 1:
+    raise SystemExit(f'Fix26 layout compile patch expected one match, found {count}')
+layout_path.write_text(layout.replace(old_layout, new_layout, 1), encoding='utf-8', newline='\n')
+
+app_path = Path('src/app.cpp')
+app = app_path.read_text(encoding='utf-8')
+old_app = '        const bool character_scene = scene_has_character(scene);\n'
+count = app.count(old_app)
+if count != 1:
+    raise SystemExit(f'Fix26 app compile patch expected one match, found {count}')
+app_path.write_text(app.replace(old_app, '', 1), encoding='utf-8', newline='\n')
+print('Fix26 GLSL and C++ compile contracts patched.')
