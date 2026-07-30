@@ -26,7 +26,11 @@ function(epoch_sand_configure_warnings target_name)
             target_compile_options(${target_name} PRIVATE /WX)
         endif()
     else()
-        target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+        target_compile_options(${target_name} PRIVATE
+  -Wall -Wextra -Wpedantic -Wconversion -Wshadow
+  # Vulkan C structs are intentionally initialized with designated
+  # members; every omitted member is value-initialized to zero.
+  -Wno-missing-field-initializers)
         if(EPOCH_SAND_WARNINGS_AS_ERRORS)
             target_compile_options(${target_name} PRIVATE -Werror)
         endif()

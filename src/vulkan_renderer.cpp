@@ -238,7 +238,7 @@ bool contains_extension(const std::vector<VkExtensionProperties>& extensions, co
     });
 }
 
-bool contains_layer(const std::vector<VkLayerProperties>& layers, const char* name) {
+[[maybe_unused]] bool contains_layer(const std::vector<VkLayerProperties>& layers, const char* name) {
     return std::ranges::any_of(layers, [name](const VkLayerProperties& layer) {
         return std::strcmp(layer.layerName, name) == 0;
     });
