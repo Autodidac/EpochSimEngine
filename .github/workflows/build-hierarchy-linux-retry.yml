@@ -76,3 +76,5 @@ jobs:
           name: fastfreddy-hierarchy-linux-x64-retry
           path: dist/FastFreddyHierarchy_Linux_x64.tar.gz
           if-no-files-found: error
+
+# trigger
