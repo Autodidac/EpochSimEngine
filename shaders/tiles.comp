@@ -30,15 +30,28 @@ void main() {
     bool hot = false;
     bool moving = false;
     bool reacting = false;
+    bool activeContent = false;
 
     for (uint y = 0u; y < TILE_SIZE; ++y) {
         for (uint x = 0u; x < TILE_SIZE; ++x) {
             ivec2 p = origin + ivec2(x, y);
             if (!tileInside(p)) continue;
             Cell cell = cells[indexOf(p)];
-            if (cell.material == MAT_EMPTY || isCellGas(cell) || isCellLiquid(cell)) continue;
+            if (cell.material == MAT_EMPTY) continue;
+            if (isCellGas(cell) || isCellLiquid(cell)) {
+                activeContent = true;
+                moving = true;
+                continue;
+            }
             ++occupied;
             if (cell.material < MATERIAL_COUNT) ++counts[cell.material];
+            bool activeAgent = cell.material == MAT_BEE || cell.material == MAT_ANT ||
+                               cell.material == MAT_BEETLE || cell.material == MAT_SEED ||
+                               cell.material == MAT_POLLEN;
+            bool activeLoose = !isStructural(cell) &&
+                               !isReconstructableMaterial(cell.material) &&
+                               !isCellImmovable(cell);
+            activeContent = activeContent || activeAgent || activeLoose;
             if (isStructural(cell)) {
                 ++structural;
                 uint health = stateValue(cell);
@@ -48,7 +61,8 @@ void main() {
             bool cellStable = cell.age >= 30u && (cell.aux & AUX_MOVED) == 0u &&
                               phase != PHASE_SOFTENED && phase != PHASE_MOLTEN && phase != PHASE_VAPOR;
             if (cellStable) ++stable;
-            moving = moving || (cell.aux & AUX_MOVED) != 0u || cell.age < 8u;
+            moving = moving || activeAgent || activeLoose ||
+                     (cell.aux & AUX_MOVED) != 0u || cell.age < 8u;
             hot = hot || abs(cell.temperature - 20) > 80;
             reacting = reacting || cell.material == MAT_FIRE || cell.material == MAT_EMBER ||
                        cell.material == MAT_GUNPOWDER || cell.material == MAT_ACID;
@@ -101,7 +115,7 @@ void main() {
 
     uint stableCells = structuralTile ? structural : occupied;
     bool sleeping = terrainStable && !damaged && !moving && !hot && !reacting &&
-                    dominantCount == stableCells;
+                    !activeContent && dominantCount == stableCells;
     if (sleeping) flags |= TILE_SLEEPING;
     else flags |= TILE_ACTIVE;
 

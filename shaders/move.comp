@@ -172,7 +172,7 @@ bool isCellPowder(Cell cell) {
 
 bool isImmovableMaterial(uint material) {
     return material == MAT_STONE || material == MAT_CRYSTAL || material == MAT_GRASS ||
-           material == MAT_WOOD || material == MAT_PLASTIC ||
+           material == MAT_PLANT_STEM || material == MAT_WOOD || material == MAT_PLASTIC ||
            material == MAT_ACID_RESISTANT_PLASTIC || material == MAT_ICE ||
            material == MAT_ALUMINUM || material == MAT_GLASS || material == MAT_BEESWAX ||
            material == MAT_FLOWER || material == MAT_BEE_NEST ||
@@ -355,24 +355,64 @@ bool adjacentHazard(ivec2 p) {
            isMovementHazard(sampleAt(p + ivec2(0, -1)).material);
 }
 
+bool targetMaterial(uint material, uint first, uint second) {
+    return material == first || material == second;
+}
+
+int localTargetSignal(ivec2 p, uint first, uint second) {
+    int score = adjacentContains(p, first, second) ? 32 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(2, 0)).material, first, second) ? 14 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(-2, 0)).material, first, second) ? 14 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(0, 2)).material, first, second) ? 14 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(0, -2)).material, first, second) ? 14 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(2, 2)).material, first, second) ? 9 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(-2, 2)).material, first, second) ? 9 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(2, -2)).material, first, second) ? 9 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(-2, -2)).material, first, second) ? 9 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(4, 0)).material, first, second) ? 5 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(-4, 0)).material, first, second) ? 5 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(0, 4)).material, first, second) ? 5 : 0;
+    score += targetMaterial(sampleAt(p + ivec2(0, -4)).material, first, second) ? 5 : 0;
+    return score;
+}
+
+int beeTargetSignal(Cell bee, ivec2 p) {
+    bool carryingPollen = (bee.aux & AUX_BEE_POLLEN) != 0u;
+    bool resting = stateValue(bee) > 0u;
+    if (carryingPollen || resting) {
+        return localTargetSignal(p, MAT_QUEEN_BEE, MAT_BEE_NEST);
+    }
+    int flowerSignal = localTargetSignal(p, MAT_FLOWER, MAT_FLOWER);
+    if ((bee.aux & AUX_BEE_FED) == 0u) {
+        int foodSignal = localTargetSignal(p, MAT_HONEY, MAT_QUEEN_BEE);
+        return max(flowerSignal, foodSignal);
+    }
+    return flowerSignal;
+}
+
+int beeWaveVertical(Cell bee, ivec2 p) {
+    uint phase = (movePc.step / 3u + uint(p.x) * 3u + uint(p.y) +
+                  ((bee.aux >> 8u) & 15u)) & 15u;
+    if (phase < 4u) return -1;
+    if (phase < 8u) return 0;
+    if (phase < 12u) return 1;
+    return 0;
+}
+
 bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {
+    if ((bee.aux & AUX_MOVED) != 0u) return false;
     bool sourceHazard = adjacentHazard(sourcePosition);
     bool targetHazard = adjacentHazard(targetPosition);
     if (sourceHazard != targetHazard) return sourceHazard;
 
-    bool carryingPollen = (bee.aux & AUX_BEE_POLLEN) != 0u;
-    bool resting = stateValue(bee) > 0u;
-    uint first = carryingPollen || resting ? MAT_QUEEN_BEE : MAT_FLOWER;
-    uint second = carryingPollen || resting ? MAT_BEE_NEST : MAT_FLOWER;
-    bool sourceTarget = adjacentContains(sourcePosition, first, second);
-    bool targetTarget = adjacentContains(targetPosition, first, second);
-    if (sourceTarget != targetTarget) return targetTarget;
+    int sourceSignal = beeTargetSignal(bee, sourcePosition);
+    int targetSignal = beeTargetSignal(bee, targetPosition);
+    if (sourceSignal != targetSignal) return targetSignal > sourceSignal;
 
-    if (!carryingPollen && !resting && (bee.aux & AUX_BEE_FED) == 0u) {
-        bool sourceFood = adjacentContains(sourcePosition, MAT_HONEY, MAT_QUEEN_BEE);
-        bool targetFood = adjacentContains(targetPosition, MAT_HONEY, MAT_QUEEN_BEE);
-        if (sourceFood != targetFood) return targetFood;
-    }
+    ivec2 delta = targetPosition - sourcePosition;
+    int desiredVertical = beeWaveVertical(bee, sourcePosition);
+    if (delta.y == desiredVertical) return true;
+    if (delta.x != 0 && (randomValue & 1u) == 0u) return true;
     return (randomValue & 3u) == 0u;
 }
 
@@ -410,7 +450,30 @@ bool isInsect(uint material) { return material == MAT_ANT || material == MAT_BEE
 
 bool insectGrounded(ivec2 p) {
     Cell below = sampleAt(p + ivec2(0, 1));
-    return below.material != MAT_EMPTY && !isCellGas(below);
+    return below.material != MAT_EMPTY && !isCellGas(below) && !isCellLiquid(below);
+}
+
+int insectTargetSignal(Cell insect, ivec2 p) {
+    if (insect.material == MAT_ANT) {
+        return localTargetSignal(p, MAT_WASTE, MAT_FERTILIZER) +
+               localTargetSignal(p, MAT_DIRT, MAT_GRASS) / 2;
+    }
+    return localTargetSignal(p, MAT_WASTE, MAT_WOOD) +
+           localTargetSignal(p, MAT_FERTILIZER, MAT_MUD) / 2;
+}
+
+bool insectMoveAllowed(Cell insect, ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {
+    if ((insect.aux & AUX_MOVED) != 0u) return false;
+    int sourceSignal = insectTargetSignal(insect, sourcePosition);
+    int targetSignal = insectTargetSignal(insect, targetPosition);
+    if (sourceSignal != targetSignal) return targetSignal > sourceSignal;
+
+    ivec2 delta = targetPosition - sourcePosition;
+    uint directionState = stateValue(insect);
+    int preferredDirection = directionState == 2u ? -1 :
+        (directionState == 1u ? 1 : (((insect.aux >> 8u) & 1u) != 0u ? 1 : -1));
+    if (delta.x == preferredDirection) return true;
+    return (randomValue & 7u) == 0u;
 }
 
 bool isConveyorCargo(Cell cell) {
@@ -423,10 +486,19 @@ int conveyorDirectionBelow(ivec2 p) {
     return (belt.aux & AUX_CHARGED) != 0u ? 1 : -1;
 }
 
+bool sleepSafe(Cell cell) {
+    if (cell.material == MAT_EMPTY || isStructural(cell)) return true;
+    if (cell.material == MAT_BEE || isInsect(cell.material) ||
+        cell.material == MAT_SEED || cell.material == MAT_POLLEN) return false;
+    if (isCellGas(cell) || isCellLiquid(cell) || isCellPowder(cell) || isLooseSolid(cell)) return false;
+    return isCellImmovable(cell);
+}
+
 bool pairSleeping(ivec2 a, ivec2 b) {
     TileState tileA = tiles[tileIndex(a, movePc.width)];
     TileState tileB = tiles[tileIndex(b, movePc.width)];
-    return tileHas(tileA, TILE_SLEEPING) && tileHas(tileB, TILE_SLEEPING);
+    if (!tileHas(tileA, TILE_SLEEPING) || !tileHas(tileB, TILE_SLEEPING)) return false;
+    return sleepSafe(moveAt(a)) && sleepSafe(moveAt(b));
 }
 
 void processVertical(ivec2 top, ivec2 bottom) {
@@ -435,6 +507,12 @@ void processVertical(ivec2 top, ivec2 bottom) {
     Cell a = moveAt(top);
     Cell b = moveAt(bottom);
     uint randomValue = moveHash(top, uint(movePc.phase) + 1u);
+
+    if (isInsect(a.material) && b.material == MAT_EMPTY && !insectGrounded(top) &&
+        (a.aux & AUX_MOVED) == 0u) {
+        swapCells(top, bottom);
+        return;
+    }
 
     if (a.material == MAT_CARBON_DIOXIDE &&
         (b.material == MAT_EMPTY || b.material == MAT_OXYGEN || b.material == MAT_SMOKE) &&
@@ -492,6 +570,18 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
     uint randomValue = moveHash(sourcePosition, uint(movePc.phase) * 17u + 3u);
 
     Cell below = sampleAt(sourcePosition + ivec2(0, 1));
+    if (!upward && isInsect(source.material) && target.material == MAT_EMPTY &&
+        !insectGrounded(sourcePosition) && (source.aux & AUX_MOVED) == 0u) {
+        swapCells(sourcePosition, targetPosition);
+        return;
+    }
+    if (upward && isInsect(source.material) && target.material == MAT_EMPTY &&
+        insectGrounded(sourcePosition) && insectGrounded(targetPosition) &&
+        insectMoveAllowed(source, sourcePosition, targetPosition, randomValue)) {
+        swapCells(sourcePosition, targetPosition);
+        return;
+    }
+
     bool cohesiveMud = source.material == MAT_MUD &&
         (below.material == MAT_DIRT || below.material == MAT_STONE || below.material == MAT_MUD);
     if (!upward && !cohesiveMud &&
@@ -555,11 +645,15 @@ void processHorizontal(ivec2 left, ivec2 right) {
     }
 
 
-    if (isInsect(a.material) && b.material == MAT_EMPTY && insectGrounded(left) && (a.age & 1u) == 0u) {
+    if (isInsect(a.material) && b.material == MAT_EMPTY &&
+        insectGrounded(left) && insectGrounded(right) &&
+        insectMoveAllowed(a, left, right, randomValue)) {
         swapCells(left, right);
         return;
     }
-    if (isInsect(b.material) && a.material == MAT_EMPTY && insectGrounded(right) && (b.age & 1u) == 0u) {
+    if (isInsect(b.material) && a.material == MAT_EMPTY &&
+        insectGrounded(right) && insectGrounded(left) &&
+        insectMoveAllowed(b, right, left, randomValue >> 1u)) {
         swapCells(left, right);
         return;
     }

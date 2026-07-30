@@ -121,13 +121,34 @@ bool hasWithin(ivec2 p, uint material, int radius) {
 
 bool seedHasGrowingConditions(ivec2 seedPosition) {
     Cell seed = at(seedPosition);
-    if (seed.material != MAT_SEED || seed.age < 240u) return false;
+    if (seed.material != MAT_SEED || seed.age < 90u) return false;
     uint soil = at(seedPosition + ivec2(0, 1)).material;
-    return (soil == MAT_DIRT || soil == MAT_GRASS || soil == MAT_MUD) &&
-           hasFreshMoistureRadius(seedPosition, 2) &&
+    bool fertileSoil = soil == MAT_DIRT || soil == MAT_GRASS || soil == MAT_MUD ||
+                       soil == MAT_FERTILIZER;
+    bool moisture = hasFreshMoistureRadius(seedPosition, 4) ||
+                    hasWithin(seedPosition, MAT_FERTILIZER, 3);
+    return fertileSoil && moisture &&
            !hasNeighbor(seedPosition, MAT_SALTWATER) &&
            !hasNeighbor(seedPosition, MAT_ACID) &&
-           light[indexOf(seedPosition)] > 145u;
+           light[indexOf(seedPosition)] > 105u;
+}
+
+ivec2 flowerSeedTarget(ivec2 flowerPosition, Cell flower) {
+    uint choice = hash32(indexOf(flowerPosition) ^ flower.age ^ pc.seed ^ 0xf10a3u) & 3u;
+    return flowerPosition + cardinalOffsets[choice];
+}
+
+bool flowerDropsSeed(ivec2 targetPosition) {
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 flowerPosition = targetPosition - cardinalOffsets[i];
+        Cell flower = at(flowerPosition);
+        if (flower.material == MAT_FLOWER && flower.age > 900u &&
+            (cellHash(flowerPosition, 0x5eedu) & 1023u) == 0u &&
+            all(equal(flowerSeedTarget(flowerPosition, flower), targetPosition))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 ivec2 saltDissolutionTarget(ivec2 saltPosition, Cell saltCell) {
@@ -608,8 +629,13 @@ void main() {
             return;
         }
 
-        if (hasNeighbor(p, MAT_INSECT_HABITAT) && (randomValue & 4095u) == 0u) {
-            result = makeCell((randomValue & 8192u) == 0u ? MAT_ANT : MAT_BEETLE);
+        if (flowerDropsSeed(p)) {
+            result = makeCell(MAT_SEED);
+            commitResult(index, source, result);
+            return;
+        }
+        if (hasNeighbor(p, MAT_INSECT_HABITAT) && (randomValue & 1023u) == 0u) {
+            result = makeCell((randomValue & 2048u) == 0u ? MAT_ANT : MAT_BEETLE);
             commitResult(index, source, result);
             return;
         }
@@ -626,16 +652,18 @@ void main() {
                     result = makeCell(MAT_BEE_NEST);
                     handledNest = true;
                 } else if (any(notEqual(queenOffset, ivec2(0))) && queenDistanceSquared <= 6 &&
-                           (hasNeighbor(p, MAT_HONEY) || hasNeighbor(p, MAT_POLLEN)) &&
-                           (randomValue & 4095u) == 0u) {
+                            (hasNeighbor(p, MAT_HONEY) || hasNeighbor(p, MAT_POLLEN)) &&
+                            (randomValue & 255u) == 0u) {
                     result = makeCell(MAT_BEE);
                     handledNest = true;
                 }
             }
             if (!handledNest) {
                 Cell below = at(p + ivec2(0, 1));
+                bool stemMoisture = hasFreshMoistureRadius(p, 4) ||
+                                    hasWithin(p, MAT_FERTILIZER, 3);
                 if (below.material == MAT_PLANT_STEM &&
-                    below.age > 180u && hasFreshMoistureRadius(p, 3) && light[index] > 145u) {
+                    below.age > 60u && stemMoisture && light[index] > 105u) {
                     uint stage = stateValue(below);
                     if (stage < 3u) {
                         result = makeCell(MAT_PLANT_STEM);
@@ -860,15 +888,18 @@ void main() {
         result = makeCell(MAT_FERTILIZER);
     }
 
-    // Seed growth is staged. The seed becomes the first grass stem segment;
-    // subsequent segments grow upward and the flower exists only above grass.
+    // Grass is a surface cover on dirt, never a vertical dirt-like stem.
+    // Seeds independently grow a short stem before a flower can bloom.
     if (source.material == MAT_SEED && seedHasGrowingConditions(p)) {
         result = makeCell(MAT_PLANT_STEM);
         setStateValue(result, 1u);
     } else if (source.material == MAT_DIRT) {
         bool exposedSurface = at(p + ivec2(0, -1)).material == MAT_EMPTY;
-        if (exposedSurface && light[index] > 185u && hasFreshMoistureRadius(p, 3) &&
-            hasNeighbor(p, MAT_GRASS) && source.age > 240u && (randomValue & 255u) == 0u) {
+        bool moisture = hasFreshMoistureRadius(p, 4) || hasWithin(p, MAT_FERTILIZER, 3);
+        bool grassFrontier = hasWithin(p, MAT_GRASS, 3);
+        uint spreadMask = grassFrontier ? 63u : 4095u;
+        if (exposedSurface && light[index] > 145u && moisture &&
+            source.age > 120u && (randomValue & spreadMask) == 0u) {
             result = makeCell(MAT_GRASS);
         }
     } else if (source.material == MAT_GRASS) {
@@ -876,9 +907,20 @@ void main() {
             if (source.age > 600u && (randomValue & 127u) == 0u) {
                 result = makeCell(nearFire || nearLava ? MAT_ASH : MAT_DIRT);
             }
-        } else if ((source.aux & AUX_PLANT_STEM) == 0u && !hasFreshMoistureRadius(p, 4) &&
+        } else if (!hasFreshMoistureRadius(p, 5) && !hasWithin(p, MAT_FERTILIZER, 3) &&
                    source.age > 7200u && (randomValue & 1023u) == 0u) {
             result = makeCell(MAT_DIRT);
+        }
+    } else if (source.material == MAT_PLANT_STEM) {
+        Cell support = at(p + ivec2(0, 1));
+        bool validSupport = support.material == MAT_PLANT_STEM || support.material == MAT_GRASS ||
+                            support.material == MAT_DIRT || support.material == MAT_MUD ||
+                            support.material == MAT_FERTILIZER;
+        if (!validSupport || nearSaltwater || nearAcid || nearFire || nearLava || light[index] < 24u) {
+            result = makeCell(nearFire || nearLava ? MAT_ASH : MAT_WASTE);
+        } else {
+            result.aux |= AUX_PLANT_STEM;
+            result.aux &= ~AUX_CHARGED;
         }
     } else if (source.material == MAT_FLOWER) {
         Cell support = at(p + ivec2(0, 1));

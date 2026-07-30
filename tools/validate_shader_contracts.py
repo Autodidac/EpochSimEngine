@@ -451,6 +451,29 @@ def main() -> int:
     if "sameNeighbors" not in renderer or "sameNeighbors == 0u" not in renderer:
         errors.append("gas renderer no longer suppresses isolated particle halos")
 
+    motion_ecology_contracts = {
+        "tiles": (tiles, ("activeContent", "!activeContent", "activeAgent", "activeLoose")),
+        "movement": (movement, ("sleepSafe", "localTargetSignal", "beeWaveVertical",
+                                 "insectMoveAllowed", "MAT_PLANT_STEM")),
+        "chemistry": (chemistry, ("flowerDropsSeed", "stemMoisture", "grassFrontier",
+                                  "source.material == MAT_PLANT_STEM")),
+        "materials": (materials, ("MAT_PLANT_STEM) temperature = 20",
+                                  "AUX_PLANT_STEM | 1u")),
+    }
+    for contract, (text, tokens) in motion_ecology_contracts.items():
+        for token in tokens:
+            if token not in text:
+                errors.append(f"{contract} motion/ecology contract missing {token!r}")
+    for forbidden in ("MAT_PLANT_STEM) temperature = 900", "AUX_CHARGED | 72u"):
+        if forbidden in materials:
+            errors.append(f"plant stem still aliases obsolete projectile state: {forbidden!r}")
+    if "bool sleeping = terrainStable" in tiles and "!activeContent" not in tiles:
+        errors.append("tile sleeping still ignores dynamic biology and fluids")
+    if "if ((bee.aux & AUX_MOVED) != 0u) return false;" not in movement:
+        errors.append("bees can move repeatedly in one simulation tick")
+    if "if ((insect.aux & AUX_MOVED) != 0u) return false;" not in movement:
+        errors.append("insects can move repeatedly in one simulation tick")
+
     if errors:
         print("Shader contract validation failed:", file=sys.stderr)
         for error in errors:

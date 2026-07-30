@@ -91,7 +91,7 @@ Cell makeCellWithEntropy(uint material, uint seed, uint step) {
     else if (material == MAT_STEAM || material == MAT_DIRTY_STEAM) temperature = 110;
     else if (material == MAT_URANIUM) temperature = 42;
     else if (material == MAT_SMELTER) temperature = 180;
-    else if (material == MAT_PLANT_STEM) temperature = 900;
+    else if (material == MAT_PLANT_STEM) temperature = 20;
 
     uint aux = hash32(material ^ seed ^ step) & AUX_RANDOM_MASK;
     if (material == MAT_SALTWATER) aux |= 96u;
@@ -106,8 +106,9 @@ Cell makeCellWithEntropy(uint material, uint seed, uint step) {
     else if (material == MAT_OXYGEN) aux |= 220u;
     else if (material == MAT_CARBON_DIOXIDE) aux |= 180u;
     else if (material == MAT_HYDROGEN) aux |= 210u;
-    else if (material == MAT_ANT || material == MAT_BEETLE) aux |= 255u;
-    else if (material == MAT_PLANT_STEM) aux |= AUX_CHARGED | 72u;
+    else if (material == MAT_ANT || material == MAT_BEETLE)
+        aux |= 1u + (hash32(seed ^ step ^ material) & 1u);
+    else if (material == MAT_PLANT_STEM) aux |= AUX_PLANT_STEM | 1u;
     else if (material == MAT_CONVEYOR || material == MAT_FACTORY_CORE) aux |= AUX_CHARGED | 255u;
     return Cell(material, 0u, temperature, aux);
 }
@@ -221,7 +222,8 @@ bool isMagnetic(uint material) {
 
 bool isImmovable(uint material) {
     return material == MAT_STONE || material == MAT_CRYSTAL || material == MAT_GRASS ||
-           material == MAT_WOOD || material == MAT_PLASTIC || material == MAT_ACID_RESISTANT_PLASTIC ||
+           material == MAT_PLANT_STEM || material == MAT_WOOD ||
+           material == MAT_PLASTIC || material == MAT_ACID_RESISTANT_PLASTIC ||
            material == MAT_ICE || material == MAT_ALUMINUM || material == MAT_GLASS ||
            material == MAT_BEESWAX || material == MAT_FLOWER || material == MAT_BEE_NEST ||
            material == MAT_QUEEN_BEE || material == MAT_IRON || material == MAT_COPPER ||
@@ -256,7 +258,8 @@ bool blocksSun(uint material) {
 }
 
 bool isFlammable(uint material) {
-    return material == MAT_GRASS || material == MAT_FLOWER || material == MAT_OIL ||
+    return material == MAT_GRASS || material == MAT_PLANT_STEM ||
+           material == MAT_FLOWER || material == MAT_OIL ||
            material == MAT_WOOD || material == MAT_PLASTIC || material == MAT_HONEY ||
            material == MAT_BEESWAX || material == MAT_BEE_NEST || material == MAT_BEE ||
            material == MAT_GUNPOWDER || material == MAT_SEED || material == MAT_POLLEN ||
