@@ -81,9 +81,9 @@ regex(
                                 cell.material == MAT_BEETLE || cell.material == MAT_SEED ||
                                 cell.material == MAT_POLLEN;""",
 )
-literal(
-    "                             previous.occupancy >= TILE_STABILITY_OCCUPANCY;\n",
-    "                             tileOccupancy(previous) >= TILE_STABILITY_OCCUPANCY;\n",
+regex(
+    r"previous\.occupancy\s*>=\s*TILE_STABILITY_OCCUPANCY;",
+    "tileOccupancy(previous) >= TILE_STABILITY_OCCUPANCY;",
 )
 literal(
     """    if (damaged) flags |= TILE_DAMAGED;
