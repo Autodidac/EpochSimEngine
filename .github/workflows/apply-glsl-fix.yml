@@ -1,0 +1,34 @@
+name: Apply GLSL Identifier Fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apply-glsl-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Rename reserved half identifier
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for name in ('shaders/materials.glsl', 'shaders/move.comp'):
+              path = Path(name)
+              text = path.read_text()
+              text = text.replace('bool half)', 'bool half_state)')
+              text = text.replace('if (half) ', 'if (half_state) ')
+              path.write_text(text)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add shaders/materials.glsl shaders/move.comp
+          git commit -m 'Fix reserved GLSL half identifier [release]'
+          git push origin HEAD:main
