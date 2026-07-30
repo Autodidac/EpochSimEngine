@@ -1,7 +1,7 @@
 {
-  "run_id": 30546547180,
-  "run_number": 45,
-  "conclusion": "cancelled",
-  "head_sha": "72f6fc833b628c34f997d4620cc1073bb897cebb",
-  "run_url": "https://github.com/Autodidac/fastfreddytestbed/actions/runs/30546547180"
+  "run_id": 30547737750,
+  "run_number": 50,
+  "conclusion": "failure",
+  "head_sha": "c52e70dfada31033fdd52c8f81264cf9e5109840",
+  "run_url": "https://github.com/Autodidac/fastfreddytestbed/actions/runs/30547737750"
 }
