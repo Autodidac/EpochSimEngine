@@ -33,7 +33,7 @@ static_assert(epoch::sand::is_enabled_material(Material::oxygen));
 static_assert(!epoch::sand::is_enabled_material(Material::fire));
 static_assert(epoch::sand::canonical_material(Material::smoke) == Material::oxygen);
 static_assert(epoch::sand::canonical_material(Material::steam) == Material::oxygen);
-static_assert(epoch::sand::canonical_material(Material::molten_copper) == Material::water);
+static_assert(epoch::sand::canonical_material(Material::ice) == Material::stone);
 static_assert(epoch::sand::canonical_material(Material::crystal) == Material::stone);
 static_assert(epoch::sand::canonical_material(Material::ash) == Material::dirt);
 
