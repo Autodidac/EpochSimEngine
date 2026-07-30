@@ -2,9 +2,16 @@
 #extension GL_GOOGLE_include_directive : require
 #include "materials.glsl"
 #include "conservation.glsl"
+#include "tiles.glsl"
+#include "chunks.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
+layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
+
+void markPaintChunkDirty(ivec2 p) {
+    atomicOr(chunks[chunkIndex(p, pc.width)].flags, CHUNK_DIRTY | CHUNK_ACTIVE);
+}
 
 void main() {
     ivec2 local = ivec2(gl_GlobalInvocationID.xy);
@@ -39,6 +46,7 @@ void main() {
         Cell previous = cells[index];
         recordConservation(previous, cell);
         cells[index] = cell;
+        markPaintChunkDirty(p);
         return;
     }
 
@@ -82,4 +90,5 @@ void main() {
     Cell previous = cells[index];
     recordConservation(previous, cell);
     cells[index] = cell;
+    markPaintChunkDirty(p);
 }

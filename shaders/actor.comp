@@ -4,10 +4,13 @@
 #include "materials.glsl"
 #include "actor.glsl"
 #include "conservation.glsl"
+#include "tiles.glsl"
+#include "chunks.glsl"
 
 layout(local_size_x = 1, local_size_y = 1) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 3) buffer ActorBuffer { ActorState actor; };
+layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
 
 layout(push_constant) uniform ActorPush {
     uint width;
@@ -38,6 +41,11 @@ bool actorInside(ivec2 p) {
 
 uint actorIndex(ivec2 p) {
     return uint(p.y) * actorPc.width + uint(p.x);
+}
+
+void markActorChunkDirty(ivec2 p) {
+    if (!actorInside(p)) return;
+    atomicOr(chunks[chunkIndex(p, actorPc.width)].flags, CHUNK_DIRTY | CHUNK_ACTIVE);
 }
 
 Cell actorAt(ivec2 p) {
@@ -104,22 +112,27 @@ void collectResources(inout ActorState state) {
             if (material == MAT_GOLD) {
                 atomicAdd(conservation[CONS_CONVERTED], 1u);
                 cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
+                markActorChunkDirty(p);
                 state.gold = min(state.gold + 1u, 9999u);
             } else if (material == MAT_IRON || material == MAT_IRON_SHAVINGS || material == MAT_STEEL) {
                 atomicAdd(conservation[CONS_CONVERTED], 1u);
                 cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
+                markActorChunkDirty(p);
                 state.iron = min(state.iron + 1u, 9999u);
             } else if (material == MAT_COPPER) {
                 atomicAdd(conservation[CONS_CONVERTED], 1u);
                 cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
+                markActorChunkDirty(p);
                 state.copper = min(state.copper + 1u, 9999u);
             } else if (material == MAT_ALUMINUM || material == MAT_ALUMINUM_SHAVINGS) {
                 atomicAdd(conservation[CONS_CONVERTED], 1u);
                 cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
+                markActorChunkDirty(p);
                 state.aluminum = min(state.aluminum + 1u, 9999u);
             } else if (material == MAT_PLASMA_AMMO) {
                 atomicAdd(conservation[CONS_CONVERTED], 1u);
                 cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
+                markActorChunkDirty(p);
                 state.ammo = min(state.ammo + 1u, 999u);
             }
         }
@@ -132,6 +145,7 @@ void damageCell(ivec2 p, uint damage) {
     uint index = actorIndex(p);
     Cell cell = cells[index];
     if (toolTransparent(cell.material)) return;
+    markActorChunkDirty(p);
 
     if (cell.material == MAT_BEETLE) {
         uint health = stateValue(cell);
@@ -238,11 +252,13 @@ void depositResource(inout ActorState state) {
     if (state.iron > 0u) {
         atomicAdd(conservation[CONS_CONVERTED], 1u);
         cells[actorIndex(target)] = makeCellWithEntropy(MAT_IRON, actorPc.seed, actorPc.step);
+        markActorChunkDirty(target);
         state.iron -= 1u;
         state.moveCooldown = 5u;
     } else if (state.gold > 0u) {
         atomicAdd(conservation[CONS_CONVERTED], 1u);
         cells[actorIndex(target)] = makeCellWithEntropy(MAT_GOLD, actorPc.seed, actorPc.step);
+        markActorChunkDirty(target);
         state.gold -= 1u;
         state.moveCooldown = 5u;
     }
@@ -279,6 +295,7 @@ void updateBreathing(inout ActorState state) {
             Cell carbonDioxide = makeCellWithEntropy(MAT_CARBON_DIOXIDE, actorPc.seed, actorPc.step);
             recordConservation(cells[oxygenIndex], carbonDioxide);
             cells[oxygenIndex] = carbonDioxide;
+            markActorChunkDirty(oxygenCell);
         }
     } else {
         state.exposureTicks = min(state.exposureTicks + 1u, 4095u);

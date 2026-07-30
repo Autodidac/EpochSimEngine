@@ -3,6 +3,7 @@
 #define EPOCH_SAND_NO_SIM_PUSH
 #include "materials.glsl"
 #include "tiles.glsl"
+#include "chunks.glsl"
 #include "actor.glsl"
 #include "epochgui_font.glsl"
 #include "ui_text.glsl"
@@ -13,6 +14,7 @@ layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 3) readonly buffer ActorBuffer { ActorState actor; };
 layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
 layout(std430, binding = 5) readonly buffer DebugStatsBuffer { uint debugStats[]; };
+layout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };
 
 layout(push_constant) uniform RenderPush {
     uint gridWidth;
@@ -137,6 +139,26 @@ bool statPixel(ivec2 pixel, ivec2 origin, uint labelId, uint value) {
     return label || numberPixel(pixel, origin + ivec2(numberX, 0), 1, value);
 }
 
+const uint HIERARCHY_LABELS[25] = uint[25](
+    83u, 67u, 72u, 78u, 75u,  // SCHNK
+    65u, 67u, 72u, 78u, 75u,  // ACHNK
+    77u, 65u, 67u, 82u, 79u,  // MACRO
+    77u, 67u, 69u, 76u, 76u,  // MCELL
+    83u, 75u, 73u, 80u, 32u   // SKIP
+);
+
+bool hierarchyLabelPixel(ivec2 pixel, ivec2 origin, uint label) {
+    for (uint i = 0u; i < 5u; ++i)
+        if (glyphPixel(pixel, origin + ivec2(int(i) * 6, 0), 1,
+             HIERARCHY_LABELS[label * 5u + i])) return true;
+    return false;
+}
+
+bool hierarchyStatPixel(ivec2 pixel, ivec2 origin, uint label, uint value) {
+    return hierarchyLabelPixel(pixel, origin, label) ||
+ numberPixel(pixel, origin + ivec2(34, 0), 1, value);
+}
+
 bool borderPixel(uint x, uint y, uint left, uint top, uint right, uint bottom) {
     return x <= left + 1u || x + 2u >= right || y <= top + 1u || y + 2u >= bottom;
 }
@@ -146,6 +168,7 @@ Cell cellAt(ivec2 p) {
     return cells[uint(p.y) * renderPc.gridWidth + uint(p.x)];
 }
 TileState tileAt(ivec2 p) { return tiles[tileIndex(p, renderPc.gridWidth)]; }
+ChunkState chunkAt(ivec2 p) { return chunks[chunkIndex(p, renderPc.gridWidth)]; }
 
 vec3 backgroundColor(ivec2 grid) {
     float depth = float(grid.y) / float(max(renderPc.gridHeight, 1u));
@@ -457,11 +480,14 @@ void main() {
     ivec2 grid = ivec2(int(gridX), int(gridY));
     Cell cell = cellAt(grid);
     TileState tile = tileAt(grid);
+    ChunkState chunk = chunkAt(grid);
     vec4 color = worldColor(cell, grid);
 
     if (renderPc.debugMode != 0u) {
         ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));
         if (local.x == 0 || local.y == 0) color.rgb *= 0.45;
+        ivec2 chunkLocal = ivec2(int(gridX % CHUNK_CELL_SIZE), int(gridY % CHUNK_CELL_SIZE));
+        if (chunkLocal.x == 0 || chunkLocal.y == 0) color.rgb *= 0.32;
         vec3 overlay = vec3(0.0);
         float alpha = 0.0;
         if (tileHas(tile, TILE_COLLAPSING) || tileHas(tile, TILE_DAMAGED)) { overlay = vec3(0.95, 0.15, 0.10); alpha = 0.34; }
@@ -469,6 +495,9 @@ void main() {
         else if (tileHas(tile, TILE_SLEEPING)) { overlay = vec3(0.16, 0.72, 0.38); alpha = 0.22; }
         else if (tileHas(tile, TILE_ACTIVE)) { overlay = vec3(0.10, 0.65, 0.92); alpha = 0.18; }
         color.rgb = mix(color.rgb, overlay, alpha * float(tile.occupancy) / 64.0);
+        vec3 chunkOverlay = chunkHas(chunk, CHUNK_DIRTY) ? vec3(0.95, 0.20, 0.12) :
+            (chunkHas(chunk, CHUNK_SLEEPING) ? vec3(0.46, 0.22, 0.82) : vec3(0.08, 0.40, 0.72));
+        color.rgb = mix(color.rgb, chunkOverlay, chunkHas(chunk, CHUNK_SLEEPING) ? 0.10 : 0.04);
     }
 
 
@@ -476,7 +505,7 @@ void main() {
         uint panelLeft = renderPc.viewportLeft + 4u;
         uint panelRight = viewportRight > 4u ? viewportRight - 4u : viewportRight;
         uint panelTop = renderPc.viewportTop + 4u;
-        uint panelBottom = min(viewportBottom, panelTop + 76u);
+        uint panelBottom = min(viewportBottom, panelTop + 90u);
         if (x >= panelLeft && x < panelRight && y >= panelTop && y < panelBottom) {
             color.rgb = vec3(0.018, 0.027, 0.040);
             if (borderPixel(x, y, panelLeft, panelTop, panelRight, panelBottom))
@@ -488,6 +517,7 @@ void main() {
             uint row1 = panelTop + 33u;
             uint row2 = panelTop + 47u;
             uint row3 = panelTop + 61u;
+            uint row4 = panelTop + 75u;
             uint columnLeft = panelLeft + 7u;
 
             statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 0u), int(row0)), 76u, debugStats[STAT_SIMULATION_STEP]);
@@ -519,7 +549,13 @@ void main() {
             statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 4u), int(row3)), 98u, debugStats[STAT_ACTIVE_TILES]);
             statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 5u), int(row3)), 1u, renderPc.framesPerSecond);
 
-            if (statsText) color.rgb = vec3(0.94, 0.98, 1.0);
+  statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 0u), int(row4)), 0u, debugStats[STAT_SLEEPING_CHUNKS]);
+  statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 1u), int(row4)), 1u, debugStats[STAT_ACTIVE_CHUNKS]);
+  statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 2u), int(row4)), 2u, debugStats[STAT_MACRO_TILE_MOVES]);
+  statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 3u), int(row4)), 3u, debugStats[STAT_MACRO_CELL_MOVES]);
+  statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 4u), int(row4)), 4u, debugStats[STAT_CHUNK_SKIPPED_CELLS]);
+
+  if (statsText) color.rgb = vec3(0.94, 0.98, 1.0);
             outColor = vec4(color.rgb, 1.0);
             return;
         }

@@ -2,10 +2,12 @@
 #extension GL_GOOGLE_include_directive : require
 #include "materials.glsl"
 #include "tiles.glsl"
+#include "chunks.glsl"
 
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 4) buffer Tiles { TileState tiles[]; };
+layout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };
 
 bool tileInside(ivec2 p) {
     return p.x >= 0 && p.y >= 0 && p.x < int(pc.width) && p.y < int(pc.height);
@@ -20,10 +22,15 @@ void main() {
     uint index = tile.y * columns + tile.x;
     TileState previous = tiles[index];
     ivec2 origin = ivec2(tile * TILE_SIZE);
+    ChunkState chunk = chunks[chunkIndex(origin, pc.width)];
+    if (chunkHas(chunk, CHUNK_SLEEPING) && !chunkHas(chunk, CHUNK_DIRTY)) return;
 
     uint counts[MATERIAL_COUNT];
     for (uint i = 0u; i < MATERIAL_COUNT; ++i) counts[i] = 0u;
     uint occupied = 0u;
+    uint represented = 0u;
+    uint representedMaterial = MAT_EMPTY;
+    bool uniformRepresented = true;
     uint structural = 0u;
     uint stable = 0u;
     uint healthSum = 0u;
@@ -37,7 +44,10 @@ void main() {
             ivec2 p = origin + ivec2(x, y);
             if (!tileInside(p)) continue;
             Cell cell = cells[indexOf(p)];
-            if (cell.material == MAT_EMPTY) continue;
+            if (cell.material == MAT_EMPTY || cell.material == MAT_OXYGEN) continue;
+            if (represented == 0u) representedMaterial = cell.material;
+            else uniformRepresented = uniformRepresented && cell.material == representedMaterial;
+            ++represented;
             if (isCellGas(cell) || isCellLiquid(cell)) {
                 activeContent = true;
                 moving = true;
@@ -77,10 +87,15 @@ void main() {
             dominant = material;
         }
     }
+    if (occupied == 0u && represented > 0u && uniformRepresented) {
+        dominant = representedMaterial;
+        dominantCount = represented;
+    }
 
     uint cooldown = tileCooldown(previous);
     if (cooldown > 0u) --cooldown;
-    bool uniformMaterial = dominant != MAT_EMPTY && dominantCount == occupied;
+    uint uniformPopulation = occupied != 0u ? occupied : represented;
+    bool uniformMaterial = dominant != MAT_EMPTY && dominantCount == uniformPopulation;
     bool stabilizable = uniformMaterial && isReconstructableMaterial(dominant);
     bool structuralTile = structural > 0u;
 
@@ -111,15 +126,16 @@ void main() {
     if (candidate) flags |= TILE_CANDIDATE;
     if (terrainStable) flags |= TILE_STABLE;
     if (collapsing) flags |= TILE_COLLAPSING;
-    if (damaged) flags |= TILE_DAMAGED;
-
-    uint stableCells = structuralTile ? dominantCount : occupied;
-    bool sleeping = terrainStable && !damaged && !moving && !hot && !reacting &&
-                    !activeContent && dominantCount == stableCells;
-    if (sleeping) flags |= TILE_SLEEPING;
+    if (damaged) flags |= TILE_DAMAGED;    uint stableCells = structuralTile ? dominantCount : occupied;
+    bool sleepingTerrain = terrainStable && !damaged && !moving && !hot && !reacting &&
+                           !activeContent && dominantCount == stableCells;
+    bool sleepingAtmosphere = represented == 0u && !moving && !hot && !reacting && !activeContent;
+    bool sleeping = sleepingTerrain || sleepingAtmosphere;
+if (sleeping) flags |= TILE_SLEEPING;
     else flags |= TILE_ACTIVE;
 
-    if (collapsing) cooldown = TILE_RESTABILIZE_COOLDOWN;
-    tiles[index] = TileState(dominant, structuralTile ? dominantCount : occupied,
-                             flags, packTileCounters(stableTicks, cooldown));
+    if (collapsing) cooldown = TILE_RESTABILIZE_COOLDOWN;    uint reportedOccupancy = structuralTile ? dominantCount :
+        (uniformRepresented ? represented : occupied);
+    tiles[index] = TileState(dominant, reportedOccupancy,
+                              flags, packTileCounters(stableTicks, cooldown));
 }

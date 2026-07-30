@@ -2,6 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 #include "material_ids.glsl"
 #include "tiles.glsl"
+#include "chunks.glsl"
 #include "debug_stats.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
@@ -25,6 +26,7 @@ layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 1) readonly buffer SnapshotCells { Cell snapshotCells[]; };
 layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
 layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };
+layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
 
 layout(push_constant) uniform MovementPush {
     uint width;
@@ -66,6 +68,17 @@ bool moveInside(ivec2 p) {
 
 uint moveIndex(ivec2 p) {
     return uint(p.y) * movePc.width + uint(p.x);
+}
+
+void markChunkDirty(ivec2 p) {
+    atomicOr(chunks[chunkIndex(p, movePc.width)].flags, CHUNK_DIRTY | CHUNK_ACTIVE);
+}
+
+bool pairChunksSleeping(ivec2 a, ivec2 b) {
+    ChunkState first = chunks[chunkIndex(a, movePc.width)];
+    ChunkState second = chunks[chunkIndex(b, movePc.width)];
+    return chunkHas(first, CHUNK_SLEEPING) && !chunkHas(first, CHUNK_DIRTY) &&
+ chunkHas(second, CHUNK_SLEEPING) && !chunkHas(second, CHUNK_DIRTY);
 }
 
 Cell boundaryCell() {
@@ -122,6 +135,8 @@ void mergeHalfWaterPair(ivec2 keepPosition, ivec2 releasePosition, Cell keep, Ce
     keep.aux |= AUX_MOVED;
     cells[moveIndex(keepPosition)] = keep;
     cells[moveIndex(releasePosition)] = oxygenFrom(released);
+    markChunkDirty(keepPosition);
+    markChunkDirty(releasePosition);
 }
 
 void splitFullWaterPair(ivec2 sourcePosition, ivec2 targetPosition, Cell source, Cell target) {
@@ -132,6 +147,8 @@ void splitFullWaterPair(ivec2 sourcePosition, ivec2 targetPosition, Cell source,
     half_cell.temperature = (source.temperature + target.temperature) / 2;
     cells[moveIndex(sourcePosition)] = source;
     cells[moveIndex(targetPosition)] = half_cell;
+    markChunkDirty(sourcePosition);
+    markChunkDirty(targetPosition);
 }
 
 uint salinity(Cell cell) {
@@ -273,6 +290,8 @@ void swapCells(ivec2 aPosition, ivec2 bPosition) {
     b.aux |= AUX_MOVED;
     cells[aIndex] = b;
     cells[bIndex] = a;
+    markChunkDirty(aPosition);
+    markChunkDirty(bPosition);
     if (movePc.reserved0 != 0u) {
         atomicAdd(debugStats[STAT_MOVE_SWAPS], 1u);
         uint movedMaterial = a.material != MAT_EMPTY ? a.material : b.material;
@@ -594,6 +613,7 @@ bool sleepSafe(ivec2 position, Cell cell) {
 }
 
 bool pairSleeping(ivec2 a, ivec2 b) {
+    if (pairChunksSleeping(a, b)) return true;
     TileState tileA = tiles[tileIndex(a, movePc.width)];
     TileState tileB = tiles[tileIndex(b, movePc.width)];
     if (!tileHas(tileA, TILE_SLEEPING) || !tileHas(tileB, TILE_SLEEPING)) return false;
@@ -710,6 +730,8 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
         pressured.age = 0u;
         pressured.aux |= AUX_MOVED;
         cells[moveIndex(targetPosition)] = pressured;
+        markChunkDirty(sourcePosition);
+        markChunkDirty(targetPosition);
         return;
     }
 

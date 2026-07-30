@@ -119,7 +119,9 @@ if(EPOCH_SAND_BUILD_APP)
         paint.comp
         sunlight.comp
         tiles.comp
+        chunks.comp
         chemistry.comp
+        macro_move.comp
         move.comp
         actor.comp
         debug_stats.comp
@@ -147,6 +149,7 @@ if(EPOCH_SAND_BUILD_APP)
                     "${SHADER_SOURCE_DIR}/material_ids.glsl"
                     "${SHADER_SOURCE_DIR}/material_physics.glsl"
                     "${SHADER_SOURCE_DIR}/tiles.glsl"
+                    "${SHADER_SOURCE_DIR}/chunks.glsl"
                     "${SHADER_SOURCE_DIR}/conservation.glsl"
                     "${SHADER_SOURCE_DIR}/debug_stats.glsl"
                     "${SHADER_SOURCE_DIR}/actor.glsl" "${SHADER_SOURCE_DIR}/epochgui_font.glsl"
