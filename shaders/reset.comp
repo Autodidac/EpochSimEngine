@@ -95,8 +95,8 @@ uint volcanoMaterial(ivec2 p) {
     ivec2 chamberCenter = ivec2(center, floorRow - 6);
     ivec2 chamberDelta = b - chamberCenter;
     if (chamberDelta.x * chamberDelta.x * 2 + chamberDelta.y * chamberDelta.y * 5 <= 54)
-        material = MAT_LAVA;
-    if (abs(b.x - center) <= 1 && b.y >= top + 2 && b.y <= chamberCenter.y) material = MAT_LAVA;
+        material = MAT_MAGMA_VENT;
+    if (abs(b.x - center) <= 1 && b.y >= top + 2 && b.y <= chamberCenter.y) material = MAT_MAGMA_VENT;
     if (b.y >= top && b.y < top + 2 && abs(b.x - center) <= 3) material = MAT_EMPTY;
     if (b.y == chamberCenter.y + 2 && abs(b.x - center) <= 1) material = MAT_MAGMA_VENT;
 
@@ -190,7 +190,7 @@ uint ecosystemMaterial(ivec2 p) {
         p.x > (farmMin.x + 2) * BRICK_SIZE && p.x < (farmMax.x - 2) * BRICK_SIZE && (p.x % 13) == 0)
         material = ((p.x / 13) & 1) == 0 ? MAT_ANT : MAT_BEETLE;
 
-    // Organic hive and true three-lobed biohazard swarm. The hive is not terrain.
+    // Fix29 compact hive plus a hidden moving swarm mask. The hive is not terrain.
     ivec2 queen = ecosystemQueen();
     ivec2 q = p - queen;
     int q2 = q.x * q.x + q.y * q.y;

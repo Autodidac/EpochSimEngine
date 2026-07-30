@@ -10,31 +10,45 @@ const uint BEE_AUX_SWARM = 0x08000000u;
 const uint BEE_AUX_MIGRATING = 0x02000000u;
 const uint BEE_METADATA_MASK = 0x00ffffffu;
 
-const uint BEE_BIOHAZARD_PACKED[BEE_FORMATION_COUNT] = uint[](
-    2366u, 2370u, 2489u, 2503u, 2741u, 2763u, 2879u, 2883u, 2993u, 3002u,
-    3023u, 3144u, 3254u, 3404u, 3501u, 3539u, 3634u, 3791u, 4011u, 4053u,
-    4143u, 4306u, 4521u, 4567u, 4653u, 4926u, 4930u, 4948u, 5160u, 5178u,
-    5190u, 5208u, 5292u, 5559u, 5577u, 5588u, 5800u, 5804u, 5848u, 6069u,
-    6091u, 6099u, 6205u, 6211u, 6313u, 6359u, 6446u, 6572u, 6577u, 6580u,
-    6583u, 6592u, 6601u, 6604u, 6607u, 6612u, 6696u, 6715u, 6725u, 6737u,
-    6744u, 6819u, 6877u, 6955u, 6960u, 6997u, 7071u, 7085u, 7091u, 7093u,
-    7095u, 7113u, 7115u, 7117u, 7121u, 7125u, 7137u, 7208u, 7217u, 7247u,
-    7258u, 7332u, 7342u, 7378u, 7452u, 7518u, 7524u, 7603u, 7604u, 7628u,
-    7629u, 7712u, 7727u, 7761u, 7856u, 7888u, 7961u, 8034u, 8039u, 8107u,
-    8149u, 8220u, 8243u, 8269u, 8421u, 8471u, 8489u, 8535u, 8553u, 8624u,
-    8656u, 8730u, 8884u, 8908u, 9062u, 9109u, 9128u, 9176u, 9195u, 9369u,
-    9395u, 9399u, 9417u, 9421u, 9641u, 9687u, 9703u, 9749u, 9787u, 9797u,
-    9835u, 9881u, 9911u, 9920u, 9929u, 10046u, 10050u, 10155u, 10197u, 10215u,
-    10262u, 10301u, 10307u, 10346u, 10427u, 10432u, 10437u, 10522u, 10542u, 10578u,
-    10674u, 10679u, 10684u, 10687u, 10692u, 10697u, 10702u, 10853u, 10903u, 10946u,
-    10985u, 11036u, 11197u, 11199u, 11201u, 11362u, 11417u, 11461u, 11495u, 11551u,
-    11578u, 11711u, 11713u, 11743u, 11849u, 11933u, 11939u, 11958u, 11995u, 12003u,
-    12072u, 12091u, 12101u, 12109u, 12192u, 12204u, 12209u, 12242u, 12246u, 12256u,
-    12453u, 12471u, 12489u, 12507u, 12595u, 12621u, 12713u, 12718u, 12754u, 12759u
+const uint BEE_SWARM_BIOHAZARD_TICKS = 1800u;
+const uint BEE_SWARM_ALTERNATE_TICKS = 600u;
+const uint BEE_SWARM_CYCLE_TICKS =
+    BEE_SWARM_BIOHAZARD_TICKS + BEE_SWARM_ALTERNATE_TICKS * 2u;
+
+const uint BEE_INITIAL_PACKED[BEE_FORMATION_COUNT] = uint[](
+    1479u, 1597u, 1850u, 1989u, 1999u, 2099u, 2109u, 2114u, 2229u, 2232u,
+    2235u, 2258u, 2366u, 2386u, 2479u, 2483u, 2503u, 2506u, 2510u, 2615u,
+    2622u, 2763u, 2773u, 2863u, 2866u, 2867u, 2871u, 2988u, 2989u, 2994u,
+    2999u, 3125u, 3243u, 3256u, 3285u, 3374u, 3535u, 3794u, 3885u, 3887u,
+    3924u, 3928u, 4010u, 4140u, 4178u, 4275u, 4432u, 4434u, 4439u, 4520u,
+    4560u, 4649u, 4650u, 4779u, 4817u, 5161u, 5946u, 5952u, 6208u, 6210u,
+    6219u, 6325u, 6340u, 6450u, 6597u, 6861u, 6989u, 7121u, 7458u, 7525u,
+    7527u, 7776u, 7829u, 7831u, 7844u, 7853u, 7856u, 8039u, 8042u, 8084u,
+    8098u, 8166u, 8172u, 8243u, 8338u, 8349u, 8353u, 8404u, 8416u, 8423u,
+    8429u, 8607u, 8624u, 8674u, 8736u, 8807u, 8812u, 8853u, 8909u, 8912u,
+    8914u, 8916u, 8938u, 8939u, 8980u, 9107u, 9110u, 9112u, 9136u, 9141u,
+    9170u, 9187u, 9199u, 9241u, 9369u, 9393u, 9446u, 9576u, 9578u, 9583u,
+    9617u, 9618u, 9623u, 9657u, 9673u, 9752u, 9804u, 9919u, 9959u, 9966u,
+    10042u, 10087u, 10220u, 10638u, 10648u, 10694u, 10736u, 10822u, 10853u, 10897u,
+    10988u, 10994u, 11118u, 11187u, 11363u, 11374u, 11411u, 11471u, 11475u, 11544u,
+    11549u, 11569u, 11673u, 11732u, 11814u, 11817u, 11822u, 11870u, 11930u, 11943u,
+    11984u, 11986u, 11998u, 12111u, 12117u, 12128u, 12134u, 12185u, 12190u, 12198u,
+    12211u, 12259u, 12310u, 12313u, 12329u, 12386u, 12388u, 12451u, 12456u, 12570u,
+    12578u, 12592u, 12596u, 12598u, 12622u, 12624u, 12627u, 12646u, 12702u, 12724u,
+    12750u, 12755u, 12768u, 12901u, 12961u, 12977u, 13020u, 13085u, 13097u, 13402u
 );
 
+uint beeHash32(uint value) {
+    value ^= value >> 16u;
+    value *= 0x7feb352du;
+    value ^= value >> 15u;
+    value *= 0x846ca68bu;
+    value ^= value >> 16u;
+    return value;
+}
+
 ivec2 beeFormationOffset(uint slot) {
-    uint packedValue = BEE_BIOHAZARD_PACKED[min(slot, BEE_FORMATION_COUNT - 1u)];
+    uint packedValue = BEE_INITIAL_PACKED[min(slot, BEE_FORMATION_COUNT - 1u)];
     return ivec2(int(packedValue & 127u) - 64, int(packedValue >> 7u) - 64);
 }
 
@@ -43,58 +57,9 @@ int beeFormationSlotFromOffset(ivec2 offset) {
     uint key = (uint(offset.y + 64) << 7u) | uint(offset.x + 64);
     int low = 0;
     int high = int(BEE_FORMATION_COUNT) - 1;
-    if (low <= high) {
+    for (int iteration = 0; iteration < 8 && low <= high; ++iteration) {
         int middle = (low + high) / 2;
-        uint middleKey = BEE_BIOHAZARD_PACKED[middle];
-        if (key == middleKey) return middle;
-        if (key < middleKey) high = middle - 1;
-        else low = middle + 1;
-    }
-    if (low <= high) {
-        int middle = (low + high) / 2;
-        uint middleKey = BEE_BIOHAZARD_PACKED[middle];
-        if (key == middleKey) return middle;
-        if (key < middleKey) high = middle - 1;
-        else low = middle + 1;
-    }
-    if (low <= high) {
-        int middle = (low + high) / 2;
-        uint middleKey = BEE_BIOHAZARD_PACKED[middle];
-        if (key == middleKey) return middle;
-        if (key < middleKey) high = middle - 1;
-        else low = middle + 1;
-    }
-    if (low <= high) {
-        int middle = (low + high) / 2;
-        uint middleKey = BEE_BIOHAZARD_PACKED[middle];
-        if (key == middleKey) return middle;
-        if (key < middleKey) high = middle - 1;
-        else low = middle + 1;
-    }
-    if (low <= high) {
-        int middle = (low + high) / 2;
-        uint middleKey = BEE_BIOHAZARD_PACKED[middle];
-        if (key == middleKey) return middle;
-        if (key < middleKey) high = middle - 1;
-        else low = middle + 1;
-    }
-    if (low <= high) {
-        int middle = (low + high) / 2;
-        uint middleKey = BEE_BIOHAZARD_PACKED[middle];
-        if (key == middleKey) return middle;
-        if (key < middleKey) high = middle - 1;
-        else low = middle + 1;
-    }
-    if (low <= high) {
-        int middle = (low + high) / 2;
-        uint middleKey = BEE_BIOHAZARD_PACKED[middle];
-        if (key == middleKey) return middle;
-        if (key < middleKey) high = middle - 1;
-        else low = middle + 1;
-    }
-    if (low <= high) {
-        int middle = (low + high) / 2;
-        uint middleKey = BEE_BIOHAZARD_PACKED[middle];
+        uint middleKey = BEE_INITIAL_PACKED[middle];
         if (key == middleKey) return middle;
         if (key < middleKey) high = middle - 1;
         else low = middle + 1;
@@ -128,64 +93,85 @@ bool beeIsForager(uint aux) {
 
 ivec2 beeRotateOffset(ivec2 offset, uint phase) {
     switch (phase & 15u) {
-    case 0u: return ivec2((offset.x * 256 - offset.y * 0) / 256, (offset.x * 0 + offset.y * 256) / 256);
+    case 0u: return offset;
     case 1u: return ivec2((offset.x * 237 - offset.y * 98) / 256, (offset.x * 98 + offset.y * 237) / 256);
     case 2u: return ivec2((offset.x * 181 - offset.y * 181) / 256, (offset.x * 181 + offset.y * 181) / 256);
     case 3u: return ivec2((offset.x * 98 - offset.y * 237) / 256, (offset.x * 237 + offset.y * 98) / 256);
-    case 4u: return ivec2((offset.x * 0 - offset.y * 256) / 256, (offset.x * 256 + offset.y * 0) / 256);
-    case 5u: return ivec2((offset.x * -98 - offset.y * 237) / 256, (offset.x * 237 + offset.y * -98) / 256);
-    case 6u: return ivec2((offset.x * -181 - offset.y * 181) / 256, (offset.x * 181 + offset.y * -181) / 256);
-    case 7u: return ivec2((offset.x * -237 - offset.y * 98) / 256, (offset.x * 98 + offset.y * -237) / 256);
-    case 8u: return ivec2((offset.x * -256 - offset.y * 0) / 256, (offset.x * 0 + offset.y * -256) / 256);
-    case 9u: return ivec2((offset.x * -237 - offset.y * -98) / 256, (offset.x * -98 + offset.y * -237) / 256);
-    case 10u: return ivec2((offset.x * -181 - offset.y * -181) / 256, (offset.x * -181 + offset.y * -181) / 256);
-    case 11u: return ivec2((offset.x * -98 - offset.y * -237) / 256, (offset.x * -237 + offset.y * -98) / 256);
-    case 12u: return ivec2((offset.x * 0 - offset.y * -256) / 256, (offset.x * -256 + offset.y * 0) / 256);
-    case 13u: return ivec2((offset.x * 98 - offset.y * -237) / 256, (offset.x * -237 + offset.y * 98) / 256);
-    case 14u: return ivec2((offset.x * 181 - offset.y * -181) / 256, (offset.x * -181 + offset.y * 181) / 256);
-    case 15u: return ivec2((offset.x * 237 - offset.y * -98) / 256, (offset.x * -98 + offset.y * 237) / 256);
+    case 4u: return ivec2(-offset.y, offset.x);
+    case 5u: return ivec2((offset.x * -98 - offset.y * 237) / 256, (offset.x * 237 - offset.y * 98) / 256);
+    case 6u: return ivec2((offset.x * -181 - offset.y * 181) / 256, (offset.x * 181 - offset.y * 181) / 256);
+    case 7u: return ivec2((offset.x * -237 - offset.y * 98) / 256, (offset.x * 98 - offset.y * 237) / 256);
+    case 8u: return -offset;
+    case 9u: return ivec2((offset.x * -237 + offset.y * 98) / 256, (offset.x * -98 - offset.y * 237) / 256);
+    case 10u: return ivec2((offset.x * -181 + offset.y * 181) / 256, (offset.x * -181 - offset.y * 181) / 256);
+    case 11u: return ivec2((offset.x * -98 + offset.y * 237) / 256, (offset.x * -237 - offset.y * 98) / 256);
+    case 12u: return ivec2(offset.y, -offset.x);
+    case 13u: return ivec2((offset.x * 98 + offset.y * 237) / 256, (offset.x * -237 + offset.y * 98) / 256);
+    case 14u: return ivec2((offset.x * 181 + offset.y * 181) / 256, (offset.x * -181 + offset.y * 181) / 256);
+    case 15u: return ivec2((offset.x * 237 + offset.y * 98) / 256, (offset.x * -98 + offset.y * 237) / 256);
     }
     return offset;
 }
 
-ivec2 beeFlutterOffset(uint slot, uint step) {
-    // Individual bees circle their own fixed silhouette anchor.
-    uint phase = step + slot * 5u;
-    int radius = 1 + int((slot * 13u) % 3u);
-    return beeRotateOffset(ivec2(radius, 0), phase);
+uint beeSwarmState(uint aux, uint step) {
+    uint local = step % BEE_SWARM_CYCLE_TICKS;
+    if (local < BEE_SWARM_BIOHAZARD_TICKS) return 0u;
+    ivec2 home = beeHomeCenterFromAux(aux);
+    uint cycle = step / BEE_SWARM_CYCLE_TICKS;
+    bool reverse = (beeHash32(uint(home.x) * 73856093u ^ uint(home.y) * 19349663u ^ cycle) & 1u) != 0u;
+    uint alternate = (local - BEE_SWARM_BIOHAZARD_TICKS) / BEE_SWARM_ALTERNATE_TICKS;
+    return reverse ? 2u - alternate : 1u + alternate;
 }
 
-ivec2 beeSwarmWave(uint slot, uint step) {
-    // The three lobes breathe out of phase while the symbol itself stays fixed.
-    ivec2 base = beeFormationOffset(slot);
-    uint lobePhase = base.y < -10 ? 0u : (base.x < 0 ? 5u : 10u);
-    return beeRotateOffset(ivec2(1, 0), step / 6u + lobePhase);
+ivec2 beeBiohazardTargetOffset(uint slot, uint step, ivec2 home) {
+    const uint increments[8] = uint[8](1u, 3u, 7u, 9u, 11u, 13u, 17u, 19u);
+    uint epoch = step / 90u;
+    uint increment = increments[beeHash32(uint(home.x) ^ (uint(home.y) << 16u) ^ epoch) & 7u];
+    uint targetSlot = (slot + epoch * increment) % BEE_FORMATION_COUNT;
+    ivec2 anchor = beeFormationOffset(targetSlot);
+    ivec2 flutter = beeRotateOffset(ivec2(1 + int(slot & 1u), 0), step / 3u + slot * 5u);
+    return anchor + flutter;
 }
 
-ivec2 beeOrbitTarget(uint aux, uint step) {
+ivec2 beeHaloTargetOffset(uint slot, uint step) {
+    int radius = 34 + int((slot * 13u) % 18u);
+    uint phase = step / 10u + slot * 7u;
+    return beeRotateOffset(ivec2(radius, 0), phase) +
+           beeRotateOffset(ivec2(2, 0), step / 3u + slot * 11u);
+}
+
+ivec2 beeCloudTargetOffset(uint slot, uint step) {
+    uint lobe = slot % 3u;
+    ivec2 center = lobe == 0u ? ivec2(0, -29) :
+                   (lobe == 1u ? ivec2(-26, 15) : ivec2(26, 15));
+    int radius = 5 + int((slot * 17u) % 16u);
+    uint phase = step / 8u + slot * 9u;
+    return center + beeRotateOffset(ivec2(radius, 0), phase) +
+           beeRotateOffset(ivec2(1, 0), step / 2u + slot * 3u);
+}
+
+ivec2 beeSwarmTarget(uint aux, uint step) {
     uint slot = beeFormationSlotFromAux(aux);
-    return beeHomeCenterFromAux(aux) + beeFormationOffset(slot) +
-           beeFlutterOffset(slot, step) + beeSwarmWave(slot, step);
+    ivec2 home = beeHomeCenterFromAux(aux);
+    uint state = beeSwarmState(aux, step);
+    ivec2 offset = state == 0u ? beeBiohazardTargetOffset(slot, step, home) :
+                   (state == 1u ? beeHaloTargetOffset(slot, step)
+                                : beeCloudTargetOffset(slot, step));
+    return home + offset;
 }
+
+ivec2 beeOrbitTarget(uint aux, uint step) { return beeSwarmTarget(aux, step); }
 
 ivec2 beeLandingOffset(uint slot) {
     switch (slot & 15u) {
-    case 0u: return ivec2(13, 0);
-    case 1u: return ivec2(12, 5);
-    case 2u: return ivec2(9, 9);
-    case 3u: return ivec2(5, 12);
-    case 4u: return ivec2(0, 13);
-    case 5u: return ivec2(-5, 12);
-    case 6u: return ivec2(-9, 9);
-    case 7u: return ivec2(-12, 5);
-    case 8u: return ivec2(-13, 0);
-    case 9u: return ivec2(-12, -5);
-    case 10u: return ivec2(-9, -9);
-    case 11u: return ivec2(-5, -12);
-    case 12u: return ivec2(0, -13);
-    case 13u: return ivec2(5, -12);
-    case 14u: return ivec2(9, -9);
-    case 15u: return ivec2(12, -5);
+    case 0u: return ivec2(13, 0); case 1u: return ivec2(12, 5);
+    case 2u: return ivec2(9, 9); case 3u: return ivec2(5, 12);
+    case 4u: return ivec2(0, 13); case 5u: return ivec2(-5, 12);
+    case 6u: return ivec2(-9, 9); case 7u: return ivec2(-12, 5);
+    case 8u: return ivec2(-13, 0); case 9u: return ivec2(-12, -5);
+    case 10u: return ivec2(-9, -9); case 11u: return ivec2(-5, -12);
+    case 12u: return ivec2(0, -13); case 13u: return ivec2(5, -12);
+    case 14u: return ivec2(9, -9); case 15u: return ivec2(12, -5);
     }
     return ivec2(13, 0);
 }

@@ -17,13 +17,16 @@ struct WindowInput final {
     std::int32_t wheel_delta{};
     bool primary_down{};
     bool secondary_down{};
+    bool middle_down{};
     bool primary_pressed{};
     bool secondary_pressed{};
+    bool middle_pressed{};
     bool close_requested{};
     bool resized{};
     bool toggle_pause{};
     bool single_step{};
     bool reset{};
+    bool fill{};
     bool save_scene{};
     bool load_scene{};
     bool next_scene{};

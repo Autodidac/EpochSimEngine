@@ -4,6 +4,7 @@
 #include "conservation.glsl"
 #include "tiles.glsl"
 #include "chunks.glsl"
+#include "bee_swarm.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
@@ -30,7 +31,6 @@ void main() {
         ivec2 blockOrigin = (center / int(STRUCTURAL_BLOCK_SIZE)) * int(STRUCTURAL_BLOCK_SIZE);
         ivec2 blockEnd = blockOrigin + ivec2(int(STRUCTURAL_BLOCK_SIZE));
         if (p.x < blockOrigin.x || p.y < blockOrigin.y || p.x >= blockEnd.x || p.y >= blockEnd.y) return;
-
         bool anchored = blockEnd.y >= int(pc.height) - 1;
         Cell cell = makeStructuralCell(material, anchored);
         bool machineController = (material == MAT_SMELTER || material == MAT_ASSEMBLER ||
@@ -52,7 +52,6 @@ void main() {
         return;
     }
 
-    // Seeds and queens are precision tools: brush size never duplicates them.
     if ((material == MAT_SEED || material == MAT_QUEEN_BEE) && any(notEqual(p, center))) return;
 
     ivec2 delta = p - center;
@@ -66,21 +65,24 @@ void main() {
     if (!insideBrush) return;
 
     Cell cell;
+    int colonySlot = -1;
     if (material == MAT_BEE_NEST) {
-        int nestRadius = max(radius, 4);
-        int innerRadius = max(nestRadius - 3, 1);
-        if (all(equal(p, center))) {
-            cell = makeCell(MAT_QUEEN_BEE);
-        } else if (delta.x >= 1 && delta.x <= nestRadius && abs(delta.y) <= 1) {
-            cell = makeCell(MAT_EMPTY);
-        } else if (distanceSquared <= innerRadius * innerRadius) {
-            uint chamberPattern = cellHash(p, 0xb33u);
-            if ((chamberPattern & 3u) == 0u) cell = makeCell(MAT_EMPTY);
-            else cell = makeCell(((chamberPattern >> 2u) & 3u) == 0u ? MAT_POLLEN : MAT_HONEY);
-        } else if (distanceSquared <= nestRadius * nestRadius) {
+        // Exact Fix29 compact hive. The larger dispatch only initializes the
+        // hidden 200-bee mask around the hive; it does not enlarge the shell.
+        if (distanceSquared >= 28 && distanceSquared < 108) {
             cell = makeCell(MAT_BEE_NEST);
+        } else if (all(equal(p, center))) {
+            cell = makeCell(MAT_QUEEN_BEE);
+        } else if (delta.x >= 1 && delta.x <= 12 && abs(delta.y) <= 1) {
+            cell = makeCell(MAT_EMPTY);
+        } else if (distanceSquared < 28) {
+            uint chamber = cellHash(p, 0xb33u);
+            cell = makeCell((chamber & 3u) == 0u ? MAT_EMPTY :
+                            ((chamber & 4u) == 0u ? MAT_HONEY : MAT_POLLEN));
         } else {
-            return;
+            colonySlot = beeFormationSlotFromOffset(delta);
+            if (colonySlot < 0) return;
+            cell = makeCell(MAT_BEE);
         }
     } else {
         cell = makeCell(material);
@@ -90,6 +92,12 @@ void main() {
                (cellHash(p, uint(local.x + local.y * diameter)) & AUX_RANDOM_MASK) |
                (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |
                             AUX_PLANT_STEM | AUX_STRUCTURAL | AUX_SUPPORTED | AUX_STATE_MASK));
+    if (colonySlot >= 0) {
+        cell.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
+        cell.aux = beePackMetadata(cell.aux, center, uint(colonySlot));
+        cell.age = beePackAge(uint((colonySlot * 17) % 900), BEE_TARGET_NONE);
+    }
+
     uint index = indexOf(p);
     Cell previous = cells[index];
     recordConservation(previous, cell);

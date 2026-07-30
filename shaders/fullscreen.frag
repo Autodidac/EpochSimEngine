@@ -392,22 +392,22 @@ void main() {
         }
 
         uint keymapTop = eraserBottom + 3u;
-        uint keymapBottom = keymapTop + 108u;
+        uint keymapBottom = keymapTop + 126u;
         if (y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {
             color = vec3(0.035, 0.047, 0.064);
             if (borderPixel(x, y, contentLeft, keymapTop, contentLeft + contentWidth, keymapBottom))
                 color = vec3(0.12, 0.20, 0.28);
             bool keyText = fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(keymapTop + 6u)), 2, 68u);
-            uint leftIds[6] = uint[6](62u, 63u, 64u, 69u, 60u, 61u);
-            uint rightIds[5] = uint[5](70u, 71u, 72u, 73u, 74u);
+            uint leftIds[7] = uint[7](62u, 63u, 64u, 69u, 60u, 61u, 106u);
+            uint rightIds[6] = uint[6](70u, 71u, 72u, 73u, 74u, 107u);
             uint columnMiddle = contentLeft + contentWidth / 2u;
             if (x >= columnMiddle && x < columnMiddle + 1u &&
                 y >= keymapTop + 23u && y < keymapBottom - 6u)
                 color = vec3(0.12, 0.20, 0.28);
+            for (uint i = 0u; i < 7u; ++i)
+                keyText = keyText || fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(keymapTop + 25u + i * 14u)), 1, leftIds[i]);
             for (uint i = 0u; i < 6u; ++i)
-                keyText = keyText || fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(keymapTop + 25u + i * 13u)), 1, leftIds[i]);
-            for (uint i = 0u; i < 5u; ++i)
-                keyText = keyText || fixedPixel(pixel, ivec2(int(columnMiddle + 8u), int(keymapTop + 25u + i * 13u)), 1, rightIds[i]);
+                keyText = keyText || fixedPixel(pixel, ivec2(int(columnMiddle + 8u), int(keymapTop + 25u + i * 14u)), 1, rightIds[i]);
             if (keyText) color = vec3(0.93, 0.96, 0.99);
             outColor = vec4(color, 1.0);
             return;

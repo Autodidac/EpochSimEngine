@@ -129,6 +129,11 @@ int run_application() {
     });
 
     WindowInput input{};
+    bool pan_dragging = false;
+    std::int32_t pan_last_x = 0;
+    std::int32_t pan_last_y = 0;
+    std::int64_t pan_remainder_x = 0;
+    std::int64_t pan_remainder_y = 0;
     bool ready_title_applied = false;
     while (!shared_state.quit.load(std::memory_order_acquire) && window.poll(input)) {
         if (!ready_title_applied && renderer_ready.load(std::memory_order_acquire)) {
@@ -181,6 +186,7 @@ int run_application() {
         }
         if (input.save_scene) shared_state.save_scene_image.store(true, std::memory_order_release);
         if (input.load_scene) shared_state.load_scene_image.store(true, std::memory_order_release);
+        if (input.fill) shared_state.fill_region.store(true, std::memory_order_release);
 
         const auto layout = ui::make_layout(input.width, input.height);
         const auto simulation_viewport = ui::make_simulation_viewport(
@@ -195,6 +201,56 @@ int run_application() {
         if (input.wheel_delta != 0 && over_simulation)
             zoom_at_pointer(shared_state, simulation_config, simulation_viewport,
                             input.mouse_x, input.mouse_y, input.wheel_delta);
+
+        const auto zoom = shared_state.camera_zoom.load(std::memory_order_relaxed);
+        if (zoom > 1u && input.middle_down && (over_simulation || pan_dragging)) {
+            if (!pan_dragging) {
+                pan_dragging = true;
+                pan_last_x = input.mouse_x;
+                pan_last_y = input.mouse_y;
+                pan_remainder_x = 0;
+                pan_remainder_y = 0;
+            } else {
+                const auto view = camera_view(shared_state, simulation_config, zoom);
+                const auto viewport_width = (std::max)(
+                    static_cast<std::int64_t>(simulation_viewport.rect.size.x), std::int64_t{1});
+                const auto viewport_height = (std::max)(
+                    static_cast<std::int64_t>(simulation_viewport.rect.size.y), std::int64_t{1});
+                const auto dx = input.mouse_x - pan_last_x;
+                const auto dy = input.mouse_y - pan_last_y;
+                pan_last_x = input.mouse_x;
+                pan_last_y = input.mouse_y;
+
+                // Four-to-one damping keeps zoomed panning deliberate instead of jumpy.
+                pan_remainder_x += -static_cast<std::int64_t>(dx) * view.width;
+                pan_remainder_y += -static_cast<std::int64_t>(dy) * view.height;
+                const auto denominator_x = viewport_width * 4;
+                const auto denominator_y = viewport_height * 4;
+                const auto shift_x = pan_remainder_x / denominator_x;
+                const auto shift_y = pan_remainder_y / denominator_y;
+                pan_remainder_x %= denominator_x;
+                pan_remainder_y %= denominator_y;
+
+                const auto half_width = static_cast<int>(view.width / 2u);
+                const auto half_height = static_cast<int>(view.height / 2u);
+                const auto min_x = half_width;
+                const auto min_y = half_height;
+                const auto max_x = static_cast<int>(simulation_config.grid_width) -
+                                   static_cast<int>(view.width - view.width / 2u);
+                const auto max_y = static_cast<int>(simulation_config.grid_height) -
+                                   static_cast<int>(view.height - view.height / 2u);
+                shared_state.camera_center_x.store(std::clamp(
+                    shared_state.camera_center_x.load(std::memory_order_relaxed) +
+                        static_cast<int>(shift_x), min_x, max_x), std::memory_order_relaxed);
+                shared_state.camera_center_y.store(std::clamp(
+                    shared_state.camera_center_y.load(std::memory_order_relaxed) +
+                        static_cast<int>(shift_y), min_y, max_y), std::memory_order_relaxed);
+            }
+        } else {
+            pan_dragging = false;
+            pan_remainder_x = 0;
+            pan_remainder_y = 0;
+        }
 
         const auto adjust_zoom_centered = [&shared_state](const int delta) {
             const auto current = static_cast<int>(shared_state.camera_zoom.load(std::memory_order_relaxed));

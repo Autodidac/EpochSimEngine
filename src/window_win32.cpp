@@ -44,13 +44,16 @@ struct NativeWindow::Impl final {
     std::int32_t wheel_delta{};
     bool primary_down{};
     bool secondary_down{};
+    bool middle_down{};
     bool primary_pressed{};
     bool secondary_pressed{};
+    bool middle_pressed{};
     bool close_requested{};
     bool resized{};
     bool toggle_pause{};
     bool single_step{};
     bool reset{};
+    bool fill{};
     bool save_scene{};
     bool load_scene{};
     bool next_scene{};
@@ -123,6 +126,15 @@ struct NativeWindow::Impl final {
                 ReleaseCapture();
             }
             return 0;
+        case WM_MBUTTONDOWN:
+            if (!self->middle_down) self->middle_pressed = true;
+            self->middle_down = true;
+            SetCapture(hwnd);
+            return 0;
+        case WM_MBUTTONUP:
+            self->middle_down = false;
+            if (!self->primary_down && !self->secondary_down) ReleaseCapture();
+            return 0;
         case WM_RBUTTONDOWN:
             if (!self->secondary_down) self->secondary_pressed = true;
             self->secondary_down = true;
@@ -169,6 +181,9 @@ struct NativeWindow::Impl final {
                 return 0;
             case 'R':
                 self->reset = true;
+                return 0;
+            case 'F':
+                self->fill = true;
                 return 0;
             case VK_OEM_6:
                 self->next_scene = true;
@@ -264,10 +279,12 @@ bool NativeWindow::poll(WindowInput& input) {
     impl_->wheel_delta = 0;
     impl_->primary_pressed = false;
     impl_->secondary_pressed = false;
+    impl_->middle_pressed = false;
     impl_->resized = false;
     impl_->toggle_pause = false;
     impl_->single_step = false;
     impl_->reset = false;
+    impl_->fill = false;
     impl_->save_scene = false;
     impl_->load_scene = false;
     impl_->next_scene = false;
@@ -305,13 +322,16 @@ bool NativeWindow::poll(WindowInput& input) {
         .wheel_delta = impl_->wheel_delta,
         .primary_down = impl_->primary_down,
         .secondary_down = impl_->secondary_down,
+        .middle_down = impl_->middle_down,
         .primary_pressed = impl_->primary_pressed,
         .secondary_pressed = impl_->secondary_pressed,
+        .middle_pressed = impl_->middle_pressed,
         .close_requested = impl_->close_requested,
         .resized = impl_->resized,
         .toggle_pause = impl_->toggle_pause,
         .single_step = impl_->single_step,
         .reset = impl_->reset,
+        .fill = impl_->fill,
         .save_scene = impl_->save_scene,
         .load_scene = impl_->load_scene,
         .next_scene = impl_->next_scene,

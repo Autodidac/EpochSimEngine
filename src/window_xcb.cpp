@@ -31,6 +31,8 @@ constexpr std::uint32_t keysym_n = 0x006Eu;
 constexpr std::uint32_t keysym_upper_n = 0x004Eu;
 constexpr std::uint32_t keysym_r = 0x0072u;
 constexpr std::uint32_t keysym_upper_r = 0x0052u;
+constexpr std::uint32_t keysym_f = 0x0066u;
+constexpr std::uint32_t keysym_upper_f = 0x0046u;
 constexpr std::uint32_t keysym_left_bracket = 0x005Bu;
 constexpr std::uint32_t keysym_right_bracket = 0x005Du;
 constexpr std::uint32_t keysym_a = 0x0061u;
@@ -86,13 +88,16 @@ struct NativeWindow::Impl final {
     std::int32_t wheel_delta{};
     bool primary_down{};
     bool secondary_down{};
+    bool middle_down{};
     bool primary_pressed{};
     bool secondary_pressed{};
+    bool middle_pressed{};
     bool close_requested{};
     bool resized{};
     bool toggle_pause{};
     bool single_step{};
     bool reset{};
+    bool fill{};
     bool save_scene{};
     bool load_scene{};
     bool next_scene{};
@@ -225,10 +230,12 @@ bool NativeWindow::poll(WindowInput& input) {
     impl_->wheel_delta = 0;
     impl_->primary_pressed = false;
     impl_->secondary_pressed = false;
+    impl_->middle_pressed = false;
     impl_->resized = false;
     impl_->toggle_pause = false;
     impl_->single_step = false;
     impl_->reset = false;
+    impl_->fill = false;
     impl_->save_scene = false;
     impl_->load_scene = false;
     impl_->next_scene = false;
@@ -271,6 +278,9 @@ bool NativeWindow::poll(WindowInput& input) {
             if (button->detail == 1) {
                 if (!impl_->primary_down) impl_->primary_pressed = true;
                 impl_->primary_down = true;
+            } else if (button->detail == 2) {
+                if (!impl_->middle_down) impl_->middle_pressed = true;
+                impl_->middle_down = true;
             } else if (button->detail == 3) {
                 if (!impl_->secondary_down) impl_->secondary_pressed = true;
                 impl_->secondary_down = true;
@@ -285,6 +295,8 @@ bool NativeWindow::poll(WindowInput& input) {
             const auto* button = reinterpret_cast<xcb_button_release_event_t*>(event);
             if (button->detail == 1) {
                 impl_->primary_down = false;
+            } else if (button->detail == 2) {
+                impl_->middle_down = false;
             } else if (button->detail == 3) {
                 impl_->secondary_down = false;
             }
@@ -311,6 +323,8 @@ bool NativeWindow::poll(WindowInput& input) {
                 impl_->single_step = true;
             } else if (keysym == keysym_r || keysym == keysym_upper_r) {
                 impl_->reset = true;
+            } else if (keysym == keysym_f || keysym == keysym_upper_f) {
+                impl_->fill = true;
             } else if (keysym == keysym_right_bracket) {
                 impl_->next_scene = true;
             } else if (keysym == keysym_left_bracket) {
@@ -357,13 +371,16 @@ bool NativeWindow::poll(WindowInput& input) {
         .wheel_delta = impl_->wheel_delta,
         .primary_down = impl_->primary_down,
         .secondary_down = impl_->secondary_down,
+        .middle_down = impl_->middle_down,
         .primary_pressed = impl_->primary_pressed,
         .secondary_pressed = impl_->secondary_pressed,
+        .middle_pressed = impl_->middle_pressed,
         .close_requested = impl_->close_requested,
         .resized = impl_->resized,
         .toggle_pause = impl_->toggle_pause,
         .single_step = impl_->single_step,
         .reset = impl_->reset,
+        .fill = impl_->fill,
         .save_scene = impl_->save_scene,
         .load_scene = impl_->load_scene,
         .next_scene = impl_->next_scene,

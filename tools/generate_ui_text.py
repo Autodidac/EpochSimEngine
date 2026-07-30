@@ -27,6 +27,7 @@ FIXED = [
     "ANT MOVES", "BEETLES", "BEETLE MOVES", "HABITATS", "SELECTED",
     "STRUCT", "LIQUID", "GAS", "POLLEN", "ACTIVE TILES",
     "CURSOR", "CIRCLE", "SQUARE", "H LINE", "V LINE", "SIZE", "ZOOM", "BEE ACTIVE",
+    "MMB DRAG PAN", "F FILL",
 ]
 SCENES = [
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",
