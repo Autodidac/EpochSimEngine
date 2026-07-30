@@ -1,0 +1,899 @@
+name: Apply Hierarchical Simulation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apply-hierarchical-simulation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Implement macro-cell and chunk hierarchy
+        run: |
+          cat > /tmp/apply_hierarchy.py <<'PY'
+          from pathlib import Path
+
+          def read(path: str) -> str:
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path: str, content: str) -> None:
+              target = Path(path)
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_text(content, encoding='utf-8')
+
+          def replace(path: str, old: str, new: str, count: int = 1) -> None:
+              text = read(path)
+              if old not in text:
+                  raise RuntimeError(f'missing replacement marker in {path}: {old[:120]!r}')
+              text = text.replace(old, new, count)
+              write(path, text)
+
+          write('include/epoch/sand/simulation_policy.hpp', r'''#pragma once
+
+#include <cstdint>
+
+namespace epoch::sand::policy {
+
+// Fine cells remain the canonical simulation state. An aligned 8x8 region may
+// be transferred as one macro-cell only while every represented cell can make
+// the same move. Any mixed or partially blocked region falls back to pixels.
+inline constexpr std::uint32_t tile_size = 8u;
+inline constexpr std::uint32_t tile_cells = tile_size * tile_size;
+inline constexpr std::uint32_t macro_tile_size = tile_size;
+inline constexpr std::uint32_t macro_tile_cells = tile_cells;
+
+// Eight macro tiles form one 64x64-cell scheduling chunk. Chunks never replace
+// cell storage; they cache activity so large inactive areas can be rejected by
+// one lookup and their tile scans can be skipped until explicitly dirtied.
+inline constexpr std::uint32_t chunk_tiles_per_axis = 8u;
+inline constexpr std::uint32_t chunk_size = tile_size * chunk_tiles_per_axis;
+inline constexpr std::uint32_t chunk_tile_count =
+    chunk_tiles_per_axis * chunk_tiles_per_axis;
+inline constexpr std::uint32_t chunk_sleep_ticks = 30u;
+
+inline constexpr std::uint32_t stability_occupancy = 52u;
+inline constexpr std::uint32_t collapse_occupancy = tile_cells / 2u;
+inline constexpr std::uint32_t stability_ticks = 120u;
+inline constexpr std::uint32_t restabilization_cooldown_ticks = 240u;
+inline constexpr std::uint32_t terrain_cell_integrity = 255u;
+inline constexpr std::uint32_t laser_damage_per_hit = 144u;
+inline constexpr std::uint32_t laser_hits_to_dislodge =
+    (terrain_cell_integrity + laser_damage_per_hit - 1u) / laser_damage_per_hit;
+inline constexpr std::uint32_t water_pressure_depth = 8u;
+inline constexpr std::uint32_t sunlight_update_interval = 4u;
+inline constexpr std::uint32_t vent_eruption_pressure = 220u;
+inline constexpr std::uint32_t vent_gas_release_pressure = 72u;
+
+[[nodiscard]] constexpr bool bulk_region_eligible(
+    const std::uint32_t represented_cells,
+    const bool uniform_material,
+    const bool structural,
+    const bool reacting) noexcept {
+    return represented_cells == macro_tile_cells && uniform_material &&
+           !structural && !reacting;
+}
+
+[[nodiscard]] constexpr bool chunk_can_sleep(
+    const std::uint32_t sleeping_tiles,
+    const std::uint32_t present_tiles,
+    const bool dirty,
+    const std::uint32_t quiet_ticks) noexcept {
+    return present_tiles != 0u && sleeping_tiles == present_tiles && !dirty &&
+           quiet_ticks >= chunk_sleep_ticks;
+}
+
+[[nodiscard]] constexpr bool stability_ready(
+    const std::uint32_t occupancy,
+    const std::uint32_t settled_ticks,
+    const bool compatible,
+    const bool stable_phase,
+    const bool moving,
+    const bool reacting,
+    const std::uint32_t cooldown) noexcept {
+    return occupancy >= stability_occupancy && settled_ticks >= stability_ticks &&
+           compatible && stable_phase && !moving && !reacting && cooldown == 0u;
+}
+
+[[nodiscard]] constexpr bool should_collapse(const std::uint32_t represented_cells) noexcept {
+    return represented_cells < collapse_occupancy;
+}
+
+[[nodiscard]] constexpr std::uint32_t update_vent_pressure(
+    const std::uint32_t pressure, const bool blocked, const bool open) noexcept {
+    if (blocked) return pressure >= 252u ? 255u : pressure + 3u;
+    if (open) return pressure > 4u ? pressure - 4u : 0u;
+    return pressure == 255u ? 255u : pressure + 1u;
+}
+
+} // namespace epoch::sand::policy
+''')
+
+          write('shaders/chunks.glsl', r'''#ifndef EPOCH_SAND_CHUNKS_GLSL
+#define EPOCH_SAND_CHUNKS_GLSL
+
+const uint CHUNK_TILES_PER_AXIS = 8u;
+const uint CHUNK_CELL_SIZE = TILE_SIZE * CHUNK_TILES_PER_AXIS;
+const uint CHUNK_TILE_COUNT = CHUNK_TILES_PER_AXIS * CHUNK_TILES_PER_AXIS;
+const uint CHUNK_SLEEP_TICKS = 30u;
+
+const uint CHUNK_ACTIVE = 0x00000001u;
+const uint CHUNK_SLEEPING = 0x00000002u;
+const uint CHUNK_DIRTY = 0x00000004u;
+const uint CHUNK_BOUNDARY = 0x00000008u;
+
+struct ChunkState {
+    uint flags;
+    uint activeTiles;
+    uint sleepingTiles;
+    uint counters; // low 16: quiet ticks, high 16: present tile count
+};
+
+uint chunkColumns(uint width) {
+    return (width + CHUNK_CELL_SIZE - 1u) / CHUNK_CELL_SIZE;
+}
+
+uint chunkRows(uint height) {
+    return (height + CHUNK_CELL_SIZE - 1u) / CHUNK_CELL_SIZE;
+}
+
+uvec2 chunkCoordinate(ivec2 p) {
+    return uvec2(max(p, ivec2(0))) / CHUNK_CELL_SIZE;
+}
+
+uint chunkIndex(ivec2 p, uint width) {
+    uvec2 chunk = chunkCoordinate(p);
+    return chunk.y * chunkColumns(width) + chunk.x;
+}
+
+uint chunkQuietTicks(ChunkState state) { return state.counters & 0xffffu; }
+uint chunkPresentTiles(ChunkState state) { return state.counters >> 16u; }
+uint packChunkCounters(uint quietTicks, uint presentTiles) {
+    return min(quietTicks, 0xffffu) | (min(presentTiles, 0xffffu) << 16u);
+}
+bool chunkHas(ChunkState state, uint flag) { return (state.flags & flag) != 0u; }
+
+#endif
+''')
+
+          write('shaders/chunks.comp', r'''#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "materials.glsl"
+#include "tiles.glsl"
+#include "chunks.glsl"
+
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
+layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
+
+void main() {
+    uvec2 chunk = gl_GlobalInvocationID.xy;
+    uint columns = chunkColumns(pc.width);
+    uint rows = chunkRows(pc.height);
+    if (chunk.x >= columns || chunk.y >= rows) return;
+
+    uint index = chunk.y * columns + chunk.x;
+    ChunkState previous = chunks[index];
+    uint tileColumnsValue = tileColumns(pc.width);
+    uint tileRowsValue = (pc.height + TILE_SIZE - 1u) / TILE_SIZE;
+    uvec2 tileOrigin = chunk * CHUNK_TILES_PER_AXIS;
+
+    uint presentTiles = 0u;
+    uint activeTiles = 0u;
+    uint sleepingTiles = 0u;
+    for (uint y = 0u; y < CHUNK_TILES_PER_AXIS; ++y) {
+        for (uint x = 0u; x < CHUNK_TILES_PER_AXIS; ++x) {
+            uvec2 tile = tileOrigin + uvec2(x, y);
+            if (tile.x >= tileColumnsValue || tile.y >= tileRowsValue) continue;
+            ++presentTiles;
+            TileState state = tiles[tile.y * tileColumnsValue + tile.x];
+            if (tileHas(state, TILE_SLEEPING)) ++sleepingTiles;
+            if (tileHas(state, TILE_ACTIVE) || tileHas(state, TILE_COLLAPSING) ||
+                tileHas(state, TILE_DAMAGED)) ++activeTiles;
+        }
+    }
+
+    bool dirty = chunkHas(previous, CHUNK_DIRTY);
+    bool quiet = presentTiles != 0u && sleepingTiles == presentTiles &&
+                 activeTiles == 0u && !dirty;
+    uint quietTicks = quiet ? min(chunkQuietTicks(previous) + 1u, CHUNK_SLEEP_TICKS) : 0u;
+    bool sleeping = quiet && quietTicks >= CHUNK_SLEEP_TICKS;
+
+    uint flags = sleeping ? CHUNK_SLEEPING : CHUNK_ACTIVE;
+    if (presentTiles != CHUNK_TILE_COUNT) flags |= CHUNK_BOUNDARY;
+    chunks[index] = ChunkState(flags, activeTiles, sleepingTiles,
+                               packChunkCounters(quietTicks, presentTiles));
+}
+''')
+
+          write('shaders/macro_move.comp', r'''#version 450
+#extension GL_GOOGLE_include_directive : require
+#define EPOCH_SAND_NO_SIM_PUSH
+#include "materials.glsl"
+#include "tiles.glsl"
+#include "chunks.glsl"
+#include "debug_stats.glsl"
+
+// One workgroup owns one pair of 8x8 macro-cells. Thread zero validates the
+// region; all 64 lanes then transfer the underlying canonical cells together.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
+layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
+layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };
+layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
+
+layout(push_constant) uniform MovementPush {
+    uint width;
+    uint height;
+    uint step;
+    uint seed;
+    int phase;
+    int parity;
+    uint collectDebug;
+    uint reserved1;
+} macroPc;
+
+shared uint macroMoveAllowed;
+shared ivec2 sourceTileShared;
+shared ivec2 targetTileShared;
+
+bool macroInside(ivec2 p) {
+    return p.x >= 0 && p.y >= 0 && p.x < int(macroPc.width) && p.y < int(macroPc.height);
+}
+uint macroIndex(ivec2 p) { return uint(p.y) * macroPc.width + uint(p.x); }
+Cell macroAt(ivec2 p) {
+    return macroInside(p) ? cells[macroIndex(p)] : Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
+}
+
+uint macroHash(ivec2 tile, uint salt) {
+    return hash32(uint(tile.x) * 73856093u ^ uint(tile.y) * 19349663u ^
+                  macroPc.step * 83492791u ^ macroPc.seed ^ salt);
+}
+
+bool openAtmosphere(Cell cell) {
+    return cell.material == MAT_EMPTY || cell.material == MAT_OXYGEN;
+}
+
+bool bulkMovable(Cell cell) {
+    if ((cell.aux & AUX_STRUCTURAL) != 0u || isCellGas(cell)) return false;
+    return isCellLiquid(cell) || isCellPowder(cell);
+}
+
+bool bulkMovementAllows(uint material, uint randomValue) {
+    if (material == MAT_DIRT) return (randomValue & 3u) == 0u;
+    if (material == MAT_MUD) return (randomValue % 24u) == 0u;
+    if (material == MAT_HONEY) return (randomValue & 3u) == 0u;
+    if (material == MAT_LAVA) return (randomValue & 1u) == 0u;
+    return true;
+}
+
+bool sourceRegion(ivec2 origin, out uint material) {
+    Cell first = macroAt(origin);
+    material = first.material;
+    if (!bulkMovable(first) || !materialEnabled(material)) return false;
+    for (int y = 0; y < int(TILE_SIZE); ++y) {
+        for (int x = 0; x < int(TILE_SIZE); ++x) {
+            Cell cell = macroAt(origin + ivec2(x, y));
+            if (cell.material != material || !bulkMovable(cell)) return false;
+            // Half-water is intentionally resolved by the fine passes. A macro
+            // move never hides or duplicates half-unit volume state.
+            if (material == MAT_WATER && isHalfWater(cell)) return false;
+        }
+    }
+    return true;
+}
+
+bool regionOpen(ivec2 origin) {
+    for (int y = 0; y < int(TILE_SIZE); ++y)
+        for (int x = 0; x < int(TILE_SIZE); ++x)
+            if (!openAtmosphere(macroAt(origin + ivec2(x, y)))) return false;
+    return true;
+}
+
+bool materialCanDisplace(uint sourceMaterial, uint targetMaterial) {
+    if (targetMaterial == MAT_EMPTY || targetMaterial == MAT_OXYGEN) return true;
+    Cell source = Cell(sourceMaterial, 0u, 20, 0u);
+    Cell target = Cell(targetMaterial, 0u, 20, 0u);
+    if (isCellGas(target) && !isCellGas(source)) return true;
+    if (isCellPowder(source))
+        return isCellLiquid(target) && materialDensity(sourceMaterial) > materialDensity(targetMaterial);
+    if (isCellLiquid(source))
+        return isCellGas(target) ||
+               (isCellLiquid(target) && materialDensity(sourceMaterial) > materialDensity(targetMaterial));
+    return false;
+}
+
+bool targetRegionAllows(ivec2 origin, uint sourceMaterial) {
+    if (regionOpen(origin)) return true;
+    Cell first = macroAt(origin);
+    uint targetMaterial = first.material;
+    if ((first.aux & AUX_STRUCTURAL) != 0u || !materialCanDisplace(sourceMaterial, targetMaterial)) return false;
+    for (int y = 0; y < int(TILE_SIZE); ++y) {
+        for (int x = 0; x < int(TILE_SIZE); ++x) {
+            Cell cell = macroAt(origin + ivec2(x, y));
+            if (cell.material != targetMaterial || (cell.aux & AUX_STRUCTURAL) != 0u) return false;
+        }
+    }
+    return true;
+}
+
+TileState tileStateAt(ivec2 tile) {
+    uint columns = tileColumns(macroPc.width);
+    return tiles[uint(tile.y) * columns + uint(tile.x)];
+}
+
+bool macroSupported(ivec2 sourceTile, uint sourceMaterial) {
+    uint rows = (macroPc.height + TILE_SIZE - 1u) / TILE_SIZE;
+    ivec2 belowTile = sourceTile + ivec2(0, 1);
+    if (belowTile.y >= int(rows)) return true;
+    TileState below = tileStateAt(belowTile);
+    if (below.occupancy == 0u && below.material == MAT_EMPTY) return false;
+    if (below.occupancy == TILE_CELL_COUNT && materialCanDisplace(sourceMaterial, below.material)) return false;
+    return true;
+}
+
+bool pairCoordinates(out ivec2 sourceTile, out ivec2 targetTile) {
+    uint columns = tileColumns(macroPc.width);
+    uint rows = (macroPc.height + TILE_SIZE - 1u) / TILE_SIZE;
+    ivec2 pair = ivec2(gl_WorkGroupID.xy);
+    if (macroPc.phase == 0) {
+        sourceTile = ivec2(pair.x, pair.y * 2 + macroPc.parity);
+        targetTile = sourceTile + ivec2(0, 1);
+    } else if (macroPc.phase == 1 || macroPc.phase == 2) {
+        sourceTile = ivec2(pair.x, pair.y * 2 + macroPc.parity);
+        targetTile = sourceTile + ivec2(macroPc.phase == 1 ? -1 : 1, 1);
+    } else {
+        int baseX = pair.x * 2 + macroPc.parity;
+        sourceTile = macroPc.phase == 3 ? ivec2(baseX, pair.y) : ivec2(baseX + 1, pair.y);
+        targetTile = macroPc.phase == 3 ? sourceTile + ivec2(1, 0) : sourceTile + ivec2(-1, 0);
+    }
+    return sourceTile.x >= 0 && sourceTile.y >= 0 && targetTile.x >= 0 && targetTile.y >= 0 &&
+           sourceTile.x < int(columns) && targetTile.x < int(columns) &&
+           sourceTile.y < int(rows) && targetTile.y < int(rows);
+}
+
+void markMacroChunkDirty(ivec2 p) {
+    atomicOr(chunks[chunkIndex(p, macroPc.width)].flags, CHUNK_DIRTY | CHUNK_ACTIVE);
+}
+
+void main() {
+    if (gl_LocalInvocationIndex == 0u) {
+        macroMoveAllowed = 0u;
+        ivec2 sourceTile;
+        ivec2 targetTile;
+        if (pairCoordinates(sourceTile, targetTile)) {
+            sourceTileShared = sourceTile;
+            targetTileShared = targetTile;
+            ivec2 sourceOrigin = sourceTile * int(TILE_SIZE);
+            ivec2 targetOrigin = targetTile * int(TILE_SIZE);
+            uint sourceMaterial = MAT_EMPTY;
+            uint randomValue = macroHash(sourceTile, uint(macroPc.phase) + 1u);
+            bool validSource = sourceRegion(sourceOrigin, sourceMaterial) &&
+                               bulkMovementAllows(sourceMaterial, randomValue);
+            bool allowed = false;
+            if (validSource && macroPc.phase == 0) {
+                allowed = targetRegionAllows(targetOrigin, sourceMaterial);
+            } else if (validSource && (macroPc.phase == 1 || macroPc.phase == 2)) {
+                allowed = macroSupported(sourceTile, sourceMaterial) &&
+                          targetRegionAllows(targetOrigin, sourceMaterial);
+            } else if (validSource) {
+                Cell source = macroAt(sourceOrigin);
+                allowed = isCellLiquid(source) && macroSupported(sourceTile, sourceMaterial) &&
+                          regionOpen(targetOrigin);
+            }
+            macroMoveAllowed = allowed ? 1u : 0u;
+        }
+    }
+    barrier();
+    if (macroMoveAllowed == 0u) return;
+
+    ivec2 local = ivec2(gl_LocalInvocationID.xy);
+    ivec2 source = sourceTileShared * int(TILE_SIZE) + local;
+    ivec2 target = targetTileShared * int(TILE_SIZE) + local;
+    uint sourceIndex = macroIndex(source);
+    uint targetIndex = macroIndex(target);
+    Cell a = cells[sourceIndex];
+    Cell b = cells[targetIndex];
+    a.age = 0u;
+    b.age = 0u;
+    a.aux |= AUX_MOVED;
+    b.aux |= AUX_MOVED;
+    cells[sourceIndex] = b;
+    cells[targetIndex] = a;
+
+    if (gl_LocalInvocationIndex == 0u) {
+        markMacroChunkDirty(source);
+        markMacroChunkDirty(target);
+        if (macroPc.collectDebug != 0u) {
+            atomicAdd(debugStats[STAT_MACRO_TILE_MOVES], 1u);
+            atomicAdd(debugStats[STAT_MACRO_CELL_MOVES], TILE_CELL_COUNT);
+        }
+    }
+}
+''')
+
+          # CMake shader list and dependency graph.
+          replace('CMakeLists.txt', '        tiles.comp\n        chemistry.comp\n        move.comp\n',
+                  '        tiles.comp\n        chunks.comp\n        chemistry.comp\n        macro_move.comp\n        move.comp\n')
+          replace('CMakeLists.txt', '                    "${SHADER_SOURCE_DIR}/tiles.glsl"\n                    "${SHADER_SOURCE_DIR}/conservation.glsl"',
+                  '                    "${SHADER_SOURCE_DIR}/tiles.glsl"\n                    "${SHADER_SOURCE_DIR}/chunks.glsl"\n                    "${SHADER_SOURCE_DIR}/conservation.glsl"')
+
+          # Tile analysis: oxygen is passive atmosphere, full uniform moving tiles
+          # retain macro metadata, and empty atmosphere tiles may sleep.
+          replace('shaders/tiles.comp', '#include "tiles.glsl"\n', '#include "tiles.glsl"\n#include "chunks.glsl"\n')
+          replace('shaders/tiles.comp', 'layout(std430, binding = 4) buffer Tiles { TileState tiles[]; };\n',
+                  'layout(std430, binding = 4) buffer Tiles { TileState tiles[]; };\nlayout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };\n')
+          replace('shaders/tiles.comp', '    TileState previous = tiles[index];\n    ivec2 origin = ivec2(tile * TILE_SIZE);\n',
+                  '    TileState previous = tiles[index];\n    ivec2 origin = ivec2(tile * TILE_SIZE);\n    ChunkState chunk = chunks[chunkIndex(origin, pc.width)];\n    if (chunkHas(chunk, CHUNK_SLEEPING) && !chunkHas(chunk, CHUNK_DIRTY)) return;\n')
+          replace('shaders/tiles.comp', '    uint occupied = 0u;\n    uint structural = 0u;\n',
+                  '    uint occupied = 0u;\n    uint represented = 0u;\n    uint representedMaterial = MAT_EMPTY;\n    bool uniformRepresented = true;\n    uint structural = 0u;\n')
+          replace('shaders/tiles.comp', '            Cell cell = cells[indexOf(p)];\n            if (cell.material == MAT_EMPTY) continue;\n            if (isCellGas(cell) || isCellLiquid(cell)) {\n                activeContent = true;\n                moving = true;\n                continue;\n            }\n            ++occupied;\n',
+                  '            Cell cell = cells[indexOf(p)];\n            if (cell.material == MAT_EMPTY || cell.material == MAT_OXYGEN) continue;\n            if (represented == 0u) representedMaterial = cell.material;\n            else uniformRepresented = uniformRepresented && cell.material == representedMaterial;\n            ++represented;\n            if (isCellGas(cell) || isCellLiquid(cell)) {\n                activeContent = true;\n                moving = true;\n                continue;\n            }\n            ++occupied;\n')
+          replace('shaders/tiles.comp', '    for (uint material = 1u; material < MATERIAL_COUNT; ++material) {\n        if (counts[material] > dominantCount) {\n            dominantCount = counts[material];\n            dominant = material;\n        }\n    }\n\n    uint cooldown',
+                  '    for (uint material = 1u; material < MATERIAL_COUNT; ++material) {\n        if (counts[material] > dominantCount) {\n            dominantCount = counts[material];\n            dominant = material;\n        }\n    }\n    if (occupied == 0u && represented > 0u && uniformRepresented) {\n        dominant = representedMaterial;\n        dominantCount = represented;\n    }\n\n    uint cooldown')
+          replace('shaders/tiles.comp', '    bool uniformMaterial = dominant != MAT_EMPTY && dominantCount == occupied;\n',
+                  '    uint uniformPopulation = occupied != 0u ? occupied : represented;\n    bool uniformMaterial = dominant != MAT_EMPTY && dominantCount == uniformPopulation;\n')
+          replace('shaders/tiles.comp', '    uint stableCells = structuralTile ? dominantCount : occupied;\n    bool sleeping = terrainStable && !damaged && !moving && !hot && !reacting &&\n                     !activeContent && dominantCount == stableCells;\n',
+                  '    uint stableCells = structuralTile ? dominantCount : occupied;\n    bool sleepingTerrain = terrainStable && !damaged && !moving && !hot && !reacting &&\n                           !activeContent && dominantCount == stableCells;\n    bool sleepingAtmosphere = represented == 0u && !moving && !hot && !reacting && !activeContent;\n    bool sleeping = sleepingTerrain || sleepingAtmosphere;\n')
+          replace('shaders/tiles.comp', '    tiles[index] = TileState(dominant, structuralTile ? dominantCount : occupied,\n                              flags, packTileCounters(stableTicks, cooldown));\n',
+                  '    uint reportedOccupancy = structuralTile ? dominantCount :\n        (uniformRepresented ? represented : occupied);\n    tiles[index] = TileState(dominant, reportedOccupancy,\n                              flags, packTileCounters(stableTicks, cooldown));\n')
+
+          # Chemistry skips a sleeping chunk only when its complete one-chunk halo
+          # is sleeping, so boundary reactions remain exact.
+          replace('shaders/chemistry.comp', '#include "tiles.glsl"\n', '#include "tiles.glsl"\n#include "chunks.glsl"\n')
+          replace('shaders/chemistry.comp', 'layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };\n',
+                  'layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };\nlayout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };\n')
+          replace('shaders/chemistry.comp', '\n\nbool sleepingStructuralNeighborhood(ivec2 position, Cell source) {', r'''
+
+bool sleepingChunkNeighborhood(ivec2 position) {
+    uvec2 center = chunkCoordinate(position);
+    uint columns = chunkColumns(pc.width);
+    uint rows = chunkRows(pc.height);
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+            ivec2 candidate = ivec2(center) + ivec2(x, y);
+            if (candidate.x < 0 || candidate.y < 0 ||
+                candidate.x >= int(columns) || candidate.y >= int(rows)) continue;
+            ChunkState state = chunks[uint(candidate.y) * columns + uint(candidate.x)];
+            if (!chunkHas(state, CHUNK_SLEEPING) || chunkHas(state, CHUNK_DIRTY)) return false;
+        }
+    }
+    return true;
+}
+
+bool sleepingStructuralNeighborhood(ivec2 position, Cell source) {''')
+          replace('shaders/chemistry.comp', '    Cell result = source;\n    result.age = source.age + 1u;\n\n    if (sleepingStructuralNeighborhood(p, source)) {',
+                  '    Cell result = source;\n    result.age = source.age + 1u;\n\n    if (sleepingChunkNeighborhood(p)) {\n        result.aux &= ~AUX_MOVED;\n        nextCells[index] = result;\n        return;\n    }\n\n    if (sleepingStructuralNeighborhood(p, source)) {')
+
+          # Fine movement uses one chunk lookup before tile checks and dirties
+          # chunks whenever canonical cells cross or change positions.
+          replace('shaders/move.comp', '#include "tiles.glsl"\n', '#include "tiles.glsl"\n#include "chunks.glsl"\n')
+          replace('shaders/move.comp', 'layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };\n',
+                  'layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };\nlayout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };\n')
+          replace('shaders/move.comp', 'uint moveIndex(ivec2 p) {\n    return uint(p.y) * movePc.width + uint(p.x);\n}\n', r'''uint moveIndex(ivec2 p) {
+    return uint(p.y) * movePc.width + uint(p.x);
+}
+
+void markChunkDirty(ivec2 p) {
+    atomicOr(chunks[chunkIndex(p, movePc.width)].flags, CHUNK_DIRTY | CHUNK_ACTIVE);
+}
+
+bool pairChunksSleeping(ivec2 a, ivec2 b) {
+    ChunkState first = chunks[chunkIndex(a, movePc.width)];
+    ChunkState second = chunks[chunkIndex(b, movePc.width)];
+    return chunkHas(first, CHUNK_SLEEPING) && !chunkHas(first, CHUNK_DIRTY) &&
+           chunkHas(second, CHUNK_SLEEPING) && !chunkHas(second, CHUNK_DIRTY);
+}
+''')
+          replace('shaders/move.comp', '    cells[moveIndex(keepPosition)] = keep;\n    cells[moveIndex(releasePosition)] = oxygenFrom(released);\n',
+                  '    cells[moveIndex(keepPosition)] = keep;\n    cells[moveIndex(releasePosition)] = oxygenFrom(released);\n    markChunkDirty(keepPosition);\n    markChunkDirty(releasePosition);\n')
+          replace('shaders/move.comp', '    cells[moveIndex(sourcePosition)] = source;\n    cells[moveIndex(targetPosition)] = half_cell;\n',
+                  '    cells[moveIndex(sourcePosition)] = source;\n    cells[moveIndex(targetPosition)] = half_cell;\n    markChunkDirty(sourcePosition);\n    markChunkDirty(targetPosition);\n')
+          replace('shaders/move.comp', '    cells[aIndex] = b;\n    cells[bIndex] = a;\n    if (movePc.reserved0 != 0u) {',
+                  '    cells[aIndex] = b;\n    cells[bIndex] = a;\n    markChunkDirty(aPosition);\n    markChunkDirty(bPosition);\n    if (movePc.reserved0 != 0u) {')
+          replace('shaders/move.comp', 'bool pairSleeping(ivec2 a, ivec2 b) {\n    TileState tileA',
+                  'bool pairSleeping(ivec2 a, ivec2 b) {\n    if (pairChunksSleeping(a, b)) return true;\n    TileState tileA')
+          replace('shaders/move.comp', '        cells[moveIndex(targetPosition)] = pressured;\n        return;\n',
+                  '        cells[moveIndex(targetPosition)] = pressured;\n        markChunkDirty(sourcePosition);\n        markChunkDirty(targetPosition);\n        return;\n')
+
+          # External writes wake the scheduling hierarchy.
+          replace('shaders/paint.comp', '#include "conservation.glsl"\n', '#include "conservation.glsl"\n#include "tiles.glsl"\n#include "chunks.glsl"\n')
+          replace('shaders/paint.comp', 'layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };\n',
+                  'layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };\nlayout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };\n\nvoid markPaintChunkDirty(ivec2 p) {\n    atomicOr(chunks[chunkIndex(p, pc.width)].flags, CHUNK_DIRTY | CHUNK_ACTIVE);\n}\n')
+          text = read('shaders/paint.comp')
+          text = text.replace('        cells[index] = cell;\n', '        cells[index] = cell;\n        markPaintChunkDirty(p);\n')
+          text = text.replace('    cells[index] = cell;\n}', '    cells[index] = cell;\n    markPaintChunkDirty(p);\n}')
+          write('shaders/paint.comp', text)
+
+          replace('shaders/actor.comp', '#include "conservation.glsl"\n', '#include "conservation.glsl"\n#include "tiles.glsl"\n#include "chunks.glsl"\n')
+          replace('shaders/actor.comp', 'layout(std430, binding = 3) buffer ActorBuffer { ActorState actor; };\n',
+                  'layout(std430, binding = 3) buffer ActorBuffer { ActorState actor; };\nlayout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };\n')
+          replace('shaders/actor.comp', 'uint actorIndex(ivec2 p) {\n    return uint(p.y) * actorPc.width + uint(p.x);\n}\n', r'''uint actorIndex(ivec2 p) {
+    return uint(p.y) * actorPc.width + uint(p.x);
+}
+
+void markActorChunkDirty(ivec2 p) {
+    if (!actorInside(p)) return;
+    atomicOr(chunks[chunkIndex(p, actorPc.width)].flags, CHUNK_DIRTY | CHUNK_ACTIVE);
+}
+''')
+          replace('shaders/actor.comp', '    if (toolTransparent(cell.material)) return;\n\n    if (cell.material == MAT_BEETLE) {',
+                  '    if (toolTransparent(cell.material)) return;\n    markActorChunkDirty(p);\n\n    if (cell.material == MAT_BEETLE) {')
+          text = read('shaders/actor.comp')
+          text = text.replace('cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);\n',
+                              'cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);\n                markActorChunkDirty(p);\n')
+          text = text.replace('        cells[actorIndex(target)] = makeCellWithEntropy(MAT_IRON, actorPc.seed, actorPc.step);\n',
+                              '        cells[actorIndex(target)] = makeCellWithEntropy(MAT_IRON, actorPc.seed, actorPc.step);\n        markActorChunkDirty(target);\n')
+          text = text.replace('        cells[actorIndex(target)] = makeCellWithEntropy(MAT_GOLD, actorPc.seed, actorPc.step);\n',
+                              '        cells[actorIndex(target)] = makeCellWithEntropy(MAT_GOLD, actorPc.seed, actorPc.step);\n        markActorChunkDirty(target);\n')
+          text = text.replace('            cells[oxygenIndex] = carbonDioxide;\n',
+                              '            cells[oxygenIndex] = carbonDioxide;\n            markActorChunkDirty(oxygenCell);\n')
+          write('shaders/actor.comp', text)
+
+          # Debug counters and hierarchy visualization.
+          replace('shaders/debug_stats.glsl', 'const uint STAT_MOVED_CELLS = 29u;\nconst uint STAT_MATERIAL_BASE = 32u;\n', r'''const uint STAT_MOVED_CELLS = 29u;
+const uint STAT_SLEEPING_CHUNKS = 30u;
+const uint STAT_ACTIVE_CHUNKS = 31u;
+const uint STAT_MATERIAL_BASE = 32u;
+const uint STAT_MACRO_TILE_MOVES = 97u;
+const uint STAT_MACRO_CELL_MOVES = 98u;
+const uint STAT_DIRTY_CHUNKS = 99u;
+const uint STAT_CHUNK_SKIPPED_CELLS = 100u;
+''')
+          replace('shaders/debug_stats.comp', '#include "tiles.glsl"\n', '#include "tiles.glsl"\n#include "chunks.glsl"\n')
+          replace('shaders/debug_stats.comp', 'layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };\n',
+                  'layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };\nlayout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };\n')
+          replace('shaders/debug_stats.comp', '    if (linearIndex < tileCount) {\n        TileState tile = tiles[linearIndex];\n        if (tileHas(tile, TILE_SLEEPING)) atomicAdd(debugStats[STAT_SLEEPING_TILES], 1u);\n        if (tileHas(tile, TILE_ACTIVE)) atomicAdd(debugStats[STAT_ACTIVE_TILES], 1u);\n    }\n}', r'''    if (linearIndex < tileCount) {
+        TileState tile = tiles[linearIndex];
+        if (tileHas(tile, TILE_SLEEPING)) atomicAdd(debugStats[STAT_SLEEPING_TILES], 1u);
+        if (tileHas(tile, TILE_ACTIVE)) atomicAdd(debugStats[STAT_ACTIVE_TILES], 1u);
+    }
+
+    uint chunksAcross = chunkColumns(pc.width);
+    uint chunksDown = chunkRows(pc.height);
+    uint chunkCount = chunksAcross * chunksDown;
+    if (linearIndex < chunkCount) {
+        ChunkState chunk = chunks[linearIndex];
+        if (chunkHas(chunk, CHUNK_SLEEPING)) {
+            atomicAdd(debugStats[STAT_SLEEPING_CHUNKS], 1u);
+            uint chunkX = linearIndex % chunksAcross;
+            uint chunkY = linearIndex / chunksAcross;
+            uint originX = chunkX * CHUNK_CELL_SIZE;
+            uint originY = chunkY * CHUNK_CELL_SIZE;
+            uint width = min(CHUNK_CELL_SIZE, pc.width - originX);
+            uint height = min(CHUNK_CELL_SIZE, pc.height - originY);
+            atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], width * height);
+        } else {
+            atomicAdd(debugStats[STAT_ACTIVE_CHUNKS], 1u);
+        }
+        if (chunkHas(chunk, CHUNK_DIRTY)) atomicAdd(debugStats[STAT_DIRTY_CHUNKS], 1u);
+    }
+}''')
+
+          replace('shaders/fullscreen.frag', '#include "tiles.glsl"\n', '#include "tiles.glsl"\n#include "chunks.glsl"\n')
+          replace('shaders/fullscreen.frag', 'layout(std430, binding = 5) readonly buffer DebugStatsBuffer { uint debugStats[]; };\n',
+                  'layout(std430, binding = 5) readonly buffer DebugStatsBuffer { uint debugStats[]; };\nlayout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };\n')
+          replace('shaders/fullscreen.frag', 'bool statPixel(ivec2 pixel, ivec2 origin, uint labelId, uint value) {\n    bool label = fixedPixel(pixel, origin, 1, labelId);\n    int numberX = int(fixedTextLength(labelId)) * 6 + 4;\n    return label || numberPixel(pixel, origin + ivec2(numberX, 0), 1, value);\n}\n', r'''bool statPixel(ivec2 pixel, ivec2 origin, uint labelId, uint value) {
+    bool label = fixedPixel(pixel, origin, 1, labelId);
+    int numberX = int(fixedTextLength(labelId)) * 6 + 4;
+    return label || numberPixel(pixel, origin + ivec2(numberX, 0), 1, value);
+}
+
+const uint HIERARCHY_LABELS[25] = uint[25](
+    83u, 67u, 72u, 78u, 75u,  // SCHNK
+    65u, 67u, 72u, 78u, 75u,  // ACHNK
+    77u, 65u, 67u, 82u, 79u,  // MACRO
+    77u, 67u, 69u, 76u, 76u,  // MCELL
+    83u, 75u, 73u, 80u, 32u   // SKIP
+);
+
+bool hierarchyLabelPixel(ivec2 pixel, ivec2 origin, uint label) {
+    for (uint i = 0u; i < 5u; ++i)
+        if (glyphPixel(pixel, origin + ivec2(int(i) * 6, 0), 1,
+                       HIERARCHY_LABELS[label * 5u + i])) return true;
+    return false;
+}
+
+bool hierarchyStatPixel(ivec2 pixel, ivec2 origin, uint label, uint value) {
+    return hierarchyLabelPixel(pixel, origin, label) ||
+           numberPixel(pixel, origin + ivec2(34, 0), 1, value);
+}
+''')
+          replace('shaders/fullscreen.frag', 'TileState tileAt(ivec2 p) { return tiles[tileIndex(p, renderPc.gridWidth)]; }\n',
+                  'TileState tileAt(ivec2 p) { return tiles[tileIndex(p, renderPc.gridWidth)]; }\nChunkState chunkAt(ivec2 p) { return chunks[chunkIndex(p, renderPc.gridWidth)]; }\n')
+          replace('shaders/fullscreen.frag', '    Cell cell = cellAt(grid);\n    TileState tile = tileAt(grid);\n    vec4 color = worldColor(cell, grid);\n',
+                  '    Cell cell = cellAt(grid);\n    TileState tile = tileAt(grid);\n    ChunkState chunk = chunkAt(grid);\n    vec4 color = worldColor(cell, grid);\n')
+          replace('shaders/fullscreen.frag', '        ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));\n        if (local.x == 0 || local.y == 0) color.rgb *= 0.45;\n',
+                  '        ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));\n        if (local.x == 0 || local.y == 0) color.rgb *= 0.45;\n        ivec2 chunkLocal = ivec2(int(gridX % CHUNK_CELL_SIZE), int(gridY % CHUNK_CELL_SIZE));\n        if (chunkLocal.x == 0 || chunkLocal.y == 0) color.rgb *= 0.32;\n')
+          replace('shaders/fullscreen.frag', '        color.rgb = mix(color.rgb, overlay, alpha * float(tile.occupancy) / 64.0);\n',
+                  '        color.rgb = mix(color.rgb, overlay, alpha * float(tile.occupancy) / 64.0);\n        vec3 chunkOverlay = chunkHas(chunk, CHUNK_DIRTY) ? vec3(0.95, 0.20, 0.12) :\n            (chunkHas(chunk, CHUNK_SLEEPING) ? vec3(0.46, 0.22, 0.82) : vec3(0.08, 0.40, 0.72));\n        color.rgb = mix(color.rgb, chunkOverlay, chunkHas(chunk, CHUNK_SLEEPING) ? 0.10 : 0.04);\n')
+          replace('shaders/fullscreen.frag', '        uint panelBottom = min(viewportBottom, panelTop + 76u);\n',
+                  '        uint panelBottom = min(viewportBottom, panelTop + 90u);\n')
+          replace('shaders/fullscreen.frag', '            uint row3 = panelTop + 61u;\n',
+                  '            uint row3 = panelTop + 61u;\n            uint row4 = panelTop + 75u;\n')
+          replace('shaders/fullscreen.frag', '            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 5u), int(row3)), 1u, renderPc.framesPerSecond);\n\n            if (statsText)', r'''            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 5u), int(row3)), 1u, renderPc.framesPerSecond);
+
+            statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 0u), int(row4)), 0u, debugStats[STAT_SLEEPING_CHUNKS]);
+            statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 1u), int(row4)), 1u, debugStats[STAT_ACTIVE_CHUNKS]);
+            statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 2u), int(row4)), 2u, debugStats[STAT_MACRO_TILE_MOVES]);
+            statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 3u), int(row4)), 3u, debugStats[STAT_MACRO_CELL_MOVES]);
+            statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 4u), int(row4)), 4u, debugStats[STAT_CHUNK_SKIPPED_CELLS]);
+
+            if (statsText)''')
+
+          # Vulkan resources, descriptors, pipelines, barriers, and scheduling.
+          replace('src/vulkan_renderer.cpp', '    VkPipeline tile_pipeline{};\n    VkPipeline chemistry_pipeline{};\n    VkPipeline movement_pipeline{};\n',
+                  '    VkPipeline tile_pipeline{};\n    VkPipeline chunk_pipeline{};\n    VkPipeline chemistry_pipeline{};\n    VkPipeline macro_movement_pipeline{};\n    VkPipeline movement_pipeline{};\n')
+          replace('src/vulkan_renderer.cpp', '    Buffer tile_buffer{};\n    Buffer conservation_buffer{};\n',
+                  '    Buffer tile_buffer{};\n    Buffer chunk_buffer{};\n    Buffer conservation_buffer{};\n')
+          replace('src/vulkan_renderer.cpp', '            if (tile_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, tile_pipeline, nullptr);\n            if (chemistry_pipeline != VK_NULL_HANDLE)',
+                  '            if (tile_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, tile_pipeline, nullptr);\n            if (chunk_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chunk_pipeline, nullptr);\n            if (chemistry_pipeline != VK_NULL_HANDLE)')
+          replace('src/vulkan_renderer.cpp', '            if (chemistry_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_pipeline, nullptr);\n            if (movement_pipeline != VK_NULL_HANDLE)',
+                  '            if (chemistry_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_pipeline, nullptr);\n            if (macro_movement_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, macro_movement_pipeline, nullptr);\n            if (movement_pipeline != VK_NULL_HANDLE)')
+          replace('src/vulkan_renderer.cpp', '            destroy_buffer(conservation_buffer);\n            destroy_buffer(tile_buffer);\n',
+                  '            destroy_buffer(conservation_buffer);\n            destroy_buffer(chunk_buffer);\n            destroy_buffer(tile_buffer);\n')
+          replace('src/vulkan_renderer.cpp', '        const auto tile_count = static_cast<VkDeviceSize>(divide_round_up(config.grid_width, 8u)) *\n                                 divide_round_up(config.grid_height, 8u);\n        const auto tile_size = tile_count * sizeof(std::uint32_t) * 4u;\n',
+                  '        const auto tile_columns = divide_round_up(config.grid_width, 8u);\n        const auto tile_rows = divide_round_up(config.grid_height, 8u);\n        const auto tile_count = static_cast<VkDeviceSize>(tile_columns) * tile_rows;\n        const auto tile_size = tile_count * sizeof(std::uint32_t) * 4u;\n        const auto chunk_count = static_cast<VkDeviceSize>(divide_round_up(tile_columns, 8u)) *\n                                  divide_round_up(tile_rows, 8u);\n        const auto chunk_size = chunk_count * sizeof(std::uint32_t) * 4u;\n')
+          replace('src/vulkan_renderer.cpp', '        tile_buffer = create_buffer(tile_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);\n        conservation_buffer',
+                  '        tile_buffer = create_buffer(tile_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);\n        chunk_buffer = create_buffer(chunk_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);\n        conservation_buffer')
+          replace('src/vulkan_renderer.cpp', '            VkDescriptorSetLayoutBinding{\n                .binding = 6,\n                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,\n                .descriptorCount = 1,\n                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,\n            },\n        };',
+                  '            VkDescriptorSetLayoutBinding{\n                .binding = 6,\n                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,\n                .descriptorCount = 1,\n                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,\n            },\n            VkDescriptorSetLayoutBinding{\n                .binding = 7,\n                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,\n                .descriptorCount = 1,\n                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,\n            },\n        };')
+          replace('src/vulkan_renderer.cpp', '            .descriptorCount = 14,\n', '            .descriptorCount = 16,\n')
+          replace('src/vulkan_renderer.cpp', '            const VkDescriptorBufferInfo conservation_info{conservation_buffer.handle, 0, conservation_buffer.size};\n            const VkDescriptorBufferInfo ui_text_info',
+                  '            const VkDescriptorBufferInfo conservation_info{conservation_buffer.handle, 0, conservation_buffer.size};\n            const VkDescriptorBufferInfo chunk_info{chunk_buffer.handle, 0, chunk_buffer.size};\n            const VkDescriptorBufferInfo ui_text_info')
+          replace('src/vulkan_renderer.cpp', '                VkWriteDescriptorSet{\n                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,\n                    .dstSet = descriptor_sets[index],\n                    .dstBinding = 6,\n                    .descriptorCount = 1,\n                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,\n                    .pBufferInfo = &ui_text_info,\n                },\n            };',
+                  '                VkWriteDescriptorSet{\n                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,\n                    .dstSet = descriptor_sets[index],\n                    .dstBinding = 6,\n                    .descriptorCount = 1,\n                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,\n                    .pBufferInfo = &ui_text_info,\n                },\n                VkWriteDescriptorSet{\n                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,\n                    .dstSet = descriptor_sets[index],\n                    .dstBinding = 7,\n                    .descriptorCount = 1,\n                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,\n                    .pBufferInfo = &chunk_info,\n                },\n            };')
+          replace('src/vulkan_renderer.cpp', '        tile_pipeline = create_compute_pipeline("tiles.comp.spv");\n        chemistry_pipeline = create_compute_pipeline("chemistry.comp.spv");\n        movement_pipeline',
+                  '        tile_pipeline = create_compute_pipeline("tiles.comp.spv");\n        chunk_pipeline = create_compute_pipeline("chunks.comp.spv");\n        chemistry_pipeline = create_compute_pipeline("chemistry.comp.spv");\n        macro_movement_pipeline = create_compute_pipeline("macro_move.comp.spv");\n        movement_pipeline')
+
+          # Clear chunk state for scene uploads and resets.
+          text = read('src/vulkan_renderer.cpp')
+          marker = '            vkCmdFillBuffer(command_buffer, tile_buffer.handle, 0, tile_buffer.size, 0u);\n            buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,\n'
+          replacement = '            vkCmdFillBuffer(command_buffer, tile_buffer.handle, 0, tile_buffer.size, 0u);\n            vkCmdFillBuffer(command_buffer, chunk_buffer.handle, 0, chunk_buffer.size, 0u);\n            buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,\n                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,\n                           VK_PIPELINE_STAGE_TRANSFER_BIT,\n                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);\n            buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,\n'
+          if marker not in text:
+              raise RuntimeError('missing upload tile clear marker')
+          text = text.replace(marker, replacement, 1)
+          marker2 = '        vkCmdFillBuffer(command_buffer, tile_buffer.handle, 0, tile_buffer.size, 0u);\n        buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,\n'
+          replacement2 = '        vkCmdFillBuffer(command_buffer, tile_buffer.handle, 0, tile_buffer.size, 0u);\n        vkCmdFillBuffer(command_buffer, chunk_buffer.handle, 0, chunk_buffer.size, 0u);\n        buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,\n                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);\n        buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,\n'
+          if marker2 not in text:
+              raise RuntimeError('missing reset tile clear marker')
+          text = text.replace(marker2, replacement2, 1)
+          write('src/vulkan_renderer.cpp', text)
+
+          replace('src/vulkan_renderer.cpp', '        buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,\n                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);\n\n        const auto next_set', r'''        buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+        bind_compute(command_buffer, chunk_pipeline, current_set);
+        vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
+                           0, sizeof(simulation_push), &simulation_push);
+        const auto chunk_columns = divide_round_up(config.grid_width, 64u);
+        const auto chunk_rows = divide_round_up(config.grid_height, 64u);
+        vkCmdDispatch(command_buffer, divide_round_up(chunk_columns, 8u),
+                      divide_round_up(chunk_rows, 8u), 1);
+        buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+        const auto next_set''')
+
+          replace('src/vulkan_renderer.cpp', '        current_set = next_set;\n\n        // Freeze the post-chemistry state', r'''        current_set = next_set;
+
+        // Full uniform 8x8 regions use the same fall/diagonal/spread decisions
+        // as cells, but transfer all 64 canonical cells in parallel. Mixed,
+        // partial, structural, reacting, or half-water regions fall through to
+        // the ordinary fine-grained movement passes below.
+        bind_compute(command_buffer, macro_movement_pipeline, current_set);
+        const std::array<std::int32_t, 5> macro_phases = (simulation_step & 1u) == 0u
+            ? std::array<std::int32_t, 5>{0, 1, 2, 3, 4}
+            : std::array<std::int32_t, 5>{0, 2, 1, 4, 3};
+        const auto tile_columns = divide_round_up(config.grid_width, 8u);
+        const auto tile_rows = divide_round_up(config.grid_height, 8u);
+        for (std::size_t phase_index = 0; phase_index < macro_phases.size(); ++phase_index) {
+            const auto phase = macro_phases[phase_index];
+            const MovementPush macro_push{
+                .width = config.grid_width,
+                .height = config.grid_height,
+                .step = simulation_step,
+                .seed = random_seed,
+                .phase = phase,
+                .parity = static_cast<std::int32_t>(
+                    (simulation_step + static_cast<std::uint32_t>(phase_index)) & 1u),
+                .reserved0 = collect_debug_stats ? 1u : 0u,
+            };
+            vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, sizeof(macro_push), &macro_push);
+            if (phase <= 2) {
+                vkCmdDispatch(command_buffer, tile_columns, divide_round_up(tile_rows, 2u), 1);
+            } else {
+                vkCmdDispatch(command_buffer, divide_round_up(tile_columns, 2u), tile_rows, 1);
+            }
+            buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        }
+
+        // Freeze the post-chemistry and macro-movement state''')
+
+          replace('src/vulkan_renderer.cpp', '            buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,\n                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,\n                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);\n        }\n        ++simulation_step;',
+                  '            buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,\n                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,\n                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);\n            buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,\n                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,\n                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);\n        }\n        ++simulation_step;')
+          replace('src/vulkan_renderer.cpp', '        buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);\n    }\n\n\n    void reset_debug_stats',
+                  '        buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);\n        buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);\n    }\n\n\n    void reset_debug_stats')
+          replace('src/vulkan_renderer.cpp', '        buffer_barrier(command_buffer, actor_buffer, VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,',
+                  '        buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);\n        buffer_barrier(command_buffer, actor_buffer, VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,')
+          replace('src/vulkan_renderer.cpp', '        buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,\n                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);\n',
+                  '        buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,\n                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);\n        buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,\n                       VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,\n                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);\n')
+
+          # Correct reduced-palette and hierarchy contracts.
+          write('tests/material_contract.cpp', r'''#include "epoch/sand/material.hpp"
+#include "epoch/sand/scene.hpp"
+#include "epoch/sand/simulation_policy.hpp"
+#include "epoch/sand/ui_layout.hpp"
+
+#include <array>
+#include <cstdint>
+
+using epoch::sand::Material;
+using epoch::sand::MaterialGroup;
+using epoch::sand::MaterialPhase;
+using epoch::sand::Scene;
+
+static_assert(static_cast<std::uint32_t>(Material::empty) == 0u);
+static_assert(static_cast<std::uint32_t>(Material::hydrogen) == 64u);
+static_assert(epoch::sand::material_count == 65u);
+static_assert(epoch::sand::material_profiles.size() == epoch::sand::material_count);
+
+static_assert(epoch::sand::material_group_count == 2u);
+static_assert(epoch::sand::material_slots_per_group == 10u);
+static_assert(epoch::sand::material_group_size(MaterialGroup::ground) == 5u);
+static_assert(epoch::sand::material_group_size(MaterialGroup::fluids) == 8u);
+static_assert(epoch::sand::grouped_material(MaterialGroup::ground, 0u) == Material::empty);
+static_assert(epoch::sand::grouped_material(MaterialGroup::ground, 4u) == Material::mud);
+static_assert(epoch::sand::grouped_material(MaterialGroup::fluids, 0u) == Material::water);
+static_assert(epoch::sand::grouped_material(MaterialGroup::fluids, 7u) == Material::oxygen);
+static_assert(epoch::sand::grouped_material(MaterialGroup::fluids, 8u) == Material::count);
+
+static_assert(epoch::sand::is_enabled_material(Material::sand));
+static_assert(epoch::sand::is_enabled_material(Material::water));
+static_assert(epoch::sand::is_enabled_material(Material::oxygen));
+static_assert(!epoch::sand::is_enabled_material(Material::fire));
+static_assert(epoch::sand::canonical_material(Material::smoke) == Material::oxygen);
+static_assert(epoch::sand::canonical_material(Material::steam) == Material::oxygen);
+static_assert(epoch::sand::canonical_material(Material::crystal) == Material::stone);
+static_assert(epoch::sand::canonical_material(Material::ash) == Material::dirt);
+
+static_assert(epoch::sand::scene_count == 9u);
+static_assert(epoch::sand::next_scene(Scene::frontier_base) == Scene::sandbox);
+static_assert(epoch::sand::scene_has_character(Scene::frontier_base));
+static_assert(epoch::sand::scene_name(Scene::gold_mine) == "Platformer");
+static_assert(epoch::sand::is_block_material(Material::stone));
+static_assert(!epoch::sand::is_block_material(Material::mud));
+
+static_assert(epoch::sand::phase_at(Material::copper, 1300) == MaterialPhase::molten);
+static_assert(epoch::sand::phase_at(Material::gold, 1070) == MaterialPhase::molten);
+static_assert(epoch::sand::phase_at(Material::steel, 1300) == MaterialPhase::softened);
+static_assert(epoch::sand::phase_at(Material::steel, 1600) == MaterialPhase::molten);
+static_assert(epoch::sand::phase_at(Material::plastic, 120) == MaterialPhase::softened);
+static_assert(epoch::sand::phase_at(Material::plastic, 180) == MaterialPhase::molten);
+static_assert(epoch::sand::phase_at(Material::plastic, 500) == MaterialPhase::vapor);
+
+static_assert(epoch::sand::policy::tile_size == 8u);
+static_assert(epoch::sand::policy::macro_tile_cells == 64u);
+static_assert(epoch::sand::policy::chunk_size == 64u);
+static_assert(epoch::sand::policy::chunk_tile_count == 64u);
+static_assert(epoch::sand::policy::bulk_region_eligible(64u, true, false, false));
+static_assert(!epoch::sand::policy::bulk_region_eligible(63u, true, false, false));
+static_assert(!epoch::sand::policy::bulk_region_eligible(64u, false, false, false));
+static_assert(epoch::sand::policy::chunk_can_sleep(64u, 64u, false, 30u));
+static_assert(!epoch::sand::policy::chunk_can_sleep(63u, 64u, false, 30u));
+static_assert(!epoch::sand::policy::chunk_can_sleep(64u, 64u, true, 30u));
+static_assert(epoch::sand::policy::stability_ready(52u, 120u, true, true, false, false, 0u));
+static_assert(!epoch::sand::policy::stability_ready(51u, 120u, true, true, false, false, 0u));
+static_assert(epoch::sand::policy::laser_hits_to_dislodge == 2u);
+static_assert(!epoch::sand::policy::should_collapse(32u));
+static_assert(epoch::sand::policy::should_collapse(31u));
+
+constexpr bool palette_materials_are_unique_and_enabled() {
+    std::array<std::uint32_t, epoch::sand::material_count> counts{};
+    for (std::uint32_t group_index = 0; group_index < epoch::sand::material_group_count; ++group_index) {
+        const auto group = static_cast<MaterialGroup>(group_index);
+        for (std::uint32_t slot = 0; slot < epoch::sand::material_group_size(group); ++slot) {
+            const auto material = epoch::sand::grouped_material(group, slot);
+            if (material == Material::count || !epoch::sand::is_enabled_material(material)) return false;
+            auto& count = counts[static_cast<std::uint32_t>(material)];
+            if (++count != 1u) return false;
+        }
+    }
+    for (std::uint32_t index = 0; index < epoch::sand::material_count; ++index) {
+        const auto material = static_cast<Material>(index);
+        const auto expected = epoch::sand::is_enabled_material(material) ? 1u : 0u;
+        if (counts[index] != expected) return false;
+    }
+    return true;
+}
+static_assert(palette_materials_are_unique_and_enabled());
+
+int main() {
+    const auto layout = epoch::sand::ui::make_layout(1280u, 720u);
+    const auto fluids_tab = epoch::sand::ui::group_tab_rect(
+        layout, static_cast<std::uint32_t>(MaterialGroup::fluids));
+    const auto selected_group = epoch::sand::ui::group_at(
+        layout, {fluids_tab.position.x + fluids_tab.size.x * 0.5f,
+                 fluids_tab.position.y + fluids_tab.size.y * 0.5f});
+    if (selected_group != static_cast<std::uint32_t>(MaterialGroup::fluids)) return 1;
+
+    const auto oxygen_slot = epoch::sand::ui::palette_item_rect(layout, MaterialGroup::fluids, 7u);
+    const auto selected_material = epoch::sand::ui::palette_material_at(
+        layout, MaterialGroup::fluids,
+        {oxygen_slot.position.x + oxygen_slot.size.x * 0.5f,
+         oxygen_slot.position.y + oxygen_slot.size.y * 0.5f});
+    if (selected_material != Material::oxygen) return 2;
+    if (layout.simulation.size.y <= 0.0f || layout.debug_toggle.size.x < 60.0f) return 3;
+
+    const auto viewport = epoch::sand::ui::make_simulation_viewport(layout, 640u, 360u);
+    if (static_cast<std::uint32_t>(viewport.rect.size.x) % 80u != 0u ||
+        static_cast<std::uint32_t>(viewport.rect.size.y) % 45u != 0u) return 4;
+    if (viewport.rect.size.x / 80.0f != viewport.rect.size.y / 45.0f) return 5;
+    return 0;
+}
+''')
+
+          write('HIERARCHICAL_SIMULATION.md', r'''# Hierarchical Cell Simulation
+
+The cell buffer remains authoritative. The hierarchy only accelerates work; it never invents, deletes, reconstructs, or replaces represented material.
+
+## 8x8 movable macro-cells
+
+A full aligned 8x8 region is eligible for a bulk move only when all 64 cells:
+
+- contain the same enabled movable material,
+- are non-structural,
+- can make the same fall, diagonal, density-swap, or liquid-spread move,
+- contain no fresh-water half-unit state.
+
+One 8x8 Vulkan workgroup validates one macro-cell pair. When valid, its 64 lanes swap the canonical cells in parallel. Mixed, partial, damaged, reacting, structural, or half-water regions immediately fall back to the normal per-cell passes. This preserves pixel behavior at edges while allowing large uniform bodies to travel eight cells per bulk step.
+
+## 64x64 sleeping chunks
+
+Eight macro tiles per axis form a 64x64 scheduling chunk. Each chunk caches active, sleeping, dirty, boundary, and quiet-tick state.
+
+- Empty oxygen atmosphere can sleep.
+- A chunk sleeps only after every present 8x8 tile is sleeping for 30 consecutive ticks.
+- Painting, actor tools, macro movement, and fine movement atomically dirty affected chunks.
+- A dirty chunk is rescanned on the next tick.
+- Chemistry skips a chunk only when its complete one-chunk neighborhood is sleeping, preserving boundary reactions.
+- Fine movement rejects a pair with one chunk lookup when both endpoints are in sleeping chunks.
+
+The debug view draws 8x8 tile boundaries and stronger 64x64 chunk boundaries. It reports sleeping/active chunks, macro moves, macro cells moved, and cells bypassed by chunk sleeping.
+''')
+
+          readme = read('README.md')
+          marker = '## Hierarchical simulation\n'
+          if marker not in readme:
+              readme += r'''
+
+## Hierarchical simulation
+
+Uniform 8x8 material regions can now move as 64-cell macro-cells using the same fall, diagonal, density, and liquid-spread rules as fine pixels. Mixed edges and half-water remain pixel simulated. Above that, 64x64 chunks cache activity and sleep state for fast rejection and large-map lookup. See `HIERARCHICAL_SIMULATION.md`.
+'''
+              write('README.md', readme)
+
+          # Ensure all hierarchy shaders are staged by the dependency scanner.
+          PY
+          python3 /tmp/apply_hierarchy.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add CMakeLists.txt README.md HIERARCHICAL_SIMULATION.md include src shaders tests
+          git commit -m 'Add movable macro-cells and sleeping chunks'
+          git push origin HEAD:main
