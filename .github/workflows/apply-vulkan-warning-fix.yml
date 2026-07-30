@@ -1,0 +1,48 @@
+name: Apply Vulkan Warning Fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apply-vulkan-warning-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Apply narrow GCC Vulkan warning fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          cmake = Path('CMakeLists.txt')
+          text = cmake.read_text(encoding='utf-8')
+          old = 'target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)'
+          new = '''target_compile_options(${target_name} PRIVATE
+            -Wall -Wextra -Wpedantic -Wconversion -Wshadow
+            # Vulkan C structs are intentionally initialized with designated
+            # members; every omitted member is value-initialized to zero.
+            -Wno-missing-field-initializers)'''
+          if old not in text:
+              raise RuntimeError('CMake warning marker not found')
+          cmake.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          renderer = Path('src/vulkan_renderer.cpp')
+          text = renderer.read_text(encoding='utf-8')
+          old = 'bool contains_layer(const std::vector<VkLayerProperties>& layers, const char* name) {'
+          new = '[[maybe_unused]] bool contains_layer(const std::vector<VkLayerProperties>& layers, const char* name) {'
+          if old not in text:
+              raise RuntimeError('contains_layer marker not found')
+          renderer.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add CMakeLists.txt src/vulkan_renderer.cpp
+          git commit -m 'Keep strict builds compatible with Vulkan designated initialization'
+          git push origin HEAD:main
