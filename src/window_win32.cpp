@@ -38,6 +38,7 @@ struct NativeWindow::Impl final {
     HWND handle{};
     std::uint32_t width{};
     std::uint32_t height{};
+    std::wstring startup_message;
     std::int32_t mouse_x{};
     std::int32_t mouse_y{};
     std::int32_t wheel_delta{};
@@ -77,6 +78,24 @@ struct NativeWindow::Impl final {
         }
 
         switch (message) {
+        case WM_ERASEBKGND:
+            if (!self->startup_message.empty()) return 1;
+            break;
+        case WM_PAINT:
+            if (!self->startup_message.empty()) {
+                PAINTSTRUCT paint{};
+                HDC deviceContext = BeginPaint(hwnd, &paint);
+                RECT client{};
+                GetClientRect(hwnd, &client);
+                FillRect(deviceContext, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+                SetBkMode(deviceContext, TRANSPARENT);
+                SetTextColor(deviceContext, RGB(255, 255, 255));
+                DrawTextW(deviceContext, self->startup_message.c_str(), -1, &client,
+                          DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                EndPaint(hwnd, &paint);
+                return 0;
+            }
+            break;
         case WM_CLOSE:
             self->close_requested = true;
             return 0;
@@ -201,6 +220,7 @@ NativeWindow::NativeWindow(const std::string_view title, const std::uint32_t wid
     window_class.lpfnWndProc = Impl::window_proc;
     window_class.hInstance = impl_->instance;
     window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
+    window_class.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     window_class.lpszClassName = window_class_name;
 
     if (RegisterClassExW(&window_class) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
@@ -311,6 +331,13 @@ bool NativeWindow::poll(WindowInput& input) {
 void NativeWindow::set_title(const std::string_view title) {
     const auto wide_title = widen(title);
     SetWindowTextW(impl_->handle, wide_title.c_str());
+}
+
+void NativeWindow::show_startup_message(const std::string_view message) {
+    impl_->startup_message = widen(message);
+    if (impl_->startup_message.empty()) return;
+    InvalidateRect(impl_->handle, nullptr, TRUE);
+    UpdateWindow(impl_->handle);
 }
 
 std::vector<const char*> NativeWindow::required_instance_extensions() const {

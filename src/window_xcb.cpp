@@ -75,6 +75,8 @@ struct NativeWindow::Impl final {
     xcb_connection_t* connection{};
     xcb_screen_t* screen{};
     xcb_window_t window{};
+    xcb_gcontext_t startup_gc{};
+    std::string startup_message;
     xcb_atom_t wm_protocols{};
     xcb_atom_t wm_delete_window{};
     std::uint32_t width{};
@@ -104,7 +106,25 @@ struct NativeWindow::Impl final {
     bool inspect_material{};
     bool toggle_debug{};
 
+    void draw_startup_message() {
+        if (connection == nullptr || window == 0 || startup_gc == 0 || startup_message.empty()) return;
+        xcb_clear_area(connection, 0, window, 0, 0,
+                       static_cast<std::uint16_t>(width), static_cast<std::uint16_t>(height));
+        const int textWidth = static_cast<int>(startup_message.size()) * 6;
+        const std::int16_t textX = static_cast<std::int16_t>(
+            width > static_cast<std::uint32_t>(textWidth)
+                ? (width - static_cast<std::uint32_t>(textWidth)) / 2u : 4u);
+        const std::int16_t textY = static_cast<std::int16_t>(height / 2u + 4u);
+        xcb_image_text_8(connection, static_cast<std::uint8_t>(startup_message.size()),
+                         window, startup_gc, textX, textY, startup_message.c_str());
+        xcb_flush(connection);
+    }
+
     ~Impl() {
+        if (connection != nullptr && startup_gc != 0) {
+            xcb_free_gc(connection, startup_gc);
+            startup_gc = 0;
+        }
         if (connection != nullptr && window != 0) {
             xcb_destroy_window(connection, window);
             xcb_flush(connection);
@@ -168,6 +188,17 @@ NativeWindow::NativeWindow(const std::string_view title, const std::uint32_t wid
         throw std::runtime_error("xcb_create_window failed with X11 error " + std::to_string(code));
     }
 
+    impl_->startup_gc = xcb_generate_id(impl_->connection);
+    const std::uint32_t gcValues[] = {impl_->screen->white_pixel, impl_->screen->black_pixel};
+    const auto gcCookie = xcb_create_gc_checked(
+        impl_->connection, impl_->startup_gc, impl_->window,
+        XCB_GC_FOREGROUND | XCB_GC_BACKGROUND, gcValues);
+    if (xcb_generic_error_t* error = xcb_request_check(impl_->connection, gcCookie)) {
+        const auto code = error->error_code;
+        std::free(error);
+        throw std::runtime_error("xcb_create_gc failed with X11 error " + std::to_string(code));
+    }
+
     impl_->wm_protocols = intern_atom(impl_->connection, "WM_PROTOCOLS");
     impl_->wm_delete_window = intern_atom(impl_->connection, "WM_DELETE_WINDOW");
     xcb_change_property(
@@ -208,6 +239,9 @@ bool NativeWindow::poll(WindowInput& input) {
     while (xcb_generic_event_t* event = xcb_poll_for_event(impl_->connection)) {
         const auto type = static_cast<std::uint8_t>(event->response_type & ~0x80u);
         switch (type) {
+        case XCB_EXPOSE:
+            impl_->draw_startup_message();
+            break;
         case XCB_CLIENT_MESSAGE: {
             const auto* client = reinterpret_cast<xcb_client_message_event_t*>(event);
             if (client->type == impl_->wm_protocols && client->data.data32[0] == impl_->wm_delete_window) {
@@ -344,6 +378,11 @@ bool NativeWindow::poll(WindowInput& input) {
         .toggle_debug = impl_->toggle_debug,
     };
     return !impl_->close_requested;
+}
+
+void NativeWindow::show_startup_message(const std::string_view message) {
+    impl_->startup_message.assign(message.data(), message.size());
+    impl_->draw_startup_message();
 }
 
 void NativeWindow::set_title(const std::string_view title) {

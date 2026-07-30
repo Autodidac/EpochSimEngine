@@ -2,6 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 #include "material_ids.glsl"
 #include "tiles.glsl"
+#include "bee_swarm.glsl"
 #include "debug_stats.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
@@ -389,117 +390,62 @@ int localTargetSignal(ivec2 p, uint first, uint second) {
     return score;
 }
 
-int regionalTargetSignal(ivec2 p, uint first, uint second) {
-    int score = localTargetSignal(p, first, second) * 12;
-    score += localTargetSignal(p + ivec2(8, 0), first, second) * 7;
-    score += localTargetSignal(p + ivec2(-8, 0), first, second) * 7;
-    score += localTargetSignal(p + ivec2(0, 8), first, second) * 7;
-    score += localTargetSignal(p + ivec2(0, -8), first, second) * 7;
-    score += localTargetSignal(p + ivec2(12, 12), first, second) * 5;
-    score += localTargetSignal(p + ivec2(-12, 12), first, second) * 5;
-    score += localTargetSignal(p + ivec2(12, -12), first, second) * 5;
-    score += localTargetSignal(p + ivec2(-12, -12), first, second) * 5;
-    score += localTargetSignal(p + ivec2(24, 0), first, second) * 4;
-    score += localTargetSignal(p + ivec2(-24, 0), first, second) * 4;
-    score += localTargetSignal(p + ivec2(0, 24), first, second) * 4;
-    score += localTargetSignal(p + ivec2(0, -24), first, second) * 4;
-    score += localTargetSignal(p + ivec2(40, 20), first, second) * 2;
-    score += localTargetSignal(p + ivec2(-40, 20), first, second) * 2;
-    score += localTargetSignal(p + ivec2(40, -20), first, second) * 2;
-    score += localTargetSignal(p + ivec2(-40, -20), first, second) * 2;
-    score += localTargetSignal(p + ivec2(64, 0), first, second);
-    score += localTargetSignal(p + ivec2(-64, 0), first, second);
-    score += localTargetSignal(p + ivec2(0, 64), first, second);
-    score += localTargetSignal(p + ivec2(0, -64), first, second);
-    return score;
+
+uint beeTargetTileCount() {
+    return tileColumns(movePc.width) * ((movePc.height + TILE_SIZE - 1u) / TILE_SIZE);
 }
 
-uint beeFormationSlot(Cell bee) { return (bee.aux >> 8u) & 255u; }
-bool isAuthoredBee(Cell bee) { return (bee.aux & AUX_BEE_SWARM) != 0u; }
-bool isAuthoredForager(Cell bee) {
-    return isAuthoredBee(bee) && (beeFormationSlot(bee) % 5u) == 0u;
+bool beeTargetTileValid(uint index, uint requiredFlags) {
+    return index < beeTargetTileCount() && tileHas(tiles[index], requiredFlags);
 }
 
-int beeTargetSignal(Cell bee, ivec2 p) {
-    bool carryingPollen = (bee.aux & AUX_BEE_POLLEN) != 0u;
-    bool resting = stateValue(bee) > 0u;
-    if (carryingPollen || resting)
-        return regionalTargetSignal(p, MAT_QUEEN_BEE, MAT_BEE_NEST);
-    int flowerSignal = regionalTargetSignal(p, MAT_FLOWER, MAT_FLOWER);
-    if ((bee.aux & AUX_BEE_FED) == 0u)
-        return max(flowerSignal, regionalTargetSignal(p, MAT_HONEY, MAT_QUEEN_BEE));
-    return flowerSignal;
+ivec2 beeStoredFlowerTarget(Cell bee) {
+    uint targetTile = beeTargetTileFromAge(bee.age);
+    if (!beeTargetTileValid(targetTile, TILE_HAS_FLOWER)) return beeOrbitTarget(bee.aux, movePc.step);
+    TileState targetState = tiles[targetTile];
+    ivec2 flower = tileFlowerPosition(targetTile, movePc.width, targetState);
+    return beeApproachPosition(flower, beeHomeCenterFromAux(bee.aux));
 }
 
-int beeWaveVertical(Cell bee, ivec2 p) {
-    uint lane = ((bee.aux >> 8u) & 1u) * 3u;
-    uint phase = (movePc.step / 2u + uint(max(p.x, 0)) * 2u + lane) % 32u;
-    if (phase < 8u) return -1;
-    if (phase < 16u) return 0;
-    if (phase < 24u) return 1;
-    return 0;
+ivec2 beeStoredHoneyTarget(Cell bee) {
+    uint targetTile = beeTargetTileFromAge(bee.age);
+    if (!beeTargetTileValid(targetTile, TILE_HAS_HONEY))
+        return beeHomeCenterFromAux(bee.aux) + beeLandingOffset(beeFormationSlotFromAux(bee.aux));
+    TileState targetState = tiles[targetTile];
+    ivec2 honey = tileHoneyPosition(targetTile, movePc.width, targetState);
+    return beeApproachPosition(honey, beeHomeCenterFromAux(bee.aux));
 }
 
-int beeWaveHorizontal(Cell bee, ivec2 p) {
-    uint lane = ((bee.aux >> 9u) & 3u) * 5u;
-    uint phase = (movePc.step / 3u + uint(max(p.y, 0)) * 2u + lane) % 64u;
-    return phase < 32u ? 1 : -1;
+ivec2 beeStoredMigratingQueen(Cell bee) {
+    uint targetTile = beeTargetTileFromAge(bee.age);
+    if (!beeTargetTileValid(targetTile, TILE_HAS_MIGRATING_QUEEN) &&
+        !beeTargetTileValid(targetTile, TILE_HAS_QUEEN))
+        return beeHomeCenterFromAux(bee.aux);
+    TileState targetState = tiles[targetTile];
+    return tileQueenPosition(targetTile, movePc.width, targetState);
 }
 
-ivec2 authoredBeeTravelTarget(Cell bee) {
-    ivec2 hiveCenter = ivec2(int(movePc.width) - 104, int(movePc.height) - 136);
-    if ((bee.aux & AUX_BEE_POLLEN) != 0u || (bee.aux & AUX_BEE_FED) == 0u)
-        return hiveCenter;
-    uint flower = (beeFormationSlot(bee) / 5u) % 6u;
-    return ivec2(int(movePc.width) - 240 + int(flower) * 26,
-                 int(movePc.height) - 70);
-}
-
-bool authoredBeeTravelling(Cell bee) {
-    if ((bee.aux & AUX_BEE_POLLEN) != 0u || (bee.aux & AUX_BEE_FED) == 0u) return true;
-    return isAuthoredForager(bee) && stateValue(bee) == 0u;
-}
-
-bool authoredBeeOrbitAllowed(Cell bee, ivec2 sourcePosition,
-                             ivec2 targetPosition, uint randomValue) {
-    ivec2 center = ivec2(int(movePc.width) - 104, int(movePc.height) - 136);
-    ivec2 sourceRadial = sourcePosition - center;
-    ivec2 targetRadial = targetPosition - center;
-    int sourceRadiusSquared = sourceRadial.x * sourceRadial.x + sourceRadial.y * sourceRadial.y;
-    int targetRadiusSquared = targetRadial.x * targetRadial.x + targetRadial.y * targetRadial.y;
-
-    uint lane = beeFormationSlot(bee) % 3u;
-    float absoluteX = float(abs(sourceRadial.x));
-    float absoluteY = float(abs(sourceRadial.y));
-    float perimeter = max(absoluteX + absoluteY, 1.0);
-    float quarter = absoluteY / perimeter;
-    float angleTurns = sourceRadial.x >= 0
-        ? (sourceRadial.y >= 0 ? quarter : 4.0 - quarter)
-        : (sourceRadial.y >= 0 ? 2.0 - quarter : 2.0 + quarter);
-    float angle = angleTurns * 1.57079632679;
-    float baseRadius = lane == 0u ? 18.0 : (lane == 1u ? 30.0 : 44.0);
-    float amplitude = lane == 0u ? 3.5 : (lane == 1u ? 5.0 : 7.0);
-    float phase = lane == 0u ? 0.0 : (lane == 1u ? 1.7 : 3.2);
-    float desiredRadius = baseRadius +
-        sin(angle * 3.0 + baseRadius * 0.14 + phase - float(movePc.step) * 0.012) * amplitude;
-    int desiredRadiusSquared = int(round(desiredRadius * desiredRadius));
-    int tolerance = lane == 0u ? 72 : (lane == 1u ? 120 : 190);
-
-    if (sourceRadiusSquared < desiredRadiusSquared - tolerance &&
-        targetRadiusSquared != sourceRadiusSquared) return targetRadiusSquared > sourceRadiusSquared;
-    if (sourceRadiusSquared > desiredRadiusSquared + tolerance &&
-        targetRadiusSquared != sourceRadiusSquared) return targetRadiusSquared < sourceRadiusSquared;
-    if (targetRadiusSquared < desiredRadiusSquared - tolerance * 2 ||
-        targetRadiusSquared > desiredRadiusSquared + tolerance * 2) return false;
-
-    ivec2 delta = targetPosition - sourcePosition;
-    int radialX = sourceRadial.x > 0 ? 1 : (sourceRadial.x < 0 ? -1 : 0);
-    int radialY = sourceRadial.y > 0 ? 1 : (sourceRadial.y < 0 ? -1 : 0);
-    ivec2 tangent = ivec2(-radialY, radialX);
-    int tangentScore = (delta.x * tangent.x + delta.y * tangent.y) * 10;
-    if (delta.y == beeWaveVertical(bee, sourcePosition)) tangentScore += 3;
-    if (delta.x == beeWaveHorizontal(bee, sourcePosition)) tangentScore += 2;
-    return tangentScore > 0 || (tangentScore == 0 && (randomValue & 31u) == 0u);
+ivec2 beeMovementTarget(Cell bee) {
+    uint slot = beeFormationSlotFromAux(bee.aux);
+    if ((bee.aux & BEE_AUX_QUEEN) != 0u) {
+        uint targetTile = beeTargetTileFromAge(bee.age);
+        if (!beeTargetTileValid(targetTile, TILE_HAS_FLOWER))
+            return beeHomeCenterFromAux(bee.aux);
+        TileState targetState = tiles[targetTile];
+        return beeMigrationSite(tileFlowerPosition(targetTile, movePc.width, targetState),
+                                movePc.width, movePc.height);
+    }
+    if ((bee.aux & BEE_AUX_MIGRATING) != 0u) {
+        ivec2 queen = beeStoredMigratingQueen(bee);
+        return queen + beeRotateOffset(beeFormationOffset(slot) / 2, movePc.step / 8u);
+    }
+    if ((bee.aux & BEE_AUX_POLLEN) != 0u)
+        return beeHomeCenterFromAux(bee.aux) + beeLandingOffset(slot);
+    if ((bee.aux & BEE_AUX_FED) == 0u)
+        return beeStoredHoneyTarget(bee);
+    if (beeTargetTileFromAge(bee.age) != BEE_TARGET_NONE)
+        return beeStoredFlowerTarget(bee);
+    return beeOrbitTarget(bee.aux, movePc.step);
 }
 
 bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {
@@ -507,32 +453,14 @@ bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint r
     bool sourceHazard = adjacentHazard(sourcePosition);
     bool targetHazard = adjacentHazard(targetPosition);
     if (sourceHazard != targetHazard) return sourceHazard;
+    if ((bee.aux & BEE_AUX_SWARM) == 0u) return false;
 
-    ivec2 delta = targetPosition - sourcePosition;
-    if (isAuthoredBee(bee)) {
-        if (authoredBeeTravelling(bee)) {
-            ivec2 travelTarget = authoredBeeTravelTarget(bee);
-            ivec2 sourceDelta = sourcePosition - travelTarget;
-            ivec2 targetDelta = targetPosition - travelTarget;
-            int sourceDistance = sourceDelta.x * sourceDelta.x + sourceDelta.y * sourceDelta.y;
-            int targetDistance = targetDelta.x * targetDelta.x + targetDelta.y * targetDelta.y;
-            if (sourceDistance != targetDistance) return targetDistance < sourceDistance;
-            if (delta.x == beeWaveHorizontal(bee, sourcePosition) &&
-                delta.y == beeWaveVertical(bee, sourcePosition)) return true;
-            return (randomValue & 7u) == 0u;
-        }
-        return authoredBeeOrbitAllowed(bee, sourcePosition, targetPosition, randomValue);
-    }
-
-    int sourceSignal = beeTargetSignal(bee, sourcePosition);
-    int targetSignal = beeTargetSignal(bee, targetPosition);
-    if (sourceSignal != targetSignal) return targetSignal > sourceSignal;
-    int desiredVertical = beeWaveVertical(bee, sourcePosition);
-    int desiredHorizontal = beeWaveHorizontal(bee, sourcePosition);
-    if (delta.x == desiredHorizontal && delta.y == desiredVertical) return true;
-    if (delta.x == desiredHorizontal && delta.y == 0) return true;
-    if (delta.y == desiredVertical && delta.x == 0) return (randomValue & 1u) == 0u;
-    return (randomValue & 15u) == 0u;
+    ivec2 destination = beeMovementTarget(bee);
+    ivec2 sourceDelta = sourcePosition - destination;
+    ivec2 targetDelta = targetPosition - destination;
+    int sourceDistance = sourceDelta.x * sourceDelta.x + sourceDelta.y * sourceDelta.y;
+    int targetDistance = targetDelta.x * targetDelta.x + targetDelta.y * targetDelta.y;
+    return targetDistance < sourceDistance;
 }
 
 bool magneticMoveAllowed(ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {

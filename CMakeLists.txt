@@ -144,6 +144,7 @@ if(EPOCH_SAND_BUILD_APP)
                     "${SHADER_INPUT}"
                     -o "${SHADER_OUTPUT}"
             DEPENDS "${SHADER_INPUT}" "${SHADER_SOURCE_DIR}/materials.glsl"
+                    "${SHADER_SOURCE_DIR}/bee_swarm.glsl"
                     "${SHADER_SOURCE_DIR}/material_ids.glsl"
                     "${SHADER_SOURCE_DIR}/material_physics.glsl"
                     "${SHADER_SOURCE_DIR}/tiles.glsl"

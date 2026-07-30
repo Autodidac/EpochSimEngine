@@ -96,7 +96,8 @@ void zoom_at_pointer(SharedState& state, const SimulationConfig& config,
 
 int run_application() {
     std::fprintf(stderr, "[EpochSand] Creating native window...\n");
-    NativeWindow window{"SandHybrid - Loading", 1280, 720};
+    NativeWindow window{"SandHybrid", 1280, 720};
+    window.show_startup_message("Compiling Shaders...");
     std::fprintf(stderr, "[EpochSand] Native window created.\n");
     SharedState shared_state{};
     const SimulationConfig simulation_config{};
@@ -131,6 +132,7 @@ int run_application() {
     bool ready_title_applied = false;
     while (!shared_state.quit.load(std::memory_order_acquire) && window.poll(input)) {
         if (!ready_title_applied && renderer_ready.load(std::memory_order_acquire)) {
+            window.show_startup_message("");
             window.set_title("SandHybrid");
             ready_title_applied = true;
         }

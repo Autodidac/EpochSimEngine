@@ -31,6 +31,16 @@ void main() {
     bool moving = false;
     bool reacting = false;
     bool activeContent = false;
+    bool hasQueen = false;
+    bool hasHive = false;
+    bool hasFlower = false;
+    bool hasHoney = false;
+    bool hasMigratingQueen = false;
+    bool beeHazard = false;
+    ivec2 queenLocal = ivec2(0);
+    ivec2 flowerLocal = ivec2(0);
+    ivec2 honeyLocal = ivec2(0);
+    uint beeCount = 0u;
 
     for (uint y = 0u; y < TILE_SIZE; ++y) {
         for (uint x = 0u; x < TILE_SIZE; ++x) {
@@ -38,6 +48,31 @@ void main() {
             if (!tileInside(p)) continue;
             Cell cell = cells[indexOf(p)];
             if (cell.material == MAT_EMPTY) continue;
+            ivec2 local = ivec2(x, y);
+            if (cell.material == MAT_QUEEN_BEE) {
+                if (!hasQueen) queenLocal = local;
+                hasQueen = true;
+            }
+            if (cell.material == MAT_BEE_NEST) hasHive = true;
+            if (cell.material == MAT_FLOWER) {
+                if (!hasFlower) flowerLocal = local;
+                hasFlower = true;
+            }
+            if (cell.material == MAT_HONEY) {
+                if (!hasHoney) honeyLocal = local;
+                hasHoney = true;
+            }
+            if (cell.material == MAT_BEE) {
+                ++beeCount;
+                if ((cell.aux & AUX_CHARGED) != 0u) {
+                    if (!hasMigratingQueen) queenLocal = local;
+                    hasMigratingQueen = true;
+                }
+            }
+            beeHazard = beeHazard || cell.material == MAT_FIRE || cell.material == MAT_LAVA ||
+                        cell.material == MAT_ACID || cell.material == MAT_SMOKE ||
+                        cell.material == MAT_DIRTY_STEAM || cell.material == MAT_LIGHTNING ||
+                        cell.material == MAT_RADIATION;
             if (isCellGas(cell) || isCellLiquid(cell)) {
                 activeContent = true;
                 moving = true;
@@ -45,9 +80,10 @@ void main() {
             }
             ++occupied;
             if (cell.material < MATERIAL_COUNT) ++counts[cell.material];
-            bool activeAgent = cell.material == MAT_BEE || cell.material == MAT_ANT ||
-                               cell.material == MAT_BEETLE || cell.material == MAT_SEED ||
-                               cell.material == MAT_POLLEN;
+            bool activeAgent = cell.material == MAT_BEE || cell.material == MAT_QUEEN_BEE ||
+                                cell.material == MAT_BEE_NEST || cell.material == MAT_ANT ||
+                                cell.material == MAT_BEETLE || cell.material == MAT_SEED ||
+                                cell.material == MAT_POLLEN;
             bool activeLoose = !isStructural(cell) &&
                                !isReconstructableMaterial(cell.material) &&
                                !isCellImmovable(cell);
@@ -87,7 +123,7 @@ void main() {
     // An aligned region never fills gaps, synthesizes pixels, or becomes a second
     // tile object. Existing represented cells may only qualify as stable terrain.
     bool previouslyDense = tileHas(previous, TILE_STRUCTURAL) &&
-                            previous.occupancy >= TILE_STABILITY_OCCUPANCY;
+                            tileOccupancy(previous) >= TILE_STABILITY_OCCUPANCY;
     bool reducedDurability = structuralTile && dominantCount < TILE_STABILITY_OCCUPANCY;
     bool damaged = structuralTile &&
                    (reducedDurability || dominantCount < TILE_CELL_COUNT ||
@@ -112,6 +148,13 @@ void main() {
     if (terrainStable) flags |= TILE_STABLE;
     if (collapsing) flags |= TILE_COLLAPSING;
     if (damaged) flags |= TILE_DAMAGED;
+    if (hasQueen) flags |= TILE_HAS_QUEEN;
+    if (hasHive) flags |= TILE_HAS_HIVE;
+    if (hasFlower) flags |= TILE_HAS_FLOWER;
+    if (hasHoney) flags |= TILE_HAS_HONEY;
+    if (beeCount > 0u) flags |= TILE_HAS_BEES;
+    if (hasMigratingQueen) flags |= TILE_HAS_MIGRATING_QUEEN;
+    if (beeHazard) flags |= TILE_BEE_HAZARD;
 
     uint stableCells = structuralTile ? dominantCount : occupied;
     bool sleeping = terrainStable && !damaged && !moving && !hot && !reacting &&
@@ -120,6 +163,9 @@ void main() {
     else flags |= TILE_ACTIVE;
 
     if (collapsing) cooldown = TILE_RESTABILIZE_COOLDOWN;
-    tiles[index] = TileState(dominant, structuralTile ? dominantCount : occupied,
+    uint packedOccupancy = packTileOccupancy(
+        structuralTile ? dominantCount : occupied,
+        queenLocal, flowerLocal, honeyLocal, beeCount);
+    tiles[index] = TileState(dominant, packedOccupancy,
                              flags, packTileCounters(stableTicks, cooldown));
 }

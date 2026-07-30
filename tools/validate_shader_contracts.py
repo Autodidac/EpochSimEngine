@@ -461,7 +461,7 @@ def main() -> int:
             errors.append(f"authored scene contract missing {token!r}")
     if "MAT_GOLD_ORE" in reset or "MAT_IRON_ORE" in reset or "MAT_GOLD_ORE" in actor or "MAT_IRON_ORE" in actor:
         errors.append("ore blocks remain in authored scenes or player mining")
-    for token in ("previouslyDense", "previous.occupancy >= TILE_STABILITY_OCCUPANCY",
+    for token in ("previouslyDense", "tileOccupancy(previous) >= TILE_STABILITY_OCCUPANCY",
                   "dominantCount < TILE_MIN_COHESIVE_CELLS",
                    "structuralTile ? dominantCount"):
         if token not in tiles:
@@ -471,7 +471,8 @@ def main() -> int:
 
     motion_ecology_contracts = {
         "tiles": (tiles, ("activeContent", "!activeContent", "activeAgent", "activeLoose")),
-        "movement": (movement, ("sleepSafe", "localTargetSignal", "beeWaveVertical",
+        "movement": (movement, ("sleepSafe", "beeOrbitTarget", "beeMovementTarget",
+                                 "return targetDistance < sourceDistance;",
                                  "insectMoveAllowed", "MAT_PLANT_STEM")),
         "chemistry": (chemistry, ("flowerDropsSeed", "stemMoisture", "grassFrontier",
                                   "source.material == MAT_PLANT_STEM")),

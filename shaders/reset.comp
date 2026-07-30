@@ -1,6 +1,7 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 #include "materials.glsl"
+#include "bee_swarm.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
@@ -139,29 +140,6 @@ uint waterworksMaterial(ivec2 p) {
 }
 
 
-const uint BEE_FORMATION_COUNT = 200u;
-
-ivec2 beeFormationOffset(uint slot) {
-    uint lane = slot % 3u;
-    uint laneIndex = slot / 3u;
-    uint laneCount = lane == 2u ? 66u : 67u;
-    float angleOffset = lane == 0u ? 0.0 : (lane == 1u ? 0.7 : 1.4);
-    float angle = 6.28318530718 * float(laneIndex) / float(laneCount) + angleOffset;
-    float baseRadius = lane == 0u ? 18.0 : (lane == 1u ? 30.0 : 44.0);
-    float amplitude = lane == 0u ? 3.5 : (lane == 1u ? 5.0 : 7.0);
-    float phase = lane == 0u ? 0.0 : (lane == 1u ? 1.7 : 3.2);
-    float radius = baseRadius + sin(angle * 3.0 + baseRadius * 0.14 + phase) * amplitude;
-    return ivec2(round(vec2(cos(angle), sin(angle)) * radius));
-}
-
-int beeFormationSlot(ivec2 offset) {
-    int distanceSquared = offset.x * offset.x + offset.y * offset.y;
-    if (distanceSquared < 120 || distanceSquared > 3200) return -1;
-    for (uint slot = 0u; slot < BEE_FORMATION_COUNT; ++slot)
-        if (all(equal(offset, beeFormationOffset(slot)))) return int(slot);
-    return -1;
-}
-
 uint ecosystemMaterial(ivec2 p) {
     int width = int(pc.width);
     int height = int(pc.height);
@@ -260,9 +238,11 @@ uint ecosystemMaterial(ivec2 p) {
         (p.x % 11) == 0)
         material = ((p.x / 11) & 1) == 0 ? MAT_BEETLE : MAT_ANT;
 
-    // Canonical hive and exactly 200 deterministic bee slots. The slots reproduce
-    // the three authored wavy bands without hash-density drift between resets.
-    ivec2 queen = ivec2(width - 104, height - 136);
+    // Keep the compact Fix29 hive. The swarm is a separate 200-bee
+    // biohazard silhouette, so hive geometry and bee motion remain independent.
+    int queenX = width - 104;
+    int queenGroundY = floorY - 54 + int(hash32(uint(queenX) * 31u) % 5u);
+    ivec2 queen = ivec2(queenX, queenGroundY - 72);
     ivec2 q = p - queen;
     int q2 = q.x * q.x + q.y * q.y;
     if (q2 >= 28 && q2 < 108) material = MAT_BEE_NEST;
@@ -274,7 +254,7 @@ uint ecosystemMaterial(ivec2 p) {
             : ((chamber & 4u) == 0u ? MAT_HONEY : MAT_POLLEN);
     }
 
-    int formationSlot = beeFormationSlot(q);
+    int formationSlot = beeFormationSlotFromOffset(q);
     if (material == MAT_EMPTY && formationSlot >= 0) material = MAT_BEE;
 
     for (int flower = 0; flower < 6; ++flower) {
@@ -667,14 +647,15 @@ void main() {
                             AUX_STATE_MASK));
 
     if (scene == SCENE_ECOSYSTEM && material == MAT_BEE) {
-        ivec2 queen = ivec2(int(pc.width) - 104, int(pc.height) - 136);
-        int slot = beeFormationSlot(p - queen);
+        int queenX = int(pc.width) - 104;
+        int queenGroundY = int(pc.height) - 64 +
+            int(hash32(uint(queenX) * 31u) % 5u);
+        ivec2 queen = ivec2(queenX, queenGroundY - 72);
+        int slot = beeFormationSlotFromOffset(p - queen);
         if (slot >= 0) {
-            // AUX_PLANT_STEM is the existing authored-swarm bit. Bits 8..15 retain
-            // a stable formation slot so each bee can leave and rejoin its own lane.
-            cell.aux |= AUX_PLANT_STEM | AUX_BEE_FED;
-            cell.aux = (cell.aux & ~0x0000ff00u) | (uint(slot) << 8u);
-            setStateValue(cell, 96u + uint(slot % 160));
+            cell.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
+            cell.aux = beePackMetadata(cell.aux, queen, uint(slot));
+            cell.age = beePackAge(uint((slot * 17) % 900), BEE_TARGET_NONE);
         }
     }
 

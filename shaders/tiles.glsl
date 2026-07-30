@@ -17,6 +17,13 @@ const uint TILE_CANDIDATE = 0x00000010u;
 const uint TILE_STABLE = 0x00000020u;
 const uint TILE_COLLAPSING = 0x00000040u;
 const uint TILE_DAMAGED = 0x00000080u;
+const uint TILE_HAS_QUEEN = 0x00000100u;
+const uint TILE_HAS_HIVE = 0x00000200u;
+const uint TILE_HAS_FLOWER = 0x00000400u;
+const uint TILE_HAS_HONEY = 0x00000800u;
+const uint TILE_HAS_BEES = 0x00001000u;
+const uint TILE_HAS_MIGRATING_QUEEN = 0x00002000u;
+const uint TILE_BEE_HAZARD = 0x00004000u;
 
 struct TileState {
     uint material;
@@ -37,5 +44,55 @@ uint packTileCounters(uint stableTicks, uint cooldown) {
     return min(stableTicks, 0xffffu) | (min(cooldown, 0xffffu) << 16u);
 }
 bool tileHas(TileState state, uint flag) { return (state.flags & flag) != 0u; }
+
+const uint TILE_OCCUPANCY_MASK = 0x0000007fu;
+const uint TILE_QUEEN_X_SHIFT = 7u;
+const uint TILE_QUEEN_Y_SHIFT = 10u;
+const uint TILE_FLOWER_X_SHIFT = 13u;
+const uint TILE_FLOWER_Y_SHIFT = 16u;
+const uint TILE_HONEY_X_SHIFT = 19u;
+const uint TILE_HONEY_Y_SHIFT = 22u;
+const uint TILE_BEE_COUNT_SHIFT = 25u;
+
+uint tileOccupancy(TileState state) { return state.occupancy & TILE_OCCUPANCY_MASK; }
+ivec2 tileQueenLocal(TileState state) {
+    return ivec2(int((state.occupancy >> TILE_QUEEN_X_SHIFT) & 7u),
+                 int((state.occupancy >> TILE_QUEEN_Y_SHIFT) & 7u));
+}
+ivec2 tileFlowerLocal(TileState state) {
+    return ivec2(int((state.occupancy >> TILE_FLOWER_X_SHIFT) & 7u),
+                 int((state.occupancy >> TILE_FLOWER_Y_SHIFT) & 7u));
+}
+ivec2 tileHoneyLocal(TileState state) {
+    return ivec2(int((state.occupancy >> TILE_HONEY_X_SHIFT) & 7u),
+                 int((state.occupancy >> TILE_HONEY_Y_SHIFT) & 7u));
+}
+uint tileBeeCount(TileState state) { return (state.occupancy >> TILE_BEE_COUNT_SHIFT) & 127u; }
+
+uint packTileOccupancy(uint occupancy, ivec2 queenLocal, ivec2 flowerLocal,
+                       ivec2 honeyLocal, uint beeCount) {
+    return min(occupancy, 64u) |
+           (uint(clamp(queenLocal.x, 0, 7)) << TILE_QUEEN_X_SHIFT) |
+           (uint(clamp(queenLocal.y, 0, 7)) << TILE_QUEEN_Y_SHIFT) |
+           (uint(clamp(flowerLocal.x, 0, 7)) << TILE_FLOWER_X_SHIFT) |
+           (uint(clamp(flowerLocal.y, 0, 7)) << TILE_FLOWER_Y_SHIFT) |
+           (uint(clamp(honeyLocal.x, 0, 7)) << TILE_HONEY_X_SHIFT) |
+           (uint(clamp(honeyLocal.y, 0, 7)) << TILE_HONEY_Y_SHIFT) |
+           (min(beeCount, 127u) << TILE_BEE_COUNT_SHIFT);
+}
+
+ivec2 tileOriginFromIndex(uint index, uint width) {
+    uint columns = tileColumns(width);
+    return ivec2(int(index % columns), int(index / columns)) * int(TILE_SIZE);
+}
+ivec2 tileQueenPosition(uint index, uint width, TileState state) {
+    return tileOriginFromIndex(index, width) + tileQueenLocal(state);
+}
+ivec2 tileFlowerPosition(uint index, uint width, TileState state) {
+    return tileOriginFromIndex(index, width) + tileFlowerLocal(state);
+}
+ivec2 tileHoneyPosition(uint index, uint width, TileState state) {
+    return tileOriginFromIndex(index, width) + tileHoneyLocal(state);
+}
 
 #endif
