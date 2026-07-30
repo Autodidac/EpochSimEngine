@@ -79,3 +79,5 @@ jobs:
             --target main \
             --title 'FastFreddy Hierarchical Simulation v2.1.0' \
             --notes 'Full FastFreddy Vulkan application with canonical per-cell storage, all-or-nothing 8x8 movable macro-cells that fall, slide, stack, displace, and spread in bulk under the same material rules as pixels, plus 64x64 dirty/active/sleeping chunks for fast large-map lookup and bounded wakeups. Mixed edges, structural regions, reactions, and fresh-water half-units remain fine-cell simulated. Includes oxygen-filled atmosphere, retained terrain and liquids, original scenes, EpochGui controls, scene I/O, hierarchy visualization, debug counters, Windows x64 and Linux x64 packages, and SHA-256 checksums.'
+
+# trigger
