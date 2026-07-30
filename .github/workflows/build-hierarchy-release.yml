@@ -1,10 +1,6 @@
 name: Build Hierarchical FastFreddy v2.1
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/build-hierarchy-release.yml
   workflow_dispatch:
 
 permissions:
@@ -15,34 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  announce:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Record hierarchy build run
-        env:
-          RUN_ID: ${{ github.run_id }}
-          RUN_NUMBER: ${{ github.run_number }}
-          HEAD_SHA: ${{ github.sha }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          cat > hierarchy-build-status.json <<EOF
-          {
-            "run_id": ${RUN_ID},
-            "run_number": ${RUN_NUMBER},
-            "status": "running",
-            "head_sha": "${HEAD_SHA}",
-            "run_url": "${RUN_URL}"
-          }
-          EOF
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add hierarchy-build-status.json
-          git commit -m 'Record hierarchy v2.1 build [skip ci]'
-          git push origin HEAD:main
-
   windows:
-    needs: announce
     runs-on: windows-2022
     timeout-minutes: 90
     steps:
@@ -85,7 +54,6 @@ jobs:
           if-no-files-found: error
 
   linux:
-    needs: announce
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
