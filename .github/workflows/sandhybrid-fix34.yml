@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'tools/fix34.py'
+      - 'tools/fix34_post.py'
       - '.github/workflows/sandhybrid-fix34.yml'
 
 permissions:
@@ -30,7 +31,9 @@ jobs:
           fetch-depth: 0
 
       - name: Apply Fix34 source patch
-        run: python3 tools/fix34.py
+        run: |
+          python3 tools/fix34.py
+          python3 tools/fix34_post.py
 
       - name: Run source audits
         run: |
@@ -94,7 +97,11 @@ jobs:
 
       - name: Apply Fix34 source patch
         shell: pwsh
-        run: python tools/fix34.py
+        run: |
+          python tools/fix34.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix34 source patch failed.' }
+          python tools/fix34_post.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix34 post-patch correction failed.' }
 
       - name: Run source audits
         shell: pwsh
@@ -178,13 +185,17 @@ jobs:
           git fetch origin main
           git rebase origin/main
           python3 tools/fix34.py
+          python3 tools/fix34_post.py
+          python3 tools/audit_material_behaviors.py
+          python3 tools/audit_ecology_motion.py
+          python3 tools/validate_shader_contracts.py
           python3 tools/audit_fix34.py
 
       - name: Commit verified source to main
         env:
           PR_HEAD: ${{ github.event.pull_request.head.ref }}
         run: |
-          rm -f tools/fix34.py .github/workflows/sandhybrid-fix34.yml
+          rm -f tools/fix34.py tools/fix34_post.py .github/workflows/sandhybrid-fix34.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
