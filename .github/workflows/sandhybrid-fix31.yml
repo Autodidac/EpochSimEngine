@@ -1,0 +1,165 @@
+name: SandHybrid Fix31 Biohazard Bee Colony Release
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "tools/fix31.py"
+      - "tools/fix31_swarm.py"
+      - "tools/audit_fix31.py"
+      - ".github/workflows/sandhybrid-fix31.yml"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sandhybrid-fix31-release
+  cancel-in-progress: true
+
+jobs:
+  build-test-release:
+    runs-on: windows-2022
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out Fix31 branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Apply Fix31 colony patch
+        shell: pwsh
+        run: |
+          python -m py_compile tools/fix31.py tools/fix31_swarm.py tools/audit_fix31.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix31 Python validation failed.' }
+          python tools/fix31.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix31 patch failed.' }
+          python tools/fix31_swarm.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix31 swarm generation failed.' }
+
+      - name: Regenerate material and UI data
+        shell: pwsh
+        run: |
+          python tools/generate_ui_text.py
+          if ($LASTEXITCODE -ne 0) { throw 'UI/material generation failed.' }
+
+      - name: Audit material contracts
+        shell: pwsh
+        run: |
+          python tools/audit_material_behaviors.py
+          if ($LASTEXITCODE -ne 0) { throw 'Material behavior audit failed.' }
+
+      - name: Audit ecology and motion contracts
+        shell: pwsh
+        run: |
+          python tools/audit_ecology_motion.py
+          if ($LASTEXITCODE -ne 0) { throw 'Ecology/motion audit failed.' }
+
+      - name: Audit Fix31 contracts
+        shell: pwsh
+        run: |
+          python tools/audit_fix31.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fix31 audit failed.' }
+
+      - name: Validate shader and CPU contracts
+        shell: pwsh
+        run: |
+          python tools/validate_shader_contracts.py
+          if ($LASTEXITCODE -ne 0) { throw 'Shader contract validation failed.' }
+
+      - name: Bootstrap pinned vcpkg
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vcpkgRoot = Join-Path $env:RUNNER_TEMP 'vcpkg'
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git $vcpkgRoot
+          git -C $vcpkgRoot checkout 04a735608afac5844e86fc91d6ba2112cac613c1
+          & (Join-Path $vcpkgRoot 'bootstrap-vcpkg.bat') -disableMetrics
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure Windows x64 Release
+        shell: pwsh
+        run: |
+          cmake -S . -B build/windows -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=ON `
+            -DEPOCH_SAND_ENABLE_VALIDATION=OFF `
+            -DBUILD_TESTING=ON
+
+      - name: Build Windows x64 and every SPIR-V shader
+        shell: pwsh
+        run: cmake --build build/windows --config Release --parallel
+
+      - name: Run all C++23 contract tests
+        shell: pwsh
+        run: ctest --test-dir build/windows -C Release --output-on-failure
+
+      - name: Commit verified source to main
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item -LiteralPath 'tools/fix31.py' -Force
+          Remove-Item -LiteralPath 'tools/fix31_swarm.py' -Force
+          Remove-Item -LiteralPath 'tools/audit_fix31.py' -Force
+          Remove-Item -LiteralPath '.github/workflows/sandhybrid-fix31.yml' -Force
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'SandHybrid Fix31: biohazard bee colonies and native startup screen'
+          git push origin HEAD:main
+          $releaseSha = git rev-parse HEAD
+          "RELEASE_SHA=$releaseSha" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Package verified Windows release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $distRoot = Join-Path $env:GITHUB_WORKSPACE 'dist'
+          $stage = Join-Path $distRoot 'SandHybrid_Windows_x64_Fix31'
+          $archive = Join-Path $distRoot 'SandHybrid_Windows_x64_Fix31.zip'
+          Remove-Item -LiteralPath $distRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item 'build/windows/Release/epoch_sand.exe' (Join-Path $stage 'SandHybrid.exe') -Force
+          Copy-Item 'build/windows/Release/shaders' (Join-Path $stage 'shaders') -Recurse -Force
+          Copy-Item 'build/windows/Release/scenes' (Join-Path $stage 'scenes') -Recurse -Force
+          Copy-Item README.md, LICENSE -Destination $stage -Force
+          Set-Content -LiteralPath (Join-Path $stage 'run.bat') -Value @('@echo off', 'cd /d "%~dp0"', 'SandHybrid.exe') -Encoding ascii
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -CompressionLevel Optimal
+          (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant() + '  SandHybrid_Windows_x64_Fix31.zip' |
+            Set-Content -LiteralPath (Join-Path $distRoot 'SHA256SUMS.txt') -Encoding ascii
+          "RELEASE_ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload verified artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SandHybrid_Windows_x64_Fix31
+          path: |
+            dist/SandHybrid_Windows_x64_Fix31.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'v1.7.0-fix31'
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) { gh release delete $tag --repo $env:GITHUB_REPOSITORY --yes --cleanup-tag }
+          gh release create $tag $env:RELEASE_ARCHIVE 'dist/SHA256SUMS.txt' `
+            --repo $env:GITHUB_REPOSITORY `
+            --target $env:RELEASE_SHA `
+            --title 'SandHybrid Windows Fix31' `
+            --notes 'Fix31 keeps the compact Fix29 hive and ecosystem default, displays a native black Compiling Shaders startup screen, spawns exactly 200 bees in a rotating biohazard silhouette, removes authored-bee wandering, caches lifecycle targets in bee state, uses compact 8x8 tile metadata only for event-driven flower/honey/queen lookups, preserves the pollen-to-honey-to-10-percent-feeding lifecycle, and adds queen-led reproductive or resource-failure hive migration.'
+
+      - name: Close trigger PR and delete branch
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr close ${{ github.event.pull_request.number }} --repo $env:GITHUB_REPOSITORY --comment 'Fix31 verified build and release completed; source was pushed directly to main.'
+          git push origin --delete ${{ github.event.pull_request.head.ref }}
