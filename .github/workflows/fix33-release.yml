@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 env:
-  SOURCE_SHA: 3f6834a7b5bc997f291b944d11159ae7371f6e75
+  SOURCE_SHA: 9111f432d619c0d4a76c7951388e4ce05c91a012
   VCPKG_COMMIT: 04a735608afac5844e86fc91d6ba2112cac613c1
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
             "run_url": "${RUN_URL}"
           }
           EOF
-          git config user.name 'github-actions[bot]]'
+          git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add fix33-release-status.json
           git commit -m 'Record Fix33 release run [skip ci]'
@@ -185,4 +185,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$SOURCE_SHA" \
             --title 'SandHybrid Fix33 — Hierarchical Simulation on Fix32' \
-            --notes 'Fix33 starts from the current Fix32 FastFreddy source. It preserves the living biohazard bee swarm, zoomable cursor editor, readable keymap, all eight GUI material groups, and all 65 material buttons. It adds homogeneous 8x8 macro-cell bulk movement, 64x64 sleeping chunks, bounded chunk wakeups, and hierarchy diagnostics in the existing debug GUI. Windows and Linux Release builds and all C++23 contracts passed before publication.'
+            --notes 'Fix33 starts from the current Fix32 FastFreddy source. It preserves the living biohazard bee swarm, zoomable cursor editor, readable keymap, all eight GUI material groups, and all 65 material buttons. It adds homogeneous 8x8 macro-cell bulk movement, 64x64 sleeping chunks, bounded chunk wakeups, hierarchy diagnostics in the existing debug GUI, and correct Linux XCB Vulkan-loader selection. Windows and Linux Release builds and all C++23 contracts passed before publication.'
