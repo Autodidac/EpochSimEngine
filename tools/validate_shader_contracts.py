@@ -247,9 +247,9 @@ def main() -> int:
     ):
         if token not in actor_comp:
             errors.append(f"context-sensitive tool contract missing {token!r}")
-    for token in ("ambientAir", "Atmosphere affects the oxygen meter only"):
+    for token in ("oxygenVolume > 0u", "fullyChoked", "state.health -= 1u"):
         if token not in actor_comp:
-            errors.append(f"nonlethal atmosphere contract missing {token!r}")
+            errors.append(f"closed-system atmosphere contract missing {token!r}")
     if "std::jthread" in app_cpp or "stop_token" in app_cpp or "request_stop" in app_cpp:
         errors.append("obsolete implicit jthread ownership remains")
     if "SandHybrid" not in app_cpp:
@@ -445,12 +445,14 @@ def main() -> int:
     actor = (SHADERS / "actor.comp").read_text(encoding="utf-8")
     reset = (SHADERS / "reset.comp").read_text(encoding="utf-8")
     app_cpp = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
-    if "recordConservation(cells[oxygenIndex], carbonDioxide)" not in actor:
-        errors.append("actor respiration silently deletes oxygen instead of converting it")
+    if "recordConservation(oxygen, carbonDioxide)" not in actor:
+        errors.append("actor respiration does not exchange oxygen for equal-volume CO2")
     if "state.y < 112" in actor:
         errors.append("actor breathing regressed to a hard-coded world-height suffocation rule")
-    if "state.health -=" in actor:
-        errors.append("actor health is still reduced by passive atmosphere classification")
+    if "state.health -= 1u" not in actor:
+        errors.append("actor no longer takes damage after conserved oxygen reaches zero")
+    if "ambientAir" in actor:
+        errors.append("vacuum is still treated as implicit breathable atmosphere")
     for token in ("fire_tool_pressed", "deposit_resource_pressed"):
         if token not in app_cpp or token not in renderer_cpp:
             errors.append(f"latched player action contract missing {token!r}")

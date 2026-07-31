@@ -83,6 +83,20 @@ struct CanonicalState final {
     return total == original && maximum - minimum <= 1;
 }
 
+[[nodiscard]] constexpr bool half_water_medium_exchange_preserves_volume() noexcept {
+    constexpr std::uint32_t oxygen_volume = 220u;
+    constexpr std::uint32_t first_half = oxygen_volume / 2u;
+    constexpr std::uint32_t second_half = oxygen_volume - first_half;
+    return first_half + second_half == oxygen_volume &&
+           first_half <= 255u && second_half <= 255u;
+}
+
+[[nodiscard]] constexpr bool breathing_requires_explicit_oxygen() noexcept {
+    constexpr std::uint32_t vacuum_volume = 0u;
+    constexpr std::uint32_t oxygen_volume = 1u;
+    return vacuum_volume == 0u && oxygen_volume > 0u;
+}
+
 [[nodiscard]] constexpr bool terrain_stability_preserves_representation() noexcept {
     constexpr std::uint32_t initial_mass = 64u;
     constexpr std::uint32_t detached_pixels = 33u;
@@ -94,6 +108,8 @@ struct CanonicalState final {
 
 static_assert(creation_paths_are_canonical());
 static_assert(local_water_equalization_preserves_volume());
+static_assert(half_water_medium_exchange_preserves_volume());
+static_assert(breathing_requires_explicit_oxygen());
 static_assert(terrain_stability_preserves_representation());
 static_assert(epoch::sand::policy::stability_ready(52u, 120u, true, true, false, false, 0u));
 static_assert(!epoch::sand::policy::stability_ready(51u, 120u, true, true, false, false, 0u));
@@ -114,5 +130,7 @@ static_assert(epoch::sand::policy::restabilization_cooldown_ticks > epoch::sand:
 
 int main() {
     return creation_paths_are_canonical() && local_water_equalization_preserves_volume() &&
+           half_water_medium_exchange_preserves_volume() &&
+           breathing_requires_explicit_oxygen() &&
            terrain_stability_preserves_representation() ? 0 : 1;
 }

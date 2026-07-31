@@ -267,43 +267,54 @@ void depositResource(inout ActorState state) {
 void updateBreathing(inout ActorState state) {
     ivec2 center = ivec2(state.x, state.y - 4);
     ivec2 oxygenCell = center;
-    uint emptyCells = 0u;
-    uint oxygenCells = 0u;
-    uint toxicCells = 0u;
+    uint oxygenVolume = 0u;
+    uint toxicVolume = 0u;
     for (int y = -4; y <= 4; ++y) {
         for (int x = -4; x <= 4; ++x) {
             ivec2 p = center + ivec2(x, y);
-            uint material = actorAt(p).material;
-            if (material == MAT_EMPTY) ++emptyCells;
-            if (material == MAT_OXYGEN) {
-                if (oxygenCells == 0u) oxygenCell = p;
-                ++oxygenCells;
+            Cell medium = actorAt(p);
+            if (medium.material == MAT_OXYGEN) {
+                if (oxygenVolume == 0u) oxygenCell = p;
+                oxygenVolume += max(stateValue(medium), 1u);
+            } else if (isGas(medium.material) || isLiquid(medium.material)) {
+                toxicVolume += max(stateValue(medium), 1u);
             }
-            if (material == MAT_CARBON_DIOXIDE || material == MAT_SMOKE ||
-                material == MAT_DIRTY_STEAM) ++toxicCells;
         }
     }
 
-    bool ambientAir = emptyCells >= 12u && toxicCells < 18u;
-    bool breathable = ambientAir || oxygenCells >= 2u;
-    bool toxicPocket = toxicCells >= 18u && toxicCells > emptyCells + oxygenCells;
+    uint sealedContacts = 0u;
+    const ivec2 breathOffsets[4] = ivec2[4](
+        ivec2(1, 0), ivec2(-1, 0), ivec2(0, 1), ivec2(0, -1));
+    for (uint i = 0u; i < 4u; ++i) {
+        uint material = actorAt(center + breathOffsets[i]).material;
+        if (isLiquid(material) || (isGas(material) && material != MAT_OXYGEN)) ++sealedContacts;
+    }
+
+    bool fullyChoked = sealedContacts == 4u;
+    bool breathable = oxygenVolume > 0u && !fullyChoked;
+    bool toxicPocket = toxicVolume > oxygenVolume * 2u;
     if (breathable && !toxicPocket) {
         state.oxygen = min(255u, state.oxygen + 3u);
         state.exposureTicks = 0u;
-        if (!ambientAir && oxygenCells > 0u && (actorPc.step % 180u) == 0u && actorInside(oxygenCell)) {
+        if ((actorPc.step % 180u) == 0u && actorInside(oxygenCell)) {
             uint oxygenIndex = actorIndex(oxygenCell);
+            Cell oxygen = cells[oxygenIndex];
+            uint volume = max(stateValue(oxygen), 1u);
             Cell carbonDioxide = makeCellWithEntropy(MAT_CARBON_DIOXIDE, actorPc.seed, actorPc.step);
-            recordConservation(cells[oxygenIndex], carbonDioxide);
+            setStateValue(carbonDioxide, volume);
+            recordConservation(oxygen, carbonDioxide);
             cells[oxygenIndex] = carbonDioxide;
             markActorChunkDirty(oxygenCell);
         }
     } else {
         state.exposureTicks = min(state.exposureTicks + 1u, 4095u);
-        if ((actorPc.step % 60u) == 0u && state.oxygen > 0u)
-            state.oxygen -= toxicPocket ? min(state.oxygen, 2u) : 1u;
+        if ((actorPc.step % 30u) == 0u && state.oxygen > 0u)
+            state.oxygen -= fullyChoked || toxicPocket ? min(state.oxygen, 2u) : 1u;
+        if (state.oxygen == 0u && state.exposureTicks > 120u &&
+            (actorPc.step % 60u) == 0u && state.health > 0u) {
+            state.health -= 1u;
+        }
     }
-    // Atmosphere affects the oxygen meter only. Health is reserved for explicit
-    // contact damage, so classification noise can never kill the player.
 }
 
 void resetActor(inout ActorState state) {

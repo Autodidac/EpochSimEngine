@@ -68,6 +68,50 @@ bool hasAnyWater(ivec2 p) {
            hasNeighbor(p, MAT_DIRTY_WATER);
 }
 
+bool isRespiringLife(uint material) {
+    return material == MAT_BEE || material == MAT_QUEEN_BEE ||
+           material == MAT_ANT || material == MAT_BEETLE ||
+           material == MAT_SEED || material == MAT_GRASS ||
+           material == MAT_PLANT_STEM || material == MAT_FLOWER;
+}
+
+uint representedOxygenVolume(Cell cell) {
+    if (cell.material != MAT_OXYGEN) return 0u;
+    uint volume = stateValue(cell);
+    return volume == 0u ? 1u : volume;
+}
+
+uint oxygenVolumeWithin(ivec2 p, int radius) {
+    uint volume = 0u;
+    for (int y = -radius; y <= radius; ++y) {
+        for (int x = -radius; x <= radius; ++x) {
+            if (x * x + y * y > radius * radius) continue;
+            volume += representedOxygenVolume(at(p + ivec2(x, y)));
+        }
+    }
+    return volume;
+}
+
+bool nonBreathableMedium(uint material) {
+    return isLiquid(material) || (isGas(material) && material != MAT_OXYGEN);
+}
+
+bool fullyChokedByMedium(ivec2 p) {
+    uint contacts = 0u;
+    for (uint i = 0u; i < 8u; ++i) {
+        if (nonBreathableMedium(at(p + neighborOffsets[i]).material)) ++contacts;
+    }
+    return contacts == 8u;
+}
+
+uint respiringNeighborCount(ivec2 p) {
+    uint count = 0u;
+    for (uint i = 0u; i < 8u; ++i) {
+        if (isRespiringLife(at(p + neighborOffsets[i]).material)) ++count;
+    }
+    return count;
+}
+
 bool hasCold(ivec2 p) {
     return hasNeighbor(p, MAT_ICE) || hasNeighbor(p, MAT_SNOW);
 }
@@ -732,8 +776,8 @@ void main() {
                 result = makeCell((randomValue & 16u) == 0u ? MAT_SMOKE : MAT_STEAM);
                 result.temperature = 240;
             }
-        } else if (fallingWaterNear(p) && (randomValue & 31u) == 0u) {
-            result = makeCell(MAT_OXYGEN);
+        } else if (fallingWaterNear(p)) {
+            // Aeration redistributes existing atmosphere in movement; it never creates oxygen.
         } else if (burningOilBelow(p) && (randomValue & 3u) == 0u) {
             result = makeCell(MAT_SMOKE);
         } else if (hotWaterBelow(p, MAT_SALTWATER) && (randomValue & 7u) == 0u) {
@@ -840,12 +884,22 @@ void main() {
     } else if (source.material == MAT_MUD && !hasAnyWater(p) && source.age > 600u && (light[index] > 105u || result.temperature > 30) && (randomValue & 63u) == 0u) result = makeCell(MAT_DIRT);
 
 
-    // Waterfall aeration and plant respiration use the same cell chemistry pass.
+    // Atmosphere is a conserved local volume. Respiration exchanges one oxygen
+    // volume for one CO2 volume; photosynthesis performs the inverse exchange.
     if (source.material == MAT_OXYGEN) {
-        if (nearFire || hasNeighbor(p, MAT_EMBER)) result = makeCell(MAT_CARBON_DIOXIDE);
+        uint volume = representedOxygenVolume(source);
+        uint consumers = respiringNeighborCount(p);
+        if (nearFire || hasNeighbor(p, MAT_EMBER) ||
+            (consumers > 0u && (randomValue & 2047u) < consumers)) {
+            result = makeCell(MAT_CARBON_DIOXIDE);
+            setStateValue(result, volume);
+        }
     } else if (source.material == MAT_CARBON_DIOXIDE) {
-        if (hasNeighbor(p, MAT_GRASS) && light[index] > 130u && (randomValue & 127u) == 0u)
+        if (hasNeighbor(p, MAT_GRASS) && light[index] > 130u && (randomValue & 127u) == 0u) {
+            uint volume = max(stateValue(source), 1u);
             result = makeCell(MAT_OXYGEN);
+            setStateValue(result, volume);
+        }
     } else if (source.material == MAT_HYDROGEN) {
         bool ignition = nearFire || hasNeighbor(p, MAT_EMBER) || hasNeighbor(p, MAT_LIGHTNING) ||
                         result.temperature >= materialIgnitionPoint(MAT_HYDROGEN);
@@ -1295,6 +1349,16 @@ void main() {
         } else if (!hasWithin(p, MAT_QUEEN_BEE, 7) && source.age > 120000u &&
                    (randomValue & 4095u) == 0u) {
             result = makeCell(MAT_BEESWAX);
+        }
+    }
+
+    if (result.material == source.material && isRespiringLife(source.material)) {
+        uint localOxygen = oxygenVolumeWithin(p, 2);
+        bool fullyChoked = fullyChokedByMedium(p);
+        uint deathMask = fullyChoked ? 63u : 1023u;
+        if ((fullyChoked || localOxygen == 0u) && (randomValue & deathMask) == 0u) {
+            if (source.material == MAT_GRASS) result = makeCell(MAT_DIRT);
+            else result = makeCell(MAT_WASTE);
         }
     }
 

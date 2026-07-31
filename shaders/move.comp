@@ -118,34 +118,98 @@ void setHalfWaterCell(inout Cell cell, bool halfState) {
     else cell.aux &= ~AUX_WATER_HALF;
 }
 
-bool isOpenGas(Cell cell) {
-    return cell.material == MAT_EMPTY || cell.material == MAT_OXYGEN;
+const uint AUX_HALF_MEDIUM_MATERIAL_SHIFT = 8u;
+const uint AUX_HALF_MEDIUM_MATERIAL_MASK = 0x00007f00u;
+const uint AUX_HALF_MEDIUM_VOLUME_SHIFT = 15u;
+const uint AUX_HALF_MEDIUM_VOLUME_MASK = 0x007f8000u;
+
+bool isStoredGasMaterial(uint material) {
+    return material == MAT_SMOKE || material == MAT_STEAM || material == MAT_DIRTY_STEAM ||
+           material == MAT_FIRE || material == MAT_LIGHTNING || material == MAT_RADIATION ||
+           material == MAT_OXYGEN || material == MAT_CARBON_DIOXIDE ||
+           material == MAT_HYDROGEN;
 }
 
-Cell oxygenFrom(Cell source) {
-    source.material = MAT_OXYGEN;
+bool isOpenGas(Cell cell) {
+    return cell.material == MAT_EMPTY || isStoredGasMaterial(cell.material);
+}
+
+uint halfMediumMaterial(Cell cell) {
+    return (cell.aux & AUX_HALF_MEDIUM_MATERIAL_MASK) >> AUX_HALF_MEDIUM_MATERIAL_SHIFT;
+}
+
+uint halfMediumVolume(Cell cell) {
+    return (cell.aux & AUX_HALF_MEDIUM_VOLUME_MASK) >> AUX_HALF_MEDIUM_VOLUME_SHIFT;
+}
+
+void clearHalfMedium(inout Cell cell) {
+    cell.aux &= ~(AUX_HALF_MEDIUM_MATERIAL_MASK | AUX_HALF_MEDIUM_VOLUME_MASK);
+}
+
+void setHalfMedium(inout Cell cell, uint material, uint volume) {
+    clearHalfMedium(cell);
+    if (volume == 0u || material == MAT_EMPTY) return;
+    cell.aux |= ((material & 0x7fu) << AUX_HALF_MEDIUM_MATERIAL_SHIFT) |
+                ((min(volume, 255u) & 0xffu) << AUX_HALF_MEDIUM_VOLUME_SHIFT);
+}
+
+uint representedGasVolume(Cell cell) {
+    if (!isStoredGasMaterial(cell.material)) return 0u;
+    uint volume = stateValue(cell);
+    return volume == 0u ? 1u : volume;
+}
+
+Cell restoredMediumFrom(Cell source, uint material, uint volume) {
+    if (material == MAT_EMPTY || volume == 0u) return Cell(MAT_EMPTY, 0u, 20, 0u);
+    source.material = material;
     source.age = 0u;
     source.temperature = 20;
-    source.aux &= ~(AUX_WATER_HALF | AUX_MOVED | AUX_STATE_MASK);
-    source.aux |= 220u;
+    source.aux &= ~(AUX_WATER_HALF | AUX_MOVED | AUX_STATE_MASK |
+                    AUX_HALF_MEDIUM_MATERIAL_MASK | AUX_HALF_MEDIUM_VOLUME_MASK);
+    setStateValue(source, volume);
     return source;
 }
 
-void mergeHalfWaterPair(ivec2 keepPosition, ivec2 releasePosition, Cell keep, Cell released) {
+bool halfWaterMergeCompatible(Cell first, Cell second) {
+    uint firstVolume = halfMediumVolume(first);
+    uint secondVolume = halfMediumVolume(second);
+    if (firstVolume == 0u || secondVolume == 0u) return firstVolume + secondVolume <= 255u;
+    return halfMediumMaterial(first) == halfMediumMaterial(second) &&
+           firstVolume + secondVolume <= 255u;
+}
+
+bool mergeHalfWaterPair(ivec2 keepPosition, ivec2 releasePosition, Cell keep, Cell released) {
+    if (!halfWaterMergeCompatible(keep, released)) return false;
+    uint firstVolume = halfMediumVolume(keep);
+    uint secondVolume = halfMediumVolume(released);
+    uint mediumMaterial = firstVolume != 0u ? halfMediumMaterial(keep)
+                                           : halfMediumMaterial(released);
+    uint mediumVolume = firstVolume + secondVolume;
+
     setHalfWaterCell(keep, false);
+    clearHalfMedium(keep);
     keep.age = 0u;
     keep.aux |= AUX_MOVED;
     cells[moveIndex(keepPosition)] = keep;
-    cells[moveIndex(releasePosition)] = oxygenFrom(released);
+    cells[moveIndex(releasePosition)] = restoredMediumFrom(released, mediumMaterial, mediumVolume);
     markChunkDirty(keepPosition);
     markChunkDirty(releasePosition);
+    return true;
 }
 
 void splitFullWaterPair(ivec2 sourcePosition, ivec2 targetPosition, Cell source, Cell target) {
+    uint mediumMaterial = isStoredGasMaterial(target.material) ? target.material : MAT_EMPTY;
+    uint mediumVolume = representedGasVolume(target);
+    uint sourceMediumVolume = mediumVolume / 2u;
+    uint targetMediumVolume = mediumVolume - sourceMediumVolume;
+
     setHalfWaterCell(source, true);
+    setHalfMedium(source, mediumMaterial, sourceMediumVolume);
     source.age = 0u;
     source.aux |= AUX_MOVED;
+
     Cell halfCell = source;
+    setHalfMedium(halfCell, mediumMaterial, targetMediumVolume);
     halfCell.temperature = (source.temperature + target.temperature) / 2;
     cells[moveIndex(sourcePosition)] = source;
     cells[moveIndex(targetPosition)] = halfCell;
@@ -167,12 +231,7 @@ uint densityOf(uint material) {
     return material < MATERIAL_COUNT ? MATERIAL_DENSITY[material] : 0u;
 }
 
-bool isBaseGas(uint material) {
-    return material == MAT_SMOKE || material == MAT_STEAM || material == MAT_DIRTY_STEAM ||
-           material == MAT_FIRE || material == MAT_LIGHTNING || material == MAT_RADIATION ||
-           material == MAT_OXYGEN || material == MAT_CARBON_DIOXIDE ||
-           material == MAT_HYDROGEN;
-}
+bool isBaseGas(uint material) { return isStoredGasMaterial(material); }
 
 bool isBaseLiquid(uint material) {
     return material == MAT_WATER || material == MAT_SALTWATER || material == MAT_DIRTY_WATER ||
@@ -583,6 +642,10 @@ bool gasHorizontalAllows(uint material, uint randomValue) {
 
 bool isInsect(uint material) { return material == MAT_ANT || material == MAT_BEETLE; }
 
+bool lifeCanEnter(Cell medium) {
+    return medium.material == MAT_EMPTY || isCellGas(medium) || isCellLiquid(medium);
+}
+
 bool insectGrounded(ivec2 p) {
     Cell below = sampleAt(p + ivec2(0, 1));
     return below.material != MAT_EMPTY && !isCellGas(below) && !isCellLiquid(below);
@@ -663,12 +726,10 @@ void processVertical(ivec2 top, ivec2 bottom) {
     Cell b = moveAt(bottom);
     uint randomValue = moveHash(top, uint(movePc.phase) + 1u);
 
-    if (isHalfWaterCell(a) && isHalfWaterCell(b)) {
-        mergeHalfWaterPair(bottom, top, b, a);
-        return;
-    }
+    if (isHalfWaterCell(a) && isHalfWaterCell(b) &&
+        mergeHalfWaterPair(bottom, top, b, a)) return;
 
-    if (isInsect(a.material) && b.material == MAT_EMPTY && !insectGrounded(top) &&
+    if (isInsect(a.material) && lifeCanEnter(b) && !insectGrounded(top) &&
         (a.aux & AUX_MOVED) == 0u) {
         swapCells(top, bottom);
         return;
@@ -706,11 +767,11 @@ void processVertical(ivec2 top, ivec2 bottom) {
         }
     }
 
-    if (b.material == MAT_BEE && a.material == MAT_EMPTY && beeMoveAllowed(b, bottom, top, randomValue)) {
+    if (b.material == MAT_BEE && lifeCanEnter(a) && beeMoveAllowed(b, bottom, top, randomValue)) {
         swapCells(top, bottom);
         return;
     }
-    if (a.material == MAT_BEE && b.material == MAT_EMPTY && beeMoveAllowed(a, top, bottom, randomValue >> 1u)) {
+    if (a.material == MAT_BEE && lifeCanEnter(b) && beeMoveAllowed(a, top, bottom, randomValue >> 1u)) {
         swapCells(top, bottom);
         return;
     }
@@ -729,13 +790,16 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
     Cell target = moveAt(targetPosition);
     uint randomValue = moveHash(sourcePosition, uint(movePc.phase) * 17u + 3u);
 
+    if (isHalfWaterCell(source) && isHalfWaterCell(target) &&
+        mergeHalfWaterPair(targetPosition, sourcePosition, target, source)) return;
+
     Cell below = sampleAt(sourcePosition + ivec2(0, 1));
-    if (!upward && isInsect(source.material) && target.material == MAT_EMPTY &&
+    if (!upward && isInsect(source.material) && lifeCanEnter(target) &&
         !insectGrounded(sourcePosition) && (source.aux & AUX_MOVED) == 0u) {
         swapCells(sourcePosition, targetPosition);
         return;
     }
-    if (upward && isInsect(source.material) && target.material == MAT_EMPTY &&
+    if (upward && isInsect(source.material) && lifeCanEnter(target) &&
         insectGrounded(sourcePosition) && insectGrounded(targetPosition) &&
         insectMoveAllowed(source, sourcePosition, targetPosition, randomValue)) {
         swapCells(sourcePosition, targetPosition);
@@ -782,7 +846,7 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
     }
 
 
-    if (source.material == MAT_BEE && target.material == MAT_EMPTY &&
+    if (source.material == MAT_BEE && lifeCanEnter(target) &&
         beeMoveAllowed(source, sourcePosition, targetPosition, randomValue)) {
         swapCells(sourcePosition, targetPosition);
         return;
@@ -813,13 +877,13 @@ void processHorizontal(ivec2 left, ivec2 right) {
     }
 
 
-    if (isInsect(a.material) && b.material == MAT_EMPTY &&
+    if (isInsect(a.material) && lifeCanEnter(b) &&
         insectGrounded(left) && insectGrounded(right) &&
         insectMoveAllowed(a, left, right, randomValue)) {
         swapCells(left, right);
         return;
     }
-    if (isInsect(b.material) && a.material == MAT_EMPTY &&
+    if (isInsect(b.material) && lifeCanEnter(a) &&
         insectGrounded(right) && insectGrounded(left) &&
         insectMoveAllowed(b, right, left, randomValue >> 1u)) {
         swapCells(left, right);
@@ -828,9 +892,8 @@ void processHorizontal(ivec2 left, ivec2 right) {
 
     if (isHalfWaterCell(a) && isHalfWaterCell(b)) {
         bool keepLeft = (randomValue & 1u) == 0u;
-        mergeHalfWaterPair(keepLeft ? left : right, keepLeft ? right : left,
-                           keepLeft ? a : b, keepLeft ? b : a);
-        return;
+        if (mergeHalfWaterPair(keepLeft ? left : right, keepLeft ? right : left,
+                               keepLeft ? a : b, keepLeft ? b : a)) return;
     }
 
     if (movePc.reserved1 != 0u && !isHalfWaterCell(a) && !isHalfWaterCell(b)) return;
@@ -848,9 +911,9 @@ void processHorizontal(ivec2 left, ivec2 right) {
     } else if (isCellGas(b) && a.material == MAT_EMPTY && gasHorizontalAllows(b.material, randomValue >> 1u) &&
                (b.material != MAT_LIGHTNING || lightningMoveAllowed(right, left, randomValue >> 1u))) {
         swapCells(left, right);
-    } else if (a.material == MAT_BEE && b.material == MAT_EMPTY && beeMoveAllowed(a, left, right, randomValue)) {
+    } else if (a.material == MAT_BEE && lifeCanEnter(b) && beeMoveAllowed(a, left, right, randomValue)) {
         swapCells(left, right);
-    } else if (b.material == MAT_BEE && a.material == MAT_EMPTY &&
+    } else if (b.material == MAT_BEE && lifeCanEnter(a) &&
                beeMoveAllowed(b, right, left, randomValue >> 1u)) {
         swapCells(left, right);
     } else if (isMagnetic(a.material) && b.material == MAT_EMPTY &&
