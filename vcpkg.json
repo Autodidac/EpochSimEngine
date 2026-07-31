@@ -1,11 +1,18 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "epoch-sand",
-  "version-string": "1.0.0",
+  "version-string": "2.4.2",
   "builtin-baseline": "04a735608afac5844e86fc91d6ba2112cac613c1",
-  "description": "Framework-free Vulkan falling-sand simulation for Windows and Linux.",
+  "description": "C++23 Vulkan particle, material, atmosphere, ecology, and terrain simulation engine for Windows and Linux.",
   "dependencies": [
     "vulkan",
+    {
+      "name": "vulkan-loader",
+      "features": [
+        "xcb"
+      ],
+      "platform": "linux"
+    },
     {
       "name": "shaderc",
       "host": true
