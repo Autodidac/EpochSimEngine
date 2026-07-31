@@ -1,121 +1,130 @@
 # EpochSimEngine Mission Cache
 
-This is the **single canonical mission document** for EpochSimEngine. It contains the active backlog, permanent invariants, and archived release history. There is no separate mission ledger.
+This is the **single canonical mission document** for EpochSimEngine. It contains active work, permanent invariants, and archived release history. There is no separate mission ledger.
 
 Before changing code:
 
 1. Read this file.
 2. Preserve every `OPEN`, `PARTIAL`, `REGRESSION`, or `DEFERRED` mission.
 3. Update status and evidence in the same source commit.
-4. Never mark visual/runtime behavior complete from compilation, token checks, or static audits alone.
+4. Never mark visual/runtime behavior complete from compilation or static audits alone.
 5. Verify Windows and Linux Release builds before publishing.
-6. Move a mission to the release archive only after its acceptance criteria are met. Reopen the same mission ID when runtime evidence contradicts an earlier result.
-7. For the next broad implementation pass, attempt every active mission once. Release only build-verified work; anything unfinished or runtime-unverified remains active with evidence rather than disappearing.
+6. Move a mission to the archive only after acceptance passes. Runtime contradiction reopens the same ID.
+7. During the next broad pass, attempt every active mission once. Anything unfinished or runtime-unverified remains active with evidence.
 
-Status meanings: `OPEN` not implemented; `PARTIAL` code exists but acceptance is unmet; `REGRESSION` attempted behavior is visibly wrong; `DEFERRED` intentionally scheduled later with the reason retained.
+Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 
 # Active missions
 
 ## Simulation hierarchy and settling
 
-| ID | Status | Mission | Acceptance criteria / evidence |
+| ID | Status | Mission | Acceptance |
 |---|---|---|---|
-| MC-011 | PARTIAL | 64x64 chunk-first work rejection | Clean inactive chunks skip tile and fine-cell work, including safe pressure and boundary halos. Runtime profiling must prove it. |
-| MC-012 | REGRESSION | 8x8 bulk-element movement | Full aligned liquids, gases, falling solids, mud, and wet materials move with the same gravity, diagonal, lateral, density, and displacement semantics as fine cells. Debug shows non-zero bulk moves in real scenes. |
-| MC-013 | REGRESSION | True liquid settling without hopping | Water remained active after roughly 300,000 ticks. It must level quickly, stop completely, and wake only from changed support, pressure, incoming volume, heat, reaction, actor, or tool disturbance. |
-| MC-014 | PARTIAL | Fractional-water consolidation | Fractional water represents only final partial surface volume. It is not created by every lateral move, does not chase or jitter, creates no air, and leaves no isolated pockets. |
-| MC-015 | PARTIAL | Hide hierarchy artifacts | Fine boundaries visually repair bulk movement without squares, popping, seams, grid-edge clumping, or diagonal one-cell ramps. |
-| MC-016 | OPEN | Rename hierarchy terminology | Choose durable names for fine cells, 8x8 bulk elements, 64x64 sections, active windows, frozen regions, and streamed regions; update code, debug UI, and docs together. |
-| MC-017 | REGRESSION | Prevent premature stabilization | A liquid/gas region sleeps only after unchanged volume, pressure, composition, material class, velocity/impulse, and boundary height for a bounded confirmation window. Solid stability remains separate. |
-| MC-018 | OPEN | Bulk/fine parity tests | Deterministic tests prove an eligible 8x8 bulk move matches the conserved result of equivalent fine-cell movement, including Atmosphere displacement. |
-| MC-019 | REGRESSION | Universal medium damping and rest | Every gas and liquid has bounded damping/friction toward rest. Density, viscosity, pressure, and buoyancy control the rate. No medium moves forever without a continuing pressure, gravity, heat, reaction, boundary, or actor impulse. Resting media wake deterministically when disturbed. |
+| MC-011 | PARTIAL | 64x64 section-first rejection | Clean inactive sections skip tile and fine-cell work while preserving safe pressure and boundary halos; runtime profiling proves it. |
+| MC-012 | REGRESSION | 8x8 bulk-element movement | Full aligned liquids, gases, falling solids, mud, and wet materials use the same gravity, diagonal, lateral, density, and displacement rules as fine cells. Real scenes show non-zero bulk moves. |
+| MC-013 | REGRESSION | True liquid settling | Water levels quickly, reaches zero motion, and wakes only from support, pressure, volume, heat, reaction, actor, or tool disturbance. |
+| MC-014 | PARTIAL | Fractional-water consolidation | Fractional water represents only final surface volume; no lateral splitting loop, chasing, jitter, created air, or isolated pockets. |
+| MC-015 | PARTIAL | Hide hierarchy artifacts | Fine repair prevents squares, popping, seams, grid-edge clumping, and diagonal one-cell ramps. |
+| MC-016 | OPEN | Durable hierarchy terminology | Rename fine cells, 8x8 bulk elements, 64x64 sections, active starburst, frozen regions, and streamed regions in code, UI, debug, and docs together. |
+| MC-017 | REGRESSION | Prevent premature stabilization | Liquid/gas sleeps only after unchanged volume, pressure, composition, material class, impulse, and boundary height for a bounded confirmation window. Solid stability remains separate. |
+| MC-018 | OPEN | Bulk/fine parity tests | Deterministic tests prove each eligible 8x8 move matches the equivalent conserved fine-cell result, including Atmosphere displacement. |
+| MC-019 | REGRESSION | Universal medium damping | Every gas and liquid settles through bounded damping/friction. Motion requires gravity/buoyancy, pressure, heat, reaction, boundary change, tool input, or actor impulse. |
 
-## Atmosphere, pressure, and closed-system gas
+## Atmosphere and closed-system gas
 
-| ID | Status | Mission | Acceptance criteria / evidence |
+| ID | Status | Mission | Acceptance |
 |---|---|---|---|
-| MC-020 | REGRESSION | Universal composite Atmosphere state | Replace standalone normal-air pixels with one conserved `Atmosphere` state carrying total volume, pressure, temperature, and N2/O2/Ar/CO2/H2/He/vapor/contaminant amounts. Fire, lightning, and radiation remain effects. |
-| MC-021 | OPEN | Canonical Earth-air baseline | The Atmosphere tool and authored air use configurable Earth-like air: about 78% N2, 21% O2, 0.9% Ar, trace CO2 and remaining trace gases. Packed units sum exactly with no rounding loss. |
-| MC-022 | OPEN | Absorb every gas emission into air | Nitrogen, oxygen, argon, CO2, hydrogen, helium, vapor, and true gas products add conserved component volume and pressure to local Atmosphere instead of replacing it. Gas painting changes composition. |
-| MC-023 | OPEN | Direct visible excess-gas settling | Do not build a nested mini-simulation. Conserved excess denser than air moves downward then sideways until stable; lighter excess moves upward then sideways. The first implementation remains visible for inspection and cannot cross solids, liquids, sealed barriers, paused regions, or unloaded boundaries. |
-| MC-024 | OPEN | Excess reabsorption and final presentation | Stable excess reabsorbs when nearby air has capacity. Only after runtime acceptance may normal rendering hide in-transit excess; debug must always reveal its route. |
-| MC-025 | PARTIAL | Respiration and combustion through composition | Life consumes O2 and returns equal represented CO2 volume. Fire/ember do the same, bounded by oxygen and fuel. Suffocation uses breathable partial fraction and enclosure. Runtime rates still need proof. |
-| MC-026 | OPEN | Closed-system gas and pressure validation | Add closed-box tests and debug totals for Atmosphere volume, each component, pressure transfer, separated excess, reabsorption, and conservation error. Component totals always equal represented gas volume. |
-| MC-027 | OPEN | Composition-based rendering | Balanced air renders smoothly. Validation builds visibly show separated excess; accepted builds may hide transit in normal view while component/pressure/transport debug views retain it. |
-| MC-028 | OPEN | Explain corner pressure structures | Determine whether corner patterns are valid conserved pressure/composition packing or movement artifacts. Preserve only physically generated structures. |
-| MC-029 | OPEN | Atmosphere tools and inspection | Cursor/card show pressure and component percentages. Gas buttons add components; the large Atmosphere button restores canonical balanced air. |
+| MC-020 | REGRESSION | Composite Atmosphere | Replace standalone normal-air pixels with one conserved state carrying volume, pressure, temperature, and N2/O2/Ar/CO2/H2/He/vapor/contaminants. Fire, lightning, and radiation remain effects. |
+| MC-021 | OPEN | Earth-air baseline | Authored air and the Atmosphere tool use approximately 78% N2, 21% O2, 0.9% Ar, trace CO2, and remaining trace gases; packed units sum exactly. |
+| MC-022 | OPEN | Absorb all true gases into air | Gas painting and emissions modify local Atmosphere composition and pressure instead of replacing it. |
+| MC-023 | OPEN | Visible excess-gas settling | No nested mini-simulation. Excess denser than air visibly moves down then sideways until stable; lighter excess visibly moves up then sideways. It cannot cross solids, liquids, sealed barriers, paused sections, or unloaded boundaries. |
+| MC-024 | OPEN | Reabsorb excess, hide only later | Stable excess reabsorbs when compatible air has capacity. Transit remains visible until Adam accepts it; debug always exposes transport afterward. |
+| MC-025 | PARTIAL | Respiration and combustion | Life and combustion convert available O2 to equal represented CO2 volume. Suffocation uses breathable partial pressure. Runtime rates require proof. |
+| MC-026 | OPEN | Closed-box conservation tests | Track total Atmosphere and each component, pressure transfer, separated excess, reabsorption, and conservation error. |
+| MC-027 | OPEN | Composition rendering | Balanced air renders smoothly; validation builds show excess transport clearly; accepted builds may later hide normal transit. |
+| MC-028 | OPEN | Validate corner pressure structures | Preserve corner patterns only when conserved pressure/composition produces them. |
+| MC-029 | OPEN | Atmosphere inspection/tools | Cursor/card show pressure and gas percentages. Gas tools add components; the large Atmosphere tool restores balanced air. |
 
-## Life, bees, ants, beetles, and player interaction
+## Life, ecology, and player interaction
 
-| ID | Status | Mission | Acceptance criteria / evidence |
+| ID | Status | Mission | Acceptance |
 |---|---|---|---|
-| MC-030 | REGRESSION | Remove life from fine-cell swaps | Bees, ants, beetles, queens, and player do not move by exchanging material records, stand on 8x8 edges, or count as `FINE SWAPS`. Use actor/occupancy state. |
-| MC-031 | OPEN | Actor occupancy and overlap | Actors occupy positions independently while overlapping air and liquids. Their volume displaces/pressurizes media conservatively; they breathe local composition and can drown or suffocate. |
-| MC-032 | PARTIAL | Complete bee lifecycle | Preserve forage, pollen pickup, return, deposit, honey feeding, queen behavior, nest aging, migration, hazard death, respiration, suffocation, old-colony replacement, and 100-bee autonomous cap. Multi-cycle gameplay proof required. |
-| MC-033 | REGRESSION | Readable recurring biohazard formation | Biohazard is recognizable, dominant, repeatedly returns, and does not clump on hierarchy edges or disappear because the colony dies first. |
-| MC-034 | OPEN | Real ant behavior | Colonies, pheromone trails, forage/carry/home behavior, hazard and flood avoidance, and permitted digging replace generic particle wandering. |
-| MC-035 | OPEN | Real beetle behavior | Beetles crawl surfaces/walls, seek food/shelter, respond to light/hazards by species rules, turn at obstacles, and do not fly or jitter as generic particles. |
-| MC-036 | OPEN | Replace undefined insect-spawner box | Give the habitat an explicit species, capacity, inputs, lifecycle, and outputs, or remove it. It must not silently spawn generic insects. |
-| MC-037 | OPEN | Life debug counters | Report actor moves, species counts, respiration, suffocation, births, deaths, nest returns, and medium displacement separately from material movement. |
-| MC-038 | REGRESSION | Restore exact pre-PR19 suspended hives | Use FastFreddy commit `c8197b4526b74d66e2f04a6e858dd979c63c4eff`, `tools/fix36_hive_swarm.py`, as source of truth. Sandbox, Ecosystem, and buildable Bee Nest share the exact long perch, circular shell, side entrance, chamber, queen, and colony metadata. |
-| MC-039 | OPEN | Player-medium collision impulses | Player collisions minimally disturb every gas and liquid, including CO2-rich air and water. Movement injects a small bounded conserved directional impulse, wakes touched bulk/fine regions, displaces pressure/volume rather than deleting it, then MC-019 damping returns the medium to rest. No special-case-only CO2 or water path. |
+| MC-030 | REGRESSION | Remove life from fine swaps | Bees, ants, beetles, queens, and player use actor/occupancy state, never exchange material records, stand on hierarchy edges, or count as fine swaps. |
+| MC-031 | OPEN | Actor occupancy and medium overlap | Actors overlap air/liquid independently, conservatively displace media, breathe local composition, and can drown or suffocate. |
+| MC-032 | PARTIAL | Complete bee lifecycle | Forage, pollen, return, deposit, honey feeding, queen/nest aging, migration, hazards, respiration, replacement, and 100-bee autonomous cap pass multi-cycle runtime testing. |
+| MC-033 | REGRESSION | Recurring readable biohazard | Formation is recognizable, dominant, recurring, and free of grid-edge clumping or premature colony death. |
+| MC-034 | OPEN | Real ant behavior | Colonies, pheromone trails, forage/carry/home behavior, hazards, flooding, and permitted digging replace generic particle wandering. |
+| MC-035 | OPEN | Real beetle behavior | Beetles crawl surfaces/walls, seek food/shelter, respond to light/hazards, and turn at obstacles without flying/jittering as particles. |
+| MC-036 | OPEN | Define or remove insect habitat | Give it explicit species, capacity, inputs, lifecycle, and outputs, or remove it; no generic silent spawning. |
+| MC-037 | OPEN | Life debug counters | Separate actor moves, species counts, respiration, suffocation, births, deaths, nest returns, and medium displacement. |
+| MC-038 | REGRESSION | Exact pre-PR19 suspended hives | Use FastFreddy commit `c8197b4526b74d66e2f04a6e858dd979c63c4eff`, `tools/fix36_hive_swarm.py`. Sandbox, Ecosystem, and buildable Bee Nest share the exact perch, shell, entrance, chamber, queen, and metadata. |
+| MC-039 | OPEN | Player-medium impulses | Player collisions minimally disturb every gas/liquid through bounded conserved directional impulse, wake touched sections, and then settle through MC-019. |
 
-## UI and debug cleanup
+## UI and debug
 
-| ID | Status | Mission | Acceptance criteria / evidence |
+| ID | Status | Mission | Acceptance |
 |---|---|---|---|
-| MC-040 | OPEN | One Atmosphere tool | Rename the large `ERASER` button to `ATMOSPHERE`. It writes canonical balanced air, not void or pure oxygen. |
-| MC-041 | OPEN | Remove duplicate terrain eraser | Remove the terrain-category eraser entry. Keep one clear Atmosphere tool. |
-| MC-042 | OPEN | Clarify movement counters | Rename `SWAPS` to `FINE SWAPS`. Add separate `BULK MOVES`, `BULK CELLS`, `FINE REPAIR`, `ACTOR MOVES`, `GAS EXCESS MOVES`, and `PLAYER IMPULSES`. |
-| MC-043 | PARTIAL | Preserve lower GPU use | Do not regress the recent GPU reduction. Timestamp overlay, grid, text, stats, bulk, fine, Atmosphere excess, actor, collision impulse, and presentation passes separately. |
-| MC-044 | OPEN | Remove grid-edge coupling | Debug grid is presentation-only. No actor or medium uses visible grid-line coordinates as preferred movement/rest positions. |
+| MC-040 | OPEN | One Atmosphere tool | Rename the large `ERASER` button to `ATMOSPHERE`; it writes balanced air, not void or pure oxygen. |
+| MC-041 | OPEN | Remove duplicate terrain eraser | Keep only the single Atmosphere control. |
+| MC-042 | OPEN | Clarify movement counters | Rename `SWAPS` to `FINE SWAPS`; add `BULK MOVES`, `BULK CELLS`, `FINE REPAIR`, `ACTOR MOVES`, `GAS EXCESS MOVES`, and `PLAYER IMPULSES`. |
+| MC-043 | PARTIAL | Preserve lower GPU use | Timestamp overlay, grid, text, stats, bulk, fine, Atmosphere excess, actors, collision impulses, and presentation independently. |
+| MC-044 | OPEN | Remove grid-edge coupling | Debug grid is presentation-only and never influences movement/rest. |
 
 ## Chemistry and materials
 
-| ID | Status | Mission | Acceptance criteria / evidence |
+| ID | Status | Mission | Acceptance |
 |---|---|---|---|
-| MC-050 | OPEN | Correct fertilizer chemistry | Ember does not directly become fertilizer. Use a conserved compost path involving ash, organic waste, silt/dirt, dirty water, air, time, and heat where appropriate. |
-| MC-051 | PARTIAL | Wet materials and sluicing proof | Wet sand/dirt/silt, mud, and Sluice Box exist; gameplay must prove bulk movement, drying, feed conservation, and gold/silt output without pixel-only fallback. |
+| MC-050 | OPEN | Correct fertilizer chemistry | Ember never directly becomes fertilizer; use a conserved compost path with ash, organics, silt/dirt, dirty water, air, time, and heat as appropriate. |
+| MC-051 | PARTIAL | Wet-material and sluicing proof | Wet sand/dirt/silt, mud, and Sluice Box prove bulk movement, drying, feed conservation, and gold/silt output without fine-only fallback. |
 
-## World, camera, sections, and optional concurrency
+## World, camera, scheduling, streaming, and concurrency
 
-| ID | Status | Mission | Acceptance criteria / evidence |
+The canonical active shape is a **17-section starburst** centered on the camera section:
+
+- one center section;
+- eight adjacent sections at distance 1: N, NE, E, SE, S, SW, W, NW;
+- eight outer sections at distance 2 along the same directions;
+- no other section animates.
+
+| ID | Status | Mission | Acceptance |
 |---|---|---|---|
-| MC-060 | OPEN | Camera-visible state availability | Every section visible at any supported zoom is loaded and renderable before presentation. Sections outside the active simulation window may display their last frozen state, but never missing, corrupt, or uninitialized data. |
-| MC-061 | OPEN | Camera-centered 7x7 active simulation window | Only the section containing the camera center plus the three neighboring sections in every cardinal and diagonal direction may animate: a Chebyshev radius of 3, exactly a 7x7 section window when fully inside world bounds. This replaces the earlier twelve-nearest plan. |
-| MC-062 | OPEN | Hard pause outside the active window | Every section outside MC-061 is paused: no material motion, chemistry, ecology, actors, Atmosphere transport, pressure propagation, or debug simulation work. Frozen sections wake deterministically when entering the 7x7 window. |
-| MC-063 | OPEN | Far-section disk streaming | Serialize clean distant paused sections, free live buffers when appropriate, reload deterministically, and use versioned corruption-safe saves. Streaming must not change simulation results when a section re-enters the active window. |
-| MC-064 | OPEN | Optional section concurrency | Reference mode is deterministic single-thread. Optional workers process independent active sections only, with matching boundary results and no work scheduled outside the 7x7 window. |
-| MC-065 | OPEN | Coroutine review | Use C++23 coroutines only for useful asynchronous streaming/I/O, never ordered Vulkan submission or per-cell hot paths. |
-| MC-066 | OPEN | Safe pause, wake, and boundary transfer | Pause only after pending transfers, actors, impulses, pressure, and boundary dependencies resolve. Crossing the active-window edge conserves every material, gas component, actor, and pending impulse without allowing the paused side to continue animating. |
-| MC-067 | OPEN | Expand world to 8x8 current dimensions | Increase world width to 8 times the current width and height to 8 times the current height, producing 64 times the current cell area. Scene generation, buffers, indexing, saves, limits, and overflow checks must support the enlarged world without reducing determinism. |
-| MC-068 | OPEN | Camera zero/reset control | Add an explicit camera reset that returns pan/offset to world origin zero and restores the documented default zoom without resetting or modifying the simulation. |
-| MC-069 | OPEN | 2x2 maximum zoom-out view | Add zoom-out sufficient to display a 2-by-2 arrangement of the current pre-expansion world footprint at once, equivalent to four current-world view areas. Clamp there; maintain stable input mapping, cursor placement, culling, and camera reset behavior. |
+| MC-060 | OPEN | Camera-visible state availability | Every section visible at supported zoom is loaded and renderable. Paused sections may show their frozen state but never missing or uninitialized data. |
+| MC-061 | OPEN | Camera-centered 17-section starburst | Animate exactly the center plus the eight direction spokes at distance 1 and distance 2, clipped only by world bounds. This supersedes the rejected 7x7 and twelve-nearest plans. |
+| MC-062 | OPEN | Hard pause outside starburst | Outside MC-061: no movement, chemistry, ecology, actors, Atmosphere transport, pressure propagation, or simulation-debug work. Wake deterministically upon entry. |
+| MC-063 | OPEN | Far-section disk streaming | Serialize clean distant paused sections, free buffers where appropriate, and reload deterministically with versioned corruption-safe saves. |
+| MC-064 | OPEN | Automatic section worker scheduler | Reserve the main thread completely for windowing, input, rendering coordination, and everything non-section-related; simulation jobs never run there. Determine hardware concurrency automatically. Use up to 17 simulation workers, one per active starburst section when at least 18 hardware threads exist including the reserved main thread. With fewer than 18, every missing worker causes one worker to take an additional section; assign these doubled loads from the furthest outer-ring sections first, then continue deterministic outer-to-inner round-robin only if hardware is very limited. Never oversubscribe, never schedule paused sections, and preserve deterministic boundary results. |
+| MC-065 | OPEN | Coroutine review | Use C++23 coroutines only for asynchronous streaming/I/O where useful, never Vulkan submission or per-cell hot paths. |
+| MC-066 | OPEN | Safe pause/wake/boundary transfer | Resolve pending transfers, actors, impulses, pressure, and dependencies before pause. Crossing the starburst edge conserves all state without allowing the paused side to animate. |
+| MC-067 | OPEN | Expand world 8x8 dimensions | Width becomes 8 times current width and height becomes 8 times current height: 64 times current cell area. Update generation, buffers, indexing, saves, limits, and overflow checks. |
+| MC-068 | OPEN | Camera zero/reset | Explicit reset returns camera pan/offset to world origin zero and documented default zoom without touching simulation state. |
+| MC-069 | OPEN | 2x2 maximum zoom-out | Maximum zoom-out displays four pre-expansion world footprints in a 2x2 view; clamp there and preserve input/cursor mapping and culling. |
 
-## Library architecture and EpochEngine migration
+## Library architecture
 
-| ID | Status | Mission | Acceptance criteria / evidence |
+| ID | Status | Mission | Acceptance |
 |---|---|---|---|
-| MC-070 | OPEN | Build `EpochSimEngine` static library | C++23 static library with ownership-safe public headers; platform windowing, UI host, and `main` remain outside the library API. |
-| MC-071 | OPEN | Thin `EpochSimEngine_Demo` | Small demo executable links the static library and owns native startup/events. |
-| MC-072 | OPEN | Optional subsystems | Concurrency, streaming, debug, UI, actors, ecology, and factories can be disabled without forking the core. |
-| MC-073 | DEFERRED | EpochEngine integration | Later migrate/rewrite into EpochEngine using canonical `epochengine::` APIs while preserving reusable `EpochSimEngine` boundaries. |
+| MC-070 | OPEN | `EpochSimEngine` static library | C++23 static library with ownership-safe public headers; windowing, UI host, and `main` remain outside. |
+| MC-071 | OPEN | Thin `EpochSimEngine_Demo` | Small executable links the library and owns native startup/events. |
+| MC-072 | OPEN | Optional subsystems | Concurrency, streaming, debug, UI, actors, ecology, and factories disable cleanly without forking the core. |
+| MC-073 | DEFERRED | EpochEngine integration | Later migrate/rewrite using canonical `epochengine::` APIs while preserving reusable `EpochSimEngine` boundaries. |
 
 # Permanent invariants
 
-- Material/cell state, actor state, Atmosphere composition, and medium impulse state are authoritative; hierarchy metadata only accelerates them.
-- Material behavior is canonical and provenance-independent.
-- Gas/liquid volume, every gas component, and pressure are conserved. No silent creation, deletion, or conversion.
-- Normal air is one Atmosphere mixture, not independent oxygen, nitrogen, argon, CO2, hydrogen, helium, or vapor cells.
-- Separated excess remains visible until Adam accepts its motion; only then may normal rendering hide transit while debug keeps it visible.
-- Every gas and liquid can rest. Motion requires gravity/buoyancy, pressure, heat, reaction, boundary change, tool input, or actor impulse.
-- Player/actor disturbance transfers bounded momentum/pressure and never erases or mints medium volume.
-- Only the camera-centered 7x7 section window animates. Everything outside it is paused until the window moves.
-- World expansion, zoom, pausing, streaming, and concurrency must not change material conservation or deterministic reference results.
-- Debug rendering remains independent of simulation scheduling; the withdrawn camera-clipped debug-view idea is not an active mission.
-- 8x8 terrain regions qualify for stability only; they never reconstruct missing cells.
-- Each terrain pixel takes two laser hits to dislodge; after more than half are dislodged, the represented remainder collapses rather than vanishing.
-- Missed, avoided, failed, deferred, and runtime-regressed missions remain visible until accepted.
+- Material cells, actors, Atmosphere composition, and medium impulses are authoritative; hierarchy metadata only accelerates them.
+- Behavior is canonical and provenance-independent.
+- Gas/liquid volume, every gas component, pressure, and cross-boundary transfer are conserved.
+- Normal air is one Atmosphere mixture.
+- Excess-gas transit remains visible until accepted.
+- Every gas and liquid can rest and wake deterministically.
+- Player/actor disturbance transfers bounded momentum/pressure without erasing or minting medium.
+- Only the 17-section camera starburst animates; every other section is paused.
+- The main thread never executes section simulation work.
+- Worker assignment is deterministic and pairs outer sections first when fewer than 17 workers are available.
+- World expansion, zoom, pausing, streaming, and concurrency do not change deterministic reference results.
+- The withdrawn camera-clipped debug-view idea is not active.
+- 8x8 terrain regions qualify for stability only and never reconstruct missing cells.
+- Each terrain pixel takes two laser hits; after more than half are dislodged, the represented remainder collapses rather than vanishes.
+- Failed, missed, deferred, and regressed missions remain active until accepted.
 
 # Archived release history
 
@@ -123,17 +132,14 @@ Status meanings: `OPEN` not implemented; `PARTIAL` code exists but acceptance is
 
 Source: `84d435300b5544a36312a6e17404f36a81ee955c`
 
-- Shipped cached 8x8 classification, supported structural solids, canonical wet state, Sluice Box baseline, and reduced debug cost.
-- Runtime reopened bulk movement, liquid settling, chunk profiling, and hierarchy presentation as MC-011 through MC-018.
+Shipped cached 8x8 classification, supported structural solids, canonical wet state, Sluice Box baseline, and reduced debug cost. Runtime reopened hierarchy movement and settling missions.
 
 ## v2.4.1 — colony and represented-space correction
 
 Source: `c73d0b97804bdefb1552a3f5ce613682d414c3ff`
 
-- Windows/Linux C++23 builds, twelve Vulkan shaders, tests, packages, and checksums passed.
-- Shipped lower respiration/fire rates and autonomous 100-bee cap in code.
-- Runtime reopened exact hive restoration, actor movement, composite Atmosphere, bulk/fine parity, and settling as MC-012 through MC-044.
+Windows/Linux C++23 builds, shaders, tests, packages, and checksums passed. Runtime reopened hives, actors, Atmosphere, parity, and settling missions.
 
 ## Carry-forward rule
 
-New work receives a stable `MC-###` ID. Failed, missed, deferred, or regressed missions remain active. Completed missions move here with release evidence. Runtime contradiction reopens the same ID rather than creating a duplicate document or silently rewriting history.
+New work receives a stable `MC-###` ID. Failed, missed, deferred, or regressed missions remain active. Completed missions move here with release evidence. Runtime contradiction reopens the same ID.
