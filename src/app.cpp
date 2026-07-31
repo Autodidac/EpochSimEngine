@@ -318,8 +318,8 @@ int run_application() {
         if (camera_direction_x != 0 || camera_direction_y != 0) {
             const auto active_view = camera_view(shared_state, simulation_config,
                                                  shared_state.camera_zoom.load(std::memory_order_relaxed));
-            const double cells_per_second = std::max(
-                120.0, static_cast<double>(std::max(active_view.width, active_view.height)) * 0.85);
+            const double cells_per_second = (std::max)(
+                120.0, static_cast<double>((std::max)(active_view.width, active_view.height)) * 0.85);
             camera_key_remainder_x += static_cast<double>(camera_direction_x) *
                                       cells_per_second * camera_seconds;
             camera_key_remainder_y += static_cast<double>(camera_direction_y) *
