@@ -1,0 +1,265 @@
+name: EpochSimEngine v2.4.1 colony and macro correction
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - tools/apply_epochsim_v241_colony.py
+      - .github/workflows/epochsim-v241-release.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: epochsim-v241-release
+  cancel-in-progress: true
+
+env:
+  BASE_SHA: 84d435300b5544a36312a6e17404f36a81ee955c
+  RELEASE_TAG: v2.4.1
+  VCPKG_COMMIT: 04a735608afac5844e86fc91d6ba2112cac613c1
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      CC: gcc-14
+      CXX: g++-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: work
+      - name: Materialize exact source and audit
+        run: |
+          set -euo pipefail
+          test "$(git -C work rev-parse HEAD)" = "$BASE_SHA"
+          cp control/tools/apply_epochsim_v241_colony.py work/tools/
+          cd work
+          python3 tools/apply_epochsim_v241_colony.py
+          rm tools/apply_epochsim_v241_colony.py
+          python3 tools/audit_material_behaviors.py
+          python3 tools/audit_ecology_motion.py
+          python3 tools/validate_shader_contracts.py
+          python3 -m py_compile tools/audit_ecology_motion.py
+          expected=$(printf '%s\n' MISSION_LEDGER.md README.md missioncache.md shaders/bee_swarm.glsl shaders/chemistry.comp shaders/macro_move.comp shaders/reset.comp tools/audit_ecology_motion.py | sort)
+          actual=$(git status --porcelain=v1 | cut -c4- | sort)
+          test "$actual" = "$expected" || { printf 'Unexpected source delta:\n%s\n' "$actual"; exit 1; }
+          grep -q 'BEE_FORMATION_COUNT = 100u' shaders/bee_swarm.glsl
+          grep -q 'BEE_COLONY_MAX = 100u' shaders/bee_swarm.glsl
+          grep -q 'approved suspended hive' shaders/reset.comp
+          grep -q 'beeRoll < demand.x' shaders/chemistry.comp
+          grep -q 'represented atmosphere' shaders/macro_move.comp
+          ! grep -q 'regionSupported(sourceOrigin, source) && target.material == MAT_EMPTY' shaders/macro_move.comp
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build gcc-14 g++-14 pkg-config libvulkan-dev libxcb1-dev libx11-xcb-dev
+      - name: Bootstrap pinned vcpkg
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/vcpkg"
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git "$root"
+          git -C "$root" checkout "$VCPKG_COMMIT"
+          "$root/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Configure Linux C++23 Release
+        working-directory: work
+        run: |
+          cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux -DVCPKG_HOST_TRIPLET=x64-linux \
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=OFF -DEPOCH_SAND_ENABLE_VALIDATION=OFF -DBUILD_TESTING=ON
+      - name: Build all shaders and targets
+        working-directory: work
+        run: |
+          set -euo pipefail
+          cmake --build build/linux --parallel
+          for shader in reset.comp paint.comp sunlight.comp tiles.comp chunks.comp chemistry.comp macro_move.comp move.comp actor.comp debug_stats.comp fullscreen.vert fullscreen.frag; do
+            test -f "build/linux/shaders/$shader.spv"
+          done
+      - name: Run Linux contracts
+        working-directory: work
+        run: ctest --test-dir build/linux --output-on-failure
+      - name: Package Linux
+        working-directory: work
+        run: |
+          set -euo pipefail
+          dist="$PWD/dist/linux"
+          stage="$dist/EpochSimEngine_Linux_x64_v2.4.1"
+          archive="$dist/EpochSimEngine_Linux_x64_v2.4.1.tar.gz"
+          mkdir -p "$stage"
+          cp build/linux/epoch_sand "$stage/EpochSimEngine_Demo"
+          cp -R build/linux/shaders "$stage/shaders"
+          cp -R build/linux/scenes "$stage/scenes"
+          cp README.md HALF_WATER.md HIERARCHICAL_SIMULATION.md MISSION_LEDGER.md missioncache.md AGENTS.md LICENSE "$stage/"
+          printf '#!/usr/bin/env bash\nset -euo pipefail\ncd "$(dirname "$0")"\nexec ./EpochSimEngine_Demo\n' > "$stage/run.sh"
+          chmod +x "$stage/run.sh" "$stage/EpochSimEngine_Demo"
+          tar -C "$dist" -czf "$archive" EpochSimEngine_Linux_x64_v2.4.1
+          sha256sum "$archive" | sed 's# .*/#  #' > "$dist/SHA256SUMS-Linux.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EpochSimEngine-Linux-x64-v2.4.1
+          path: |
+            work/dist/linux/EpochSimEngine_Linux_x64_v2.4.1.tar.gz
+            work/dist/linux/SHA256SUMS-Linux.txt
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: work
+      - name: Materialize exact source and audit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C work rev-parse HEAD).Trim() -ne $env:BASE_SHA) { throw 'Wrong base SHA.' }
+          Copy-Item control/tools/apply_epochsim_v241_colony.py work/tools/ -Force
+          Push-Location work
+          python tools/apply_epochsim_v241_colony.py
+          if ($LASTEXITCODE -ne 0) { throw 'Source materialization failed.' }
+          Remove-Item tools/apply_epochsim_v241_colony.py -Force
+          python tools/audit_material_behaviors.py
+          if ($LASTEXITCODE -ne 0) { throw 'Material audit failed.' }
+          python tools/audit_ecology_motion.py
+          if ($LASTEXITCODE -ne 0) { throw 'Ecology audit failed.' }
+          python tools/validate_shader_contracts.py
+          if ($LASTEXITCODE -ne 0) { throw 'Shader audit failed.' }
+          python -m py_compile tools/audit_ecology_motion.py
+          if ($LASTEXITCODE -ne 0) { throw 'Python audit compile failed.' }
+          Pop-Location
+      - name: Bootstrap pinned vcpkg
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'vcpkg'
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git $root
+          git -C $root checkout $env:VCPKG_COMMIT
+          & (Join-Path $root 'bootstrap-vcpkg.bat') -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed.' }
+          "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Configure Windows C++23 Release
+        shell: pwsh
+        working-directory: work
+        run: |
+          cmake -S . -B build/windows -G 'Visual Studio 17 2022' -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_HOST_TRIPLET=x64-windows `
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=OFF -DEPOCH_SAND_ENABLE_VALIDATION=OFF -DBUILD_TESTING=ON
+          if ($LASTEXITCODE -ne 0) { throw 'Windows configure failed.' }
+      - name: Build all shaders and targets
+        shell: pwsh
+        working-directory: work
+        run: |
+          cmake --build build/windows --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed.' }
+          $shaders = @('reset.comp','paint.comp','sunlight.comp','tiles.comp','chunks.comp','chemistry.comp','macro_move.comp','move.comp','actor.comp','debug_stats.comp','fullscreen.vert','fullscreen.frag')
+          foreach ($shader in $shaders) {
+            if (-not (Test-Path (Join-Path 'build/windows/Release/shaders' ($shader + '.spv')))) { throw "Missing shader $shader" }
+          }
+      - name: Run Windows contracts
+        shell: pwsh
+        working-directory: work
+        run: |
+          ctest --test-dir build/windows -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Windows tests failed.' }
+      - name: Package Windows
+        shell: pwsh
+        working-directory: work
+        run: |
+          $dist = Join-Path $PWD 'dist/windows'
+          $stage = Join-Path $dist 'EpochSimEngine_Windows_x64_v2.4.1'
+          $archive = Join-Path $dist 'EpochSimEngine_Windows_x64_v2.4.1.zip'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item 'build/windows/Release/epoch_sand.exe' (Join-Path $stage 'EpochSimEngine_Demo.exe') -Force
+          Copy-Item 'build/windows/Release/shaders' (Join-Path $stage 'shaders') -Recurse -Force
+          Copy-Item 'build/windows/Release/scenes' (Join-Path $stage 'scenes') -Recurse -Force
+          Copy-Item README.md, HALF_WATER.md, HIERARCHICAL_SIMULATION.md, MISSION_LEDGER.md, missioncache.md, AGENTS.md, LICENSE -Destination $stage -Force
+          @('@echo off','cd /d "%~dp0"','EpochSimEngine_Demo.exe') | Set-Content (Join-Path $stage 'run.bat') -Encoding ascii
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -CompressionLevel Optimal -Force
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "$hash  EpochSimEngine_Windows_x64_v2.4.1.zip" | Set-Content (Join-Path $dist 'SHA256SUMS-Windows.txt') -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EpochSimEngine-Windows-x64-v2.4.1
+          path: |
+            work/dist/windows/EpochSimEngine_Windows_x64_v2.4.1.zip
+            work/dist/windows/SHA256SUMS-Windows.txt
+          if-no-files-found: error
+
+  release:
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: work
+      - name: Commit verified source to main
+        run: |
+          set -euo pipefail
+          test "$(git -C work rev-parse HEAD)" = "$BASE_SHA"
+          test "$(git -C work ls-remote origin refs/heads/main | cut -f1)" = "$BASE_SHA"
+          cp control/tools/apply_epochsim_v241_colony.py work/tools/
+          cd work
+          python3 tools/apply_epochsim_v241_colony.py
+          rm tools/apply_epochsim_v241_colony.py
+          python3 tools/audit_material_behaviors.py
+          python3 tools/audit_ecology_motion.py
+          python3 tools/validate_shader_contracts.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'EpochSimEngine v2.4.1: colony atmosphere and macro correction'
+          release_sha=$(git rev-parse HEAD)
+          git push origin HEAD:main
+          echo "RELEASE_SHA=$release_sha" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Verify checksums and publish v2.4.1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          win='artifacts/EpochSimEngine-Windows-x64-v2.4.1'
+          lin='artifacts/EpochSimEngine-Linux-x64-v2.4.1'
+          (cd "$win" && sha256sum -c SHA256SUMS-Windows.txt)
+          (cd "$lin" && sha256sum -c SHA256SUMS-Linux.txt)
+          mkdir -p release
+          cp "$win/EpochSimEngine_Windows_x64_v2.4.1.zip" release/
+          cp "$lin/EpochSimEngine_Linux_x64_v2.4.1.tar.gz" release/
+          (cd release && sha256sum EpochSimEngine_Windows_x64_v2.4.1.zip EpochSimEngine_Linux_x64_v2.4.1.tar.gz > SHA256SUMS.txt)
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create "$RELEASE_TAG" release/EpochSimEngine_Windows_x64_v2.4.1.zip release/EpochSimEngine_Linux_x64_v2.4.1.tar.gz release/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$RELEASE_SHA" \
+            --title 'EpochSimEngine v2.4.1 — Colony and Macro Correction' \
+            --notes 'Restores the approved suspended hive; caps autonomous colonies at 100 bees; slows conserved bee/life respiration; bounds fire and ember oxygen-to-CO2 exchange; enlarges and stabilizes the recurring biohazard formation; and removes the literal-empty blocker that prevented horizontal full-tile movement through represented oxygen/CO2. missioncache.md explicitly keeps liquid settling, pressure transport, lifecycle runtime acceptance, static library/demo separation, section streaming, optional concurrency, coroutine I/O, terminology, and GPU timing work open.'
+          gh pr close "${{ github.event.pull_request.number }}" --repo "$GITHUB_REPOSITORY" --comment 'v2.4.1 verified and published; runtime acceptance missions remain open in missioncache.md.' --delete-branch
