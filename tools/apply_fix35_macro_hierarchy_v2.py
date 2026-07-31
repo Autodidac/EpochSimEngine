@@ -48,3 +48,24 @@ if source == original:
 
 namespace = {"__file__": str(path), "__name__": "__main__"}
 exec(compile(source, str(path), "exec"), namespace)
+
+# Preserve the established ecology audit vocabulary in the new cached classifier.
+tiles_path = path.parents[1] / "shaders/tiles.comp"
+tiles = tiles_path.read_text(encoding="utf-8")
+old = """            bool loose = !isStructural(cell) && !isReconstructableMaterial(cell.material) &&
+                         !isCellImmovable(cell);
+            activeContent = activeContent || agent || loose || fluid;
+"""
+new = """            bool activeLoose = !isStructural(cell) && !isReconstructableMaterial(cell.material) &&
+                               !isCellImmovable(cell);
+            activeContent = activeContent || agent || activeLoose || fluid;
+"""
+if old not in tiles:
+    raise SystemExit("tiles activeLoose compatibility marker missing")
+tiles = tiles.replace(old, new, 1)
+old = "bool sleepingTerrain = terrainStable && !damaged && !moving && !hot && !reacting && !activeAgent;"
+new = "bool sleepingTerrain = terrainStable && !damaged && !moving && !hot && !reacting &&\n                           !activeAgent && !activeContent;"
+if old not in tiles:
+    raise SystemExit("tiles sleeping activeContent marker missing")
+tiles = tiles.replace(old, new, 1)
+tiles_path.write_text(tiles, encoding="utf-8", newline="\n")
