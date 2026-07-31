@@ -205,9 +205,9 @@ replace_once(
 # Debug collection is a sampled diagnostic, not a full-grid pass every frame.
 replace_once(
     "src/vulkan_renderer.cpp",
-    "    bool first_present_logged{};\n"
+    "    bool first_present_logged{false};\n"
     "    std::optional<std::uint32_t> pending_scene_export{};\n",
-    "    bool first_present_logged{};\n"
+    "    bool first_present_logged{false};\n"
     "    bool debug_was_visible{};\n"
     "    std::uint32_t debug_sample_frame{};\n"
     "    std::optional<std::uint32_t> pending_scene_export{};\n",
