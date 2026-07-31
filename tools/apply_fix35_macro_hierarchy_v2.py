@@ -22,6 +22,11 @@ corrections = (
         "nonexistent chemistry machine suffix",
     ),
     (
+        'replace(\n    "tests/behavior_contract.cpp",\n    "static_assert(sizeof(epoch::sand::Cell) == 16u);",\n    "static_assert(sizeof(epoch::sand::Cell) == 16u);\\n"\n    "static_assert(epoch::sand::material_count == 66u);\\n"\n    "static_assert(epoch::sand::is_block_material(epoch::sand::Material::sluice_box));",\n)\n',
+        'replace(\n    "tests/behavior_contract.cpp",\n    "static_assert(epoch::sand::policy::water_half_units_per_full_cell == 2u);",\n    "static_assert(epoch::sand::policy::water_half_units_per_full_cell == 2u);\\n"\n    "static_assert(epoch::sand::material_count == 66u);\\n"\n    "static_assert(epoch::sand::is_block_material(epoch::sand::Material::sluice_box));",\n)\n',
+        "current behavior contract anchor",
+    ),
+    (
         'replace(\n    "HALF_WATER.md",\n    "Half-water",\n    "Half-water",\n)\n',
         '',
         "half-water no-op assertion",
