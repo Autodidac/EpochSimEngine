@@ -314,7 +314,7 @@ int run_application() {
             } else if (epochengine::gui_lib::contains(layout.zoom_in, pointer)) {
                 adjust_zoom_centered(1);
             } else if (epochengine::gui_lib::contains(layout.eraser, pointer)) {
-                shared_state.selected_material.store(static_cast<std::uint32_t>(Material::empty),
+                shared_state.selected_material.store(static_cast<std::uint32_t>(Material::oxygen),
                                                      std::memory_order_relaxed);
             } else if (hovered_group < material_group_count) {
                 shared_state.selected_group.store(hovered_group, std::memory_order_relaxed);

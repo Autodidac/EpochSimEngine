@@ -355,6 +355,8 @@ struct VulkanRenderer::Impl final {
     bool gpu_stalled{false};
     bool first_submission_logged{false};
     bool first_present_logged{false};
+    bool debug_was_visible{};
+    std::uint32_t debug_sample_frame{};
     std::optional<std::uint32_t> pending_scene_export{};
 #if EPOCH_SAND_ENABLE_VALIDATION
     std::chrono::steady_clock::time_point next_conservation_log{};
@@ -1701,7 +1703,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
         const auto [grid_x, grid_y] = grid_cursor(state);
         const auto requested_radius = state.brush_radius.load(std::memory_order_relaxed);
-        const auto material = erase ? static_cast<std::uint32_t>(Material::empty)
+        const auto material = erase ? static_cast<std::uint32_t>(Material::oxygen)
                                     : state.selected_material.load(std::memory_order_relaxed);
         const auto selected = static_cast<Material>(material < material_count ? material : 0u);
         const auto radius = material == static_cast<std::uint32_t>(Material::bee_nest)
@@ -2156,12 +2158,20 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         }
         record_paint(frame.command_buffer, state);
 
-        const bool debug_stats = state.debug_visualization.load(std::memory_order_relaxed);
-        if (debug_stats) reset_debug_stats(frame.command_buffer);
+        const bool debug_visible = state.debug_visualization.load(std::memory_order_relaxed);
+        bool collect_debug_stats = false;
+        if (debug_visible) {
+            collect_debug_stats = !debug_was_visible || (debug_sample_frame % 8u) == 0u;
+            ++debug_sample_frame;
+        } else {
+            debug_sample_frame = 0u;
+        }
+        debug_was_visible = debug_visible;
+        if (collect_debug_stats) reset_debug_stats(frame.command_buffer);
         const bool step_once = state.single_step.exchange(false, std::memory_order_acq_rel);
         const bool run_simulation = !reset_this_frame && (step_once ||
             (simulation_tick && !state.paused.load(std::memory_order_relaxed)));
-        if (run_simulation) record_simulation_step(frame.command_buffer, debug_stats);
+        if (run_simulation) record_simulation_step(frame.command_buffer, collect_debug_stats);
         const bool actor_action = state.fire_tool.load(std::memory_order_relaxed) ||
                                   state.deposit_resource.load(std::memory_order_relaxed) ||
                                   state.fire_tool_pressed.load(std::memory_order_acquire) ||
@@ -2174,9 +2184,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         if (run_simulation || reset_actor || actor_action || actor_motion)
             record_actor(frame.command_buffer, state, reset_actor, actor_simulation);
 
-        if (debug_stats) {
+        if (collect_debug_stats) {
             const auto movement_pair_tests = run_simulation
-                ? config.grid_width * config.grid_height * 9u / 2u
+                ? config.grid_width * config.grid_height * 13u / 2u
                 : 0u;
             record_debug_stats(frame.command_buffer, state, movement_pair_tests);
         }

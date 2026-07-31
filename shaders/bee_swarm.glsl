@@ -12,8 +12,9 @@ const uint BEE_METADATA_MASK = 0x00ffffffu;
 
 const uint BEE_SWARM_BIOHAZARD_TICKS = 1800u;
 const uint BEE_SWARM_ALTERNATE_TICKS = 600u;
-const uint BEE_SWARM_CYCLE_TICKS =
-    BEE_SWARM_BIOHAZARD_TICKS + BEE_SWARM_ALTERNATE_TICKS * 2u;
+const uint BEE_SWARM_PHASE_TICKS =
+    BEE_SWARM_BIOHAZARD_TICKS + BEE_SWARM_ALTERNATE_TICKS;
+const uint BEE_SWARM_CYCLE_TICKS = BEE_SWARM_PHASE_TICKS * 2u;
 
 const uint BEE_INITIAL_PACKED[BEE_FORMATION_COUNT] = uint[](
     1479u, 1597u, 1850u, 1989u, 1999u, 2099u, 2109u, 2114u, 2229u, 2232u,
@@ -115,12 +116,13 @@ ivec2 beeRotateOffset(ivec2 offset, uint phase) {
 
 uint beeSwarmState(uint aux, uint step) {
     uint local = step % BEE_SWARM_CYCLE_TICKS;
-    if (local < BEE_SWARM_BIOHAZARD_TICKS) return 0u;
+    uint phase = local / BEE_SWARM_PHASE_TICKS;
+    uint phaseLocal = local % BEE_SWARM_PHASE_TICKS;
+    if (phaseLocal < BEE_SWARM_BIOHAZARD_TICKS) return 0u;
     ivec2 home = beeHomeCenterFromAux(aux);
     uint cycle = step / BEE_SWARM_CYCLE_TICKS;
     bool reverse = (beeHash32(uint(home.x) * 73856093u ^ uint(home.y) * 19349663u ^ cycle) & 1u) != 0u;
-    uint alternate = (local - BEE_SWARM_BIOHAZARD_TICKS) / BEE_SWARM_ALTERNATE_TICKS;
-    return reverse ? 2u - alternate : 1u + alternate;
+    return reverse ? 2u - phase : 1u + phase;
 }
 
 ivec2 beeBiohazardTargetOffset(uint slot, uint step, ivec2 home) {

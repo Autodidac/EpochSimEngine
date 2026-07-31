@@ -169,6 +169,7 @@ NativeWindow::NativeWindow(const std::string_view title, const std::uint32_t wid
         XCB_EVENT_MASK_POINTER_MOTION |
         XCB_EVENT_MASK_BUTTON_PRESS |
         XCB_EVENT_MASK_BUTTON_RELEASE |
+        XCB_EVENT_MASK_FOCUS_CHANGE |
         XCB_EVENT_MASK_KEY_PRESS |
         XCB_EVENT_MASK_KEY_RELEASE;
     const std::uint32_t values[] = {impl_->screen->black_pixel, event_mask};
@@ -293,6 +294,8 @@ bool NativeWindow::poll(WindowInput& input) {
         }
         case XCB_BUTTON_RELEASE: {
             const auto* button = reinterpret_cast<xcb_button_release_event_t*>(event);
+            impl_->mouse_x = button->event_x;
+            impl_->mouse_y = button->event_y;
             if (button->detail == 1) {
                 impl_->primary_down = false;
             } else if (button->detail == 2) {
@@ -302,6 +305,17 @@ bool NativeWindow::poll(WindowInput& input) {
             }
             break;
         }
+        case XCB_FOCUS_OUT:
+            impl_->primary_down = false;
+            impl_->secondary_down = false;
+            impl_->middle_down = false;
+            impl_->move_left = false;
+            impl_->move_right = false;
+            impl_->move_up = false;
+            impl_->move_down = false;
+            impl_->jump = false;
+            impl_->inspect_material = false;
+            break;
         case XCB_KEY_PRESS: {
             const auto* key = reinterpret_cast<xcb_key_press_event_t*>(event);
             const auto keysym = lookup_keysym(impl_->connection, key->detail);

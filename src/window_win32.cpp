@@ -116,31 +116,43 @@ struct NativeWindow::Impl final {
             self->mouse_y = GET_Y_LPARAM(lparam);
             return 0;
         case WM_LBUTTONDOWN:
+            self->mouse_x = GET_X_LPARAM(lparam);
+            self->mouse_y = GET_Y_LPARAM(lparam);
             if (!self->primary_down) self->primary_pressed = true;
             self->primary_down = true;
             SetCapture(hwnd);
             return 0;
         case WM_LBUTTONUP:
+            self->mouse_x = GET_X_LPARAM(lparam);
+            self->mouse_y = GET_Y_LPARAM(lparam);
             self->primary_down = false;
             if (!self->secondary_down) {
                 ReleaseCapture();
             }
             return 0;
         case WM_MBUTTONDOWN:
+            self->mouse_x = GET_X_LPARAM(lparam);
+            self->mouse_y = GET_Y_LPARAM(lparam);
             if (!self->middle_down) self->middle_pressed = true;
             self->middle_down = true;
             SetCapture(hwnd);
             return 0;
         case WM_MBUTTONUP:
+            self->mouse_x = GET_X_LPARAM(lparam);
+            self->mouse_y = GET_Y_LPARAM(lparam);
             self->middle_down = false;
             if (!self->primary_down && !self->secondary_down) ReleaseCapture();
             return 0;
         case WM_RBUTTONDOWN:
+            self->mouse_x = GET_X_LPARAM(lparam);
+            self->mouse_y = GET_Y_LPARAM(lparam);
             if (!self->secondary_down) self->secondary_pressed = true;
             self->secondary_down = true;
             SetCapture(hwnd);
             return 0;
         case WM_RBUTTONUP:
+            self->mouse_x = GET_X_LPARAM(lparam);
+            self->mouse_y = GET_Y_LPARAM(lparam);
             self->secondary_down = false;
             if (!self->primary_down) {
                 ReleaseCapture();
@@ -148,6 +160,24 @@ struct NativeWindow::Impl final {
             return 0;
         case WM_MOUSEWHEEL:
             self->wheel_delta += GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
+            return 0;
+        case WM_CAPTURECHANGED:
+            if (reinterpret_cast<HWND>(lparam) != hwnd) {
+                self->primary_down = false;
+                self->secondary_down = false;
+                self->middle_down = false;
+            }
+            return 0;
+        case WM_KILLFOCUS:
+            self->primary_down = false;
+            self->secondary_down = false;
+            self->middle_down = false;
+            self->move_left = false;
+            self->move_right = false;
+            self->move_up = false;
+            self->move_down = false;
+            self->jump = false;
+            self->inspect_material = false;
             return 0;
         case WM_SYSKEYDOWN:
         case WM_KEYDOWN:

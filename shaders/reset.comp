@@ -434,6 +434,7 @@ void main() {
 
     uint scene = pc.material % SCENE_COUNT;
     uint material = materialForScene(scene, p);
+    if (material == MAT_EMPTY) material = MAT_OXYGEN;
     bool structural = authoredStructuralCell(scene, p, material);
     bool anchored = brickCoordinate(p).y >= worldBrickSize().y - 2;
     Cell cell = structural ? makeStructuralCell(material, anchored) : makeCell(material);

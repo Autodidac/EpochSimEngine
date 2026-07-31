@@ -12,7 +12,7 @@ inline constexpr std::uint32_t status_height = 126u;
 inline constexpr std::uint32_t group_tabs_height = 112u;
 inline constexpr std::uint32_t palette_items_height = 136u;
 inline constexpr std::uint32_t eraser_height = 24u;
-inline constexpr std::uint32_t keymap_height = 108u;
+inline constexpr std::uint32_t keymap_height = 126u;
 inline constexpr std::uint32_t cursor_editor_height = 92u;
 inline constexpr std::uint32_t palette_height = 0u;
 inline constexpr float margin = 5.0f;
@@ -94,10 +94,13 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
 
     const float control_top = cursor_top + 60.0f;
     const float half = content_width / 2.0f;
-    layout.brush_smaller = {{content_left + 4.0f, control_top}, {30.0f, 26.0f}};
-    layout.brush_larger = {{content_left + half - 34.0f, control_top}, {30.0f, 26.0f}};
-    layout.zoom_out = {{content_left + half + 4.0f, control_top}, {30.0f, 26.0f}};
-    layout.zoom_in = {{content_left + content_width - 34.0f, control_top}, {30.0f, 26.0f}};
+    constexpr float control_button_width = 44.0f;
+    layout.brush_smaller = {{content_left + 4.0f, control_top}, {control_button_width, 26.0f}};
+    layout.brush_larger = {{content_left + half - control_button_width - 4.0f, control_top},
+                           {control_button_width, 26.0f}};
+    layout.zoom_out = {{content_left + half + 4.0f, control_top}, {control_button_width, 26.0f}};
+    layout.zoom_in = {{content_left + content_width - control_button_width - 4.0f, control_top},
+                      {control_button_width, 26.0f}};
 
     const float card_top = cursor_top + float(cursor_editor_height) + gap;
     layout.material_card = {{content_left, card_top},

@@ -437,15 +437,29 @@ void main() {
             }
             uint controlTop = cursorTop + 60u;
             uint halfWidth = contentWidth / 2u;
-            cursorText = cursorText || fixedPixel(pixel, ivec2(int(contentLeft + 39u), int(controlTop + 2u)), 1, 104u) ||
+            const uint controlButtonWidth = 44u;
+            uint brushMinusLeft = contentLeft + 4u;
+            uint brushPlusLeft = contentLeft + halfWidth - controlButtonWidth - 4u;
+            uint zoomMinusLeft = contentLeft + halfWidth + 4u;
+            uint zoomPlusLeft = contentLeft + contentWidth - controlButtonWidth - 4u;
+            uint buttonLefts[4] = uint[4](brushMinusLeft, brushPlusLeft, zoomMinusLeft, zoomPlusLeft);
+            for (uint button = 0u; button < 4u; ++button) {
+                uint left = buttonLefts[button];
+                uint right = left + controlButtonWidth;
+                if (x >= left && x < right && y >= controlTop && y < controlTop + 26u) {
+                    color = vec3(0.075, 0.105, 0.145);
+                    if (borderPixel(x, y, left, controlTop, right, controlTop + 26u)) color *= 0.55;
+                }
+            }
+            cursorText = cursorText || fixedPixel(pixel, ivec2(int(contentLeft + 53u), int(controlTop + 2u)), 1, 104u) ||
                 numberPixel(pixel, ivec2(int(contentLeft + halfWidth / 2u - 8u), int(controlTop + 13u)), 1, renderPc.brushRadius) ||
-                fixedPixel(pixel, ivec2(int(contentLeft + halfWidth + 39u), int(controlTop + 2u)), 1, 105u) ||
+                fixedPixel(pixel, ivec2(int(contentLeft + halfWidth + 53u), int(controlTop + 2u)), 1, 105u) ||
                 numberPixel(pixel, ivec2(int(contentLeft + halfWidth + halfWidth / 2u - 8u), int(controlTop + 13u)), 1,
                             max(renderPc.gridWidth / max(renderPc.viewWidth, 1u), 1u));
-            bool minusLeft = glyphPixel(pixel, ivec2(int(contentLeft + 13u), int(controlTop + 9u)), 2, 45u);
-            bool plusLeft = glyphPixel(pixel, ivec2(int(contentLeft + halfWidth - 25u), int(controlTop + 9u)), 2, 43u);
-            bool minusRight = glyphPixel(pixel, ivec2(int(contentLeft + halfWidth + 13u), int(controlTop + 9u)), 2, 45u);
-            bool plusRight = glyphPixel(pixel, ivec2(int(contentLeft + contentWidth - 25u), int(controlTop + 9u)), 2, 43u);
+            bool minusLeft = glyphPixel(pixel, ivec2(int(brushMinusLeft + 17u), int(controlTop + 6u)), 2, 45u);
+            bool plusLeft = glyphPixel(pixel, ivec2(int(brushPlusLeft + 17u), int(controlTop + 6u)), 2, 43u);
+            bool minusRight = glyphPixel(pixel, ivec2(int(zoomMinusLeft + 17u), int(controlTop + 6u)), 2, 45u);
+            bool plusRight = glyphPixel(pixel, ivec2(int(zoomPlusLeft + 17u), int(controlTop + 6u)), 2, 43u);
             if (minusLeft || plusLeft || minusRight || plusRight) cursorText = true;
             if (cursorText) color = vec3(0.93, 0.96, 0.99);
             outColor = vec4(color, 1.0);
@@ -526,11 +540,11 @@ void main() {
                       simulationY * max(renderPc.viewHeight, 1u) / simulationHeight);
     ivec2 grid = ivec2(int(gridX), int(gridY));
     Cell cell = cellAt(grid);
-    TileState tile = tileAt(grid);
-    ChunkState chunk = chunkAt(grid);
     vec4 color = worldColor(cell, grid);
 
     if (renderPc.debugMode != 0u) {
+        TileState tile = tileAt(grid);
+        ChunkState chunk = chunkAt(grid);
         ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));
         if (local.x == 0 || local.y == 0)
   color.rgb *= renderPc.viewWidth < renderPc.gridWidth ? 0.72 : 0.88;
@@ -550,58 +564,59 @@ void main() {
 
 
     if (renderPc.debugMode != 0u) {
+        uint availableWidth = max(renderPc.viewportWidth > 8u ? renderPc.viewportWidth - 8u
+                                                              : renderPc.viewportWidth, 1u);
+        uint panelWidth = min(360u, availableWidth);
         uint panelLeft = renderPc.viewportLeft + 4u;
-        uint panelRight = viewportRight > 4u ? viewportRight - 4u : viewportRight;
+        uint panelRight = panelLeft + panelWidth;
         uint panelTop = renderPc.viewportTop + 4u;
-        uint panelBottom = min(viewportBottom, panelTop + 90u);
+        bool narrowPanel = panelWidth < 280u;
+        uint columns = narrowPanel ? 2u : 4u;
+        uint rows = narrowPanel ? 6u : 3u;
+        uint panelBottom = min(viewportBottom, panelTop + 23u + rows * 14u);
         if (x >= panelLeft && x < panelRight && y >= panelTop && y < panelBottom) {
-            color.rgb = vec3(0.018, 0.027, 0.040);
+            color.rgb = mix(color.rgb, vec3(0.018, 0.027, 0.040), 0.88);
             if (borderPixel(x, y, panelLeft, panelTop, panelRight, panelBottom))
                 color.rgb = vec3(0.16, 0.30, 0.42);
 
             bool statsText = fixedPixel(pixel, ivec2(int(panelLeft + 7u), int(panelTop + 4u)), 1, 75u);
-            uint columnWidth = max((panelRight - panelLeft - 12u) / 6u, 1u);
-            uint row0 = panelTop + 19u;
-            uint row1 = panelTop + 33u;
-            uint row2 = panelTop + 47u;            uint row3 = panelTop + 61u;
-  uint row4 = panelTop + 75u;
-  uint columnLeft = panelLeft + 7u;
-statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 0u), int(row0)), 76u, debugStats[STAT_SIMULATION_STEP]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 1u), int(row0)), 77u, debugStats[STAT_MOVE_PAIR_TESTS]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 2u), int(row0)), 78u, debugStats[STAT_MOVE_SWAPS]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 3u), int(row0)), 79u, debugStats[STAT_MOVED_CELLS]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 4u), int(row0)), 80u, debugStats[STAT_ACTIVE_CELLS]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 5u), int(row0)), 81u, debugStats[STAT_SLEEPING_TILES]);
-
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 0u), int(row1)), 82u, debugStats[STAT_BEE_COUNT]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 1u), int(row1)), 83u, debugStats[STAT_BEE_MOVES]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 2u), int(row1)), 84u, debugStats[STAT_QUEEN_COUNT]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 3u), int(row1)), 85u, debugStats[STAT_NEST_COUNT]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 4u), int(row1)), 86u, debugStats[STAT_FLOWER_COUNT]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 5u), int(row1)), 87u, debugStats[STAT_HONEY_COUNT]);
-
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 0u), int(row2)), 88u, debugStats[STAT_ANT_COUNT]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 1u), int(row2)), 89u, debugStats[STAT_ANT_MOVES]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 2u), int(row2)), 90u, debugStats[STAT_BEETLE_COUNT]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 3u), int(row2)), 91u, debugStats[STAT_BEETLE_MOVES]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 4u), int(row2)), 92u, debugStats[STAT_HABITAT_COUNT]);
-            uint selected = min(renderPc.selectedMaterial, renderPc.materialCount - 1u);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 5u), int(row2)), 93u, debugStats[STAT_MATERIAL_BASE + selected]);
-
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 0u), int(row3)), 94u, debugStats[STAT_STRUCTURAL_CELLS]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 1u), int(row3)), 95u, debugStats[STAT_LIQUID_CELLS]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 2u), int(row3)), 96u, debugStats[STAT_GAS_CELLS]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 3u), int(row3)), 97u, debugStats[STAT_POLLEN_COUNT]);
-            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 4u), int(row3)), 98u, debugStats[STAT_ACTIVE_TILES]);            statsText = statsText || statPixel(pixel, ivec2(int(columnLeft + columnWidth * 5u), int(row3)), 1u, renderPc.framesPerSecond);
-
-  statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 0u), int(row4)), 0u, debugStats[STAT_SLEEPING_CHUNKS]);
-  statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 1u), int(row4)), 1u, debugStats[STAT_ACTIVE_CHUNKS]);
-  statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 2u), int(row4)), 2u, debugStats[STAT_MACRO_TILE_MOVES]);
-  statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 3u), int(row4)), 3u, debugStats[STAT_MACRO_CELL_MOVES]);
-  statsText = statsText || hierarchyStatPixel(pixel, ivec2(int(columnLeft + columnWidth * 4u), int(row4)), 4u, debugStats[STAT_CHUNK_SKIPPED_CELLS]);
-
-  if (statsText) color.rgb = vec3(0.94, 0.98, 1.0);
-outColor = vec4(color.rgb, 1.0);
+            uint columnWidth = max((panelWidth - 12u) / columns, 1u);
+            uint fixedLabels[8] = uint[8](1u, 76u, 80u, 79u, 82u, 83u, 98u, 81u);
+            uint fixedValues[8] = uint[8](
+                renderPc.framesPerSecond,
+                debugStats[STAT_SIMULATION_STEP],
+                debugStats[STAT_ACTIVE_CELLS],
+                debugStats[STAT_MOVED_CELLS],
+                debugStats[STAT_BEE_COUNT],
+                debugStats[STAT_BEE_MOVES],
+                debugStats[STAT_ACTIVE_TILES],
+                debugStats[STAT_SLEEPING_TILES]);
+            for (uint stat = 0u; stat < 8u; ++stat) {
+                uint column = stat % columns;
+                uint row = stat / columns;
+                statsText = statsText || statPixel(
+                    pixel,
+                    ivec2(int(panelLeft + 7u + column * columnWidth),
+                          int(panelTop + 19u + row * 14u)),
+                    fixedLabels[stat], fixedValues[stat]);
+            }
+            uint hierarchyValues[4] = uint[4](
+                debugStats[STAT_SLEEPING_CHUNKS],
+                debugStats[STAT_ACTIVE_CHUNKS],
+                debugStats[STAT_MACRO_TILE_MOVES],
+                debugStats[STAT_MACRO_CELL_MOVES]);
+            for (uint stat = 0u; stat < 4u; ++stat) {
+                uint slot = stat + 8u;
+                uint column = slot % columns;
+                uint row = slot / columns;
+                statsText = statsText || hierarchyStatPixel(
+                    pixel,
+                    ivec2(int(panelLeft + 7u + column * columnWidth),
+                          int(panelTop + 19u + row * 14u)),
+                    stat, hierarchyValues[stat]);
+            }
+            if (statsText) color.rgb = vec3(0.94, 0.98, 1.0);
+            outColor = vec4(color.rgb, 1.0);
             return;
         }
     }
