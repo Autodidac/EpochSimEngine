@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - .github/v242-release.trigger
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
 
 permissions:
   actions: read
@@ -12,6 +15,7 @@ permissions:
 
 jobs:
   release:
+    if: github.event_name == 'push' || github.head_ref == 'agent/publish-v242'
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
