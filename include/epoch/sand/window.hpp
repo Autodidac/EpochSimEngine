@@ -26,6 +26,7 @@ struct WindowInput final {
     bool toggle_pause{};
     bool single_step{};
     bool reset{};
+    bool reset_camera{};
     bool fill{};
     bool save_scene{};
     bool load_scene{};

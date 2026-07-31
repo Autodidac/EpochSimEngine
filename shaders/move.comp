@@ -40,6 +40,10 @@ layout(push_constant) uniform MovementPush {
     int parity;
     uint reserved0;
     uint reserved1;
+    int activeSectionX;
+    int activeSectionY;
+    uint activeMode;
+    uint workerCount;
 } movePc;
 
 const uint MATERIAL_DENSITY[MATERIAL_COUNT] = uint[](
@@ -348,8 +352,10 @@ void swapCells(ivec2 aPosition, ivec2 bPosition) {
     uint bIndex = moveIndex(bPosition);
     Cell a = cells[aIndex];
     Cell b = cells[bIndex];
-    bool preserveAgentAge = a.material == MAT_BEE || a.material == MAT_ANT || a.material == MAT_BEETLE;
-    bool preserveTargetAge = b.material == MAT_BEE || b.material == MAT_ANT || b.material == MAT_BEETLE;
+    bool preserveAgentAge = a.material == MAT_BEE || a.material == MAT_ANT || a.material == MAT_BEETLE ||
+                            isCellGas(a) || isCellLiquid(a);
+    bool preserveTargetAge = b.material == MAT_BEE || b.material == MAT_ANT || b.material == MAT_BEETLE ||
+                             isCellGas(b) || isCellLiquid(b);
     if (!preserveAgentAge) a.age = 0u;
     if (!preserveTargetAge) b.age = 0u;
     a.aux |= AUX_MOVED;
@@ -653,7 +659,10 @@ bool lightningMoveAllowed(ivec2 sourcePosition, ivec2 targetPosition, uint rando
     return targetTarget != sourceTarget ? targetTarget : ((randomValue & 1u) == 0u);
 }
 
-bool gasHorizontalAllows(uint material, uint randomValue) {
+bool gasHorizontalAllows(Cell cell, uint randomValue) {
+    // Gas can spread while newly emitted or disturbed, then comes to rest.
+    if (cell.age >= 48u) return false;
+    uint material = cell.material;
     if (material == MAT_HYDROGEN) return true;
     if (material == MAT_OXYGEN) return (randomValue & 1u) == 0u;
     if (material == MAT_CARBON_DIOXIDE || material == MAT_STEAM || material == MAT_DIRTY_STEAM) {
@@ -984,22 +993,20 @@ void processHorizontal(ivec2 left, ivec2 right) {
                                keepLeft ? a : b, keepLeft ? b : a)) return;
     }
 
+    // Fractional surface cells converge in one direction so chains terminate instead of chasing forever.
     if (isHalfWaterCell(a) && isOpenGas(b) && halfWaterAhead(left, 1)) { swapCells(left, right); return; }
-    if (isHalfWaterCell(b) && isOpenGas(a) && halfWaterAhead(right, -1)) { swapCells(left, right); return; }
 
     if ((movePc.reserved1 & 1u) != 0u && !isHalfWaterCell(a) && !isHalfWaterCell(b)) return;
 
     if (isCellLiquid(a) && isOpenGas(b) && liquidCanSpread(left, right, a, randomValue)) {
-        if (a.material == MAT_WATER && !isHalfWaterCell(a)) splitFullWaterPair(left, right, a, b);
-        else swapCells(left, right);
+        swapCells(left, right);
     } else if (isCellLiquid(b) && isOpenGas(a) &&
                liquidCanSpread(right, left, b, randomValue >> 1u)) {
-        if (b.material == MAT_WATER && !isHalfWaterCell(b)) splitFullWaterPair(right, left, b, a);
-        else swapCells(left, right);
-    } else if (isCellGas(a) && b.material == MAT_EMPTY && gasHorizontalAllows(a.material, randomValue) &&
+        swapCells(left, right);
+    } else if (isCellGas(a) && b.material == MAT_EMPTY && gasHorizontalAllows(a, randomValue) &&
                (a.material != MAT_LIGHTNING || lightningMoveAllowed(left, right, randomValue))) {
         swapCells(left, right);
-    } else if (isCellGas(b) && a.material == MAT_EMPTY && gasHorizontalAllows(b.material, randomValue >> 1u) &&
+    } else if (isCellGas(b) && a.material == MAT_EMPTY && gasHorizontalAllows(b, randomValue >> 1u) &&
                (b.material != MAT_LIGHTNING || lightningMoveAllowed(right, left, randomValue >> 1u))) {
         swapCells(left, right);
     } else if (a.material == MAT_BEE && lifeCanEnter(b) && beeMoveAllowed(a, left, right, randomValue)) {
@@ -1022,20 +1029,32 @@ void main() {
     if (movePc.phase == 0) {
         ivec2 top = ivec2(gid.x, gid.y * 2 + movePc.parity);
         ivec2 bottom = top + ivec2(0, 1);
-        if (moveInside(top) && moveInside(bottom)) processVertical(top, bottom);
+        if (moveInside(top) && moveInside(bottom) &&
+            sectionActiveAt(top, movePc.activeSectionX, movePc.activeSectionY, movePc.activeMode) &&
+            sectionActiveAt(bottom, movePc.activeSectionX, movePc.activeSectionY, movePc.activeMode))
+            processVertical(top, bottom);
     } else if (movePc.phase == 1 || movePc.phase == 2) {
         ivec2 source = ivec2(gid.x, gid.y * 2 + movePc.parity);
         int direction = movePc.phase == 1 ? -1 : 1;
         ivec2 target = source + ivec2(direction, 1);
-        if (moveInside(source) && moveInside(target)) processDiagonal(source, target, false);
+        if (moveInside(source) && moveInside(target) &&
+            sectionActiveAt(source, movePc.activeSectionX, movePc.activeSectionY, movePc.activeMode) &&
+            sectionActiveAt(target, movePc.activeSectionX, movePc.activeSectionY, movePc.activeMode))
+            processDiagonal(source, target, false);
     } else if (movePc.phase == 3 || movePc.phase == 4) {
         ivec2 source = ivec2(gid.x, gid.y * 2 + movePc.parity + 1);
         int direction = movePc.phase == 3 ? -1 : 1;
         ivec2 target = source + ivec2(direction, -1);
-        if (moveInside(source) && moveInside(target)) processDiagonal(source, target, true);
+        if (moveInside(source) && moveInside(target) &&
+            sectionActiveAt(source, movePc.activeSectionX, movePc.activeSectionY, movePc.activeMode) &&
+            sectionActiveAt(target, movePc.activeSectionX, movePc.activeSectionY, movePc.activeMode))
+            processDiagonal(source, target, true);
     } else {
         ivec2 left = ivec2(gid.x * 2 + movePc.parity, gid.y);
         ivec2 right = left + ivec2(1, 0);
-        if (moveInside(left) && moveInside(right)) processHorizontal(left, right);
+        if (moveInside(left) && moveInside(right) &&
+            sectionActiveAt(left, movePc.activeSectionX, movePc.activeSectionY, movePc.activeMode) &&
+            sectionActiveAt(right, movePc.activeSectionX, movePc.activeSectionY, movePc.activeMode))
+            processHorizontal(left, right);
     }
 }

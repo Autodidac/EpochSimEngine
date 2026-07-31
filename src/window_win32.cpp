@@ -53,6 +53,7 @@ struct NativeWindow::Impl final {
     bool toggle_pause{};
     bool single_step{};
     bool reset{};
+    bool reset_camera{};
     bool fill{};
     bool save_scene{};
     bool load_scene{};
@@ -212,6 +213,10 @@ struct NativeWindow::Impl final {
             case 'R':
                 self->reset = true;
                 return 0;
+            case '0':
+            case VK_HOME:
+                self->reset_camera = true;
+                return 0;
             case 'F':
                 self->fill = true;
                 return 0;
@@ -314,6 +319,7 @@ bool NativeWindow::poll(WindowInput& input) {
     impl_->toggle_pause = false;
     impl_->single_step = false;
     impl_->reset = false;
+    impl_->reset_camera = false;
     impl_->fill = false;
     impl_->save_scene = false;
     impl_->load_scene = false;
@@ -361,6 +367,7 @@ bool NativeWindow::poll(WindowInput& input) {
         .toggle_pause = impl_->toggle_pause,
         .single_step = impl_->single_step,
         .reset = impl_->reset,
+        .reset_camera = impl_->reset_camera,
         .fill = impl_->fill,
         .save_scene = impl_->save_scene,
         .load_scene = impl_->load_scene,

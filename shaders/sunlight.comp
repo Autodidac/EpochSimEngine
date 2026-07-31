@@ -1,6 +1,8 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 #include "materials.glsl"
+#include "tiles.glsl"
+#include "chunks.glsl"
 
 layout(local_size_x = 64) in;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
@@ -14,7 +16,8 @@ void main() {
     for (uint y = 0u; y < pc.height; ++y) {
         uint index = y * pc.width + x;
         uint material = cells[index].material;
-        light[index] = intensity;
+        if (sectionActiveAt(ivec2(int(x), int(y)), pc.activeSectionX, pc.activeSectionY, pc.activeMode))
+            light[index] = intensity;
 
         if (blocksSun(material)) {
             intensity = intensity > 80u ? intensity - 80u : 0u;

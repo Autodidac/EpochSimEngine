@@ -19,9 +19,12 @@ ENTRY_SHADERS = (
     "paint.comp",
     "sunlight.comp",
     "tiles.comp",
+    "chunks.comp",
     "chemistry.comp",
+    "macro_move.comp",
     "move.comp",
     "actor.comp",
+    "debug_stats.comp",
     "fullscreen.vert",
     "fullscreen.frag",
 )
@@ -236,6 +239,8 @@ def main() -> int:
     xcb_cpp = (ROOT / "src/window_xcb.cpp").read_text(encoding="utf-8")
     ui_layout = (ROOT / "include/epoch/sand/ui_layout.hpp").read_text(encoding="utf-8")
     fullscreen = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
+    tiles_comp = (SHADERS / "tiles.comp").read_text(encoding="utf-8")
+    debug_stats_comp = (SHADERS / "debug_stats.comp").read_text(encoding="utf-8")
 
     if actor_comp.count("ivec2 center = ivec2(state.x, state.y - 4);") != 1:
         errors.append("actor breathing center declaration must be unique")
@@ -273,6 +278,29 @@ def main() -> int:
     for token in ("viewportLeft", "viewportWidth", "Deliberate letterbox"):
         if token not in fullscreen:
             errors.append(f"fullscreen tile-aligned viewport missing {token!r}")
+    for token in (
+        "mediumBoundaryEnclosed",
+        "fullLiquid && (moving || liquidEnclosed)",
+        "fullGas && (moving || gasEnclosed)",
+        "mediumBreakup",
+        "TILE_MEDIUM_ENCLOSED",
+        "TILE_MEDIUM_BREAKUP",
+    ):
+        if token not in tiles_comp:
+            errors.append(f"transient medium-tile contract missing {token!r}")
+    for token in (
+        "STAT_MACRO_GAS_TILES",
+        "STAT_MACRO_LIQUID_TILES",
+        "STAT_MEDIUM_ENCLOSED_TILES",
+        "STAT_MEDIUM_BREAKUP_TILES",
+    ):
+        if token not in debug_stats_comp:
+            errors.append(f"medium debug counter missing {token!r}")
+    for token in ("COLOR KEY", "TILE_MEDIUM_BREAKUP", "debugKeyColor", "textScale"):
+        if token not in fullscreen and token != "COLOR KEY":
+            errors.append(f"high-contrast debug contract missing {token!r}")
+    if "COLOR KEY" not in (ROOT / "tools/generate_ui_text.py").read_text(encoding="utf-8"):
+        errors.append("debug color-key text is missing")
     for retired in ("MAT_METAL", "MAT_GOLD_ORE", "MAT_IRON_ORE", "MAT_ALLY_BOT", "MAT_ENEMY_BOT", "MAT_BOT_FABRICATOR"):
         for shader_name in ENTRY_SHADERS:
             if retired in (SHADERS / shader_name).read_text(encoding="utf-8"):
@@ -400,28 +428,46 @@ def main() -> int:
         if re.search(rf"\b{forbidden}\b", strip_comments(combined), re.I):
             errors.append(f"placement-source physics identifier remains: {forbidden}")
 
-    if "setStateValue(result, 255u)" in chemistry.split("TILE_STABLE", 1)[1].split("if (isStructural(source)", 1)[0]:
+    stable_transition = chemistry.split("if (tileHas(tile, TILE_STABLE)", 1)[1].split(
+        "if (isStructural(source)", 1
+    )[0]
+    if "result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;" not in stable_transition:
+        errors.append("settled terrain is supported but never promoted to structural state")
+    if "setStateValue(result, 255u)" in stable_transition:
         errors.append("stability qualification resets represented damage instead of preserving it")
+    for token in (
+        "bool unsupportedStructural = structuralTile && !physicallySupported;",
+        "dominantCount < TILE_MIN_COHESIVE_CELLS || unsupportedStructural",
+        "bool supported = terrainStable && physicallySupported;",
+    ):
+        if token not in tiles:
+            errors.append(f"settled-terrain release contract missing {token!r}")
 
     # CPU and GLSL push constants must remain byte-for-byte field compatible.
     push_contracts = {
         "SimulationPush": (
-            ["width", "height", "step", "seed", "brush_x", "brush_y", "radius", "material"],
-            ["width", "height", "step", "seed", "brushX", "brushY", "radius", "material"],
+            ["width", "height", "step", "seed", "brush_x", "brush_y", "radius", "material",
+             "active_section_x", "active_section_y", "active_mode", "reserved"],
+            ["width", "height", "step", "seed", "brushX", "brushY", "radius", "material",
+             "activeSectionX", "activeSectionY", "activeMode", "reserved"],
             (SHADERS / "materials.glsl").read_text(encoding="utf-8"),
             "pc",
         ),
         "MovementPush": (
-            ["width", "height", "step", "seed", "phase", "parity", "reserved0", "reserved1"],
-            ["width", "height", "step", "seed", "phase", "parity", "reserved0", "reserved1"],
+            ["width", "height", "step", "seed", "phase", "parity", "reserved0", "reserved1",
+             "active_section_x", "active_section_y", "active_mode", "worker_count"],
+            ["width", "height", "step", "seed", "phase", "parity", "reserved0", "reserved1",
+             "activeSectionX", "activeSectionY", "activeMode", "workerCount"],
             movement,
             "movePc",
         ),
         "ActorPush": (
             ["width", "height", "step", "seed", "move_x", "move_y", "aim_x", "aim_y",
-             "fire", "reset", "scene", "deposit", "simulate", "reserved0", "reserved1", "reserved2"],
+             "fire", "reset", "scene", "deposit", "simulate", "active_section_x",
+             "active_section_y", "active_mode"],
             ["width", "height", "step", "seed", "moveX", "moveY", "aimX", "aimY",
-             "fire", "reset", "scene", "deposit", "simulate", "reserved0", "reserved1", "reserved2"],
+             "fire", "reset", "scene", "deposit", "simulate", "activeSectionX",
+             "activeSectionY", "activeMode"],
             (SHADERS / "actor.comp").read_text(encoding="utf-8"),
             "actorPc",
         ),

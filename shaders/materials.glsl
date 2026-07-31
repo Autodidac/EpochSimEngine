@@ -50,6 +50,10 @@ layout(push_constant) uniform SimulationPush {
     int brushY;
     uint radius;
     uint material;
+    int activeSectionX;
+    int activeSectionY;
+    uint activeMode;
+    uint reserved;
 } pc;
 #endif
 

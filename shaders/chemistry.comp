@@ -464,9 +464,9 @@ int machineResourceSlot(uint machine, Cell resourceCell) {
         return -1;
     }
     if (machine == MAT_INSECT_HABITAT) {
-        if (resourceMaterial == MAT_STEEL) return 0;
-        if (resourceMaterial == MAT_COPPER) return 1;
-        if (resourceMaterial == MAT_PLASMA_AMMO) return 2;
+        if (resourceMaterial == MAT_FOOD) return 0;
+        if (resourceMaterial == MAT_WASTE) return 1;
+        if (resourceMaterial == MAT_FERTILIZER) return 2;
     }
     return -1;
 }
@@ -689,6 +689,10 @@ void main() {
 
     uint index = indexOf(p);
     Cell source = cells[index];
+    if (!sectionActiveAt(p, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) {
+        nextCells[index] = source;
+        return;
+    }
     Cell result = source;
     result.age = source.age + 1u;
 
@@ -732,7 +736,7 @@ void main() {
         // Stability qualification never creates, replaces, fills, or snaps cells.
         // It marks only the already represented pixels coherent and supported.
         // Material, temperature, age, random variation, and damage are preserved.
-        result.aux |= AUX_SUPPORTED;
+        result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
         result.aux &= ~AUX_MOVED;
     }
     if (isStructural(source) && (cellPhase(result) == PHASE_MOLTEN ||
@@ -840,8 +844,10 @@ void main() {
             commitResult(index, source, result);
             return;
         }
-        if (hasNeighbor(p, MAT_INSECT_HABITAT) && countWithin(p, MAT_ANT, 5) + countWithin(p, MAT_BEETLE, 5) < 8u && (randomValue & 2047u) == 0u) {
-            result = makeCell((randomValue & 4096u) == 0u ? MAT_ANT : MAT_BEETLE);
+        if (hasNeighbor(p, MAT_INSECT_HABITAT) && countWithin(p, MAT_ANT, 5) < 8u &&
+            (hasNeighbor(p, MAT_FOOD) || hasNeighbor(p, MAT_WASTE) || hasNeighbor(p, MAT_FERTILIZER)) &&
+            (randomValue & 2047u) == 0u) {
+            result = makeCell(MAT_ANT);
             commitResult(index, source, result);
             return;
         }

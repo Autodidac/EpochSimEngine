@@ -2,6 +2,7 @@
 
 #include "epoch/sand/material.hpp"
 #include "epoch/sand/scene.hpp"
+#include "epoch/sand/section_scheduler.hpp"
 #include "epoch/sand/scene_image.hpp"
 #include "epoch/sand/ui_layout.hpp"
 #include "epoch/sand/ui_text_data.hpp"
@@ -207,8 +208,12 @@ struct SimulationPush final {
     std::int32_t brush_y{};
     std::uint32_t radius{};
     std::uint32_t material{};
+    std::int32_t active_section_x{};
+    std::int32_t active_section_y{};
+    std::uint32_t active_mode{};
+    std::uint32_t reserved{};
 };
-static_assert(sizeof(SimulationPush) == 32);
+static_assert(sizeof(SimulationPush) == 48);
 
 struct MovementPush final {
     std::uint32_t width{};
@@ -219,8 +224,12 @@ struct MovementPush final {
     std::int32_t parity{};
     std::uint32_t reserved0{};
     std::uint32_t reserved1{};
+    std::int32_t active_section_x{};
+    std::int32_t active_section_y{};
+    std::uint32_t active_mode{};
+    std::uint32_t worker_count{};
 };
-static_assert(sizeof(MovementPush) == 32);
+static_assert(sizeof(MovementPush) == 48);
 
 struct ActorPush final {
     std::uint32_t width{};
@@ -236,9 +245,9 @@ struct ActorPush final {
     std::uint32_t scene{};
     std::uint32_t deposit{};
     std::uint32_t simulate{};
-    std::uint32_t reserved0{};
-    std::uint32_t reserved1{};
-    std::uint32_t reserved2{};
+    std::int32_t active_section_x{};
+    std::int32_t active_section_y{};
+    std::uint32_t active_mode{};
 };
 static_assert(sizeof(ActorPush) == 64);
 
@@ -1659,7 +1668,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     };
 
     [[nodiscard]] GridView grid_view(const SharedState& state) const {
-        const auto zoom = std::clamp(state.camera_zoom.load(std::memory_order_relaxed), 1u, 8u);
+        const auto zoom = std::clamp(state.camera_zoom.load(std::memory_order_relaxed), camera_zoom_min, camera_zoom_max);
         const auto visible_width = (std::max)(8u, config.grid_width / zoom);
         const auto visible_height = (std::max)(8u, config.grid_height / zoom);
         const auto center_x = std::clamp(state.camera_center_x.load(std::memory_order_relaxed),
@@ -1769,12 +1778,18 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     }
 
     void record_simulation_step(const VkCommandBuffer command_buffer,
+                                const SharedState& state,
                                 const bool collect_debug_stats) {
+        const auto active_section_x = state.camera_center_x.load(std::memory_order_relaxed) / section_cell_size;
+        const auto active_section_y = state.camera_center_y.load(std::memory_order_relaxed) / section_cell_size;
         SimulationPush simulation_push{
             .width = config.grid_width,
             .height = config.grid_height,
             .step = simulation_step,
             .seed = random_seed,
+            .active_section_x = active_section_x,
+            .active_section_y = active_section_y,
+            .active_mode = 1u,
         };
 
         if ((simulation_step & 3u) == 0u) {
@@ -1847,6 +1862,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
       .parity = static_cast<std::int32_t>(
           (simulation_step + static_cast<std::uint32_t>(phase_index)) & 1u),
       .reserved0 = collect_debug_stats ? 1u : 0u,
+      .active_section_x = active_section_x,
+      .active_section_y = active_section_y,
+      .active_mode = 1u,
+      .worker_count = state.section_worker_count.load(std::memory_order_relaxed),
   };
   vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
                      0, sizeof(macro_push), &macro_push);
@@ -1907,6 +1926,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 .reserved0 = collect_debug_stats ? 1u : 0u,
                 .reserved1 = (phase_index >= 9u ? 1u : 0u) |
                              (((simulation_step & 3u) == 0u) ? 2u : 0u),
+                .active_section_x = active_section_x,
+                .active_section_y = active_section_y,
+                .active_mode = 1u,
+                .worker_count = state.section_worker_count.load(std::memory_order_relaxed),
             };
             vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
                                0, sizeof(movement_push), &movement_push);
@@ -1951,6 +1974,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .scene = state.selected_scene.load(std::memory_order_relaxed) % scene_count,
             .deposit = deposit ? 1u : 0u,
             .simulate = simulate_actor ? 1u : 0u,
+            .active_section_x = state.camera_center_x.load(std::memory_order_relaxed) / section_cell_size,
+            .active_section_y = state.camera_center_y.load(std::memory_order_relaxed) / section_cell_size,
+            .active_mode = 1u,
         };
         bind_compute(command_buffer, actor_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
@@ -2175,7 +2201,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const bool step_once = state.single_step.exchange(false, std::memory_order_acq_rel);
         const bool run_simulation = !reset_this_frame && (step_once ||
             (simulation_tick && !state.paused.load(std::memory_order_relaxed)));
-        if (run_simulation) record_simulation_step(frame.command_buffer, collect_debug_stats);
+        if (run_simulation) record_simulation_step(frame.command_buffer, state, collect_debug_stats);
         const bool actor_action = state.fire_tool.load(std::memory_order_relaxed) ||
                                   state.deposit_resource.load(std::memory_order_relaxed) ||
                                   state.fire_tool_pressed.load(std::memory_order_acquire) ||
