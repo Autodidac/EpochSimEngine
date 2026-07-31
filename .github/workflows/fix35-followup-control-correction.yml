@@ -1,0 +1,45 @@
+name: Correct Fix35 Follow-up Control Marker
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'tools/apply_fix35_ui_bee_oxygen_debug.py'
+      - '.github/workflows/fix35-followup-control-correction.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  correct-marker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Correct exact renderer initializer marker
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tools/apply_fix35_ui_bee_oxygen_debug.py')
+          text = path.read_text(encoding='utf-8')
+          old = '    "    bool first_present_logged{};\\n"'
+          new = '    "    bool first_present_logged{false};\\n"'
+          count = text.count(old)
+          if count == 0:
+              raise SystemExit(0)
+          if count != 2:
+              raise RuntimeError(f'Expected two marker occurrences, found {count}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tools/apply_fix35_ui_bee_oxygen_debug.py
+          git commit -m 'Correct renderer initializer marker'
+          git push origin HEAD:"$HEAD_BRANCH"
