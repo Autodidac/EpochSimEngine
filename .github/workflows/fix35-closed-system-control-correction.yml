@@ -1,0 +1,50 @@
+name: Correct Closed-System Release Controls
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'tools/append_closed_system_validator_patch.py'
+      - '.github/workflows/fix35-closed-system-control-correction.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  correct-controls:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Append validator patch and expand audited source scope
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if ! grep -q 'Update the static validator to enforce the new closed-system atmosphere model' tools/apply_fix35_closed_system.py; then
+            cat tools/append_closed_system_validator_patch.py >> tools/apply_fix35_closed_system.py
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/fix35-closed-system-v232.yml')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              "            'tests/behavior_contract.cpp'\n",
+              "            'tests/behavior_contract.cpp',\n            'tools/validate_shader_contracts.py'\n",
+          )
+          text = text.replace(
+              "expected=$(printf '%s\\n' shaders/actor.comp shaders/chemistry.comp shaders/move.comp tests/behavior_contract.cpp | sort)",
+              "expected=$(printf '%s\\n' shaders/actor.comp shaders/chemistry.comp shaders/move.comp tests/behavior_contract.cpp tools/validate_shader_contracts.py | sort)",
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tools/apply_fix35_closed_system.py .github/workflows/fix35-closed-system-v232.yml
+          git commit -m 'Update closed-system validator contracts and source scope'
+          git push origin HEAD:"$HEAD_BRANCH"
