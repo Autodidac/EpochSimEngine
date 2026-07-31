@@ -1,6 +1,6 @@
 # EpochSimEngine Mission Cache
 
-This file contains **unfinished work only**. Completed and release-verified work belongs in `MISSION_LEDGER.md` and must not remain here as noise.
+This is the **single canonical mission document** for EpochSimEngine. It contains the active backlog, permanent invariants, and archived release history. There is no separate mission ledger.
 
 Before changing code:
 
@@ -9,8 +9,11 @@ Before changing code:
 3. Update status and evidence in the same source commit.
 4. Never mark visual/runtime behavior complete from compilation, token checks, or static audits alone.
 5. Verify Windows and Linux Release builds before publishing.
+6. Move a mission to the release archive only after its acceptance criteria are met. Reopen the same mission ID when runtime evidence contradicts an earlier result.
 
 Status meanings: `OPEN` not implemented; `PARTIAL` code exists but acceptance is unmet; `REGRESSION` attempted behavior is visibly wrong; `DEFERRED` intentionally scheduled later with the reason retained.
+
+# Active missions
 
 ## Simulation hierarchy and settling
 
@@ -92,7 +95,7 @@ Status meanings: `OPEN` not implemented; `PARTIAL` code exists but acceptance is
 | MC-072 | OPEN | Optional subsystems | Concurrency, streaming, debug visualization, UI, actors, ecology, and factories can be disabled without forking the simulation core. |
 | MC-073 | DEFERRED | EpochEngine integration | Later migrate/rewrite into EpochEngine using canonical `epochengine::` APIs while preserving reusable `EpochSimEngine` boundaries. |
 
-## Permanent invariants
+# Permanent invariants
 
 - Material/cell state, actor state, and Atmosphere composition are authoritative; hierarchy metadata accelerates them but never invents represented matter.
 - All material behavior is canonical and provenance-independent.
@@ -102,3 +105,40 @@ Status meanings: `OPEN` not implemented; `PARTIAL` code exists but acceptance is
 - 8x8 terrain regions qualify for stability only; they never reconstruct missing cells.
 - Each terrain pixel takes two laser hits to dislodge; after more than half are dislodged, the represented remainder collapses rather than vanishing.
 - Missed, avoided, failed, deferred, and runtime-regressed missions remain visible until accepted.
+
+# Archived release history
+
+Archived entries record what each release implemented and what runtime evidence later reopened. They are not a second backlog.
+
+## v2.4.0 — macro hierarchy baseline
+
+Source commit: `84d435300b5544a36312a6e17404f36a81ee955c`
+
+| Result | Evidence |
+|---|---|
+| COMPLETE — cached 8x8 classification | Uniform, bulk-movable, solid, powder, liquid, gas, fine-active, wet, and settled-medium metadata shipped. |
+| COMPLETE — supported structural solids | Cohesive regions stabilized only with physical support and retained original represented cells. |
+| COMPLETE — canonical wet-state model | Wet sand, dirt, silt, and mud use state rather than provenance. |
+| COMPLETE — Sluice Box baseline | Eight wet-sand inputs conserve into one gold and seven silt outputs. |
+| COMPLETE — debug cost reduction | Debug sampling was reduced and dense 8x8 overlay lines were removed. |
+| REOPENED — bulk movement | Runtime showed `MACRO 0 / MCELL 0`; tracked by MC-012 and MC-018. |
+| REOPENED — liquid settling | Water remained active and formed a moving diagonal slope; tracked by MC-013, MC-014, and MC-017. |
+| PARTIAL — chunk rejection and rendering | Runtime profiling and artifact removal remain MC-011 and MC-015. |
+
+## v2.4.1 — colony, atmosphere, and represented-space correction
+
+Source commit: `c73d0b97804bdefb1552a3f5ce613682d414c3ff`
+
+| Result | Evidence |
+|---|---|
+| COMPLETE — Windows/Linux build gate | All twelve Vulkan shaders, C++23 Release targets, contracts, packages, and checksums passed. |
+| COMPLETE — lower respiration/fire rates in code | Bee respiration, other-life respiration, fire, and ember exchange rates were reduced while retaining equal-volume conversion. Runtime tuning remains MC-025 and MC-032. |
+| COMPLETE — autonomous bee cap in code | Authored/autonomous colonies were limited to 100 bees. Full lifecycle evidence remains MC-032. |
+| REOPENED — exact hive restoration | Ecosystem used the old shell, but Sandbox and the buildable hive still diverged. Tracked by MC-038. |
+| REOPENED — actor movement architecture | Bees and insects still moved through fine-cell swaps and aligned to hierarchy edges. Tracked by MC-030 through MC-037 and MC-044. |
+| REOPENED — represented gas model | Standalone oxygen/CO2 pixels remain; composite Atmosphere is tracked by MC-020 through MC-029. |
+| REOPENED — bulk/fine parity and settling | Runtime still lacked convincing block-equivalent movement and stabilized too early. Tracked by MC-012 through MC-018. |
+
+## Carry-forward rule
+
+New work receives a stable `MC-###` ID. A failed, missed, deferred, or regressed mission remains in the active section. A completed mission moves to this archive with release and evidence. Runtime contradiction reopens the same ID instead of creating a duplicate document or silently rewriting history.
