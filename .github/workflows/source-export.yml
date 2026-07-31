@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   export:
@@ -35,3 +35,51 @@ jobs:
             ${{ runner.temp }}/EpochSimEngine-source.tar.gz.sha256
           if-no-files-found: error
           retention-days: 1
+
+  fix_windows_max_macro:
+    if: github.head_ref == 'agent/epochsim-debug-map-placement'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply the Windows-safe camera speed expression
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker='.github/pr19-windows-max-fix'
+          if [[ ! -f "$marker" ]]; then
+            exit 0
+          fi
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/app.cpp')
+          text = path.read_text(encoding='utf-8')
+          old = '''            const double cells_per_second = std::max(
+                120.0, static_cast<double>(std::max(active_view.width, active_view.height)) * 0.85);'''
+          new = '''            const double cells_per_second = (std::max)(
+                120.0, static_cast<double>((std::max)(active_view.width, active_view.height)) * 0.85);'''
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('camera speed expression not found')
+              text = text.replace(old, new, 1)
+              path.write_text(text, encoding='utf-8')
+          PY
+          rm -f "$marker"
+          git add -A
+
+      - name: Commit the clean portability fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'EpochSimEngine Runtime Agent'
+          git config user.email 'actions@users.noreply.github.com'
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Make camera speed calculation Windows macro safe'
+          git push origin "HEAD:${{ github.head_ref }}"
