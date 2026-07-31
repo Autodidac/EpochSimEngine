@@ -1,0 +1,43 @@
+name: FastFreddyTestbed Fix35 Macro Hierarchy Source Audit v2
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'tools/apply_fix35_macro_hierarchy_v2.py'
+      - '.github/workflows/fix35-macro-hierarchy-source-audit-v2.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: 1e2a73a20a93fb91e230a73c0df0991ba008d4b9
+          path: work
+      - name: Apply exact source patch and audits
+        run: |
+          set -euo pipefail
+          cp control/tools/apply_fix35_macro_hierarchy.py control/tools/apply_fix35_macro_hierarchy_v2.py work/tools/
+          cd work
+          python3 tools/apply_fix35_macro_hierarchy_v2.py
+          rm -f tools/apply_fix35_macro_hierarchy.py tools/apply_fix35_macro_hierarchy_v2.py
+          python3 tools/audit_material_behaviors.py
+          python3 tools/audit_ecology_motion.py
+          python3 tools/validate_shader_contracts.py
+          git status --short
+          grep -q 'MAT_SLUICE_BOX' shaders/material_ids.glsl
+          grep -q 'TILE_MACRO_MOVABLE' shaders/macro_move.comp
+          grep -q 'halfWaterAhead' shaders/move.comp
+          grep -q 'STAT_MOVE_SWAPS' shaders/fullscreen.frag
