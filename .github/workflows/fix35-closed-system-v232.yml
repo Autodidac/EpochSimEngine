@@ -1,0 +1,338 @@
+name: FastFreddyTestbed Fix35 Closed-System v2.3.2
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'tools/apply_fix35_closed_system.py'
+      - '.github/workflows/fix35-closed-system-v232.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: fastfreddytestbed-fix35-closed-system-v232
+  cancel-in-progress: true
+
+env:
+  BASE_SHA: 0599aa462ba3295bc73293ff89cb6858a0e01137
+  RELEASE_TAG: v2.3.2
+  VCPKG_COMMIT: 04a735608afac5844e86fc91d6ba2112cac613c1
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Check out release controls
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+
+      - name: Check out exact v2.3.1 source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: work
+
+      - name: Apply closed-system correction
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C work rev-parse HEAD).Trim() -ne $env:BASE_SHA) { throw 'Wrong v2.3.1 base SHA.' }
+          Copy-Item control/tools/apply_fix35_closed_system.py work/tools/apply_fix35_closed_system.py -Force
+          Push-Location work
+          python tools/apply_fix35_closed_system.py
+          if ($LASTEXITCODE -ne 0) { throw 'Closed-system patch failed.' }
+          Remove-Item tools/apply_fix35_closed_system.py -Force
+          Pop-Location
+
+      - name: Audit source scope and contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location work
+          python tools/audit_material_behaviors.py
+          if ($LASTEXITCODE -ne 0) { throw 'Material audit failed.' }
+          python tools/audit_ecology_motion.py
+          if ($LASTEXITCODE -ne 0) { throw 'Ecology and movement audit failed.' }
+          python tools/validate_shader_contracts.py
+          if ($LASTEXITCODE -ne 0) { throw 'Shader contract audit failed.' }
+          $allowed = @(
+            'shaders/actor.comp',
+            'shaders/chemistry.comp',
+            'shaders/move.comp',
+            'tests/behavior_contract.cpp'
+          ) | Sort-Object
+          $changed = @((git status --porcelain=v1) | ForEach-Object { $_.Substring(3) }) | Sort-Object
+          if (Compare-Object $allowed $changed) { throw "Unexpected source delta: $($changed -join ', ')" }
+          $move = Get-Content shaders/move.comp -Raw
+          $chemistry = Get-Content shaders/chemistry.comp -Raw
+          $actor = Get-Content shaders/actor.comp -Raw
+          if ($move -notmatch 'AUX_HALF_MEDIUM_VOLUME_MASK' -or $move -notmatch 'lifeCanEnter') { throw 'Half-water/passable-medium contract failed.' }
+          if ($chemistry -match 'fallingWaterNear\(p\).*MAT_OXYGEN' -or $chemistry -notmatch 'fullyChokedByMedium') { throw 'Atmosphere contract failed.' }
+          if ($actor -match 'ambientAir' -or $actor -notmatch 'state.health -= 1u') { throw 'Actor suffocation contract failed.' }
+          Pop-Location
+
+      - name: Bootstrap pinned vcpkg
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'vcpkg'
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git $root
+          git -C $root checkout $env:VCPKG_COMMIT
+          & (Join-Path $root 'bootstrap-vcpkg.bat') -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed.' }
+          "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure Windows x64 C++23 Release
+        shell: pwsh
+        working-directory: work
+        run: |
+          cmake -S . -B build/windows -G 'Visual Studio 17 2022' -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DVCPKG_HOST_TRIPLET=x64-windows `
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=OFF `
+            -DEPOCH_SAND_ENABLE_VALIDATION=OFF `
+            -DBUILD_TESTING=ON
+          if ($LASTEXITCODE -ne 0) { throw 'Windows configure failed.' }
+
+      - name: Compile every Vulkan shader and C++23 target
+        shell: pwsh
+        working-directory: work
+        run: |
+          cmake --build build/windows --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed.' }
+          $shaders = @('reset.comp','paint.comp','sunlight.comp','tiles.comp','chunks.comp','chemistry.comp','macro_move.comp','move.comp','actor.comp','debug_stats.comp','fullscreen.vert','fullscreen.frag')
+          foreach ($shader in $shaders) {
+            $path = Join-Path 'build/windows/Release/shaders' ($shader + '.spv')
+            if (-not (Test-Path $path)) { throw "Missing compiled shader: $path" }
+          }
+
+      - name: Run Windows C++23 contracts
+        shell: pwsh
+        working-directory: work
+        run: |
+          ctest --test-dir build/windows -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Windows tests failed.' }
+
+      - name: Package Windows Release
+        shell: pwsh
+        working-directory: work
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dist = Join-Path $PWD 'dist/windows'
+          $stage = Join-Path $dist 'FastFreddyTestbed_Windows_x64_v2.3.2'
+          $archive = Join-Path $dist 'FastFreddyTestbed_Windows_x64_v2.3.2.zip'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item 'build/windows/Release/epoch_sand.exe' (Join-Path $stage 'FastFreddyTestbed.exe') -Force
+          Copy-Item 'build/windows/Release/shaders' (Join-Path $stage 'shaders') -Recurse -Force
+          Copy-Item 'build/windows/Release/scenes' (Join-Path $stage 'scenes') -Recurse -Force
+          Copy-Item README.md, HALF_WATER.md, LICENSE -Destination $stage -Force
+          @('@echo off','cd /d "%~dp0"','FastFreddyTestbed.exe') | Set-Content (Join-Path $stage 'run.bat') -Encoding ascii
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -CompressionLevel Optimal -Force
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "$hash  FastFreddyTestbed_Windows_x64_v2.3.2.zip" | Set-Content (Join-Path $dist 'SHA256SUMS-Windows.txt') -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FastFreddyTestbed-Windows-x64-v2.3.2
+          path: |
+            work/dist/windows/FastFreddyTestbed_Windows_x64_v2.3.2.zip
+            work/dist/windows/SHA256SUMS-Windows.txt
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CC: gcc-14
+      CXX: g++-14
+    steps:
+      - name: Check out release controls
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+
+      - name: Check out exact v2.3.1 source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: work
+
+      - name: Apply and audit closed-system correction
+        run: |
+          set -euo pipefail
+          test "$(git -C work rev-parse HEAD)" = "$BASE_SHA"
+          cp control/tools/apply_fix35_closed_system.py work/tools/
+          cd work
+          python3 tools/apply_fix35_closed_system.py
+          rm -f tools/apply_fix35_closed_system.py
+          python3 tools/audit_material_behaviors.py
+          python3 tools/audit_ecology_motion.py
+          python3 tools/validate_shader_contracts.py
+          expected=$(printf '%s\n' shaders/actor.comp shaders/chemistry.comp shaders/move.comp tests/behavior_contract.cpp | sort)
+          actual=$(git status --porcelain=v1 | cut -c4- | sort)
+          test "$actual" = "$expected" || { printf 'Unexpected source delta:\n%s\n' "$actual"; exit 1; }
+          grep -q 'AUX_HALF_MEDIUM_VOLUME_MASK' shaders/move.comp
+          grep -q 'lifeCanEnter' shaders/move.comp
+          grep -q 'fullyChokedByMedium' shaders/chemistry.comp
+          ! grep -Eq 'fallingWaterNear\(p\).*MAT_OXYGEN' shaders/chemistry.comp
+          grep -q 'state.health -= 1u' shaders/actor.comp
+          ! grep -q 'ambientAir' shaders/actor.comp
+
+      - name: Install Linux build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build gcc-14 g++-14 pkg-config libvulkan-dev libxcb1-dev libx11-xcb-dev
+
+      - name: Bootstrap pinned vcpkg
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/vcpkg"
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git "$root"
+          git -C "$root" checkout "$VCPKG_COMMIT"
+          "$root/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
+
+      - name: Configure Linux x64 C++23 Release
+        working-directory: work
+        run: |
+          cmake -S . -B build/linux -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_HOST_TRIPLET=x64-linux \
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=OFF \
+            -DEPOCH_SAND_ENABLE_VALIDATION=OFF \
+            -DBUILD_TESTING=ON
+
+      - name: Compile every Vulkan shader and C++23 target
+        working-directory: work
+        run: |
+          set -euo pipefail
+          cmake --build build/linux --parallel
+          for shader in reset.comp paint.comp sunlight.comp tiles.comp chunks.comp chemistry.comp macro_move.comp move.comp actor.comp debug_stats.comp fullscreen.vert fullscreen.frag; do
+            test -f "build/linux/shaders/$shader.spv"
+          done
+
+      - name: Run Linux C++23 contracts
+        working-directory: work
+        run: ctest --test-dir build/linux --output-on-failure
+
+      - name: Package Linux Release
+        working-directory: work
+        run: |
+          set -euo pipefail
+          dist="$PWD/dist/linux"
+          stage="$dist/FastFreddyTestbed_Linux_x64_v2.3.2"
+          archive="$dist/FastFreddyTestbed_Linux_x64_v2.3.2.tar.gz"
+          mkdir -p "$stage"
+          cp build/linux/epoch_sand "$stage/FastFreddyTestbed"
+          cp -R build/linux/shaders "$stage/shaders"
+          cp -R build/linux/scenes "$stage/scenes"
+          cp README.md HALF_WATER.md LICENSE "$stage/"
+          printf '#!/usr/bin/env bash\nset -euo pipefail\ncd "$(dirname "$0")"\nexec ./FastFreddyTestbed\n' > "$stage/run.sh"
+          chmod +x "$stage/run.sh" "$stage/FastFreddyTestbed"
+          tar -C "$dist" -czf "$archive" FastFreddyTestbed_Linux_x64_v2.3.2
+          sha256sum "$archive" | sed 's# .*/#  #' > "$dist/SHA256SUMS-Linux.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FastFreddyTestbed-Linux-x64-v2.3.2
+          path: |
+            work/dist/linux/FastFreddyTestbed_Linux_x64_v2.3.2.tar.gz
+            work/dist/linux/SHA256SUMS-Linux.txt
+          if-no-files-found: error
+
+  release:
+    needs: [windows, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out release controls
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+
+      - name: Check out exact verified v2.3.1 source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: work
+
+      - name: Materialize verified v2.3.2 source
+        run: |
+          set -euo pipefail
+          test "$(git -C work rev-parse HEAD)" = "$BASE_SHA"
+          current_main=$(git -C work ls-remote origin refs/heads/main | cut -f1)
+          test "$current_main" = "$BASE_SHA" || { echo "main moved to $current_main"; exit 1; }
+          cp control/tools/apply_fix35_closed_system.py work/tools/
+          cd work
+          python3 tools/apply_fix35_closed_system.py
+          rm -f tools/apply_fix35_closed_system.py
+          python3 tools/audit_material_behaviors.py
+          python3 tools/audit_ecology_motion.py
+          python3 tools/validate_shader_contracts.py
+          expected=$(printf '%s\n' shaders/actor.comp shaders/chemistry.comp shaders/move.comp tests/behavior_contract.cpp | sort)
+          actual=$(git status --porcelain=v1 | cut -c4- | sort)
+          test "$actual" = "$expected"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'FastFreddyTestbed Fix35: conserved atmosphere, passable life media, suffocation'
+          release_sha=$(git rev-parse HEAD)
+          git push origin HEAD:main
+          echo "RELEASE_SHA=$release_sha" >> "$GITHUB_ENV"
+
+      - name: Download verified packages
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Verify checksums and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          win_dir='artifacts/FastFreddyTestbed-Windows-x64-v2.3.2'
+          linux_dir='artifacts/FastFreddyTestbed-Linux-x64-v2.3.2'
+          (cd "$win_dir" && sha256sum -c SHA256SUMS-Windows.txt)
+          (cd "$linux_dir" && sha256sum -c SHA256SUMS-Linux.txt)
+          mkdir -p release
+          cp "$win_dir/FastFreddyTestbed_Windows_x64_v2.3.2.zip" release/
+          cp "$linux_dir/FastFreddyTestbed_Linux_x64_v2.3.2.tar.gz" release/
+          (cd release && sha256sum FastFreddyTestbed_Windows_x64_v2.3.2.zip FastFreddyTestbed_Linux_x64_v2.3.2.tar.gz > SHA256SUMS.txt)
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && \
+            gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create "$RELEASE_TAG" \
+            release/FastFreddyTestbed_Windows_x64_v2.3.2.zip \
+            release/FastFreddyTestbed_Linux_x64_v2.3.2.tar.gz \
+            release/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$RELEASE_SHA" \
+            --title 'FastFreddyTestbed v2.3.2 — Conserved Atmosphere and Suffocation' \
+            --notes 'Immediate correction on top of v2.3.1. Preserves the responsive UI, widened cursor controls, bee biohazard return cycle, oxygen-filled authored levels, compact sampled debug overlay, complete Fix35 GUI/material palette, conserved half-water, 8x8 macro hierarchy, and 64x64 sleeping chunks. Half-water now stores and restores displaced gas material and volume instead of creating oxygen, including diagonal half merging to reduce stranded pockets. Bees, ants, and beetles traverse gases and liquids by lossless displacement. Empty space is vacuum, oxygen is consumed into equal-volume CO2, photosynthesis exchanges CO2 back to oxygen, and living agents/plants plus the player suffocate when local conserved oxygen is absent or they are fully surrounded by non-breathable gas/liquid. All twelve Vulkan shaders, Windows and Linux C++23 Release builds, contracts, source audits, and package checksums passed.'
+
+      - name: Remove trigger branch and close PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGER_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          gh pr close ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" \
+            --comment 'v2.3.2 published; temporary workflow and patch controls removed.' || true
+          git -C work push origin --delete "$TRIGGER_BRANCH" || true
