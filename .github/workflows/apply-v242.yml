@@ -1,0 +1,60 @@
+name: Apply EpochSimEngine v2.4.2 runtime patch
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/epochsim-v242-runtime'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact runtime branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Verify and apply runtime patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            .github/v242.patch.part.00 \
+            .github/v242.patch.part.01 \
+            .github/v242.patch.part.02 \
+            .github/v242.patch.part.03 \
+            .github/v242.patch.part.04 \
+            .github/v242.patch.part.05a \
+            .github/v242.patch.part.05b \
+            > "${RUNNER_TEMP}/v242.patch.xz.b64"
+          base64 --decode "${RUNNER_TEMP}/v242.patch.xz.b64" > "${RUNNER_TEMP}/v242.patch.xz"
+          echo "593af7f0b6b46508dddd015e9cd0b51415d1dd896e28697b6f80e5661293a57e  ${RUNNER_TEMP}/v242.patch.xz" | sha256sum -c -
+          xz --decompress --stdout "${RUNNER_TEMP}/v242.patch.xz" > "${RUNNER_TEMP}/v242.patch"
+          echo "f3c5012552a8c7af5c05deeba77170d13685cb500ffaa4856420a24c912c38ea  ${RUNNER_TEMP}/v242.patch" | sha256sum -c -
+          git apply --check "${RUNNER_TEMP}/v242.patch"
+          git apply --index "${RUNNER_TEMP}/v242.patch"
+          rm -f \
+            .github/v242.patch.b64 \
+            .github/v242.patch.part.00 \
+            .github/v242.patch.part.01 \
+            .github/v242.patch.part.02 \
+            .github/v242.patch.part.03 \
+            .github/v242.patch.part.04 \
+            .github/v242.patch.part.05a \
+            .github/v242.patch.part.05b \
+            .github/workflows/apply-v242.yml
+          git add -A
+
+      - name: Commit clean source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "EpochSimEngine Runtime Agent"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "EpochSimEngine v2.4.2 runtime implementation pass"
+          git push origin "HEAD:${{ github.head_ref }}"
