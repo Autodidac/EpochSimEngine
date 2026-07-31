@@ -74,7 +74,7 @@ jobs:
           echo '04d581fb71385fba445f2d1d0070c567d0753fb118609977f72b24500680c2e6  '"${RUNNER_TEMP}/debug-map.patch" | sha256sum -c -
           git apply --check "${RUNNER_TEMP}/debug-map.patch"
           git apply --index "${RUNNER_TEMP}/debug-map.patch"
-          rm -f "${parts[@]}"
+          rm -f "${parts[@]}" .github/debug-map.import-trigger
           git add -A
           echo 'applied=true' >> "$GITHUB_OUTPUT"
 
