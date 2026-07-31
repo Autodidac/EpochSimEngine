@@ -1,0 +1,35 @@
+name: EpochSimEngine Source Export
+
+on:
+  push:
+    branches:
+      - agent/runtime-regression-cache-v242
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Package source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git --exclude=EpochSimEngine-source.tar.gz -czf EpochSimEngine-source.tar.gz .
+          sha256sum EpochSimEngine-source.tar.gz > EpochSimEngine-source.tar.gz.sha256
+
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EpochSimEngine-source
+          path: |
+            EpochSimEngine-source.tar.gz
+            EpochSimEngine-source.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 1
