@@ -59,7 +59,7 @@ jobs:
           grep -q 'BEE_COLONY_MAX = 100u' shaders/bee_swarm.glsl
           grep -q 'approved suspended hive' shaders/reset.comp
           grep -q 'beeRoll < demand.x' shaders/chemistry.comp
-          grep -q 'represented atmosphere' shaders/macro_move.comp
+          grep -q 'Open space is represented by gas' shaders/macro_move.comp
           ! grep -q 'regionSupported(sourceOrigin, source) && target.material == MAT_EMPTY' shaders/macro_move.comp
       - name: Install prerequisites
         run: |
