@@ -1,9 +1,11 @@
 name: EpochSimEngine Source Export
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/runtime-regression-cache-v242
+      - main
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,7 +14,7 @@ jobs:
   export:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout exact branch
+      - name: Checkout exact PR source
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
