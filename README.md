@@ -1,6 +1,6 @@
 # EpochSimEngine
 
-Read `missioncache.md` before repository work; `MISSION_LEDGER.md` records the current release gate.
+Read `missioncache.md` before repository work. It is the single canonical mission document.
 
 EpochSimEngine is currently a standalone C++23 Vulkan material, terrain, ecology, factory, and combat simulation testbed. Fine particles, liquids, gases, machines, actors, and aligned Terraria-style terrain blocks share one deterministic cell simulation. There is no second rigid-body or voxel physics world.
 
@@ -188,7 +188,15 @@ All scenes use the same canonical material and structural rules.
 - `F3`: structural/debug overlay
 - Hold `Alt`: inspect exact cell
 - Mouse wheel over world: brush radius
+- Middle-mouse drag: pan camera
+- Move the mouse to a simulation-view edge: pan camera continuously
+- `0`: reset camera to the authored map at the bottom of the expanded world
+- Cell/Tile placement selector: place any selected material as fine cells or one aligned 8x8 tile
 - Escape: exit
+
+### Scenes without a player
+
+- `W` / `A` / `S` / `D`: pan camera
 
 ### Character scenes
 
@@ -211,7 +219,7 @@ All scenes use the same canonical material and structural rules.
 - machine work restricted to valid controller/output locations
 - paused state performs no continuous simulation ticks
 
-The current storage remains a dense 640x360 GPU grid for deterministic direct lookup and simple save compatibility. Stable regions still receive the minimal dispatch envelope but exit before expensive chemistry, neighborhood, and movement work. A later sparse-chunk allocator can replace storage without changing canonical material rules.
+The current world is a dense 5120x2880 GPU grid. Authored 640x360 scene content is centered at the bottom of that world. The active simulation gate uses map-footprint-sized 640x360 regions in a 17-position starburst around the camera; everything outside the active set is rejected by simulation shaders. Stable regions still exit before expensive chemistry, neighborhood, and movement work. Sparse far-region streaming remains an open mission in `missioncache.md`.
 
 ## Windows build
 

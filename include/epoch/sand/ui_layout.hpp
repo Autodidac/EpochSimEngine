@@ -13,7 +13,7 @@ inline constexpr std::uint32_t group_tabs_height = 112u;
 inline constexpr std::uint32_t palette_items_height = 136u;
 inline constexpr std::uint32_t eraser_height = 24u;
 inline constexpr std::uint32_t keymap_height = 126u;
-inline constexpr std::uint32_t cursor_editor_height = 92u;
+inline constexpr std::uint32_t cursor_editor_height = 120u;
 inline constexpr std::uint32_t palette_height = 0u;
 inline constexpr float margin = 5.0f;
 inline constexpr float gap = 3.0f;
@@ -22,6 +22,7 @@ struct Layout final {
     epochengine::gui_lib::Rect status{}, simulation{}, group_tabs{}, palette{};
     epochengine::gui_lib::Rect previous_scene{}, next_scene{}, reset_scene{}, save_scene{}, load_scene{};
     epochengine::gui_lib::Rect mode_toggle{}, debug_toggle{}, eraser{}, keymap{}, cursor_editor{}, material_card{};
+    epochengine::gui_lib::Rect placement_cells{}, placement_tiles{};
     epochengine::gui_lib::Rect cursor_circle{}, cursor_square{}, cursor_horizontal{}, cursor_vertical{};
     epochengine::gui_lib::Rect brush_smaller{}, brush_larger{}, zoom_out{}, zoom_in{};
 };
@@ -85,14 +86,20 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
     const float cursor_top = keymap_top + float(keymap_height) + gap;
     layout.cursor_editor = {{content_left, cursor_top}, {content_width, float(cursor_editor_height)}};
 
-    const float shape_top = cursor_top + 23.0f;
+    const float placement_top = cursor_top + 23.0f;
+    const float placement_width = content_width / 2.0f;
+    layout.placement_cells = {{content_left, placement_top}, {placement_width, 26.0f}};
+    layout.placement_tiles = {{content_left + placement_width, placement_top},
+                              {content_width - placement_width, 26.0f}};
+
+    const float shape_top = cursor_top + 53.0f;
     const float shape_width = content_width / 4.0f;
     layout.cursor_circle = {{content_left, shape_top}, {shape_width, 24.0f}};
     layout.cursor_square = {{content_left + shape_width, shape_top}, {shape_width, 24.0f}};
     layout.cursor_horizontal = {{content_left + shape_width * 2.0f, shape_top}, {shape_width, 24.0f}};
     layout.cursor_vertical = {{content_left + shape_width * 3.0f, shape_top}, {shape_width, 24.0f}};
 
-    const float control_top = cursor_top + 60.0f;
+    const float control_top = cursor_top + 89.0f;
     const float half = content_width / 2.0f;
     constexpr float control_button_width = 44.0f;
     layout.brush_smaller = {{content_left + 4.0f, control_top}, {control_button_width, 26.0f}};

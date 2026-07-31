@@ -359,19 +359,21 @@ void updateBreathing(inout ActorState state) {
 void resetActor(inout ActorState state) {
     state = ActorState(0, 0, 0, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
                        255u, 255u, 0, 0, actorPc.scene, 0u, 0u, 0u, 0u, 1u);
+    int authoredOriginX = max((int(actorPc.width) - 640) / 2, 0);
+    int authoredOriginY = max(int(actorPc.height) - 360, 0);
     if (actorPc.scene == SCENE_GOLD_MINE) {
-        state.x = 78;
-        state.y = 127;
+        state.x = authoredOriginX + 78;
+        state.y = authoredOriginY + 127;
         state.ammo = 18u;
         state.enabled = 1u;
     } else if (actorPc.scene == SCENE_DEMOLITION) {
-        state.x = int(actorPc.width / 8u);
-        state.y = min(int(actorPc.height), 360) - 36;
+        state.x = authoredOriginX + 80;
+        state.y = authoredOriginY + 324;
         state.ammo = 12u;
         state.enabled = 1u;
     } else if (actorPc.scene == SCENE_FRONTIER_BASE) {
-        state.x = 168;
-        state.y = 200;
+        state.x = authoredOriginX + 168;
+        state.y = authoredOriginY + 200;
         state.ammo = 24u;
         state.enabled = 1u;
     }

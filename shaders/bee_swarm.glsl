@@ -10,6 +10,8 @@ const uint BEE_AUX_FED = 0x10000000u;
 const uint BEE_AUX_SWARM = 0x08000000u;
 const uint BEE_AUX_MIGRATING = 0x02000000u;
 const uint BEE_METADATA_MASK = 0x00ffffffu;
+const uint BEE_AUTHORED_HOME_SLOT_BIT = 0x80u;
+const ivec2 BEE_AUTHORED_WORLD_CELLS = ivec2(640, 360);
 
 const uint BEE_SWARM_BIOHAZARD_TICKS = 1800u;
 const uint BEE_SWARM_ALTERNATE_TICKS = 600u;
@@ -59,16 +61,31 @@ int beeFormationSlotFromOffset(ivec2 offset) {
     return -1;
 }
 
-uint beeFormationSlotFromAux(uint aux) { return (aux >> 15u) & 255u; }
-
-ivec2 beeHomeCenterFromAux(uint aux) {
-    return ivec2(int(aux & 255u) * 4, int((aux >> 8u) & 127u) * 4);
+uint beeRawSlotFromAux(uint aux) { return (aux >> 15u) & 255u; }
+uint beeFormationSlotFromAux(uint aux) { return beeRawSlotFromAux(aux) & 127u; }
+bool beeUsesAuthoredHome(uint aux) {
+    return (beeRawSlotFromAux(aux) & BEE_AUTHORED_HOME_SLOT_BIT) != 0u;
 }
 
-uint beePackMetadata(uint aux, ivec2 homeCenter, uint slot) {
-    uint homeX = uint(clamp(homeCenter.x / 4, 0, 255));
-    uint homeY = uint(clamp(homeCenter.y / 4, 0, 127));
-    uint metadata = homeX | (homeY << 8u) | ((slot & 255u) << 15u);
+ivec2 beeAuthoredWorldOrigin(uint width, uint height) {
+    return ivec2(max((int(width) - BEE_AUTHORED_WORLD_CELLS.x) / 2, 0),
+                 max(int(height) - BEE_AUTHORED_WORLD_CELLS.y, 0));
+}
+
+ivec2 beeHomeCenterFromAux(uint aux, uint width, uint height) {
+    ivec2 home = ivec2(int(aux & 255u) * 4, int((aux >> 8u) & 127u) * 4);
+    return beeUsesAuthoredHome(aux) ? home + beeAuthoredWorldOrigin(width, height) : home;
+}
+
+uint beePackMetadata(uint aux, ivec2 homeCenter, uint slot, uint width, uint height) {
+    ivec2 authoredOrigin = beeAuthoredWorldOrigin(width, height);
+    bool authored = all(greaterThanEqual(homeCenter, authoredOrigin)) &&
+                    all(lessThan(homeCenter, authoredOrigin + BEE_AUTHORED_WORLD_CELLS));
+    ivec2 storedHome = authored ? homeCenter - authoredOrigin : homeCenter;
+    uint homeX = uint(clamp(storedHome.x / 4, 0, 255));
+    uint homeY = uint(clamp(storedHome.y / 4, 0, 127));
+    uint packedSlot = (slot & 127u) | (authored ? BEE_AUTHORED_HOME_SLOT_BIT : 0u);
+    uint metadata = homeX | (homeY << 8u) | (packedSlot << 15u);
     return (aux & ~BEE_METADATA_MASK) | metadata;
 }
 
@@ -105,12 +122,12 @@ ivec2 beeRotateOffset(ivec2 offset, uint phase) {
     return offset;
 }
 
-uint beeSwarmState(uint aux, uint step) {
+uint beeSwarmState(uint aux, uint step, uint width, uint height) {
     uint local = step % BEE_SWARM_CYCLE_TICKS;
     uint phase = local / BEE_SWARM_PHASE_TICKS;
     uint phaseLocal = local % BEE_SWARM_PHASE_TICKS;
     if (phaseLocal < BEE_SWARM_BIOHAZARD_TICKS) return 0u;
-    ivec2 home = beeHomeCenterFromAux(aux);
+    ivec2 home = beeHomeCenterFromAux(aux, width, height);
     uint cycle = step / BEE_SWARM_CYCLE_TICKS;
     bool reverse = (beeHash32(uint(home.x) * 73856093u ^ uint(home.y) * 19349663u ^ cycle) & 1u) != 0u;
     return reverse ? 2u - phase : 1u + phase;
@@ -144,17 +161,19 @@ ivec2 beeCloudTargetOffset(uint slot, uint step) {
            beeRotateOffset(ivec2(1, 0), step / 2u + slot * 3u);
 }
 
-ivec2 beeSwarmTarget(uint aux, uint step) {
+ivec2 beeSwarmTarget(uint aux, uint step, uint width, uint height) {
     uint slot = beeFormationSlotFromAux(aux);
-    ivec2 home = beeHomeCenterFromAux(aux);
-    uint state = beeSwarmState(aux, step);
+    ivec2 home = beeHomeCenterFromAux(aux, width, height);
+    uint state = beeSwarmState(aux, step, width, height);
     ivec2 offset = state == 0u ? beeBiohazardTargetOffset(slot, step, home) :
                    (state == 1u ? beeHaloTargetOffset(slot, step)
                                 : beeCloudTargetOffset(slot, step));
     return home + offset;
 }
 
-ivec2 beeOrbitTarget(uint aux, uint step) { return beeSwarmTarget(aux, step); }
+ivec2 beeOrbitTarget(uint aux, uint step, uint width, uint height) {
+    return beeSwarmTarget(aux, step, width, height);
+}
 
 ivec2 beeLandingOffset(uint slot) {
     switch (slot & 15u) {

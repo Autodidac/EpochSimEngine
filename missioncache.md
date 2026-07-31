@@ -70,7 +70,9 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 | MC-042 | PARTIAL | Clarify movement counters | Use `FINE SWAPS`, `BULK MOVES`, `BULK CELLS`, `FINE REPAIR`, `ACTOR MOVES`, `GAS EXCESS`, `PLAYER IMP`, `GAS TILES`, `LIQUID TILES`, `ENCLOSED TILES`, and `BREAKUP TILES`. Runtime values must correspond to actual work and ownership transitions. |
 | MC-043 | PARTIAL | Preserve lower GPU use | Timestamp overlay, grid, text, stats, bulk, fine, Atmosphere excess, actors, collision impulses, and presentation independently. |
 | MC-044 | OPEN | Remove grid-edge coupling | Debug grid is presentation-only and never influences movement/rest. |
-| MC-045 | PARTIAL | High-contrast readable debug UI | Debug text scales to 2x on ordinary desktop viewports, categories use distinct high-contrast colors, tile/chunk boundaries remain readable, and an on-screen color key exactly matches damaged, stable, bulk-moved, fine-active, bulk-ready, settled, sleeping, active, enclosed, and breakup overlays. Narrow windows may fall back to 1x without clipping. |
+| MC-045 | PARTIAL | High-contrast readable debug UI | Preserve the accepted current text size. Categories use distinct high-contrast colors, tile/chunk and active-region boundaries remain readable, and the color key exactly matches damaged, stable, bulk-moved, fine-active, bulk-ready, settled, sleeping, active, enclosed, and breakup overlays. |
+| MC-046 | REGRESSION | Debug never blocks the world | On ordinary layouts the complete debug panel occupies the existing sidebar instead of covering the simulation viewport. The world remains visible and interactive; no full-screen stats rectangle is permitted. Very small windows may hide or page nonessential counters, but may not cover the simulation. |
+| MC-047 | OPEN | Universal cell-or-tile placement | Every selectable material can be painted as ordinary fine cells or as one aligned 8x8 tile packet through an explicit `CELLS` / `TILES` selector. Placement preserves canonical material behavior, conservation, machine metadata, actor rules, cursor mapping, and dirty-region wakeup. Block-capable material is not forced into tile mode. |
 
 ## Chemistry and materials
 
@@ -82,25 +84,30 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 
 ## World, camera, scheduling, streaming, and concurrency
 
-The canonical active shape is a **17-section starburst** centered on the camera section:
+The canonical active shape is a **17-region starburst** centered on the camera's current map-footprint region. One active region is the complete pre-expansion map size: **640x360 cells**, never a 64x64 chunk and never an 8x8 tile.
 
-- one center section;
-- eight adjacent sections at distance 1: N, NE, E, SE, S, SW, W, NW;
-- eight outer sections at distance 2 along the same directions;
-- no other section animates.
+- one center 640x360 region;
+- eight adjacent map-sized regions at distance 1: N, NE, E, SE, S, SW, W, NW;
+- eight outer map-sized regions at distance 2 along the same directions;
+- world bounds clip unavailable spokes;
+- no other region animates.
+
+If runtime profiling proves the map-sized starburst too expensive, the only permitted fallback is an explicit camera-visible-region mode. It must be visible in the HUD/debug state and may never silently reinterpret the radius in chunk or tile units.
 
 | ID | Status | Mission | Acceptance |
 |---|---|---|---|
 | MC-060 | OPEN | Camera-visible state availability | Every section visible at supported zoom is loaded and renderable. Paused sections may show their frozen state but never missing or uninitialized data. |
-| MC-061 | OPEN | Camera-centered 17-section starburst | Animate exactly the center plus the eight direction spokes at distance 1 and distance 2, clipped only by world bounds. This supersedes the rejected 7x7 and twelve-nearest plans. |
-| MC-062 | OPEN | Hard pause outside starburst | Outside MC-061: no movement, chemistry, ecology, actors, Atmosphere transport, pressure propagation, or simulation-debug work. Wake deterministically upon entry. |
+| MC-061 | PARTIAL | Camera-centered 17 map-area starburst | Animate exactly the center 640x360 map-footprint region plus the eight map-sized direction regions at distance 1 and distance 2, clipped only by world bounds. Code and debug must never treat 64x64 chunks or 8x8 tiles as these active regions. Runtime profiling must prove the scope; an explicit camera-visible fallback is allowed only when shown in the HUD. |
+| MC-062 | PARTIAL | Hard pause outside active map areas | Outside MC-061: no movement, chemistry, ecology, actors, Atmosphere transport, pressure propagation, or simulation-debug work. Wake deterministically upon entry. Frozen regions remain renderable and cannot corrupt authored maps. |
 | MC-063 | OPEN | Far-section disk streaming | Serialize clean distant paused sections, free buffers where appropriate, and reload deterministically with versioned corruption-safe saves. |
-| MC-064 | OPEN | Automatic section worker scheduler | Reserve the main thread completely for windowing, input, rendering coordination, and everything non-section-related; simulation jobs never run there. Determine hardware concurrency automatically. Use up to 17 simulation workers, one per active starburst section when at least 18 hardware threads exist including the reserved main thread. With fewer than 18, every missing worker causes one worker to take an additional section; assign these doubled loads from the furthest outer-ring sections first, then continue deterministic outer-to-inner round-robin only if hardware is very limited. Never oversubscribe, never schedule paused sections, and preserve deterministic boundary results. |
+| MC-064 | PARTIAL | Automatic active-region worker scheduler | Reserve the main thread completely for windowing, input, rendering coordination, and everything non-region-related; simulation jobs never run there. Determine hardware concurrency automatically. Use up to 17 simulation workers, one per active 640x360 map-area region when at least 18 hardware threads exist including the reserved main thread. With fewer than 18, pair additional regions onto workers from the furthest outer spokes first. Never oversubscribe, never schedule paused regions, and preserve deterministic boundary results. Current scheduler assignment exists; actual independent region execution remains runtime-unverified. |
 | MC-065 | OPEN | Coroutine review | Use C++23 coroutines only for asynchronous streaming/I/O where useful, never Vulkan submission or per-cell hot paths. |
 | MC-066 | OPEN | Safe pause/wake/boundary transfer | Resolve pending transfers, actors, impulses, pressure, and dependencies before pause. Crossing the starburst edge conserves all state without allowing the paused side to animate. |
-| MC-067 | OPEN | Expand world 8x8 dimensions | Width becomes 8 times current width and height becomes 8 times current height: 64 times current cell area. Update generation, buffers, indexing, saves, limits, and overflow checks. |
-| MC-068 | OPEN | Camera zero/reset | Explicit reset returns camera pan/offset to world origin zero and documented default zoom without touching simulation state. |
-| MC-069 | OPEN | 2x2 maximum zoom-out | Maximum zoom-out displays four pre-expansion world footprints in a 2x2 view; clamp there and preserve input/cursor mapping and culling. |
+| MC-067 | PARTIAL | Expand world 8x8 dimensions | Width is 8 times the old width and height is 8 times the old height: 64 times the old cell area. Update generation, buffers, indexing, saves, limits, overflow checks, and profiling. Static dimensions exist; runtime memory/performance acceptance remains open. |
+| MC-068 | PARTIAL | Camera home/reset | Explicit reset returns camera to the authored 640x360 map at the bottom center of the expanded world and the documented default zoom without touching simulation state. |
+| MC-069 | PARTIAL | 2x2 maximum zoom-out | Maximum zoom-out displays four pre-expansion world footprints in a 2x2 view; clamp there and preserve input/cursor mapping, active-scope clarity, and culling. |
+| MC-074 | REGRESSION | Bottom-centered authored maps | Every authored scene occupies exactly one 640x360 footprint centered horizontally at the absolute bottom of the expanded world. Scene generation never repeats, stretches, or fills the remaining 8x8 world; actors, hives, machines, metadata, saves, reset, and camera home use the same offset. |
+| MC-075 | OPEN | Complete camera navigation and scope HUD | Middle-mouse drag, mouse-edge scrolling, and camera reset work at every zoom. On scenes without a player, W/A/S/D pan the camera; player scenes retain W/A/S/D player controls. The sidebar always shows current zoom, active-region mode, and active-region count, while debug draws map-area boundaries clearly. |
 
 ## Library architecture
 
@@ -123,11 +130,11 @@ The canonical active shape is a **17-section starburst** centered on the camera 
 - Gas-solid contact is collision only: solids prevent penetration but never apply tangential friction, sticky-wall drag, or adjacency-based sleeping to gas.
 - Mud and wet bulk elements continue gravity-driven erosion at the same material-defined rate as equivalent fine cells.
 - Player/actor disturbance transfers bounded momentum/pressure without erasing or minting medium.
-- Only the 17-section camera starburst animates; every other section is paused.
+- Only the 17-position starburst of whole 640x360 map-area regions animates; unavailable spokes are clipped by world bounds and every other region is paused.
 - The main thread never executes section simulation work.
-- Worker assignment is deterministic and pairs outer sections first when fewer than 17 workers are available.
+- Worker assignment is deterministic and pairs outer map-area regions first when fewer than 17 workers are available.
 - World expansion, zoom, pausing, streaming, and concurrency do not change deterministic reference results.
-- The withdrawn camera-clipped debug-view idea is not active.
+- Debug statistics never cover the normal simulation viewport; debug state coloring and active-area boundaries may render in the world.
 - 8x8 terrain regions qualify for stability only and never reconstruct missing cells.
 - Each terrain pixel takes two laser hits; after more than half are dislodged, the represented remainder collapses rather than vanishes.
 - Failed, missed, deferred, and regressed missions remain active until accepted.
@@ -145,6 +152,10 @@ Shipped cached 8x8 classification, supported structural solids, canonical wet st
 Source: `c73d0b97804bdefb1552a3f5ce613682d414c3ff`
 
 Windows/Linux C++23 builds, shaders, tests, packages, and checksums passed. Runtime reopened hives, actors, Atmosphere, parity, and settling missions.
+
+## v2.4.2 — runtime hierarchy, scheduling, and diagnostics pass
+
+Runtime source merge: `2db7a6dad20a88f1ce65f54e3978f7f0daa9736f`. Windows/Linux CI run `30661800841` compiled all 12 shaders, built the C++23 library and demo, passed four contracts, and produced the published `v2.4.2` packages. Runtime observation reopened or retained the debug-layout, map placement, active-scope, settling, actors, Atmosphere, and hierarchy missions above.
 
 ## Carry-forward rule
 

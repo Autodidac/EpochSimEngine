@@ -478,13 +478,17 @@ def main() -> int:
              "steps_per_frame", "selected_group", "hovered_group", "hovered_material", "selected_scene",
              "group_count", "scene_count", "mining_mode", "inspect_mode", "debug_mode", "tile_columns",
              "tile_rows", "viewport_left", "viewport_top", "viewport_width", "viewport_height",
-             "view_origin_x", "view_origin_y", "view_width", "view_height", "brush_shape"],
+             "view_origin_x", "view_origin_y", "view_width", "view_height", "brush_shape",
+             "placement_mode", "active_area_count", "active_area_x", "active_area_y",
+             "active_scope_mode"],
             ["gridWidth", "gridHeight", "windowWidth", "windowHeight", "selectedMaterial",
              "materialCount", "cursorX", "cursorY", "brushRadius", "statusHeight", "paletteHeight",
              "groupTabsHeight", "materialSlots", "framesPerSecond", "paused", "stepsPerFrame",
              "selectedGroup", "hoveredGroup", "hoveredMaterial", "selectedScene", "groupCount",
              "sceneCount", "miningMode", "inspectMode", "debugMode", "tileColumns", "tileRows", "viewportLeft", "viewportTop", "viewportWidth", "viewportHeight",
-             "viewOriginX", "viewOriginY", "viewWidth", "viewHeight", "brushShape"],
+             "viewOriginX", "viewOriginY", "viewWidth", "viewHeight", "brushShape",
+             "placementMode", "activeAreaCount", "activeAreaX", "activeAreaY",
+             "activeScopeMode"],
             renderer,
             "renderPc",
         ),
@@ -512,7 +516,42 @@ def main() -> int:
         errors.append("tile grid is not isolated behind debug visualization")
     actor = (SHADERS / "actor.comp").read_text(encoding="utf-8")
     reset = (SHADERS / "reset.comp").read_text(encoding="utf-8")
+    paint = (SHADERS / "paint.comp").read_text(encoding="utf-8")
+    chunks_contract = (SHADERS / "chunks.glsl").read_text(encoding="utf-8")
     app_cpp = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
+    section_header = (ROOT / "include/epoch/sand/section_scheduler.hpp").read_text(encoding="utf-8")
+    for token in (
+        "active_region_width_cells = 640",
+        "active_region_height_cells = 360",
+    ):
+        if token not in section_header:
+            errors.append(f"map-area active scope missing C++ contract {token!r}")
+    for token in (
+        "ACTIVE_REGION_WIDTH_CELLS = 640",
+        "ACTIVE_REGION_HEIGHT_CELLS = 360",
+    ):
+        if token not in chunks_contract:
+            errors.append(f"map-area active scope missing GLSL contract {token!r}")
+    for token in (
+        "bool tileMode = ((pc.material >> 18u) & 1u) != 0u;",
+        "Cell cell = isBlockCapable(material) ? makeStructuralCell(material, anchored)",
+    ):
+        if token not in paint:
+            errors.append(f"universal cell/tile placement contract missing {token!r}")
+    for token in (
+        "int x = max((int(pc.width) - AUTHORED_WORLD_CELLS.x) / 2, 0);",
+        "int y = max(int(pc.height) - AUTHORED_WORLD_CELLS.y, 0);",
+    ):
+        if token not in reset:
+            errors.append(f"bottom-centered authored map contract missing {token!r}")
+    for token in (
+        "edge_band_pixels = 28",
+        "if (!player_scene)",
+        "layout.placement_cells",
+        "layout.placement_tiles",
+    ):
+        if token not in app_cpp:
+            errors.append(f"camera/placement input contract missing {token!r}")
     if "recordConservation(oxygen, carbonDioxide)" not in actor:
         errors.append("actor respiration does not exchange oxygen for equal-volume CO2")
     if "state.y < 112" in actor:

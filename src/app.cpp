@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <exception>
@@ -93,12 +94,46 @@ void zoom_at_pointer(SharedState& state, const SimulationConfig& config,
     state.camera_center_y.store(origin_y + static_cast<int>(new_height / 2u), std::memory_order_relaxed);
 }
 
+void set_camera_center_clamped(SharedState& state, const SimulationConfig& config,
+                               const CameraView& view, const int center_x,
+                               const int center_y) noexcept {
+    const auto half_width = static_cast<int>(view.width / 2u);
+    const auto half_height = static_cast<int>(view.height / 2u);
+    const auto min_x = half_width;
+    const auto min_y = half_height;
+    const auto max_x = static_cast<int>(config.grid_width) -
+                       static_cast<int>(view.width - view.width / 2u);
+    const auto max_y = static_cast<int>(config.grid_height) -
+                       static_cast<int>(view.height - view.height / 2u);
+    state.camera_center_x.store(std::clamp(center_x, min_x, max_x),
+                                std::memory_order_relaxed);
+    state.camera_center_y.store(std::clamp(center_y, min_y, max_y),
+                                std::memory_order_relaxed);
+}
+
+void pan_camera_cells(SharedState& state, const SimulationConfig& config,
+                      const int delta_x, const int delta_y) noexcept {
+    if (delta_x == 0 && delta_y == 0) return;
+    const auto zoom = state.camera_zoom.load(std::memory_order_relaxed);
+    const auto view = camera_view(state, config, zoom);
+    set_camera_center_clamped(
+        state, config, view,
+        state.camera_center_x.load(std::memory_order_relaxed) + delta_x,
+        state.camera_center_y.load(std::memory_order_relaxed) + delta_y);
+}
+
 void reset_camera_to_zero(SharedState& state, const SimulationConfig& config) noexcept {
     const auto visible_width = (std::max)(8u, config.grid_width / camera_zoom_default);
     const auto visible_height = (std::max)(8u, config.grid_height / camera_zoom_default);
+    const auto map_origin_x = config.grid_width > pre_expansion_world_width
+        ? (config.grid_width - pre_expansion_world_width) / 2u : 0u;
+    const auto map_origin_y = config.grid_height > pre_expansion_world_height
+        ? config.grid_height - pre_expansion_world_height : 0u;
     state.camera_zoom.store(camera_zoom_default, std::memory_order_relaxed);
-    state.camera_center_x.store(static_cast<int>(visible_width / 2u), std::memory_order_relaxed);
-    state.camera_center_y.store(static_cast<int>(visible_height / 2u), std::memory_order_relaxed);
+    const CameraView view{map_origin_x, map_origin_y, visible_width, visible_height};
+    set_camera_center_clamped(state, config, view,
+                              static_cast<int>(map_origin_x + visible_width / 2u),
+                              static_cast<int>(map_origin_y + visible_height / 2u));
 }
 
 } // namespace
@@ -142,6 +177,9 @@ int run_application() {
     std::int32_t pan_last_y = 0;
     std::int64_t pan_remainder_x = 0;
     std::int64_t pan_remainder_y = 0;
+    double camera_key_remainder_x = 0.0;
+    double camera_key_remainder_y = 0.0;
+    auto last_camera_update = std::chrono::steady_clock::now();
     bool ready_title_applied = false;
     while (!shared_state.quit.load(std::memory_order_acquire) && window.poll(input)) {
         if (!ready_title_applied && renderer_ready.load(std::memory_order_acquire)) {
@@ -183,12 +221,14 @@ int run_application() {
             shared_state.reset.store(true, std::memory_order_release);
             shared_state.mining_mode.store(scene_has_character(scene),
                                            std::memory_order_release);
+            reset_camera_to_zero(shared_state, simulation_config);
         } else if (input.previous_scene) {
             scene = previous_scene(scene);
             shared_state.selected_scene.store(static_cast<std::uint32_t>(scene), std::memory_order_relaxed);
             shared_state.reset.store(true, std::memory_order_release);
             shared_state.mining_mode.store(scene_has_character(scene),
                                            std::memory_order_release);
+            reset_camera_to_zero(shared_state, simulation_config);
         } else if (input.reset) {
             shared_state.reset.store(true, std::memory_order_release);
         }
@@ -240,20 +280,8 @@ int run_application() {
                 pan_remainder_x %= denominator_x;
                 pan_remainder_y %= denominator_y;
 
-                const auto half_width = static_cast<int>(view.width / 2u);
-                const auto half_height = static_cast<int>(view.height / 2u);
-                const auto min_x = half_width;
-                const auto min_y = half_height;
-                const auto max_x = static_cast<int>(simulation_config.grid_width) -
-                                   static_cast<int>(view.width - view.width / 2u);
-                const auto max_y = static_cast<int>(simulation_config.grid_height) -
-                                   static_cast<int>(view.height - view.height / 2u);
-                shared_state.camera_center_x.store(std::clamp(
-                    shared_state.camera_center_x.load(std::memory_order_relaxed) +
-                        static_cast<int>(shift_x), min_x, max_x), std::memory_order_relaxed);
-                shared_state.camera_center_y.store(std::clamp(
-                    shared_state.camera_center_y.load(std::memory_order_relaxed) +
-                        static_cast<int>(shift_y), min_y, max_y), std::memory_order_relaxed);
+                pan_camera_cells(shared_state, simulation_config,
+                                 static_cast<int>(shift_x), static_cast<int>(shift_y));
             }
         } else {
             pan_dragging = false;
@@ -261,21 +289,69 @@ int run_application() {
             pan_remainder_y = 0;
         }
 
+        const auto camera_now = std::chrono::steady_clock::now();
+        const auto camera_seconds = std::clamp(
+            std::chrono::duration<double>(camera_now - last_camera_update).count(), 0.0, 0.05);
+        last_camera_update = camera_now;
+        int camera_direction_x = 0;
+        int camera_direction_y = 0;
+        const bool player_scene = scene_has_character(scene);
+        if (!player_scene) {
+            camera_direction_x += (input.move_right ? 1 : 0) - (input.move_left ? 1 : 0);
+            camera_direction_y += (input.move_down ? 1 : 0) - (input.move_up ? 1 : 0);
+        }
+        if (over_simulation && !pan_dragging) {
+            constexpr int edge_band_pixels = 28;
+            const int local_x = input.mouse_x - static_cast<int>(simulation_viewport.rect.position.x);
+            const int local_y = input.mouse_y - static_cast<int>(simulation_viewport.rect.position.y);
+            const int viewport_width = static_cast<int>(simulation_viewport.rect.size.x);
+            const int viewport_height = static_cast<int>(simulation_viewport.rect.size.y);
+            if (local_x >= 0 && local_x < edge_band_pixels) --camera_direction_x;
+            else if (local_x < viewport_width &&
+                     local_x >= viewport_width - edge_band_pixels) ++camera_direction_x;
+            if (local_y >= 0 && local_y < edge_band_pixels) --camera_direction_y;
+            else if (local_y < viewport_height &&
+                     local_y >= viewport_height - edge_band_pixels) ++camera_direction_y;
+        }
+        camera_direction_x = std::clamp(camera_direction_x, -1, 1);
+        camera_direction_y = std::clamp(camera_direction_y, -1, 1);
+        if (camera_direction_x != 0 || camera_direction_y != 0) {
+            const auto active_view = camera_view(shared_state, simulation_config,
+                                                 shared_state.camera_zoom.load(std::memory_order_relaxed));
+            const double cells_per_second = (std::max)(
+                120.0, static_cast<double>((std::max)(active_view.width, active_view.height)) * 0.85);
+            camera_key_remainder_x += static_cast<double>(camera_direction_x) *
+                                      cells_per_second * camera_seconds;
+            camera_key_remainder_y += static_cast<double>(camera_direction_y) *
+                                      cells_per_second * camera_seconds;
+            const int camera_shift_x = static_cast<int>(std::trunc(camera_key_remainder_x));
+            const int camera_shift_y = static_cast<int>(std::trunc(camera_key_remainder_y));
+            camera_key_remainder_x -= static_cast<double>(camera_shift_x);
+            camera_key_remainder_y -= static_cast<double>(camera_shift_y);
+            pan_camera_cells(shared_state, simulation_config, camera_shift_x, camera_shift_y);
+        } else {
+            camera_key_remainder_x = 0.0;
+            camera_key_remainder_y = 0.0;
+        }
+
         const auto center_section = SectionCoordinate{
-            shared_state.camera_center_x.load(std::memory_order_relaxed) / section_cell_size,
-            shared_state.camera_center_y.load(std::memory_order_relaxed) / section_cell_size,
+            shared_state.camera_center_x.load(std::memory_order_relaxed) / active_region_width_cells,
+            shared_state.camera_center_y.load(std::memory_order_relaxed) / active_region_height_cells,
         };
         const auto section_schedule = make_section_schedule(
             center_section,
-            (simulation_config.grid_width + static_cast<std::uint32_t>(section_cell_size) - 1u) /
-                static_cast<std::uint32_t>(section_cell_size),
-            (simulation_config.grid_height + static_cast<std::uint32_t>(section_cell_size) - 1u) /
-                static_cast<std::uint32_t>(section_cell_size),
+            (simulation_config.grid_width +
+             static_cast<std::uint32_t>(active_region_width_cells) - 1u) /
+                static_cast<std::uint32_t>(active_region_width_cells),
+            (simulation_config.grid_height +
+             static_cast<std::uint32_t>(active_region_height_cells) - 1u) /
+                static_cast<std::uint32_t>(active_region_height_cells),
             std::thread::hardware_concurrency());
         shared_state.section_worker_count.store(
             static_cast<std::uint32_t>(section_schedule.worker_count), std::memory_order_relaxed);
         shared_state.active_section_count.store(
             static_cast<std::uint32_t>(section_schedule.assignment_count), std::memory_order_relaxed);
+        shared_state.active_scope_mode.store(1u, std::memory_order_relaxed);
 
         const auto adjust_zoom_centered = [&shared_state](const int delta) {
             const auto current = static_cast<int>(shared_state.camera_zoom.load(std::memory_order_relaxed));
@@ -300,12 +376,14 @@ int run_application() {
                 shared_state.reset.store(true, std::memory_order_release);
                 shared_state.mining_mode.store(scene_has_character(scene),
                                                std::memory_order_release);
+                reset_camera_to_zero(shared_state, simulation_config);
             } else if (epochengine::gui_lib::contains(layout.next_scene, pointer)) {
                 scene = next_scene(scene);
                 shared_state.selected_scene.store(static_cast<std::uint32_t>(scene), std::memory_order_relaxed);
                 shared_state.reset.store(true, std::memory_order_release);
                 shared_state.mining_mode.store(scene_has_character(scene),
                                                std::memory_order_release);
+                reset_camera_to_zero(shared_state, simulation_config);
             } else if (epochengine::gui_lib::contains(layout.reset_scene, pointer)) {
                 shared_state.reset.store(true, std::memory_order_release);
             } else if (epochengine::gui_lib::contains(layout.save_scene, pointer)) {
@@ -318,6 +396,10 @@ int run_application() {
             } else if (epochengine::gui_lib::contains(layout.debug_toggle, pointer)) {
                 const bool debug = shared_state.debug_visualization.load(std::memory_order_relaxed);
                 shared_state.debug_visualization.store(!debug, std::memory_order_release);
+            } else if (epochengine::gui_lib::contains(layout.placement_cells, pointer)) {
+                shared_state.placement_mode.store(0u, std::memory_order_relaxed);
+            } else if (epochengine::gui_lib::contains(layout.placement_tiles, pointer)) {
+                shared_state.placement_mode.store(1u, std::memory_order_relaxed);
             } else if (epochengine::gui_lib::contains(layout.cursor_circle, pointer)) {
                 shared_state.brush_shape.store(0u, std::memory_order_relaxed);
             } else if (epochengine::gui_lib::contains(layout.cursor_square, pointer)) {
@@ -365,11 +447,14 @@ int run_application() {
             shared_state.fire_tool_pressed.store(true, std::memory_order_release);
         if (secondary_pressed && tool_active)
             shared_state.deposit_resource_pressed.store(true, std::memory_order_release);
-        shared_state.move_x.store((input.move_right ? 1 : 0) - (input.move_left ? 1 : 0),
-                                  std::memory_order_relaxed);
-        shared_state.move_y.store((input.move_down ? 1 : 0) - (input.move_up ? 1 : 0),
-                                  std::memory_order_relaxed);
-        shared_state.jump.store(input.jump, std::memory_order_relaxed);
+        const bool player_controls = scene_has_character(scene);
+        shared_state.move_x.store(player_controls
+            ? (input.move_right ? 1 : 0) - (input.move_left ? 1 : 0) : 0,
+            std::memory_order_relaxed);
+        shared_state.move_y.store(player_controls
+            ? (input.move_down ? 1 : 0) - (input.move_up ? 1 : 0) : 0,
+            std::memory_order_relaxed);
+        shared_state.jump.store(player_controls && input.jump, std::memory_order_relaxed);
 
 
         std::this_thread::sleep_for(std::chrono::milliseconds{1});

@@ -19,9 +19,24 @@ const uint SCENE_COUNT = 9u;
 const int BRICK_SIZE = 8;
 const ivec2 AUTHORED_WORLD_CELLS = ivec2(640, 360);
 
-bool insideAuthoredWorld(ivec2 p) {
-    return p.x >= 0 && p.y >= 0 && p.x < min(int(pc.width), AUTHORED_WORLD_CELLS.x) &&
-           p.y < min(int(pc.height), AUTHORED_WORLD_CELLS.y);
+ivec2 authoredWorldOrigin() {
+    int x = max((int(pc.width) - AUTHORED_WORLD_CELLS.x) / 2, 0);
+    int y = max(int(pc.height) - AUTHORED_WORLD_CELLS.y, 0);
+    return ivec2(x, y);
+}
+
+ivec2 authoredLocalCoordinate(ivec2 worldPosition) {
+    return worldPosition - authoredWorldOrigin();
+}
+
+bool insideAuthoredLocal(ivec2 local) {
+    return local.x >= 0 && local.y >= 0 &&
+           local.x < min(int(pc.width), AUTHORED_WORLD_CELLS.x) &&
+           local.y < min(int(pc.height), AUTHORED_WORLD_CELLS.y);
+}
+
+bool insideAuthoredWorld(ivec2 worldPosition) {
+    return insideAuthoredLocal(authoredLocalCoordinate(worldPosition));
 }
 
 ivec2 brickCoordinate(ivec2 p) { return p / BRICK_SIZE; }
@@ -406,7 +421,7 @@ uint frontierBaseMaterial(ivec2 p) {
 }
 
 uint materialForScene(uint scene, ivec2 p) {
-    if (!insideAuthoredWorld(p)) return MAT_EMPTY;
+    if (!insideAuthoredLocal(p)) return MAT_EMPTY;
     if (scene == SCENE_SANDBOX) return sandboxMaterial(p);
     if (scene == SCENE_BLANK) return MAT_EMPTY;
     if (scene == SCENE_VOLCANO) return volcanoMaterial(p);
@@ -453,38 +468,44 @@ void main() {
     if (!inside(p)) return;
 
     uint scene = pc.material % SCENE_COUNT;
-    uint material = materialForScene(scene, p);
+    bool authored = insideAuthoredWorld(p);
+    ivec2 local = authoredLocalCoordinate(p);
+    uint material = authored ? materialForScene(scene, local) : MAT_EMPTY;
     if (material == MAT_EMPTY) material = MAT_OXYGEN;
-    bool structural = authoredStructuralCell(scene, p, material);
-    bool anchored = brickCoordinate(p).y >= worldBrickSize().y - 2;
+    bool structural = authored && authoredStructuralCell(scene, local, material);
+    bool anchored = authored && brickCoordinate(local).y >= worldBrickSize().y - 2;
     Cell cell = structural ? makeStructuralCell(material, anchored) : makeCell(material);
-    bool machineController = (material == MAT_SMELTER || material == MAT_ASSEMBLER ||
-                              material == MAT_INSECT_HABITAT) && (p.x & 7) == 3 && (p.y & 7) == 3;
+    bool machineController = authored &&
+        (material == MAT_SMELTER || material == MAT_ASSEMBLER ||
+         material == MAT_INSECT_HABITAT) && (local.x & 7) == 3 && (local.y & 7) == 3;
 
     cell.aux = (cell.aux & ~AUX_RANDOM_MASK) | (hash32(indexOf(p) ^ pc.seed) & AUX_RANDOM_MASK) |
                (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |
                             AUX_PLANT_STEM | AUX_STRUCTURAL | AUX_SUPPORTED | AUX_STATE_MASK));
 
-    if ((scene == SCENE_SANDBOX || scene == SCENE_ECOSYSTEM) && material == MAT_BEE) {
-        ivec2 queen = scene == SCENE_SANDBOX ? sandboxQueen() : ecosystemQueen();
-        int slot = beeFormationSlotFromOffset(p - queen);
+    if (authored && (scene == SCENE_SANDBOX || scene == SCENE_ECOSYSTEM) &&
+        material == MAT_BEE) {
+        ivec2 localQueen = scene == SCENE_SANDBOX ? sandboxQueen() : ecosystemQueen();
+        int slot = beeFormationSlotFromOffset(local - localQueen);
         if (slot >= 0) {
+            ivec2 worldQueen = authoredWorldOrigin() + localQueen;
             cell.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
-            cell.aux = beePackMetadata(cell.aux, queen, uint(slot));
+            cell.aux = beePackMetadata(cell.aux, worldQueen, uint(slot), pc.width, pc.height);
             cell.age = beePackAge(uint((slot * 17) % 900), BEE_TARGET_NONE);
         }
     }
 
     if (machineController) {
         setMachineInventory(cell, uvec4(0u));
-        if (scene == SCENE_FRONTIER_BASE && p.x > AUTHORED_WORLD_CELLS.x / 2) cell.aux &= ~AUX_CHARGED;
+        if (scene == SCENE_FRONTIER_BASE && local.x > AUTHORED_WORLD_CELLS.x / 2) cell.aux &= ~AUX_CHARGED;
         else cell.aux |= AUX_CHARGED;
     }
-    if (scene == SCENE_ENGINEERING && isConductive(material) && p.x < 70) cell.aux |= AUX_CHARGED;
+    if (authored && scene == SCENE_ENGINEERING && isConductive(material) && local.x < 70)
+        cell.aux |= AUX_CHARGED;
     if (material == MAT_BEETLE) cell.aux &= ~AUX_CHARGED;
     if (material == MAT_ANT || material == MAT_CONVEYOR) cell.aux |= AUX_CHARGED;
     if (material == MAT_FACTORY_CORE) {
-        if (scene == SCENE_FRONTIER_BASE && p.x > AUTHORED_WORLD_CELLS.x / 2) cell.aux &= ~AUX_CHARGED;
+        if (scene == SCENE_FRONTIER_BASE && local.x > AUTHORED_WORLD_CELLS.x / 2) cell.aux &= ~AUX_CHARGED;
         else cell.aux |= AUX_CHARGED;
     }
     cells[indexOf(p)] = cell;
