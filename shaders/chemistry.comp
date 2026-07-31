@@ -1284,8 +1284,11 @@ void main() {
             }
 
             if (!authoredBee) {
-                // A painted or orphaned bee without a queen does not wander.
-                result.aux &= ~AUX_MOVED;
+                // Painted and loaded orphan bees self-seed a bounded local swarm.
+                uint slot = hash32(indexOf(p) ^ source.aux ^ 0xb33f1u) % BEE_FORMATION_COUNT;
+                result.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
+                result.aux = beePackMetadata(result.aux, p, slot);
+                result.age = beePackAge(0u, BEE_TARGET_NONE);
             }
         }
     } else if (source.material == MAT_POLLEN) {

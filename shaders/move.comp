@@ -677,6 +677,22 @@ bool insectMoveAllowed(Cell insect, ivec2 sourcePosition, ivec2 targetPosition, 
     return (randomValue & 7u) == 0u;
 }
 
+bool isPassableLifeMedium(Cell medium) {
+    return isCellGas(medium) || isCellLiquid(medium);
+}
+
+bool insectMediumMoveAllowed(Cell insect, ivec2 sourcePosition,
+                             ivec2 targetPosition, uint randomValue) {
+    if ((insect.aux & AUX_MOVED) != 0u) return false;
+    int sourceSignal = insectTargetSignal(insect, sourcePosition);
+    int targetSignal = insectTargetSignal(insect, targetPosition);
+    if (sourceSignal != targetSignal) return targetSignal > sourceSignal;
+    ivec2 delta = targetPosition - sourcePosition;
+    if (delta.y > 0) return true;
+    if (delta.y < 0) return (randomValue & 15u) == 0u;
+    return insectMoveAllowed(insect, sourcePosition, targetPosition, randomValue);
+}
+
 bool isConveyorCargo(Cell cell) {
     return isConveyorPowderMaterial(cell.material) || isLooseSolid(cell);
 }
@@ -728,6 +744,17 @@ void processVertical(ivec2 top, ivec2 bottom) {
 
     if (isHalfWaterCell(a) && isHalfWaterCell(b) &&
         mergeHalfWaterPair(bottom, top, b, a)) return;
+
+    if (isInsect(a.material) && isPassableLifeMedium(b) &&
+        insectMediumMoveAllowed(a, top, bottom, randomValue)) {
+        swapCells(top, bottom);
+        return;
+    }
+    if (isInsect(b.material) && isPassableLifeMedium(a) &&
+        insectMediumMoveAllowed(b, bottom, top, randomValue >> 1u)) {
+        swapCells(top, bottom);
+        return;
+    }
 
     if (isInsect(a.material) && lifeCanEnter(b) && !insectGrounded(top) &&
         (a.aux & AUX_MOVED) == 0u) {
@@ -793,6 +820,17 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
     if (isHalfWaterCell(source) && isHalfWaterCell(target) &&
         mergeHalfWaterPair(targetPosition, sourcePosition, target, source)) return;
 
+    if (isInsect(source.material) && isPassableLifeMedium(target) &&
+        insectMediumMoveAllowed(source, sourcePosition, targetPosition, randomValue)) {
+        swapCells(sourcePosition, targetPosition);
+        return;
+    }
+    if (isInsect(target.material) && isPassableLifeMedium(source) &&
+        insectMediumMoveAllowed(target, targetPosition, sourcePosition, randomValue >> 1u)) {
+        swapCells(sourcePosition, targetPosition);
+        return;
+    }
+
     Cell below = sampleAt(sourcePosition + ivec2(0, 1));
     if (!upward && isInsect(source.material) && lifeCanEnter(target) &&
         !insectGrounded(sourcePosition) && (source.aux & AUX_MOVED) == 0u) {
@@ -851,6 +889,11 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
         swapCells(sourcePosition, targetPosition);
         return;
     }
+    if (target.material == MAT_BEE && lifeCanEnter(source) &&
+        beeMoveAllowed(target, targetPosition, sourcePosition, randomValue >> 1u)) {
+        swapCells(sourcePosition, targetPosition);
+        return;
+    }
 
     if (isMagnetic(source.material) && target.material == MAT_EMPTY &&
         magneticMoveAllowed(sourcePosition, targetPosition, randomValue)) {
@@ -876,6 +919,17 @@ void processHorizontal(ivec2 left, ivec2 right) {
         return;
     }
 
+
+    if (isInsect(a.material) && isPassableLifeMedium(b) &&
+        insectMediumMoveAllowed(a, left, right, randomValue)) {
+        swapCells(left, right);
+        return;
+    }
+    if (isInsect(b.material) && isPassableLifeMedium(a) &&
+        insectMediumMoveAllowed(b, right, left, randomValue >> 1u)) {
+        swapCells(left, right);
+        return;
+    }
 
     if (isInsect(a.material) && lifeCanEnter(b) &&
         insectGrounded(left) && insectGrounded(right) &&

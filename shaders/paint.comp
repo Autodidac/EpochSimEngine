@@ -14,6 +14,50 @@ void markPaintChunkDirty(ivec2 p) {
     atomicOr(chunks[chunkIndex(p, pc.width)].flags, CHUNK_DIRTY | CHUNK_ACTIVE);
 }
 
+const ivec2 paintDisplacementOffsets[8] = ivec2[8](
+    ivec2(-1, -1), ivec2(0, -1), ivec2(1, -1), ivec2(-1, 0),
+    ivec2(1, 0), ivec2(-1, 1), ivec2(0, 1), ivec2(1, 1));
+
+bool isDirectPaintLife(uint material) {
+    return material == MAT_BEE || material == MAT_QUEEN_BEE ||
+           material == MAT_ANT || material == MAT_BEETLE;
+}
+
+uint paintRepresentedGasVolume(Cell medium) {
+    if (!isGas(medium.material)) return 0u;
+    uint volume = stateValue(medium);
+    return volume == 0u ? 1u : volume;
+}
+
+bool displacePaintGas(ivec2 p, Cell medium) {
+    if (!isGas(medium.material)) return true;
+    uint remaining = paintRepresentedGasVolume(medium);
+    uint capacity = 0u;
+    for (uint i = 0u; i < 8u; ++i) {
+        ivec2 candidate = p + paintDisplacementOffsets[i];
+        if (!inside(candidate)) continue;
+        Cell receiver = cells[indexOf(candidate)];
+        if (receiver.material != medium.material) continue;
+        capacity += 255u - min(paintRepresentedGasVolume(receiver), 255u);
+    }
+    if (capacity < remaining) return false;
+    for (uint i = 0u; i < 8u && remaining != 0u; ++i) {
+        ivec2 candidate = p + paintDisplacementOffsets[i];
+        if (!inside(candidate)) continue;
+        uint receiverIndex = indexOf(candidate);
+        Cell receiver = cells[receiverIndex];
+        if (receiver.material != medium.material) continue;
+        uint represented = min(paintRepresentedGasVolume(receiver), 255u);
+        uint transfer = min(remaining, 255u - represented);
+        if (transfer == 0u) continue;
+        setStateValue(receiver, represented + transfer);
+        cells[receiverIndex] = receiver;
+        markPaintChunkDirty(candidate);
+        remaining -= transfer;
+    }
+    return remaining == 0u;
+}
+
 void main() {
     ivec2 local = ivec2(gl_GlobalInvocationID.xy);
     int diameter = int(pc.radius * 2u + 1u);
@@ -52,7 +96,7 @@ void main() {
         return;
     }
 
-    if ((material == MAT_SEED || material == MAT_QUEEN_BEE) && any(notEqual(p, center))) return;
+    if ((material == MAT_SEED || isDirectPaintLife(material)) && any(notEqual(p, center))) return;
 
     ivec2 delta = p - center;
     int distanceSquared = delta.x * delta.x + delta.y * delta.y;
@@ -96,10 +140,17 @@ void main() {
         cell.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
         cell.aux = beePackMetadata(cell.aux, center, uint(colonySlot));
         cell.age = beePackAge(uint((colonySlot * 17) % 900), BEE_TARGET_NONE);
+    } else if (material == MAT_BEE) {
+        uint slot = cellHash(center, 0xb33f1u) % BEE_FORMATION_COUNT;
+        cell.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
+        cell.aux = beePackMetadata(cell.aux, center, slot);
+        cell.age = beePackAge(0u, BEE_TARGET_NONE);
     }
 
     uint index = indexOf(p);
     Cell previous = cells[index];
+    if (isDirectPaintLife(material) && isGas(previous.material) &&
+        !displacePaintGas(p, previous)) return;
     recordConservation(previous, cell);
     cells[index] = cell;
     markPaintChunkDirty(p);

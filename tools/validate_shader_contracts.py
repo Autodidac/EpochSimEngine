@@ -226,6 +226,9 @@ def main() -> int:
         errors.append("generated UI text shader regressed to oversized embedded data")
 
     actor_comp = (SHADERS / "actor.comp").read_text(encoding="utf-8")
+    paint_comp = (SHADERS / "paint.comp").read_text(encoding="utf-8")
+    move_comp = (SHADERS / "move.comp").read_text(encoding="utf-8")
+    chemistry_comp = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
     reset_comp = (SHADERS / "reset.comp").read_text(encoding="utf-8")
     app_cpp = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
     window_hpp = (ROOT / "include/epoch/sand/window.hpp").read_text(encoding="utf-8")
@@ -250,6 +253,16 @@ def main() -> int:
     for token in ("oxygenVolume > 0u", "fullyChoked", "state.health -= 1u"):
         if token not in actor_comp:
             errors.append(f"closed-system atmosphere contract missing {token!r}")
+    for token in ("isDirectPaintLife", "displacePaintGas",
+                  "BEE_AUX_SWARM | BEE_AUX_FED"):
+        if token not in paint_comp:
+            errors.append(f"painted life/oxygen displacement contract missing {token!r}")
+    for token in ("isPassableLifeMedium", "insectMediumMoveAllowed",
+                  "target.material == MAT_BEE"):
+        if token not in move_comp:
+            errors.append(f"passable life movement contract missing {token!r}")
+    if "Painted and loaded orphan bees self-seed" not in chemistry_comp:
+        errors.append("painted bee activation contract missing")
     if "std::jthread" in app_cpp or "stop_token" in app_cpp or "request_stop" in app_cpp:
         errors.append("obsolete implicit jthread ownership remains")
     if "SandHybrid" not in app_cpp:
