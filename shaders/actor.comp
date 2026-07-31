@@ -6,10 +6,12 @@
 #include "conservation.glsl"
 #include "tiles.glsl"
 #include "chunks.glsl"
+#include "debug_stats.glsl"
 
 layout(local_size_x = 1, local_size_y = 1) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 3) buffer ActorBuffer { ActorState actor; };
+layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };
 layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
 
 layout(push_constant) uniform ActorPush {
@@ -26,9 +28,9 @@ layout(push_constant) uniform ActorPush {
     uint scene;
     uint deposit;
     uint simulate;
-    uint reserved0;
-    uint reserved1;
-    uint reserved2;
+    int activeSectionX;
+    int activeSectionY;
+    uint activeMode;
 } actorPc;
 
 const uint SCENE_GOLD_MINE = 6u;
@@ -64,6 +66,43 @@ bool blocksActor(Cell cell) {
          cell.material == MAT_ALUMINUM_SHAVINGS || cell.material == MAT_IRON_SHAVINGS ||
          cell.material == MAT_POWER_CELL || cell.material == MAT_PLASMA_AMMO);
     return !loosePickup;
+}
+
+
+void nudgeMedium(ivec2 sourcePosition, ivec2 direction) {
+    if (all(equal(direction, ivec2(0)))) return;
+    ivec2 targetPosition = sourcePosition + direction;
+    if (!actorInside(sourcePosition) || !actorInside(targetPosition)) return;
+    uint sourceIndex = actorIndex(sourcePosition);
+    uint targetIndex = actorIndex(targetPosition);
+    Cell source = cells[sourceIndex];
+    Cell target = cells[targetIndex];
+    if (!isCellGas(source) && !isCellLiquid(source)) return;
+    if (isStructural(target) || (!isCellGas(target) && !isCellLiquid(target) && target.material != MAT_EMPTY)) return;
+    source.age = 0u;
+    target.age = 0u;
+    source.aux |= AUX_MOVED;
+    target.aux |= AUX_MOVED;
+    cells[sourceIndex] = target;
+    cells[targetIndex] = source;
+    markActorChunkDirty(sourcePosition);
+    markActorChunkDirty(targetPosition);
+    atomicAdd(debugStats[STAT_PLAYER_IMPULSES], 1u);
+}
+
+void disturbMediumAroundActor(ivec2 center, ivec2 direction) {
+    if (all(equal(direction, ivec2(0)))) return;
+    if (direction.x != 0) {
+        int edgeX = center.x + direction.x * 3;
+        nudgeMedium(ivec2(edgeX, center.y - 1), direction);
+        nudgeMedium(ivec2(edgeX, center.y - 4), direction);
+        nudgeMedium(ivec2(edgeX, center.y - 7), direction);
+    } else {
+        int edgeY = direction.y < 0 ? center.y - 8 : center.y + 1;
+        nudgeMedium(ivec2(center.x - 2, edgeY), direction);
+        nudgeMedium(ivec2(center.x, edgeY), direction);
+        nudgeMedium(ivec2(center.x + 2, edgeY), direction);
+    }
 }
 
 bool bodyClear(ivec2 center) {
@@ -327,7 +366,7 @@ void resetActor(inout ActorState state) {
         state.enabled = 1u;
     } else if (actorPc.scene == SCENE_DEMOLITION) {
         state.x = int(actorPc.width / 8u);
-        state.y = int(actorPc.height) - 36;
+        state.y = min(int(actorPc.height), 360) - 36;
         state.ammo = 12u;
         state.enabled = 1u;
     } else if (actorPc.scene == SCENE_FRONTIER_BASE) {
@@ -348,11 +387,19 @@ void main() {
         return;
     }
 
+    if (actorPc.simulate != 0u &&
+        !sectionActiveAt(ivec2(state.x, state.y), actorPc.activeSectionX,
+                         actorPc.activeSectionY, actorPc.activeMode)) {
+        actor = state;
+        return;
+    }
+
     if (actorPc.simulate != 0u) {
         if (state.shotTimer > 0u) state.shotTimer -= 1u;
         if (state.moveCooldown > 0u) state.moveCooldown -= 1u;
 
         ivec2 center = ivec2(state.x, state.y);
+        ivec2 originalCenter = center;
         bool grounded = groundedAt(center);
         state.grounded = grounded ? 1u : 0u;
 
@@ -383,6 +430,12 @@ void main() {
 
         state.x = clamp(center.x, 3, int(actorPc.width) - 4);
         state.y = clamp(center.y, 8, int(actorPc.height) - 2);
+        ivec2 finalCenter = ivec2(state.x, state.y);
+        ivec2 actorDelta = clamp(finalCenter - originalCenter, ivec2(-1), ivec2(1));
+        if (any(notEqual(actorDelta, ivec2(0)))) {
+            atomicAdd(debugStats[STAT_ACTOR_MOVES], 1u);
+            disturbMediumAroundActor(finalCenter, actorDelta);
+        }
         collectResources(state);
         updateBreathing(state);
     }

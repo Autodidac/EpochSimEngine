@@ -2,6 +2,7 @@
 
 #include "epoch/sand/material.hpp"
 #include "epoch/sand/scene.hpp"
+#include "epoch/sand/section_scheduler.hpp"
 #include "epoch/sand/shared_state.hpp"
 #include "epoch/sand/ui_layout.hpp"
 #include "epoch/sand/vulkan_renderer.hpp"
@@ -30,7 +31,7 @@ struct CameraView final {
 
 [[nodiscard]] CameraView camera_view(const SharedState& state, const SimulationConfig& config,
                                      const std::uint32_t requested_zoom) noexcept {
-    const auto zoom = std::clamp(requested_zoom, 1u, 8u);
+    const auto zoom = std::clamp(requested_zoom, camera_zoom_min, camera_zoom_max);
     const auto visible_width = (std::max)(8u, config.grid_width / zoom);
     const auto visible_height = (std::max)(8u, config.grid_height / zoom);
     const auto center_x = std::clamp(state.camera_center_x.load(std::memory_order_relaxed),
@@ -69,8 +70,8 @@ struct CameraView final {
 void zoom_at_pointer(SharedState& state, const SimulationConfig& config,
                      const ui::SimulationViewport& viewport, const std::int32_t mouse_x,
                      const std::int32_t mouse_y, const int delta) noexcept {
-    const auto old_zoom = std::clamp(state.camera_zoom.load(std::memory_order_relaxed), 1u, 8u);
-    const auto new_zoom = static_cast<std::uint32_t>(std::clamp(static_cast<int>(old_zoom) + delta, 1, 8));
+    const auto old_zoom = std::clamp(state.camera_zoom.load(std::memory_order_relaxed), camera_zoom_min, camera_zoom_max);
+    const auto new_zoom = static_cast<std::uint32_t>(std::clamp(static_cast<int>(old_zoom) + delta, static_cast<int>(camera_zoom_min), static_cast<int>(camera_zoom_max)));
     if (new_zoom == old_zoom) return;
     const auto [target_x, target_y] = pointer_grid(state, config, viewport, mouse_x, mouse_y);
     const auto viewport_width = (std::max)(1u, static_cast<std::uint32_t>(viewport.rect.size.x));
@@ -92,6 +93,14 @@ void zoom_at_pointer(SharedState& state, const SimulationConfig& config,
     state.camera_center_y.store(origin_y + static_cast<int>(new_height / 2u), std::memory_order_relaxed);
 }
 
+void reset_camera_to_zero(SharedState& state, const SimulationConfig& config) noexcept {
+    const auto visible_width = (std::max)(8u, config.grid_width / camera_zoom_default);
+    const auto visible_height = (std::max)(8u, config.grid_height / camera_zoom_default);
+    state.camera_zoom.store(camera_zoom_default, std::memory_order_relaxed);
+    state.camera_center_x.store(static_cast<int>(visible_width / 2u), std::memory_order_relaxed);
+    state.camera_center_y.store(static_cast<int>(visible_height / 2u), std::memory_order_relaxed);
+}
+
 } // namespace
 
 int run_application() {
@@ -101,8 +110,7 @@ int run_application() {
     std::fprintf(stderr, "[EpochSand] Native window created.\n");
     SharedState shared_state{};
     const SimulationConfig simulation_config{};
-    shared_state.camera_center_x.store(static_cast<int>(simulation_config.grid_width / 2u), std::memory_order_relaxed);
-    shared_state.camera_center_y.store(static_cast<int>(simulation_config.grid_height / 2u), std::memory_order_relaxed);
+    reset_camera_to_zero(shared_state, simulation_config);
     std::atomic_bool renderer_ready{false};
 
     std::exception_ptr render_error;
@@ -184,6 +192,7 @@ int run_application() {
         } else if (input.reset) {
             shared_state.reset.store(true, std::memory_order_release);
         }
+        if (input.reset_camera) reset_camera_to_zero(shared_state, simulation_config);
         if (input.save_scene) shared_state.save_scene_image.store(true, std::memory_order_release);
         if (input.load_scene) shared_state.load_scene_image.store(true, std::memory_order_release);
         if (input.fill) shared_state.fill_region.store(true, std::memory_order_release);
@@ -203,7 +212,7 @@ int run_application() {
                             input.mouse_x, input.mouse_y, input.wheel_delta);
 
         const auto zoom = shared_state.camera_zoom.load(std::memory_order_relaxed);
-        if (zoom > 1u && input.middle_down && (over_simulation || pan_dragging)) {
+        if (zoom >= camera_zoom_min && input.middle_down && (over_simulation || pan_dragging)) {
             if (!pan_dragging) {
                 pan_dragging = true;
                 pan_last_x = input.mouse_x;
@@ -252,9 +261,25 @@ int run_application() {
             pan_remainder_y = 0;
         }
 
+        const auto center_section = SectionCoordinate{
+            shared_state.camera_center_x.load(std::memory_order_relaxed) / section_cell_size,
+            shared_state.camera_center_y.load(std::memory_order_relaxed) / section_cell_size,
+        };
+        const auto section_schedule = make_section_schedule(
+            center_section,
+            (simulation_config.grid_width + static_cast<std::uint32_t>(section_cell_size) - 1u) /
+                static_cast<std::uint32_t>(section_cell_size),
+            (simulation_config.grid_height + static_cast<std::uint32_t>(section_cell_size) - 1u) /
+                static_cast<std::uint32_t>(section_cell_size),
+            std::thread::hardware_concurrency());
+        shared_state.section_worker_count.store(
+            static_cast<std::uint32_t>(section_schedule.worker_count), std::memory_order_relaxed);
+        shared_state.active_section_count.store(
+            static_cast<std::uint32_t>(section_schedule.assignment_count), std::memory_order_relaxed);
+
         const auto adjust_zoom_centered = [&shared_state](const int delta) {
             const auto current = static_cast<int>(shared_state.camera_zoom.load(std::memory_order_relaxed));
-            shared_state.camera_zoom.store(static_cast<std::uint32_t>(std::clamp(current + delta, 1, 8)),
+            shared_state.camera_zoom.store(static_cast<std::uint32_t>(std::clamp(current + delta, static_cast<int>(camera_zoom_min), static_cast<int>(camera_zoom_max))),
                                            std::memory_order_relaxed);
         };
 

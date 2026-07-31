@@ -107,7 +107,7 @@ struct MaterialProfile final {
 };
 
 inline constexpr std::array<std::string_view, material_count> material_names{
-    "Eraser",
+    "Vacuum",
     "Sand",
     "Water",
     "Dirt",
@@ -153,14 +153,14 @@ inline constexpr std::array<std::string_view, material_count> material_names{
     "Radiation",
     "Al shavings",
     "Gold",
-    "Oxygen",
+    "Atmosphere",
     "CO2",
     "Iron shavings",
     "Steel",
     "Conveyor",
     "Smelter",
     "Assembler",
-    "Insect habitat",
+    "Ant colony",
     "Power cell",
     "Plasma ammo",
     "Ant",
@@ -176,7 +176,7 @@ inline constexpr std::array<std::string_view, material_count> material_names{
 };
 
 inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
-    {0u, 0u, 0u, 255u, 2000, 32767, 32767, 32767, 32767, 32767, 0u, MaterialPhase::empty, "Terrain", "OPEN SPACE", "ANY MATERIAL", "TO: PLACED MATERIAL", "ROLE: VACUUM / AIR GAP", "DANGER: DECOMPRESSION"},
+    {0u, 0u, 0u, 255u, 2000, 32767, 32767, 32767, 32767, 32767, 0u, MaterialPhase::empty, "Unknown", "OPEN SPACE", "ANY MATERIAL", "TO: PLACED MATERIAL", "ROLE: VACUUM / AIR GAP", "DANGER: DECOMPRESSION"},
     {84u, 52u, 84u, 255u, 1050, 1450, 1710, 32767, 2230, 32767, 20u, MaterialPhase::powder, "Terrain", "STRONG: PACKING / FILTERING", "WEAK: FLOWING WATER", "TO: GLASS / SILT", "ROLE: MINERAL MATRIX", "DANGER: BURIAL"},
     {44u, 0u, 44u, 214u, 100, 32767, 0, 100, 100, 32767, 140u, MaterialPhase::liquid, "Water", "STRONG: COOLING / FLOW", "WEAK: HEAT / CONTAMINATION", "TO: STEAM / ICE / MUD", "ROLE: CLEAN PROCESS FLUID", "DANGER: FLOOD / DROWNING"},
     {80u, 48u, 80u, 190u, 320, 32767, 32767, 32767, 1200, 450, 28u, MaterialPhase::powder, "Terrain", "STRONG: FARM SUPPORT", "WEAK: SATURATION / ACID", "TO: MUD / GRASS / SILT", "ROLE: SOIL RESERVOIR", "DANGER: CAVE IN"},
@@ -229,7 +229,7 @@ inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
     {220u, 215u, 220u, 250u, 850, 700, 1350, 2800, 2800, 32767, 190u, MaterialPhase::solid, "Industry", "STRONG: MATERIAL ROUTING", "WEAK: POWER LOSS / DAMAGE", "TO: SCRAP", "ROLE: FACTORY TRANSPORT", "DANGER: PINCH POINT"},
     {240u, 230u, 240u, 252u, 1500, 1000, 1500, 3000, 3000, 32767, 175u, MaterialPhase::solid, "Industry", "STRONG: METAL PROCESSING", "WEAK: COOLANT LOSS", "TO: STEEL / SMOKE / SLAG", "ROLE: THERMAL FACTORY", "DANGER: HEAT / FIRE"},
     {225u, 215u, 225u, 250u, 700, 550, 1200, 2600, 2600, 32767, 170u, MaterialPhase::solid, "Industry", "STRONG: COMPONENT BUILD", "WEAK: POWER LOSS", "TO: POWER CELLS / AMMO", "ROLE: MANUFACTURING", "DANGER: MOVING PARTS"},
-    {175u, 145u, 175u, 220u, 180, 80, 180, 32767, 420, 230, 12u, MaterialPhase::solid, "Colony", "STRONG: SHELTER / BREEDING", "WEAK: FIRE / ACID / DRYNESS", "TO: ANTS / BEETLES / WASTE", "ROLE: INSECT POPULATION SOURCE", "DANGER: INFESTATION"},
+    {175u, 145u, 175u, 220u, 180, 80, 180, 32767, 420, 230, 12u, MaterialPhase::solid, "Colony", "STRONG: SHELTER / PHEROMONES", "WEAK: FIRE / ACID / FLOODING", "TO: ANTS / FERTILIZER / WASTE", "ROLE: DEFINED ANT HOME", "DANGER: INFESTATION"},
     {92u, 40u, 92u, 210u, 220, 120, 220, 350, 450, 180, 150u, MaterialPhase::solid, "Engineering", "STRONG: STORED ENERGY", "WEAK: HEAT / IMPACT", "TO: AMMO / FIRE / SCRAP", "ROLE: ENERGY STORAGE", "DANGER: THERMAL RUNAWAY"},
     {93u, 35u, 93u, 205u, 180, 110, 180, 330, 430, 160, 130u, MaterialPhase::solid, "Engineering", "STRONG: WEAPON ENERGY", "WEAK: HEAT / IMPACT", "TO: PLASMA BOLT / FIRE", "ROLE: FUTURE WEAPON FEED", "DANGER: EXPLOSIVE"},
     {10u, 0u, 10u, 120u, 65, 32767, 32767, 32767, 120, 32767, 2u, MaterialPhase::solid, "Colony", "STRONG: WASTE TRANSPORT", "WEAK: WATER / FIRE / ACID", "TO: FERTILIZER / WASTE", "ROLE: DETRITIVORE", "DANGER: NONE"},
@@ -278,7 +278,7 @@ inline constexpr auto material_group_count = static_cast<std::uint32_t>(Material
 inline constexpr std::uint32_t material_slots_per_group = 10u;
 
 inline constexpr std::array<std::uint32_t, material_group_count> material_group_slot_counts{
-    8u,
+    7u,
     8u,
     8u,
     8u,
@@ -300,7 +300,7 @@ inline constexpr std::array<std::string_view, material_group_count> material_gro
 };
 
 inline constexpr std::array<std::array<Material, material_slots_per_group>, material_group_count> material_groups{{
-    {Material::empty, Material::sand, Material::dirt, Material::stone, Material::mud, Material::silt, Material::crystal, Material::glass, Material::count, Material::count},
+    {Material::sand, Material::dirt, Material::stone, Material::mud, Material::silt, Material::crystal, Material::glass, Material::count, Material::count, Material::count},
     {Material::water, Material::saltwater, Material::dirty_water, Material::ice, Material::snow, Material::steam, Material::dirty_steam, Material::salt, Material::count, Material::count},
     {Material::grass, Material::seed, Material::plant_stem, Material::flower, Material::wood, Material::food, Material::fertilizer, Material::pollen, Material::count, Material::count},
     {Material::honey, Material::bee, Material::queen_bee, Material::bee_nest, Material::beeswax, Material::ant, Material::beetle, Material::insect_habitat, Material::count, Material::count},

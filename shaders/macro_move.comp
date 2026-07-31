@@ -15,6 +15,7 @@ layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
 layout(push_constant) uniform MovementPush {
     uint width; uint height; uint step; uint seed;
     int phase; int parity; uint collectDebug; uint reserved1;
+    int activeSectionX; int activeSectionY; uint activeMode; uint workerCount;
 } macroPc;
 
 shared uint macroMoveAllowed;
@@ -106,10 +107,14 @@ void main() {
             TileState targetState = tiles[targetTileIndex];
             ivec2 sourceOrigin = sourceTile * int(TILE_SIZE);
             ivec2 targetOrigin = targetTile * int(TILE_SIZE);
-            Cell source = macroAt(sourceOrigin);
+            if (!sectionActiveAt(sourceOrigin, macroPc.activeSectionX, macroPc.activeSectionY, macroPc.activeMode) ||
+                !sectionActiveAt(targetOrigin, macroPc.activeSectionX, macroPc.activeSectionY, macroPc.activeMode)) {
+                sourceOrigin = ivec2(-1);
+            }
+            Cell source = sourceOrigin.x >= 0 ? macroAt(sourceOrigin) : Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
             Cell target = macroAt(targetOrigin);
             uint randomValue = macroHash(sourceTile, uint(macroPc.phase) + 1u);
-            bool valid = macroSourceAllows(sourceState, source, randomValue) &&
+            bool valid = sourceOrigin.x >= 0 && macroSourceAllows(sourceState, source, randomValue) &&
                          targetTileAllows(targetState, source, target);
             bool allowed = false;
             if (valid && macroPc.phase == 5) {

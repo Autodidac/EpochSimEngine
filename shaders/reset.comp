@@ -17,13 +17,19 @@ const uint SCENE_DEMOLITION = 7u;
 const uint SCENE_FRONTIER_BASE = 8u;
 const uint SCENE_COUNT = 9u;
 const int BRICK_SIZE = 8;
+const ivec2 AUTHORED_WORLD_CELLS = ivec2(640, 360);
+
+bool insideAuthoredWorld(ivec2 p) {
+    return p.x >= 0 && p.y >= 0 && p.x < min(int(pc.width), AUTHORED_WORLD_CELLS.x) &&
+           p.y < min(int(pc.height), AUTHORED_WORLD_CELLS.y);
+}
 
 ivec2 brickCoordinate(ivec2 p) { return p / BRICK_SIZE; }
 ivec2 brickOrigin(ivec2 brick) { return brick * BRICK_SIZE; }
 ivec2 brickCenter(ivec2 brick) { return brickOrigin(brick) + ivec2(BRICK_SIZE / 2); }
 ivec2 worldBrickSize() {
-    return ivec2((int(pc.width) + BRICK_SIZE - 1) / BRICK_SIZE,
-                 (int(pc.height) + BRICK_SIZE - 1) / BRICK_SIZE);
+    ivec2 authored = min(ivec2(int(pc.width), int(pc.height)), AUTHORED_WORLD_CELLS);
+    return (authored + ivec2(BRICK_SIZE - 1)) / BRICK_SIZE;
 }
 
 bool brickRect(ivec2 p, ivec2 minimumBrick, ivec2 maximumBrick) {
@@ -44,6 +50,28 @@ bool brickStair(ivec2 p, ivec2 startBrick, int count, bool risingRight) {
     if (localX < 0 || localX >= count) return false;
     int stairY = risingRight ? startBrick.y - localX : startBrick.y + localX;
     return brick.y == stairY;
+}
+
+ivec2 sandboxQueen() { return brickCenter(ivec2(58, 24)); }
+
+// Exact approved suspended hive geometry from pre-PR19 FastFreddy.
+void applySuspendedHive(ivec2 p, ivec2 queen, inout uint material, bool includeFormation) {
+    ivec2 q = p - queen;
+    int q2 = q.x * q.x + q.y * q.y;
+    if (p.x > queen.x - 38 && p.x < queen.x + 30 &&
+        p.y > queen.y - 17 && p.y < queen.y - 12) material = MAT_WOOD;
+    if (q2 >= 25 && q2 < 92) material = MAT_BEE_NEST;
+    if (q2 == 0) material = MAT_QUEEN_BEE;
+    else if (q.x >= 1 && q.x <= 10 && abs(q.y) <= 1) material = MAT_EMPTY;
+    else if (q2 < 25) {
+        uint chamber = hash32(indexOf(p) ^ pc.seed ^ 0xb33u);
+        material = (chamber & 3u) == 0u ? MAT_EMPTY
+            : (((chamber >> 2u) & 1u) == 0u ? MAT_HONEY : MAT_POLLEN);
+    }
+    if (includeFormation) {
+        int slot = beeFormationSlotFromOffset(q);
+        if (material == MAT_EMPTY && slot >= 0) material = MAT_BEE;
+    }
 }
 
 uint sandboxMaterial(ivec2 p) {
@@ -72,9 +100,11 @@ uint sandboxMaterial(ivec2 p) {
     else if (brickRect(p, acidMin + ivec2(1), acidMax - ivec2(1))) material = MAT_ACID;
 
     // Deliberately loose granular sample; it is not structural terrain.
-    ivec2 pileCenter = ivec2(int(pc.width) / 5, ground * BRICK_SIZE - 1);
+    ivec2 pileCenter = ivec2(world.x * BRICK_SIZE / 5, ground * BRICK_SIZE - 1);
     ivec2 d = p - pileCenter;
     if (d.y >= 0 && d.y < 48 && abs(d.x) < 52 - d.y) material = MAT_SAND;
+
+    applySuspendedHive(p, sandboxQueen(), material, true);
     return material;
 }
 
@@ -142,7 +172,7 @@ uint waterworksMaterial(ivec2 p) {
 
 ivec2 ecosystemQueen() {
     ivec2 world = worldBrickSize();
-    return brickCenter(ivec2(world.x - 14, world.y - 20));
+    return brickCenter(ivec2(world.x - 22, world.y - 20));
 }
 
 uint ecosystemMaterial(ivec2 p) {
@@ -190,23 +220,8 @@ uint ecosystemMaterial(ivec2 p) {
         p.x > (farmMin.x + 2) * BRICK_SIZE && p.x < (farmMax.x - 2) * BRICK_SIZE && (p.x % 13) == 0)
         material = ((p.x / 13) & 1) == 0 ? MAT_ANT : MAT_BEETLE;
 
-    // Restore the approved suspended hive from the earlier FastFreddy ecology scene.
-    // It remains ordinary canonical nest/honey/pollen/queen cells, never a special prop.
-    ivec2 queen = ecosystemQueen();
-    ivec2 q = p - queen;
-    int q2 = q.x * q.x + q.y * q.y;
-    if (p.x > queen.x - 38 && p.x < queen.x + 30 &&
-        p.y > queen.y - 17 && p.y < queen.y - 12) material = MAT_WOOD;
-    if (q2 >= 25 && q2 < 92) material = MAT_BEE_NEST;
-    if (q2 == 0) material = MAT_QUEEN_BEE;
-    else if (q.x >= 1 && q.x <= 10 && abs(q.y) <= 1) material = MAT_EMPTY;
-    else if (q2 < 25) {
-        uint chamber = hash32(indexOf(p) ^ pc.seed ^ 0xb33u);
-        material = (chamber & 3u) == 0u ? MAT_EMPTY
-            : (((chamber >> 2u) & 1u) == 0u ? MAT_HONEY : MAT_POLLEN);
-    }
-    int formationSlot = beeFormationSlotFromOffset(q);
-    if (material == MAT_EMPTY && formationSlot >= 0) material = MAT_BEE;
+    // Exact pre-PR19 suspended hive, shared with Sandbox and the buildable tool.
+    applySuspendedHive(p, ecosystemQueen(), material, true);
 
     for (int flower = 0; flower < 6; ++flower) {
         int x = (world.x - 31 + flower * 3) * BRICK_SIZE + 4;
@@ -385,12 +400,13 @@ uint frontierBaseMaterial(ivec2 p) {
     if (material == MAT_EMPTY && brickRect(p, baseMin + ivec2(1), baseMax - ivec2(1)) && ((p.x + p.y) & 1) == 0)
         material = MAT_OXYGEN;
     if (p.y == surface * BRICK_SIZE - 1 && p.x > 150 && p.x < 250 && (p.x % 31) == 0) material = MAT_ANT;
-    if (p.y == surface * BRICK_SIZE - 1 && p.x > int(pc.width) - 220 && p.x < int(pc.width) - 80 && (p.x % 17) == 0)
+    if (p.y == surface * BRICK_SIZE - 1 && p.x > AUTHORED_WORLD_CELLS.x - 220 && p.x < AUTHORED_WORLD_CELLS.x - 80 && (p.x % 17) == 0)
         material = MAT_BEETLE;
     return material;
 }
 
 uint materialForScene(uint scene, ivec2 p) {
+    if (!insideAuthoredWorld(p)) return MAT_EMPTY;
     if (scene == SCENE_SANDBOX) return sandboxMaterial(p);
     if (scene == SCENE_BLANK) return MAT_EMPTY;
     if (scene == SCENE_VOLCANO) return volcanoMaterial(p);
@@ -449,8 +465,8 @@ void main() {
                (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |
                             AUX_PLANT_STEM | AUX_STRUCTURAL | AUX_SUPPORTED | AUX_STATE_MASK));
 
-    if (scene == SCENE_ECOSYSTEM && material == MAT_BEE) {
-        ivec2 queen = ecosystemQueen();
+    if ((scene == SCENE_SANDBOX || scene == SCENE_ECOSYSTEM) && material == MAT_BEE) {
+        ivec2 queen = scene == SCENE_SANDBOX ? sandboxQueen() : ecosystemQueen();
         int slot = beeFormationSlotFromOffset(p - queen);
         if (slot >= 0) {
             cell.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
@@ -461,14 +477,14 @@ void main() {
 
     if (machineController) {
         setMachineInventory(cell, uvec4(0u));
-        if (scene == SCENE_FRONTIER_BASE && p.x > int(pc.width / 2u)) cell.aux &= ~AUX_CHARGED;
+        if (scene == SCENE_FRONTIER_BASE && p.x > AUTHORED_WORLD_CELLS.x / 2) cell.aux &= ~AUX_CHARGED;
         else cell.aux |= AUX_CHARGED;
     }
     if (scene == SCENE_ENGINEERING && isConductive(material) && p.x < 70) cell.aux |= AUX_CHARGED;
     if (material == MAT_BEETLE) cell.aux &= ~AUX_CHARGED;
     if (material == MAT_ANT || material == MAT_CONVEYOR) cell.aux |= AUX_CHARGED;
     if (material == MAT_FACTORY_CORE) {
-        if (scene == SCENE_FRONTIER_BASE && p.x > int(pc.width / 2u)) cell.aux &= ~AUX_CHARGED;
+        if (scene == SCENE_FRONTIER_BASE && p.x > AUTHORED_WORLD_CELLS.x / 2) cell.aux &= ~AUX_CHARGED;
         else cell.aux |= AUX_CHARGED;
     }
     cells[indexOf(p)] = cell;

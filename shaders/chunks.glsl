@@ -34,4 +34,22 @@ uint packChunkCounters(uint quietTicks, uint presentTiles) {
 }
 bool chunkHas(ChunkState state, uint flag) { return (state.flags & flag) != 0u; }
 
+int sectionAbs(int value) { return value < 0 ? -value : value; }
+
+bool sectionCoordinateActive(ivec2 candidate, ivec2 center) {
+    ivec2 delta = candidate - center;
+    int ax = sectionAbs(delta.x);
+    int ay = sectionAbs(delta.y);
+    int radius = max(ax, ay);
+    if (radius == 0 || radius == 1) return true;
+    if (radius != 2) return false;
+    return delta.x == 0 || delta.y == 0 || ax == ay;
+}
+
+bool sectionActiveAt(ivec2 p, int centerX, int centerY, uint enabled) {
+    if (enabled == 0u) return true;
+    ivec2 section = ivec2(max(p, ivec2(0))) / int(CHUNK_CELL_SIZE);
+    return sectionCoordinateActive(section, ivec2(centerX, centerY));
+}
+
 #endif

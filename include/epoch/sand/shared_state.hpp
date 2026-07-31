@@ -35,9 +35,11 @@ struct SharedState final {
     std::atomic_uint32_t selected_scene{static_cast<std::uint32_t>(Scene::ecosystem)};
     std::atomic_uint32_t brush_radius{6};
     std::atomic_uint32_t brush_shape{0};
-    std::atomic_uint32_t camera_zoom{1};
+    std::atomic_uint32_t camera_zoom{8};
     std::atomic_int camera_center_x{320};
     std::atomic_int camera_center_y{180};
+    std::atomic_uint32_t section_worker_count{0};
+    std::atomic_uint32_t active_section_count{0};
     std::atomic_uint32_t steps_per_frame{1};
     std::atomic_uint32_t frames_per_second{0};
 

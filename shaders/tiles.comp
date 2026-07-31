@@ -27,6 +27,7 @@ void main() {
 
     uint index = tile.y * columns + tile.x;
     ivec2 origin = ivec2(tile * TILE_SIZE);
+    if (!sectionActiveAt(origin, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) return;
     ChunkState priorChunk = chunks[chunkIndex(origin, pc.width)];
     if (chunkHas(priorChunk, CHUNK_SLEEPING) && !chunkHas(priorChunk, CHUNK_DIRTY)) return;
 
@@ -150,9 +151,11 @@ void main() {
                      !moving && !hot && !reacting;
     uint stableTicks = candidate ? min(tileStableTicks(previous) + 1u, TILE_STABILIZE_TICKS) : 0u;
     bool stableRegion = candidate && stableTicks >= TILE_STABILIZE_TICKS;
-    bool collapsing = structuralTile && dominantCount < TILE_MIN_COHESIVE_CELLS;
+    bool unsupportedStructural = structuralTile && !physicallySupported;
+    bool collapsing = structuralTile &&
+                      (dominantCount < TILE_MIN_COHESIVE_CELLS || unsupportedStructural);
     bool terrainStable = (structuralTile || stableRegion) && !collapsing;
-    bool supported = terrainStable && (physicallySupported || structuralTile);
+    bool supported = terrainStable && physicallySupported;
 
     bool settledMedium = (macroLiquid || macroGas) && !moving && minimumAge >= 30u;
     bool fineActive = represented != 0u && !macroMovable &&

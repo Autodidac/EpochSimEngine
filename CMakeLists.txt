@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SandHybrid VERSION 1.0.0 LANGUAGES CXX)
+project(EpochSimEngine VERSION 2.4.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(BUILD_TESTING "Build SandHybrid tests" OFF)
+option(BUILD_TESTING "Build EpochSimEngine tests" OFF)
 include(CTest)
 
 set(EPOCH_SAND_VALIDATION_DEFAULT OFF)
@@ -15,7 +15,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(EPOCH_SAND_VALIDATION_DEFAULT ON)
 endif()
 
-option(EPOCH_SAND_BUILD_APP "Build the Vulkan simulation application" ON)
+option(EPOCH_SAND_BUILD_APP "Build the EpochSimEngine Vulkan demo" ON)
 option(EPOCH_SAND_ENABLE_VALIDATION "Enable Vulkan validation layers" ${EPOCH_SAND_VALIDATION_DEFAULT})
 option(EPOCH_SAND_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
@@ -34,6 +34,15 @@ function(epoch_sand_configure_warnings target_name)
 endfunction()
 
 add_subdirectory(third_party/EpochGui EXCLUDE_FROM_ALL)
+
+add_library(EpochSimEngine STATIC
+    src/scene_image.cpp
+    src/section_scheduler.cpp
+)
+add_library(Autodidac::EpochSimEngine ALIAS EpochSimEngine)
+target_include_directories(EpochSimEngine PUBLIC include)
+target_compile_features(EpochSimEngine PUBLIC cxx_std_23)
+epoch_sand_configure_warnings(EpochSimEngine)
 
 if(EPOCH_SAND_BUILD_APP)
     find_package(Vulkan REQUIRED)
@@ -69,30 +78,12 @@ if(EPOCH_SAND_BUILD_APP)
             "alternatively install the Vulkan SDK and put glslc on PATH.")
     endif()
 
-    set(EPOCH_SAND_SOURCES
-        src/main.cpp
-        src/app.cpp
-        src/scene_image.cpp
-        src/vulkan_renderer.cpp
-    )
-
-    if(WIN32)
-        list(APPEND EPOCH_SAND_SOURCES src/window_win32.cpp)
-    elseif(UNIX AND NOT APPLE)
-        list(APPEND EPOCH_SAND_SOURCES src/window_xcb.cpp)
-    else()
-        message(FATAL_ERROR "SandHybrid currently supports Windows and Linux/XCB only.")
-    endif()
-
-    add_executable(epoch_sand ${EPOCH_SAND_SOURCES})
-    target_include_directories(epoch_sand PRIVATE include)
+    target_sources(EpochSimEngine PRIVATE src/vulkan_renderer.cpp)
 
     set(EPOCH_SAND_VULKAN_LIBRARY Vulkan::Vulkan)
     if(UNIX AND NOT APPLE)
-        # vcpkg supplies Vulkan headers and shader tools, but its loader build may
-        # omit host-window-system exports such as vkCreateXcbSurfaceKHR. Prefer
-        # the distribution loader for Linux presentation while retaining the
-        # same Vulkan headers and API contract.
+        # vcpkg supplies headers/tools, while the distribution loader provides
+        # the host-window-system entry points needed for XCB presentation.
         find_library(EPOCH_SAND_SYSTEM_VULKAN_LIBRARY
             NAMES vulkan
             PATHS /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib
@@ -104,11 +95,10 @@ if(EPOCH_SAND_BUILD_APP)
         endif()
     endif()
 
-    target_include_directories(epoch_sand SYSTEM PRIVATE ${Vulkan_INCLUDE_DIRS})
-    target_link_libraries(epoch_sand PRIVATE
+    target_include_directories(EpochSimEngine SYSTEM PRIVATE ${Vulkan_INCLUDE_DIRS})
+    target_link_libraries(EpochSimEngine PUBLIC
         ${EPOCH_SAND_VULKAN_LIBRARY} Threads::Threads Autodidac::EpochGui)
-
-    target_compile_definitions(epoch_sand PRIVATE
+    target_compile_definitions(EpochSimEngine PRIVATE
         $<$<PLATFORM_ID:Windows>:VK_USE_PLATFORM_WIN32_KHR>
         $<$<PLATFORM_ID:Windows>:WIN32_LEAN_AND_MEAN>
         $<$<PLATFORM_ID:Windows>:NOMINMAX>
@@ -119,15 +109,29 @@ if(EPOCH_SAND_BUILD_APP)
         $<$<NOT:$<BOOL:${EPOCH_SAND_ENABLE_VALIDATION}>>:EPOCH_SAND_ENABLE_VALIDATION=0>
     )
 
-    epoch_sand_configure_warnings(epoch_sand)
+    set(EPOCH_SIM_DEMO_SOURCES src/main.cpp src/app.cpp)
+    if(WIN32)
+        list(APPEND EPOCH_SIM_DEMO_SOURCES src/window_win32.cpp)
+    elseif(UNIX AND NOT APPLE)
+        list(APPEND EPOCH_SIM_DEMO_SOURCES src/window_xcb.cpp)
+    else()
+        message(FATAL_ERROR "EpochSimEngine currently supports Windows and Linux/XCB only.")
+    endif()
+
+    add_executable(EpochSimEngine_Demo ${EPOCH_SIM_DEMO_SOURCES})
+    add_executable(epoch_sand ALIAS EpochSimEngine_Demo)
+    set_target_properties(EpochSimEngine_Demo PROPERTIES OUTPUT_NAME epoch_sand)
+    target_include_directories(EpochSimEngine_Demo PRIVATE include)
+    target_link_libraries(EpochSimEngine_Demo PRIVATE EpochSimEngine)
+    epoch_sand_configure_warnings(EpochSimEngine_Demo)
 
     if(MSVC)
-        target_link_libraries(epoch_sand PRIVATE user32 gdi32)
+        target_link_libraries(EpochSimEngine_Demo PRIVATE user32 gdi32)
     else()
         find_path(XCB_INCLUDE_DIR xcb/xcb.h REQUIRED)
         find_library(XCB_LIBRARY NAMES xcb REQUIRED)
-        target_include_directories(epoch_sand PRIVATE ${XCB_INCLUDE_DIR})
-        target_link_libraries(epoch_sand PRIVATE ${XCB_LIBRARY} dl)
+        target_include_directories(EpochSimEngine EpochSimEngine_Demo PRIVATE ${XCB_INCLUDE_DIR})
+        target_link_libraries(EpochSimEngine_Demo PRIVATE ${XCB_LIBRARY} dl)
     endif()
 
     set(SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
@@ -182,23 +186,28 @@ if(EPOCH_SAND_BUILD_APP)
     endforeach()
 
     add_custom_target(epoch_sand_shaders ALL DEPENDS ${EPOCH_SAND_SHADER_BINARIES})
-    add_dependencies(epoch_sand epoch_sand_shaders)
+    add_dependencies(EpochSimEngine_Demo epoch_sand_shaders)
 
-    add_custom_command(TARGET epoch_sand POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:epoch_sand>/shaders"
+    add_custom_command(TARGET EpochSimEngine_Demo POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:EpochSimEngine_Demo>/shaders"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${EPOCH_SAND_SHADER_BINARIES}
-                "$<TARGET_FILE_DIR:epoch_sand>/shaders"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:epoch_sand>/scenes"
+                "$<TARGET_FILE_DIR:EpochSimEngine_Demo>/shaders"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:EpochSimEngine_Demo>/scenes"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${CMAKE_CURRENT_SOURCE_DIR}/scenes/README.txt"
-                "$<TARGET_FILE_DIR:epoch_sand>/scenes/README.txt"
+                "$<TARGET_FILE_DIR:EpochSimEngine_Demo>/scenes/README.txt"
     )
 
-    install(TARGETS epoch_sand RUNTIME DESTINATION bin)
+    install(TARGETS EpochSimEngine_Demo RUNTIME DESTINATION bin)
     install(FILES ${EPOCH_SAND_SHADER_BINARIES} DESTINATION bin/shaders)
     install(FILES scenes/README.txt DESTINATION bin/scenes)
 endif()
+
+install(TARGETS EpochSimEngine
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib)
+install(DIRECTORY include/ DESTINATION include)
 
 if(BUILD_TESTING)
     add_executable(epoch_sand_material_contract tests/material_contract.cpp)
@@ -214,9 +223,15 @@ if(BUILD_TESTING)
     epoch_sand_configure_warnings(epoch_sand_behavior_contract)
     add_test(NAME epoch_sand_behavior_contract COMMAND epoch_sand_behavior_contract)
 
-    add_executable(epoch_sand_scene_image_contract tests/scene_image_contract.cpp src/scene_image.cpp)
-    target_include_directories(epoch_sand_scene_image_contract PRIVATE include)
+    add_executable(epoch_sand_scene_image_contract tests/scene_image_contract.cpp)
+    target_link_libraries(epoch_sand_scene_image_contract PRIVATE EpochSimEngine)
     target_compile_features(epoch_sand_scene_image_contract PRIVATE cxx_std_23)
     epoch_sand_configure_warnings(epoch_sand_scene_image_contract)
     add_test(NAME epoch_sand_scene_image_contract COMMAND epoch_sand_scene_image_contract)
+
+    add_executable(epoch_sand_section_scheduler_contract tests/section_scheduler_contract.cpp)
+    target_link_libraries(epoch_sand_section_scheduler_contract PRIVATE EpochSimEngine)
+    target_compile_features(epoch_sand_section_scheduler_contract PRIVATE cxx_std_23)
+    epoch_sand_configure_warnings(epoch_sand_section_scheduler_contract)
+    add_test(NAME epoch_sand_section_scheduler_contract COMMAND epoch_sand_section_scheduler_contract)
 endif()

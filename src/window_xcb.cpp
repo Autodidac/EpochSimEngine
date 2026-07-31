@@ -25,6 +25,8 @@ xcb_atom_t intern_atom(xcb_connection_t* connection, const char* name) {
 
 constexpr std::uint32_t keysym_escape = 0xFF1Bu;
 constexpr std::uint32_t keysym_space = 0x0020u;
+constexpr std::uint32_t keysym_0 = 0x0030u;
+constexpr std::uint32_t keysym_home = 0xFF50u;
 constexpr std::uint32_t keysym_p = 0x0070u;
 constexpr std::uint32_t keysym_upper_p = 0x0050u;
 constexpr std::uint32_t keysym_n = 0x006Eu;
@@ -97,6 +99,7 @@ struct NativeWindow::Impl final {
     bool toggle_pause{};
     bool single_step{};
     bool reset{};
+    bool reset_camera{};
     bool fill{};
     bool save_scene{};
     bool load_scene{};
@@ -236,6 +239,7 @@ bool NativeWindow::poll(WindowInput& input) {
     impl_->toggle_pause = false;
     impl_->single_step = false;
     impl_->reset = false;
+    impl_->reset_camera = false;
     impl_->fill = false;
     impl_->save_scene = false;
     impl_->load_scene = false;
@@ -337,6 +341,8 @@ bool NativeWindow::poll(WindowInput& input) {
                 impl_->single_step = true;
             } else if (keysym == keysym_r || keysym == keysym_upper_r) {
                 impl_->reset = true;
+            } else if (keysym == keysym_0 || keysym == keysym_home) {
+                impl_->reset_camera = true;
             } else if (keysym == keysym_f || keysym == keysym_upper_f) {
                 impl_->fill = true;
             } else if (keysym == keysym_right_bracket) {
@@ -394,6 +400,7 @@ bool NativeWindow::poll(WindowInput& input) {
         .toggle_pause = impl_->toggle_pause,
         .single_step = impl_->single_step,
         .reset = impl_->reset,
+        .reset_camera = impl_->reset_camera,
         .fill = impl_->fill,
         .save_scene = impl_->save_scene,
         .load_scene = impl_->load_scene,

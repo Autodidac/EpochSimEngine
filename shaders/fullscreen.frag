@@ -390,7 +390,7 @@ void main() {
         uint eraserTop = paletteTop + palettePanelHeight + 3u;
         uint eraserBottom = eraserTop + 24u;
         if (y >= eraserTop && y < eraserBottom && x >= contentLeft && x < contentLeft + contentWidth) {
-            color = renderPc.selectedMaterial == MAT_EMPTY ? vec3(0.44, 0.12, 0.14) : vec3(0.20, 0.065, 0.075);
+            color = renderPc.selectedMaterial == MAT_OXYGEN ? vec3(0.12, 0.31, 0.44) : vec3(0.055, 0.13, 0.19);
             if (borderPixel(x, y, contentLeft, eraserTop, contentLeft + contentWidth, eraserBottom)) color *= 0.55;
             uint length = fixedTextLength(67u);
             int width = int(length) * 12 - 2;
@@ -408,14 +408,14 @@ void main() {
                 color = vec3(0.12, 0.20, 0.28);
             bool keyText = fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(keymapTop + 6u)), 2, 68u);
             uint leftIds[7] = uint[7](62u, 63u, 64u, 69u, 60u, 61u, 106u);
-            uint rightIds[6] = uint[6](70u, 71u, 72u, 73u, 74u, 107u);
+            uint rightIds[7] = uint[7](70u, 71u, 72u, 73u, 74u, 107u, 109u);
             uint columnMiddle = contentLeft + contentWidth / 2u;
             if (x >= columnMiddle && x < columnMiddle + 1u &&
                 y >= keymapTop + 23u && y < keymapBottom - 6u)
                 color = vec3(0.12, 0.20, 0.28);
             for (uint i = 0u; i < 7u; ++i)
                 keyText = keyText || fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(keymapTop + 25u + i * 14u)), 1, leftIds[i]);
-            for (uint i = 0u; i < 6u; ++i)
+            for (uint i = 0u; i < 7u; ++i)
                 keyText = keyText || fixedPixel(pixel, ivec2(int(columnMiddle + 8u), int(keymapTop + 25u + i * 14u)), 1, rightIds[i]);
             if (keyText) color = vec3(0.93, 0.96, 0.99);
             outColor = vec4(color, 1.0);
@@ -585,7 +585,7 @@ void main() {
         uint panelTop = renderPc.viewportTop + 4u;
         bool narrowPanel = panelWidth < 280u;
         uint columns = narrowPanel ? 2u : 4u;
-        uint rows = narrowPanel ? 7u : 4u;
+        uint rows = narrowPanel ? 9u : 5u;
         uint panelBottom = min(viewportBottom, panelTop + 23u + rows * 14u);
         if (x >= panelLeft && x < panelRight && y >= panelTop && y < panelBottom) {
             color.rgb = mix(color.rgb, vec3(0.018, 0.027, 0.040), 0.88);
@@ -594,8 +594,9 @@ void main() {
 
             bool statsText = fixedPixel(pixel, ivec2(int(panelLeft + 7u), int(panelTop + 4u)), 1, 75u);
             uint columnWidth = max((panelWidth - 12u) / columns, 1u);
-            uint fixedLabels[9] = uint[9](1u, 76u, 80u, 79u, 78u, 82u, 83u, 98u, 81u);
-            uint fixedValues[9] = uint[9](
+            uint fixedLabels[13] = uint[13](
+                1u, 76u, 80u, 79u, 78u, 82u, 83u, 98u, 81u, 110u, 111u, 112u, 113u);
+            uint fixedValues[13] = uint[13](
                 renderPc.framesPerSecond,
                 debugStats[STAT_SIMULATION_STEP],
                 debugStats[STAT_ACTIVE_CELLS],
@@ -604,8 +605,12 @@ void main() {
                 debugStats[STAT_BEE_COUNT],
                 debugStats[STAT_BEE_MOVES],
                 debugStats[STAT_ACTIVE_TILES],
-                debugStats[STAT_SLEEPING_TILES]);
-            for (uint stat = 0u; stat < 9u; ++stat) {
+                debugStats[STAT_SLEEPING_TILES],
+                debugStats[STAT_ACTOR_MOVES],
+                debugStats[STAT_PLAYER_IMPULSES],
+                debugStats[STAT_FINE_REPAIR_MOVES],
+                debugStats[STAT_GAS_EXCESS_MOVES]);
+            for (uint stat = 0u; stat < 13u; ++stat) {
                 uint column = stat % columns;
                 uint row = stat / columns;
                 statsText = statsText || statPixel(
@@ -621,7 +626,7 @@ void main() {
                 debugStats[STAT_MACRO_CELL_MOVES],
                 debugStats[STAT_CHUNK_SKIPPED_CELLS]);
             for (uint stat = 0u; stat < 5u; ++stat) {
-                uint slot = stat + 9u;
+                uint slot = stat + 13u;
                 uint column = slot % columns;
                 uint row = slot / columns;
                 statsText = statsText || hierarchyStatPixel(

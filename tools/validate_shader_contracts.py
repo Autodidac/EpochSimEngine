@@ -19,9 +19,12 @@ ENTRY_SHADERS = (
     "paint.comp",
     "sunlight.comp",
     "tiles.comp",
+    "chunks.comp",
     "chemistry.comp",
+    "macro_move.comp",
     "move.comp",
     "actor.comp",
+    "debug_stats.comp",
     "fullscreen.vert",
     "fullscreen.frag",
 )
@@ -400,28 +403,46 @@ def main() -> int:
         if re.search(rf"\b{forbidden}\b", strip_comments(combined), re.I):
             errors.append(f"placement-source physics identifier remains: {forbidden}")
 
-    if "setStateValue(result, 255u)" in chemistry.split("TILE_STABLE", 1)[1].split("if (isStructural(source)", 1)[0]:
+    stable_transition = chemistry.split("if (tileHas(tile, TILE_STABLE)", 1)[1].split(
+        "if (isStructural(source)", 1
+    )[0]
+    if "result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;" not in stable_transition:
+        errors.append("settled terrain is supported but never promoted to structural state")
+    if "setStateValue(result, 255u)" in stable_transition:
         errors.append("stability qualification resets represented damage instead of preserving it")
+    for token in (
+        "bool unsupportedStructural = structuralTile && !physicallySupported;",
+        "dominantCount < TILE_MIN_COHESIVE_CELLS || unsupportedStructural",
+        "bool supported = terrainStable && physicallySupported;",
+    ):
+        if token not in tiles:
+            errors.append(f"settled-terrain release contract missing {token!r}")
 
     # CPU and GLSL push constants must remain byte-for-byte field compatible.
     push_contracts = {
         "SimulationPush": (
-            ["width", "height", "step", "seed", "brush_x", "brush_y", "radius", "material"],
-            ["width", "height", "step", "seed", "brushX", "brushY", "radius", "material"],
+            ["width", "height", "step", "seed", "brush_x", "brush_y", "radius", "material",
+             "active_section_x", "active_section_y", "active_mode", "reserved"],
+            ["width", "height", "step", "seed", "brushX", "brushY", "radius", "material",
+             "activeSectionX", "activeSectionY", "activeMode", "reserved"],
             (SHADERS / "materials.glsl").read_text(encoding="utf-8"),
             "pc",
         ),
         "MovementPush": (
-            ["width", "height", "step", "seed", "phase", "parity", "reserved0", "reserved1"],
-            ["width", "height", "step", "seed", "phase", "parity", "reserved0", "reserved1"],
+            ["width", "height", "step", "seed", "phase", "parity", "reserved0", "reserved1",
+             "active_section_x", "active_section_y", "active_mode", "worker_count"],
+            ["width", "height", "step", "seed", "phase", "parity", "reserved0", "reserved1",
+             "activeSectionX", "activeSectionY", "activeMode", "workerCount"],
             movement,
             "movePc",
         ),
         "ActorPush": (
             ["width", "height", "step", "seed", "move_x", "move_y", "aim_x", "aim_y",
-             "fire", "reset", "scene", "deposit", "simulate", "reserved0", "reserved1", "reserved2"],
+             "fire", "reset", "scene", "deposit", "simulate", "active_section_x",
+             "active_section_y", "active_mode"],
             ["width", "height", "step", "seed", "moveX", "moveY", "aimX", "aimY",
-             "fire", "reset", "scene", "deposit", "simulate", "reserved0", "reserved1", "reserved2"],
+             "fire", "reset", "scene", "deposit", "simulate", "activeSectionX",
+             "activeSectionY", "activeMode"],
             (SHADERS / "actor.comp").read_text(encoding="utf-8"),
             "actorPc",
         ),
