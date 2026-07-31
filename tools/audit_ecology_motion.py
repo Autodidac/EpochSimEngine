@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 
 root = Path(__file__).resolve().parents[1]
 files = {
@@ -9,6 +10,7 @@ files = {
     "paint": (root / "shaders/paint.comp").read_text(encoding="utf-8"),
     "swarm": (root / "shaders/bee_swarm.glsl").read_text(encoding="utf-8"),
     "chemistry": (root / "shaders/chemistry.comp").read_text(encoding="utf-8"),
+    "reset": (root / "shaders/reset.comp").read_text(encoding="utf-8"),
 }
 errors = []
 required = {
@@ -22,10 +24,16 @@ required = {
     "paint": ["isDirectPaintLife", "displacePaintGas",
               "BEE_AUX_SWARM | BEE_AUX_FED"],
     "swarm": ["beeOrbitTarget", "beeSwarmTarget", "beeBiohazardTargetOffset",
-              "BEE_SWARM_BIOHAZARD_TICKS", "BEE_SWARM_ALTERNATE_TICKS"],
+              "BEE_SWARM_BIOHAZARD_TICKS", "BEE_SWARM_ALTERNATE_TICKS",
+              "BEE_FORMATION_COUNT = 100u", "BEE_COLONY_MAX = 100u",
+              "step / 360u", "beeFormationOffset(targetSlot) * 5 / 4"],
     "chemistry": ["flowerDropsSeed", "grassFrontier", "stemMoisture",
                   "source.material == MAT_PLANT_STEM",
-                  "Painted and loaded orphan bees self-seed"],
+                  "Painted and loaded orphan bees self-seed",
+                  "respiringNeighborDemand", "beeRoll < demand.x",
+                  "fireRespiration", "BEE_COLONY_MAX"],
+    "reset": ["approved suspended hive", "queen.x - 38",
+              "q2 >= 25 && q2 < 92", "q.x >= 1 && q.x <= 10"],
 }
 for name, tokens in required.items():
     for token in tokens:
@@ -35,6 +43,9 @@ forbidden = {
     "materials": ["MAT_PLANT_STEM) temperature = 900", "AUX_CHARGED | 72u"],
     "move": ["return tileHas(tileA, TILE_SLEEPING) && tileHas(tileB, TILE_SLEEPING);",
              "targetDistance <= 49"],
+    "swarm": ["BEE_FORMATION_COUNT = 200u", "step / 90u"],
+    "chemistry": ["respiringNeighborCount",
+                  "if (nearFire || hasNeighbor(p, MAT_EMBER)"],
 }
 for name, tokens in forbidden.items():
     for token in tokens:
@@ -42,4 +53,14 @@ for name, tokens in forbidden.items():
             errors.append(f"{name}: forbidden legacy contract remains: {token}")
 if errors:
     raise SystemExit("\n".join(errors))
-print("Ecology and motion contracts passed: dynamic tiles, mobile painted bees, passable-media insects, gas displacement, grass, seeds, stems, and flowers.")
+packed = re.search(r"BEE_INITIAL_PACKED\[BEE_FORMATION_COUNT\] = uint\[\]\((.*?)\n\);", files["swarm"], re.S)
+if packed is None or len(re.findall(r"\d+u", packed.group(1))) != 100:
+    errors.append("swarm: expected exactly 100 authored biohazard points")
+macro = (root / "shaders/macro_move.comp").read_text(encoding="utf-8")
+if "regionSupported(sourceOrigin, source) && target.material == MAT_EMPTY" in macro:
+    errors.append("macro: horizontal bulk movement still rejects represented atmosphere")
+if "regionSupported(sourceOrigin, source);" not in macro:
+    errors.append("macro: horizontal density/displacement contract missing")
+if errors:
+    raise SystemExit("\n".join(errors))
+print("Ecology and motion contracts passed: 100-bee colony cap, slower respiration, stable biohazard mask, approved hive, represented-atmosphere macro displacement, mobile life, plants, and flowers.")

@@ -12,14 +12,14 @@ Status meanings: `OPEN` not implemented; `PARTIAL` code exists but acceptance is
 | MC-002 | COMPLETE | Preserve bee/bug movement through represented atmosphere | Painted bees, ants, and beetles move through gas/liquid by conserved displacement; oxygen remains breathable rather than a blocking solid. |
 | MC-003 | COMPLETE | Preserve explicit oxygen/CO2 life model | Living agents consume oxygen, exchange it for CO2, and suffocate in zero oxygen, fully non-breathable gas, or liquid enclosure. Empty cells are not silently breathable. |
 | MC-004 | COMPLETE | Preserve oxygen-filled eraser/vacuum scene initialization | Erased and authored atmosphere starts as canonical oxygen rather than unrepresented void. |
-| MC-005 | COMPLETE | Preserve bee formation cycle | Colony masks return to biohazard between alternate states with the configured dominant biohazard timing. |
+| MC-005 | REGRESSION | Preserve bee formation cycle | Code returns to biohazard, but the runtime symbol is difficult to read and the colony dies before repeated lifecycle cycles can be observed. |
 | MC-006 | COMPLETE | Restore useful debug counters | SWAPS, macro moves, macro cells, fine repair, sleeping chunks, and skipped cells remain available. |
 | MC-007 | COMPLETE | Reduce debug overlay cost | Statistics are sampled every 16 frames and unreadable dense 8x8 grid lines are omitted. |
 | MC-008 | COMPLETE | Canonical wet-state materials | Wet sand, wet dirt, wet silt, and mud use material state rather than provenance; drying restores the same base material. |
 | MC-009 | COMPLETE | Add Sluice Box processing | With falling water, eight wet-sand feed cells produce one gold and seven silt cells without creating or deleting represented mass. |
 | MC-010 | COMPLETE | Structural integrity for cohesive solids | Full cohesive regions require physical support to stabilize; stability never reconstructs, fills, snaps, or synthesizes pixels. |
 | MC-011 | PARTIAL | 64x64 chunk-first work rejection | Code caches active/sleeping/dirty/boundary chunks and skips sleeping neighborhoods. Runtime profiling must still prove that clean off-camera regions avoid fine work. |
-| MC-012 | PARTIAL | 8x8 macro-element movement | Code classifies and bulk-moves eligible uniform solids, powders, liquids, gases, mud, and wet regions. Gameplay/debug counters must visibly prove water, gas, and falling blocks use it often. |
+| MC-012 | REGRESSION | 8x8 macro-element movement | v2.4.0 classified full regions, but horizontal bulk movement required literal empty cells even though open space is represented by oxygen. Runtime showed MACRO 0 / MCELL 0. |
 | MC-013 | REGRESSION | True liquid settling without hopping | Equal-level random fallback was removed, but current gameplay still shows hopping and excessive movement. Water must reach a stable rest rapidly and remain still until pressure, support, or boundaries change. |
 | MC-014 | PARTIAL | Half-water coalescence and presentation | Short-range attraction and stronger blended coverage exist. Isolated halves must still be eliminated without jitter, mass creation, or trapped single-half pockets. |
 | MC-015 | PARTIAL | Normal rendering hides hierarchy artifacts | Normal presentation blends fine edges and half-water. Visible macro squares, block popping, and corner pressure artifacts require gameplay verification and repair. |
@@ -29,12 +29,16 @@ Status meanings: `OPEN` not implemented; `PARTIAL` code exists but acceptance is
 
 | ID | Status | Mission | Acceptance criteria / evidence |
 |---|---|---|---|
-| MC-020 | REGRESSION | Reduce bee oxygen consumption | Bees currently consume oxygen too quickly. Measure consumption and reduce it by at least 10x, likely 100x, while retaining eventual suffocation in sealed oxygen-free spaces. |
-| MC-021 | REGRESSION | Bound fire CO2 production | Fire currently emits immense CO2. Output must be stoichiometric and bounded by consumed fuel/oxygen; no reaction may mint gas volume. |
-| MC-022 | OPEN | Prevent lethal local CO2 piles through pressure transport | CO2 must use conserved macro-volume displacement and pressure equalization so a single local pile does not kill an entire colony while adjacent breathable volume exists. |
+| MC-020 | ACTIVE | Reduce bee oxygen consumption | v2.4.1 code target is 128x slower bee respiration and 32x slower other-life respiration. Gameplay must show long-lived colonies while sealed oxygen-free spaces still eventually kill them. |
+| MC-021 | ACTIVE | Bound fire CO2 production | v2.4.1 code target converts adjacent oxygen probabilistically from fire/ember instead of every tick. Output remains one conserved O2 volume to one CO2 volume. Runtime stress test remains required. |
+| MC-022 | PARTIAL | Prevent lethal local CO2 piles through pressure transport | Horizontal macro displacement is being corrected to swap full represented gas/liquid regions by density. Partial-edge pressure transport still needs runtime proof. |
 | MC-023 | OPEN | Validate closed-system volume and pressure | Gases/liquids carry conserved represented volume; displacement raises pressure, transfers existing volume, and never creates or silently deletes material. Add counters and closed-box tests. |
 | MC-024 | OPEN | Explain and validate oxygen corner structures | Determine whether the observed oxygen corner pattern is legitimate pressure packing or a movement artifact; preserve the attractive look only when physically consistent. |
 | MC-025 | OPEN | Correct fertilizer chemistry | Ember-to-fertilizer is not accepted as a direct reaction. Define a plausible ash/organic waste/silt/dirty-water compost path and conserve all inputs and products. |
+| MC-026 | ACTIVE | Restore approved suspended hive | Use the exact earlier FastFreddy suspended wood beam, nest shell, entrance, honey/pollen chamber, and queen geometry in the ecosystem scene. |
+| MC-027 | ACTIVE | Cap autonomous hive population at 100 bees | Initial authored formation contains 100 bees; queen/nest reproduction refuses births at the local 100-bee cap. Explicit user-painted bees are not silently deleted. |
+| MC-028 | PARTIAL | Complete bee lifecycle | Preserve queen, nest, forage, pollen pickup, return, deposit, honey feeding, migration, aging, hazard death, oxygen use, CO2 exchange, and colony replacement. Runtime multi-cycle evidence remains required. |
+| MC-029 | ACTIVE | Make biohazard formation readable | Use a stable, slightly enlarged 100-point mask with slower slot remapping and minimal flutter; biohazard remains the dominant phase and must visibly recur. |
 
 ## Performance, sections, and optional concurrency
 

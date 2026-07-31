@@ -119,8 +119,10 @@ void main() {
             } else if (valid && (macroPc.phase == 1 || macroPc.phase == 2)) {
                 allowed = !tileHas(sourceState, TILE_MACRO_GAS) && regionSupported(sourceOrigin, source);
             } else if (valid) {
+                // Open space is represented by gas, so horizontal bulk movement must use
+                // the already-validated density/displacement contract rather than MAT_EMPTY.
                 allowed = (tileHas(sourceState, TILE_MACRO_LIQUID) || tileHas(sourceState, TILE_MACRO_GAS)) &&
-                          regionSupported(sourceOrigin, source) && target.material == MAT_EMPTY;
+                          regionSupported(sourceOrigin, source);
             }
             if (allowed) {
                 sourceTileShared = sourceTile;

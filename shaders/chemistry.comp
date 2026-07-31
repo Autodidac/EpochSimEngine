@@ -104,12 +104,14 @@ bool fullyChokedByMedium(ivec2 p) {
     return contacts == 8u;
 }
 
-uint respiringNeighborCount(ivec2 p) {
-    uint count = 0u;
+uvec2 respiringNeighborDemand(ivec2 p) {
+    uvec2 demand = uvec2(0u); // x: bees, y: all other breathing life
     for (uint i = 0u; i < 8u; ++i) {
-        if (isRespiringLife(at(p + neighborOffsets[i]).material)) ++count;
+        uint material = at(p + neighborOffsets[i]).material;
+        if (material == MAT_BEE || material == MAT_QUEEN_BEE) ++demand.x;
+        else if (isRespiringLife(material)) ++demand.y;
     }
-    return count;
+    return demand;
 }
 
 bool hasCold(ivec2 p) {
@@ -858,6 +860,7 @@ void main() {
                     handledNest = true;
                 } else if (any(notEqual(queenOffset, ivec2(0))) && queenDistanceSquared <= 6 &&
                             (hasNeighbor(p, MAT_HONEY) || hasNeighbor(p, MAT_POLLEN)) &&
+                            beePopulationAroundTile(tileIndex(p + queenOffset, pc.width), 6) < BEE_COLONY_MAX &&
                             countWithin(p, MAT_BEE, 6) < 4u && (randomValue & 32767u) == 0u) {
                     result = makeCell(MAT_BEE);
                     uint newbornSlot = hash32(indexOf(p) ^ pc.seed ^ result.aux) % BEE_FORMATION_COUNT;
@@ -908,9 +911,15 @@ void main() {
     // volume for one CO2 volume; photosynthesis performs the inverse exchange.
     if (source.material == MAT_OXYGEN) {
         uint volume = representedOxygenVolume(source);
-        uint consumers = respiringNeighborCount(p);
-        if (nearFire || hasNeighbor(p, MAT_EMBER) ||
-            (consumers > 0u && (randomValue & 2047u) < consumers)) {
+        uvec2 demand = respiringNeighborDemand(p);
+        uint beeRoll = hash32(randomValue ^ 0xb33a71u) & 0x0003ffffu;
+        uint lifeRoll = hash32(randomValue ^ 0x11fe21u) & 0x0000ffffu;
+        bool beeRespiration = demand.x > 0u && beeRoll < demand.x;       // 128x slower than v2.4.0
+        bool otherRespiration = demand.y > 0u && lifeRoll < demand.y;  // 32x slower than v2.4.0
+        bool fireRespiration = nearFire && (randomValue & 127u) == 0u;
+        bool emberRespiration = hasNeighbor(p, MAT_EMBER) &&
+                                (hash32(randomValue ^ 0xe6be2u) & 2047u) == 0u;
+        if (beeRespiration || otherRespiration || fireRespiration || emberRespiration) {
             result = makeCell(MAT_CARBON_DIOXIDE);
             setStateValue(result, volume);
         }
@@ -1351,7 +1360,7 @@ void main() {
             uint queenTile = tileIndex(p, pc.width);
             uint localBees = beePopulationAroundTile(queenTile, 6);
             bool localHoney = beeTileAreaHasFlag(queenTile, TILE_HAS_HONEY, 2);
-            bool reproductiveSwarm = localBees >= 180u && localHoney;
+            bool reproductiveSwarm = localBees >= (BEE_COLONY_MAX * 9u) / 10u && localHoney;
             bool resourceFailure = !localHoney;
 
             if ((randomValue & 255u) == 0u) {

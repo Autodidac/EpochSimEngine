@@ -296,3 +296,8 @@ Uniform 8x8 material regions can now move as 64-cell macro-cells using the same 
 ## Half-volume fresh water
 
 Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and half-only extra horizontal passes. See `HALF_WATER.md`.
+
+
+## v2.4.1 correction
+
+Restores the approved suspended hive, caps autonomous colonies at 100 bees, slows bee respiration, bounds fire/ember oxygen-to-CO2 exchange, stabilizes and enlarges the biohazard mask, and fixes horizontal 8x8 bulk movement so represented oxygen/CO2 is displaceable atmosphere rather than requiring literal empty cells. Runtime acceptance remains tracked in `missioncache.md`.

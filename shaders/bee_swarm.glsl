@@ -1,7 +1,8 @@
 #ifndef EPOCH_SAND_BEE_SWARM_GLSL
 #define EPOCH_SAND_BEE_SWARM_GLSL
 
-const uint BEE_FORMATION_COUNT = 200u;
+const uint BEE_FORMATION_COUNT = 100u;
+const uint BEE_COLONY_MAX = 100u;
 const uint BEE_TARGET_NONE = 0xffffu;
 const uint BEE_AUX_QUEEN = 0x40000000u;
 const uint BEE_AUX_POLLEN = 0x20000000u;
@@ -17,26 +18,16 @@ const uint BEE_SWARM_PHASE_TICKS =
 const uint BEE_SWARM_CYCLE_TICKS = BEE_SWARM_PHASE_TICKS * 2u;
 
 const uint BEE_INITIAL_PACKED[BEE_FORMATION_COUNT] = uint[](
-    1479u, 1597u, 1850u, 1989u, 1999u, 2099u, 2109u, 2114u, 2229u, 2232u,
-    2235u, 2258u, 2366u, 2386u, 2479u, 2483u, 2503u, 2506u, 2510u, 2615u,
-    2622u, 2763u, 2773u, 2863u, 2866u, 2867u, 2871u, 2988u, 2989u, 2994u,
-    2999u, 3125u, 3243u, 3256u, 3285u, 3374u, 3535u, 3794u, 3885u, 3887u,
-    3924u, 3928u, 4010u, 4140u, 4178u, 4275u, 4432u, 4434u, 4439u, 4520u,
-    4560u, 4649u, 4650u, 4779u, 4817u, 5161u, 5946u, 5952u, 6208u, 6210u,
-    6219u, 6325u, 6340u, 6450u, 6597u, 6861u, 6989u, 7121u, 7458u, 7525u,
-    7527u, 7776u, 7829u, 7831u, 7844u, 7853u, 7856u, 8039u, 8042u, 8084u,
-    8098u, 8166u, 8172u, 8243u, 8338u, 8349u, 8353u, 8404u, 8416u, 8423u,
-    8429u, 8607u, 8624u, 8674u, 8736u, 8807u, 8812u, 8853u, 8909u, 8912u,
-    8914u, 8916u, 8938u, 8939u, 8980u, 9107u, 9110u, 9112u, 9136u, 9141u,
-    9170u, 9187u, 9199u, 9241u, 9369u, 9393u, 9446u, 9576u, 9578u, 9583u,
-    9617u, 9618u, 9623u, 9657u, 9673u, 9752u, 9804u, 9919u, 9959u, 9966u,
-    10042u, 10087u, 10220u, 10638u, 10648u, 10694u, 10736u, 10822u, 10853u, 10897u,
-    10988u, 10994u, 11118u, 11187u, 11363u, 11374u, 11411u, 11471u, 11475u, 11544u,
-    11549u, 11569u, 11673u, 11732u, 11814u, 11817u, 11822u, 11870u, 11930u, 11943u,
-    11984u, 11986u, 11998u, 12111u, 12117u, 12128u, 12134u, 12185u, 12190u, 12198u,
-    12211u, 12259u, 12310u, 12313u, 12329u, 12386u, 12388u, 12451u, 12456u, 12570u,
-    12578u, 12592u, 12596u, 12598u, 12622u, 12624u, 12627u, 12646u, 12702u, 12724u,
-    12750u, 12755u, 12768u, 12901u, 12961u, 12977u, 13020u, 13085u, 13097u, 13402u
+    1479u, 1850u, 1999u, 2109u, 2229u, 2235u, 2366u, 2479u, 2503u, 2510u,
+    2622u, 2773u, 2866u, 2871u, 2989u, 2999u, 3243u, 3285u, 3535u, 3885u,
+    3924u, 4010u, 4178u, 4432u, 4439u, 4560u, 4650u, 4817u, 5946u, 6208u,
+    6219u, 6340u, 6597u, 6989u, 7458u, 7527u, 7829u, 7844u, 7856u, 8042u,
+    8098u, 8172u, 8338u, 8353u, 8416u, 8429u, 8624u, 8736u, 8812u, 8909u,
+    8914u, 8938u, 8980u, 9110u, 9136u, 9170u, 9199u, 9369u, 9446u, 9578u,
+    9617u, 9623u, 9673u, 9804u, 9959u, 10042u, 10220u, 10648u, 10736u, 10853u,
+    10988u, 11118u, 11363u, 11411u, 11475u, 11549u, 11673u, 11814u, 11822u, 11930u,
+    11984u, 11998u, 12117u, 12134u, 12190u, 12211u, 12310u, 12329u, 12388u, 12456u,
+    12578u, 12596u, 12622u, 12627u, 12702u, 12750u, 12768u, 12961u, 13020u, 13097u
 );
 
 uint beeHash32(uint value) {
@@ -127,11 +118,12 @@ uint beeSwarmState(uint aux, uint step) {
 
 ivec2 beeBiohazardTargetOffset(uint slot, uint step, ivec2 home) {
     const uint increments[8] = uint[8](1u, 3u, 7u, 9u, 11u, 13u, 17u, 19u);
-    uint epoch = step / 90u;
+    uint epoch = step / 360u;
     uint increment = increments[beeHash32(uint(home.x) ^ (uint(home.y) << 16u) ^ epoch) & 7u];
     uint targetSlot = (slot + epoch * increment) % BEE_FORMATION_COUNT;
-    ivec2 anchor = beeFormationOffset(targetSlot);
-    ivec2 flutter = beeRotateOffset(ivec2(1 + int(slot & 1u), 0), step / 3u + slot * 5u);
+    // A stable, slightly enlarged mask reads as a symbol instead of 100 unrelated insects.
+    ivec2 anchor = beeFormationOffset(targetSlot) * 5 / 4;
+    ivec2 flutter = beeRotateOffset(ivec2(1, 0), step / 8u + slot * 5u);
     return anchor + flutter;
 }
 
