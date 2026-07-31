@@ -1,0 +1,67 @@
+name: Clean up v2.4.2 publication
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.head_ref == 'agent/publish-v242'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Archive release evidence and remove publication scaffolding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('missioncache.md')
+          text = path.read_text(encoding='utf-8')
+          release = '''## v2.4.2 — runtime hierarchy, scheduling, and diagnostics pass
+
+Runtime source merge: `2db7a6dad20a88f1ce65f54e3978f7f0daa9736f`
+
+Accepted CI run: `30661800841`. Windows 2022 and Ubuntu 24.04 compiled all 12 entry shaders, built the C++23 static library and thin demo, passed all four contract tests, installed packages, and uploaded platform archives. Release publication run `30662820483` published the Windows archive, Linux archive, and `SHA256SUMS.txt` under tag `v2.4.2`.
+
+This release records implementation attempts and build evidence only. Every runtime-unverified `OPEN`, `PARTIAL`, `REGRESSION`, or `DEFERRED` mission above remains active and carries forward unchanged until scene acceptance.
+
+'''
+          marker = '## Carry-forward rule\n'
+          if '## v2.4.2 — runtime hierarchy, scheduling, and diagnostics pass' not in text:
+              if marker not in text:
+                  raise SystemExit('mission cache release-history marker missing')
+              text = text.replace(marker, release + marker, 1)
+              path.write_text(text, encoding='utf-8')
+          PY
+          rm -f \
+            .github/v242-release.trigger \
+            .github/workflows/v242-release.yml \
+            .github/workflows/windows-release.yml \
+            .github/workflows/cleanup-v242-publication.yml
+          git add -A
+
+      - name: Commit canonical release history
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'EpochSimEngine Release Agent'
+          git config user.email 'actions@users.noreply.github.com'
+          git commit -m 'Archive v2.4.2 evidence and remove publication scaffolding'
+          git push origin main
+
+      - name: Delete temporary branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin --delete agent/publish-v242 || true
+          git push origin --delete agent/epochsim-v242-runtime || true
