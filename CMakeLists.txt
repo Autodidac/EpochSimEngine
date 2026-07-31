@@ -123,6 +123,10 @@ if(EPOCH_SAND_BUILD_APP)
     set_target_properties(EpochSimEngine_Demo PROPERTIES OUTPUT_NAME epoch_sand)
     target_include_directories(EpochSimEngine_Demo PRIVATE include)
     target_link_libraries(EpochSimEngine_Demo PRIVATE EpochSimEngine)
+    target_compile_definitions(EpochSimEngine_Demo PRIVATE
+        $<$<PLATFORM_ID:Windows>:VK_USE_PLATFORM_WIN32_KHR>
+        $<$<PLATFORM_ID:Linux>:VK_USE_PLATFORM_XCB_KHR>
+    )
     epoch_sand_configure_warnings(EpochSimEngine_Demo)
 
     if(MSVC)
