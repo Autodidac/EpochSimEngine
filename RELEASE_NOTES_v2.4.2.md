@@ -14,6 +14,11 @@ This release is a broad runtime implementation pass against the unified `mission
 - Larger high-contrast debug statistics, additional hierarchy counters, and an on-screen color key.
 - Atmosphere-tool and UI cleanup.
 
+## Build corrections
+
+- Strict GCC/Clang warning-as-error builds retain every warning except the intentional Vulkan C-aggregate zero-fill diagnostic.
+- The Linux thin demo now receives `VK_USE_PLATFORM_XCB_KHR`, matching the renderer library and enabling the XCB Vulkan surface API declarations.
+
 ## Validation policy
 
 Windows and Linux Release builds compile all 12 entry shaders, build the C++23 targets, run the contract tests, install packages, and archive platform artifacts.
