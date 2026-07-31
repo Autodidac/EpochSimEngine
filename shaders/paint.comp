@@ -69,14 +69,16 @@ void main() {
 
     uint material = pc.material & 0xffffu;
     uint brushShape = (pc.material >> 16u) & 3u;
+    bool tileMode = ((pc.material >> 18u) & 1u) != 0u;
     material = material < MATERIAL_COUNT ? material : MAT_EMPTY;
 
-    if (isBlockCapable(material)) {
+    if (tileMode) {
         ivec2 blockOrigin = (center / int(STRUCTURAL_BLOCK_SIZE)) * int(STRUCTURAL_BLOCK_SIZE);
         ivec2 blockEnd = blockOrigin + ivec2(int(STRUCTURAL_BLOCK_SIZE));
         if (p.x < blockOrigin.x || p.y < blockOrigin.y || p.x >= blockEnd.x || p.y >= blockEnd.y) return;
         bool anchored = blockEnd.y >= int(pc.height) - 1;
-        Cell cell = makeStructuralCell(material, anchored);
+        Cell cell = isBlockCapable(material) ? makeStructuralCell(material, anchored)
+                                             : makeCell(material);
         bool machineController = (material == MAT_SMELTER || material == MAT_ASSEMBLER ||
                                   material == MAT_INSECT_HABITAT || material == MAT_SLUICE_BOX) &&
                                  (p.x & 7) == 3 && (p.y & 7) == 3;
@@ -90,6 +92,8 @@ void main() {
         }
         uint index = indexOf(p);
         Cell previous = cells[index];
+        if (isDirectPaintLife(material) && isGas(previous.material) &&
+            !displacePaintGas(p, previous)) return;
         recordConservation(previous, cell);
         cells[index] = cell;
         markPaintChunkDirty(p);
@@ -141,12 +145,12 @@ void main() {
                             AUX_PLANT_STEM | AUX_STRUCTURAL | AUX_SUPPORTED | AUX_STATE_MASK));
     if (colonySlot >= 0) {
         cell.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
-        cell.aux = beePackMetadata(cell.aux, center, uint(colonySlot));
+        cell.aux = beePackMetadata(cell.aux, center, uint(colonySlot), pc.width, pc.height);
         cell.age = beePackAge(uint((colonySlot * 17) % 900), BEE_TARGET_NONE);
     } else if (material == MAT_BEE) {
         uint slot = cellHash(center, 0xb33f1u) % BEE_FORMATION_COUNT;
         cell.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
-        cell.aux = beePackMetadata(cell.aux, center, slot);
+        cell.aux = beePackMetadata(cell.aux, center, slot, pc.width, pc.height);
         cell.age = beePackAge(0u, BEE_TARGET_NONE);
     }
 

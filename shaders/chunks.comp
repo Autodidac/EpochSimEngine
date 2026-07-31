@@ -13,8 +13,9 @@ void main() {
     uint columns = chunkColumns(pc.width);
     uint rows = chunkRows(pc.height);
     if (chunk.x >= columns || chunk.y >= rows) return;
+    ivec2 chunkCellOrigin = ivec2(chunk * CHUNK_CELL_SIZE);
     if (pc.activeMode != 0u &&
-        !sectionCoordinateActive(ivec2(chunk), ivec2(pc.activeSectionX, pc.activeSectionY))) return;
+        !sectionActiveAt(chunkCellOrigin, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) return;
 
     uint index = chunk.y * columns + chunk.x;
     ChunkState previous = chunks[index];

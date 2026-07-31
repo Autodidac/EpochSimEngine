@@ -5,6 +5,8 @@ const uint CHUNK_TILES_PER_AXIS = 8u;
 const uint CHUNK_CELL_SIZE = TILE_SIZE * CHUNK_TILES_PER_AXIS;
 const uint CHUNK_TILE_COUNT = CHUNK_TILES_PER_AXIS * CHUNK_TILES_PER_AXIS;
 const uint CHUNK_SLEEP_TICKS = 30u;
+const int ACTIVE_REGION_WIDTH_CELLS = 640;
+const int ACTIVE_REGION_HEIGHT_CELLS = 360;
 
 const uint CHUNK_ACTIVE = 0x00000001u;
 const uint CHUNK_SLEEPING = 0x00000002u;
@@ -48,7 +50,9 @@ bool sectionCoordinateActive(ivec2 candidate, ivec2 center) {
 
 bool sectionActiveAt(ivec2 p, int centerX, int centerY, uint enabled) {
     if (enabled == 0u) return true;
-    ivec2 section = ivec2(max(p, ivec2(0))) / int(CHUNK_CELL_SIZE);
+    ivec2 clamped = max(p, ivec2(0));
+    ivec2 section = ivec2(clamped.x / ACTIVE_REGION_WIDTH_CELLS,
+                          clamped.y / ACTIVE_REGION_HEIGHT_CELLS);
     return sectionCoordinateActive(section, ivec2(centerX, centerY));
 }
 

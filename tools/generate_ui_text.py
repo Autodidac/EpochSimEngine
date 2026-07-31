@@ -33,6 +33,7 @@ FIXED = [
     "FINE TILES", "BULK TILES", "SETTLED TILES", "DIRTY CHUNKS", "GAS TILES",
     "LIQUID TILES", "ENCLOSED TILES", "BREAKUP TILES", "COLOR KEY", "DAMAGED",
     "STABLE", "BULK MOVED", "FINE ACTIVE", "BULK READY", "SETTLED", "ENCLOSED", "BREAKUP",
+    "TILES", "ACTIVE AREAS", "MAP STAR", "CAMERA VIEW", "WASD PAN", "EDGE PAN", "PLACEMENT",
 ]
 SCENES = [
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",

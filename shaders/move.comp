@@ -563,26 +563,26 @@ bool beeTargetTileValid(uint index, uint requiredFlags) {
 
 ivec2 beeStoredFlowerTarget(Cell bee) {
     uint targetTile = beeTargetTileFromAge(bee.age);
-    if (!beeTargetTileValid(targetTile, TILE_HAS_FLOWER)) return beeOrbitTarget(bee.aux, movePc.step);
+    if (!beeTargetTileValid(targetTile, TILE_HAS_FLOWER)) return beeOrbitTarget(bee.aux, movePc.step, movePc.width, movePc.height);
     TileState targetState = tiles[targetTile];
     ivec2 flower = tileFlowerPosition(targetTile, movePc.width, targetState);
-    return beeApproachPosition(flower, beeHomeCenterFromAux(bee.aux));
+    return beeApproachPosition(flower, beeHomeCenterFromAux(bee.aux, movePc.width, movePc.height));
 }
 
 ivec2 beeStoredHoneyTarget(Cell bee) {
     uint targetTile = beeTargetTileFromAge(bee.age);
     if (!beeTargetTileValid(targetTile, TILE_HAS_HONEY))
-        return beeHomeCenterFromAux(bee.aux) + beeLandingOffset(beeFormationSlotFromAux(bee.aux));
+        return beeHomeCenterFromAux(bee.aux, movePc.width, movePc.height) + beeLandingOffset(beeFormationSlotFromAux(bee.aux));
     TileState targetState = tiles[targetTile];
     ivec2 honey = tileHoneyPosition(targetTile, movePc.width, targetState);
-    return beeApproachPosition(honey, beeHomeCenterFromAux(bee.aux));
+    return beeApproachPosition(honey, beeHomeCenterFromAux(bee.aux, movePc.width, movePc.height));
 }
 
 ivec2 beeStoredMigratingQueen(Cell bee) {
     uint targetTile = beeTargetTileFromAge(bee.age);
     if (!beeTargetTileValid(targetTile, TILE_HAS_MIGRATING_QUEEN) &&
         !beeTargetTileValid(targetTile, TILE_HAS_QUEEN))
-        return beeHomeCenterFromAux(bee.aux);
+        return beeHomeCenterFromAux(bee.aux, movePc.width, movePc.height);
     TileState targetState = tiles[targetTile];
     return tileQueenPosition(targetTile, movePc.width, targetState);
 }
@@ -592,7 +592,7 @@ ivec2 beeMovementTarget(Cell bee) {
     if ((bee.aux & BEE_AUX_QUEEN) != 0u) {
         uint targetTile = beeTargetTileFromAge(bee.age);
         if (!beeTargetTileValid(targetTile, TILE_HAS_FLOWER))
-            return beeHomeCenterFromAux(bee.aux);
+            return beeHomeCenterFromAux(bee.aux, movePc.width, movePc.height);
         TileState targetState = tiles[targetTile];
         return beeMigrationSite(tileFlowerPosition(targetTile, movePc.width, targetState),
                                 movePc.width, movePc.height);
@@ -602,12 +602,12 @@ ivec2 beeMovementTarget(Cell bee) {
         return queen + beeRotateOffset(beeFormationOffset(slot) / 2, movePc.step / 8u);
     }
     if ((bee.aux & BEE_AUX_POLLEN) != 0u)
-        return beeHomeCenterFromAux(bee.aux) + beeLandingOffset(slot);
+        return beeHomeCenterFromAux(bee.aux, movePc.width, movePc.height) + beeLandingOffset(slot);
     if ((bee.aux & BEE_AUX_FED) == 0u)
         return beeStoredHoneyTarget(bee);
     if (beeTargetTileFromAge(bee.age) != BEE_TARGET_NONE)
         return beeStoredFlowerTarget(bee);
-    return beeOrbitTarget(bee.aux, movePc.step);
+    return beeOrbitTarget(bee.aux, movePc.step, movePc.width, movePc.height);
 }
 
 bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {

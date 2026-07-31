@@ -53,6 +53,11 @@ layout(push_constant) uniform RenderPush {
     uint viewWidth;
     uint viewHeight;
     uint brushShape;
+    uint placementMode;
+    uint activeAreaCount;
+    int activeAreaX;
+    int activeAreaY;
+    uint activeScopeMode;
 } renderPc;
 
 uint glyphRow(uint code, uint row) {
@@ -174,6 +179,93 @@ bool borderPixel(uint x, uint y, uint left, uint top, uint right, uint bottom) {
     return x <= left + 1u || x + 2u >= right || y <= top + 1u || y + 2u >= bottom;
 }
 
+bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
+                     uint panelRight, uint panelBottom, int textScale, inout vec3 color) {
+    if (x < panelLeft || x >= panelRight || y < panelTop || y >= panelBottom) return false;
+    color = vec3(0.006, 0.010, 0.018);
+    if (borderPixel(x, y, panelLeft, panelTop, panelRight, panelBottom))
+        color = vec3(0.34, 0.72, 1.00);
+
+    bool textHit = false;
+    vec3 textColor = vec3(0.96, 0.99, 1.00);
+    if (fixedPixel(pixel, ivec2(int(panelLeft + 10u), int(panelTop + 5u)), textScale, 75u)) {
+        textHit = true;
+        textColor = vec3(1.00);
+    }
+    uint scopeLabelX = panelRight > panelLeft + 122u ? panelRight - 112u : panelLeft + 10u;
+    if (fixedPixel(pixel, ivec2(int(scopeLabelX), int(panelTop + 8u)), 1,
+                   renderPc.activeScopeMode == 2u ? 139u : 138u)) {
+        textHit = true;
+        textColor = vec3(0.52, 0.94, 0.58);
+    }
+
+    const uint statCount = 16u;
+    uint rowHeight = textScale == 2 ? 18u : 12u;
+    uint headerHeight = textScale == 2 ? 24u : 15u;
+    uint fixedLabels[statCount] = uint[statCount](
+        105u, 137u,
+        1u, 76u, 80u, 79u, 78u, 82u,
+        98u, 81u, 110u, 111u, 112u, 113u, 117u, 126u);
+    uint fixedValues[statCount] = uint[statCount](
+        max(renderPc.gridWidth / max(renderPc.viewWidth, 1u), 1u),
+        renderPc.activeAreaCount,
+        renderPc.framesPerSecond,
+        debugStats[STAT_SIMULATION_STEP],
+        debugStats[STAT_ACTIVE_CELLS],
+        debugStats[STAT_MOVED_CELLS],
+        debugStats[STAT_MOVE_SWAPS],
+        debugStats[STAT_BEE_COUNT],
+        debugStats[STAT_ACTIVE_TILES],
+        debugStats[STAT_SLEEPING_TILES],
+        debugStats[STAT_ACTOR_MOVES],
+        debugStats[STAT_PLAYER_IMPULSES],
+        debugStats[STAT_FINE_REPAIR_MOVES],
+        debugStats[STAT_GAS_EXCESS_MOVES],
+        debugStats[STAT_MACRO_TILE_MOVES],
+        debugStats[STAT_MEDIUM_BREAKUP_TILES]);
+    for (uint stat = 0u; stat < statCount; ++stat) {
+        bool hit = statPixel(pixel,
+            ivec2(int(panelLeft + 10u), int(panelTop + headerHeight + stat * rowHeight)),
+            textScale, fixedLabels[stat], fixedValues[stat]);
+        if (hit) {
+            textHit = true;
+            textColor = debugStatColor(stat > 1u ? stat - 2u : stat);
+        }
+    }
+
+    uint keyTop = panelTop + headerHeight + statCount * rowHeight + 8u;
+    uint keyTitleHeight = textScale == 2 ? 22u : 14u;
+    if (fixedPixel(pixel, ivec2(int(panelLeft + 10u), int(keyTop)), textScale, 127u)) {
+        textHit = true;
+        textColor = vec3(1.00);
+    }
+    const uint keyCount = 10u;
+    uint keyLabels[keyCount] = uint[keyCount](
+        128u, 129u, 130u, 131u, 132u, 133u, 28u, 29u, 134u, 135u);
+    uint keyColumns = panelRight - panelLeft >= 330u ? 2u : 1u;
+    uint keyColumnWidth = max((panelRight - panelLeft - 20u) / keyColumns, 1u);
+    uint swatchSize = textScale == 2 ? 12u : 8u;
+    for (uint key = 0u; key < keyCount; ++key) {
+        uint column = key % keyColumns;
+        uint row = key / keyColumns;
+        uint keyLeft = panelLeft + 10u + column * keyColumnWidth;
+        uint keyY = keyTop + keyTitleHeight + row * rowHeight;
+        if (keyY + swatchSize < panelBottom && x >= keyLeft && x < keyLeft + swatchSize &&
+            y >= keyY && y < keyY + swatchSize) {
+            color = debugKeyColor(key);
+            if (borderPixel(x, y, keyLeft, keyY, keyLeft + swatchSize, keyY + swatchSize))
+                color = vec3(1.00);
+        }
+        if (keyY + 7u * uint(textScale) < panelBottom && fixedPixel(pixel,
+            ivec2(int(keyLeft + swatchSize + 6u), int(keyY)), textScale, keyLabels[key])) {
+            textHit = true;
+            textColor = vec3(0.94, 0.98, 1.00);
+        }
+    }
+    if (textHit) color = textColor;
+    return true;
+}
+
 Cell cellAt(ivec2 p) {
     p = clamp(p, ivec2(0), ivec2(int(renderPc.gridWidth) - 1, int(renderPc.gridHeight) - 1));
     return cells[uint(p.y) * renderPc.gridWidth + uint(p.x)];
@@ -284,6 +376,15 @@ void main() {
 
     uint sidebarWidth = min(renderPc.paletteHeight, renderPc.windowWidth);
     uint sidebarLeft = renderPc.windowWidth - sidebarWidth;
+    if (renderPc.debugMode != 0u && sidebarWidth >= 300u && x >= sidebarLeft &&
+        y >= renderPc.statusHeight) {
+        vec3 debugColor = vec3(0.006, 0.010, 0.018);
+        debugPanelPixel(pixel, x, y, sidebarLeft + 4u, renderPc.statusHeight + 4u,
+                        renderPc.windowWidth - 4u, renderPc.windowHeight - 4u,
+                        2, debugColor);
+        outColor = vec4(debugColor, 1.0);
+        return;
+    }
     if (x >= sidebarLeft) {
         vec3 color = vec3(0.025, 0.034, 0.048);
         uint localX = x - sidebarLeft;
@@ -295,7 +396,13 @@ void main() {
                fixedPixel(pixel, ivec2(int(sidebarLeft + 10u), 51), 2, 1u) ||
                numberPixel(pixel, ivec2(int(sidebarLeft + 58u), 51), 2, renderPc.framesPerSecond) ||
                fixedPixel(pixel, ivec2(int(sidebarLeft + 136u), 51), 1,
-                          renderPc.paused != 0u ? 3u : 2u);
+                          renderPc.paused != 0u ? 3u : 2u) ||
+               fixedPixel(pixel, ivec2(int(sidebarLeft + 220u), 31), 1, 105u) ||
+               numberPixel(pixel, ivec2(int(sidebarLeft + 264u), 31), 1,
+                           max(renderPc.gridWidth / max(renderPc.viewWidth, 1u), 1u)) ||
+               fixedPixel(pixel, ivec2(int(sidebarLeft + 220u), 51), 1, 138u) ||
+               numberPixel(pixel, ivec2(int(sidebarLeft + 274u), 51), 1,
+                           renderPc.activeAreaCount);
 
         uint sceneGap = 3u;
         uint sceneLeft = sidebarLeft + 8u;
@@ -413,7 +520,7 @@ void main() {
             if (borderPixel(x, y, contentLeft, keymapTop, contentLeft + contentWidth, keymapBottom))
                 color = vec3(0.12, 0.20, 0.28);
             bool keyText = fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(keymapTop + 6u)), 2, 68u);
-            uint leftIds[7] = uint[7](62u, 63u, 64u, 69u, 60u, 61u, 106u);
+            uint leftIds[7] = uint[7](62u, 63u, 64u, 69u, 140u, 141u, 106u);
             uint rightIds[7] = uint[7](70u, 71u, 72u, 73u, 74u, 107u, 109u);
             uint columnMiddle = contentLeft + contentWidth / 2u;
             if (x >= columnMiddle && x < columnMiddle + 1u &&
@@ -429,13 +536,30 @@ void main() {
         }
 
         uint cursorTop = keymapBottom + 3u;
-        uint cursorBottom = cursorTop + 92u;
+        uint cursorBottom = cursorTop + 120u;
         if (y >= cursorTop && y < cursorBottom && x >= contentLeft && x < contentLeft + contentWidth) {
             color = vec3(0.035, 0.047, 0.064);
             if (borderPixel(x, y, contentLeft, cursorTop, contentLeft + contentWidth, cursorBottom))
                 color = vec3(0.12, 0.20, 0.28);
-            bool cursorText = fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(cursorTop + 5u)), 2, 99u);
-            uint shapeTop = cursorTop + 23u;
+            bool cursorText = fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(cursorTop + 5u)), 2, 99u) ||
+                              fixedPixel(pixel, ivec2(int(contentLeft + 112u), int(cursorTop + 8u)), 1, 142u);
+            uint placementTop = cursorTop + 23u;
+            uint placementWidth = max(contentWidth / 2u, 1u);
+            uint placementIds[2] = uint[2](80u, 136u);
+            for (uint mode = 0u; mode < 2u; ++mode) {
+                uint left = contentLeft + mode * placementWidth;
+                uint right = mode == 1u ? contentLeft + contentWidth : left + placementWidth;
+                if (x >= left && x < right && y >= placementTop && y < placementTop + 26u) {
+                    color = mode == renderPc.placementMode ? vec3(0.14, 0.30, 0.45)
+                                                           : vec3(0.055, 0.07, 0.09);
+                    if (borderPixel(x, y, left, placementTop, right, placementTop + 26u)) color *= 0.55;
+                }
+                int labelWidth = int(fixedTextLength(placementIds[mode])) * 12 - 2;
+                cursorText = cursorText || fixedPixel(pixel,
+                    ivec2(int(left + right) / 2 - labelWidth / 2, int(placementTop + 6u)),
+                    2, placementIds[mode]);
+            }
+            uint shapeTop = cursorTop + 53u;
             uint shapeWidth = max(contentWidth / 4u, 1u);
             uint shapeIds[4] = uint[4](100u, 101u, 102u, 103u);
             for (uint shape = 0u; shape < 4u; ++shape) {
@@ -449,7 +573,7 @@ void main() {
                 cursorText = cursorText || fixedPixel(pixel,
                     ivec2(int(left + right) / 2 - labelWidth / 2, int(shapeTop + 8u)), 1, shapeIds[shape]);
             }
-            uint controlTop = cursorTop + 60u;
+            uint controlTop = cursorTop + 89u;
             uint halfWidth = contentWidth / 2u;
             const uint controlButtonWidth = 44u;
             uint brushMinusLeft = contentLeft + 4u;
@@ -557,6 +681,13 @@ void main() {
     vec4 color = worldColor(cell, grid);
 
     if (renderPc.debugMode != 0u) {
+        bool activeArea = sectionActiveAt(grid, renderPc.activeAreaX, renderPc.activeAreaY,
+                                          renderPc.activeScopeMode);
+        if (!activeArea) color.rgb *= 0.28;
+        ivec2 activeLocal = ivec2(grid.x % ACTIVE_REGION_WIDTH_CELLS,
+                                  grid.y % ACTIVE_REGION_HEIGHT_CELLS);
+        if (activeArea && (activeLocal.x == 0 || activeLocal.y == 0))
+            color.rgb = mix(color.rgb, vec3(0.18, 0.95, 1.00), 0.78);
         TileState tile = tileAt(grid);
         ChunkState chunk = chunkAt(grid);
         ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));
@@ -598,118 +729,6 @@ void main() {
             (chunkHas(chunk, CHUNK_SLEEPING) ? vec3(0.58, 0.28, 1.00)
                                              : vec3(0.05, 0.42, 0.90));
         color.rgb = mix(color.rgb, chunkOverlay, chunkHas(chunk, CHUNK_SLEEPING) ? 0.12 : 0.07);
-    }
-
-
-    if (renderPc.debugMode != 0u) {
-        uint availableWidth = max(renderPc.viewportWidth > 8u ? renderPc.viewportWidth - 8u
-                                                              : renderPc.viewportWidth, 1u);
-        uint panelWidth = min(760u, availableWidth);
-        uint panelLeft = renderPc.viewportLeft + 4u;
-        uint panelRight = panelLeft + panelWidth;
-        uint panelTop = renderPc.viewportTop + 4u;
-        int textScale = panelWidth >= 560u ? 2 : 1;
-        uint columns = 2u;
-        uint rowHeight = textScale == 2 ? 18u : 12u;
-        const uint statCount = 26u;
-        uint statRows = (statCount + columns - 1u) / columns;
-        uint headerHeight = textScale == 2 ? 24u : 15u;
-        uint keyTop = panelTop + headerHeight + statRows * rowHeight + 8u;
-        uint keyColumns = panelWidth >= 500u ? 2u : 1u;
-        const uint keyCount = 10u;
-        uint keyRows = (keyCount + keyColumns - 1u) / keyColumns;
-        uint keyTitleHeight = textScale == 2 ? 22u : 14u;
-        uint panelBottom = min(viewportBottom,
-            keyTop + keyTitleHeight + keyRows * rowHeight + 8u);
-
-        if (x >= panelLeft && x < panelRight && y >= panelTop && y < panelBottom) {
-            color.rgb = mix(color.rgb, vec3(0.006, 0.010, 0.018), 0.94);
-            if (borderPixel(x, y, panelLeft, panelTop, panelRight, panelBottom))
-                color.rgb = vec3(0.34, 0.72, 1.00);
-
-            bool statsText = false;
-            vec3 statsTextColor = vec3(0.96, 0.99, 1.00);
-            bool titleHit = fixedPixel(pixel, ivec2(int(panelLeft + 10u), int(panelTop + 5u)),
-                                       textScale, 75u);
-            if (titleHit) { statsText = true; statsTextColor = vec3(1.00); }
-
-            uint columnWidth = max((panelWidth - 20u) / columns, 1u);
-            uint fixedLabels[statCount] = uint[statCount](
-                1u, 76u, 80u, 79u, 78u, 82u, 83u, 98u, 81u,
-                110u, 111u, 112u, 113u,
-                114u, 115u, 116u, 117u, 118u, 119u, 120u, 121u, 122u,
-                123u, 124u, 125u, 126u);
-            uint fixedValues[statCount] = uint[statCount](
-                renderPc.framesPerSecond,
-                debugStats[STAT_SIMULATION_STEP],
-                debugStats[STAT_ACTIVE_CELLS],
-                debugStats[STAT_MOVED_CELLS],
-                debugStats[STAT_MOVE_SWAPS],
-                debugStats[STAT_BEE_COUNT],
-                debugStats[STAT_BEE_MOVES],
-                debugStats[STAT_ACTIVE_TILES],
-                debugStats[STAT_SLEEPING_TILES],
-                debugStats[STAT_ACTOR_MOVES],
-                debugStats[STAT_PLAYER_IMPULSES],
-                debugStats[STAT_FINE_REPAIR_MOVES],
-                debugStats[STAT_GAS_EXCESS_MOVES],
-                debugStats[STAT_SLEEPING_CHUNKS],
-                debugStats[STAT_ACTIVE_CHUNKS],
-                debugStats[STAT_MACRO_TILE_MOVES],
-                debugStats[STAT_MACRO_CELL_MOVES],
-                debugStats[STAT_CHUNK_SKIPPED_CELLS],
-                debugStats[STAT_FINE_TILES],
-                debugStats[STAT_MACRO_TILES],
-                debugStats[STAT_SETTLED_TILES],
-                debugStats[STAT_DIRTY_CHUNKS],
-                debugStats[STAT_MACRO_GAS_TILES],
-                debugStats[STAT_MACRO_LIQUID_TILES],
-                debugStats[STAT_MEDIUM_ENCLOSED_TILES],
-                debugStats[STAT_MEDIUM_BREAKUP_TILES]);
-            for (uint stat = 0u; stat < statCount; ++stat) {
-                uint column = stat % columns;
-                uint row = stat / columns;
-                bool hit = statPixel(
-                    pixel,
-                    ivec2(int(panelLeft + 10u + column * columnWidth),
-                          int(panelTop + headerHeight + row * rowHeight)),
-                    textScale, fixedLabels[stat], fixedValues[stat]);
-                if (hit) {
-                    statsText = true;
-                    statsTextColor = debugStatColor(stat);
-                }
-            }
-
-            bool keyTitle = fixedPixel(pixel, ivec2(int(panelLeft + 10u), int(keyTop)),
-                                       textScale, 127u);
-            if (keyTitle) { statsText = true; statsTextColor = vec3(1.00); }
-            uint keyLabels[keyCount] = uint[keyCount](
-                128u, 129u, 130u, 131u, 132u, 133u, 28u, 29u, 134u, 135u);
-            uint keyColumnWidth = max((panelWidth - 20u) / keyColumns, 1u);
-            uint swatchSize = textScale == 2 ? 12u : 8u;
-            for (uint key = 0u; key < keyCount; ++key) {
-                uint column = key % keyColumns;
-                uint row = key / keyColumns;
-                uint keyLeft = panelLeft + 10u + column * keyColumnWidth;
-                uint keyY = keyTop + keyTitleHeight + row * rowHeight;
-                if (x >= keyLeft && x < keyLeft + swatchSize &&
-                    y >= keyY && y < keyY + swatchSize) {
-                    color.rgb = debugKeyColor(key);
-                    if (borderPixel(x, y, keyLeft, keyY,
-                                    keyLeft + swatchSize, keyY + swatchSize))
-                        color.rgb = vec3(1.00);
-                }
-                bool keyHit = fixedPixel(pixel,
-                    ivec2(int(keyLeft + swatchSize + 6u), int(keyY)), textScale, keyLabels[key]);
-                if (keyHit) {
-                    statsText = true;
-                    statsTextColor = vec3(0.94, 0.98, 1.00);
-                }
-            }
-            if (statsText) color.rgb = statsTextColor;
-            outColor = vec4(color.rgb, 1.0);
-            return;
-        }
     }
 
 

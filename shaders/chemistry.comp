@@ -224,7 +224,7 @@ uint migrationDestinationTile(ivec2 queenPosition) {
 }
 
 bool beeHomeHasQueen(Cell bee) {
-    uint homeTile = tileIndex(beeHomeCenterFromAux(bee.aux), pc.width);
+    uint homeTile = tileIndex(beeHomeCenterFromAux(bee.aux, pc.width, pc.height), pc.width);
     return beeTileAreaHasFlag(homeTile, TILE_HAS_QUEEN, 1);
 }
 
@@ -871,7 +871,7 @@ void main() {
                     result = makeCell(MAT_BEE);
                     uint newbornSlot = hash32(indexOf(p) ^ pc.seed ^ result.aux) % BEE_FORMATION_COUNT;
                     result.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
-                    result.aux = beePackMetadata(result.aux, p + queenOffset, newbornSlot);
+                    result.aux = beePackMetadata(result.aux, p + queenOffset, newbornSlot, pc.width, pc.height);
                     result.age = beePackAge(uint(newbornSlot * 13u) % 900u, BEE_TARGET_NONE);
                     handledNest = true;
                 }
@@ -1231,7 +1231,7 @@ void main() {
                                         : hash32(indexOf(p) ^ source.aux) % BEE_FORMATION_COUNT;
                 result.aux = beePackMetadata(
                     result.aux | BEE_AUX_SWARM | BEE_AUX_FED,
-                    queenPosition, slot);
+                    queenPosition, slot, pc.width, pc.height);
                 result.aux &= ~BEE_AUX_MIGRATING;
                 result.age = beePackAge(0u, BEE_TARGET_NONE);
                 authoredBee = true;
@@ -1262,7 +1262,7 @@ void main() {
                 bool carryingPollen = (source.aux & BEE_AUX_POLLEN) != 0u;
                 bool fed = (source.aux & BEE_AUX_FED) != 0u;
                 uint slot = beeFormationSlotFromAux(source.aux);
-                ivec2 homeCenter = beeHomeCenterFromAux(source.aux);
+                ivec2 homeCenter = beeHomeCenterFromAux(source.aux, pc.width, pc.height);
 
                 if (fed && !carryingPollen && targetTile == BEE_TARGET_NONE &&
                     beeIsForager(source.aux) &&
@@ -1328,7 +1328,7 @@ void main() {
                 // Painted and loaded orphan bees self-seed a bounded local swarm.
                 uint slot = hash32(indexOf(p) ^ source.aux ^ 0xb33f1u) % BEE_FORMATION_COUNT;
                 result.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
-                result.aux = beePackMetadata(result.aux, p, slot);
+                result.aux = beePackMetadata(result.aux, p, slot, pc.width, pc.height);
                 result.age = beePackAge(0u, BEE_TARGET_NONE);
             }
         }
@@ -1381,7 +1381,7 @@ void main() {
             if (stress >= 240u && destinationTile != BEE_TARGET_NONE) {
                 result = makeCell(MAT_BEE);
                 result.aux |= BEE_AUX_SWARM | BEE_AUX_QUEEN | BEE_AUX_FED;
-                result.aux = beePackMetadata(result.aux, p, 0u);
+                result.aux = beePackMetadata(result.aux, p, 0u, pc.width, pc.height);
                 result.age = beePackAge(0u, destinationTile);
             } else if (source.age > 900000u && (randomValue & 16383u) == 0u) {
                 result = makeCell(MAT_WASTE);

@@ -7,7 +7,8 @@
 
 namespace epoch::sand {
 
-inline constexpr std::int32_t section_cell_size = 64;
+inline constexpr std::int32_t active_region_width_cells = 640;
+inline constexpr std::int32_t active_region_height_cells = 360;
 inline constexpr std::size_t starburst_section_capacity = 17;
 
 struct SectionCoordinate final {

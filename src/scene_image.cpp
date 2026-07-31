@@ -28,7 +28,7 @@ constexpr std::uint32_t tile_size = 8u;
 constexpr std::uint32_t minimum_cohesive_cells = 32u;
 constexpr std::uint32_t full_strength_cells = 52u;
 constexpr std::uint32_t bee_target_none = 0xffffu;
-constexpr std::uint32_t bee_formation_count = 200u;
+constexpr std::uint32_t bee_formation_count = 100u;
 constexpr std::uint32_t bee_metadata_mask = 0x00ffffffu;
 
 struct Rgb final {

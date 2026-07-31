@@ -62,6 +62,7 @@ constexpr std::uint32_t fill_aux_structural = 0x04000000u;
 constexpr std::uint32_t fill_aux_supported = 0x02000000u;
 constexpr std::uint32_t fill_aux_state_mask = 0x000000ffu;
 constexpr std::uint32_t fill_aux_random_mask = 0x00ffff00u;
+constexpr std::uint32_t bee_authored_home_slot_bit = 0x00400000u;
 
 std::uint32_t fill_hash(std::uint32_t value) noexcept {
     value ^= value >> 16u;
@@ -288,8 +289,13 @@ struct RenderPush final {
     std::uint32_t view_width{};
     std::uint32_t view_height{};
     std::uint32_t brush_shape{};
+    std::uint32_t placement_mode{};
+    std::uint32_t active_area_count{};
+    std::int32_t active_area_x{};
+    std::int32_t active_area_y{};
+    std::uint32_t active_scope_mode{};
 };
-static_assert(sizeof(RenderPush) == 144);
+static_assert(sizeof(RenderPush) == 164);
 
 bool contains_extension(const std::vector<VkExtensionProperties>& extensions, const char* name) {
     return std::ranges::any_of(extensions, [name](const VkExtensionProperties& extension) {
@@ -1565,56 +1571,78 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         needs_reset = false;
     }
 
+    [[nodiscard]] std::uint32_t authored_map_origin_x() const noexcept {
+        return config.grid_width > pre_expansion_world_width
+            ? (config.grid_width - pre_expansion_world_width) / 2u : 0u;
+    }
+
+    [[nodiscard]] std::uint32_t authored_map_origin_y() const noexcept {
+        return config.grid_height > pre_expansion_world_height
+            ? config.grid_height - pre_expansion_world_height : 0u;
+    }
+
     [[nodiscard]] bool load_scene_image(const std::uint32_t scene_index) {
         const auto scene = static_cast<Scene>(scene_index % scene_count);
         const auto path = scene_image_path(scene_directory(), scene);
-        std::vector<SceneCell> cells(
-            static_cast<std::size_t>(config.grid_width) * config.grid_height);
+        const auto map_width = (std::min)(config.grid_width, pre_expansion_world_width);
+        const auto map_height = (std::min)(config.grid_height, pre_expansion_world_height);
+        std::vector<SceneCell> map_cells(static_cast<std::size_t>(map_width) * map_height);
         std::string error;
-        if (!load_scene_ppm(path, config.grid_width, config.grid_height, cells, error)) {
+        if (!load_scene_ppm(path, map_width, map_height, map_cells, error)) {
             startup_log("Scene image load skipped: " + error);
             return false;
         }
-        upload_scene_cells(cells);
+
+        std::vector<SceneCell> world_cells(
+            static_cast<std::size_t>(config.grid_width) * config.grid_height);
+        for (std::size_t index = 0u; index < world_cells.size(); ++index)
+            world_cells[index] = make_fill_cell(
+                static_cast<std::uint32_t>(Material::oxygen),
+                static_cast<std::uint32_t>(index));
+
+        const auto origin_x = authored_map_origin_x();
+        const auto origin_y = authored_map_origin_y();
+        for (std::uint32_t y = 0u; y < map_height; ++y) {
+            for (std::uint32_t x = 0u; x < map_width; ++x) {
+                auto cell = map_cells[static_cast<std::size_t>(y) * map_width + x];
+                if (cell.material == static_cast<std::uint32_t>(Material::bee))
+                    cell.aux |= bee_authored_home_slot_bit;
+                const auto world_index = static_cast<std::size_t>(origin_y + y) *
+                                         config.grid_width + origin_x + x;
+                world_cells[world_index] = cell;
+            }
+        }
+        upload_scene_cells(world_cells);
         std::string key_error;
         if (!write_scene_material_key(scene_directory(), key_error))
             startup_log("Scene material-key warning: " + key_error);
-        startup_log("Loaded moddable scene image: " + path.string());
+        startup_log("Loaded bottom-centered 640x360 scene image: " + path.string());
         return true;
     }
 
     void save_scene_image(const std::uint32_t scene_index) {
-        std::vector<SceneCell> cells(
-            static_cast<std::size_t>(config.grid_width) * config.grid_height);
-        immediate_submit([&](const VkCommandBuffer command_buffer) {
-            buffer_barrier(command_buffer, cell_buffers[current_set],
-                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_ACCESS_TRANSFER_READ_BIT,
-                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
-                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT);
-            const VkBufferCopy copy{.size = scene_staging_buffer.size};
-            vkCmdCopyBuffer(command_buffer, cell_buffers[current_set].handle,
-                            scene_staging_buffer.handle, 1, &copy);
-            buffer_barrier(command_buffer, scene_staging_buffer,
-                           VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT);
-        });
-        void* mapped = nullptr;
-        check_vk(vkMapMemory(device, scene_staging_buffer.memory, 0,
-                             scene_staging_buffer.size, 0, &mapped),
-                 "vkMapMemory(scene save)");
-        std::memcpy(cells.data(), mapped, cells.size() * sizeof(SceneCell));
-        vkUnmapMemory(device, scene_staging_buffer.memory);
+        const auto world_cells = download_scene_cells();
+        const auto map_width = (std::min)(config.grid_width, pre_expansion_world_width);
+        const auto map_height = (std::min)(config.grid_height, pre_expansion_world_height);
+        const auto origin_x = authored_map_origin_x();
+        const auto origin_y = authored_map_origin_y();
+        std::vector<SceneCell> map_cells(static_cast<std::size_t>(map_width) * map_height);
+        for (std::uint32_t y = 0u; y < map_height; ++y) {
+            const auto world_begin = world_cells.begin() + static_cast<std::ptrdiff_t>(
+                static_cast<std::size_t>(origin_y + y) * config.grid_width + origin_x);
+            const auto map_begin = map_cells.begin() + static_cast<std::ptrdiff_t>(
+                static_cast<std::size_t>(y) * map_width);
+            std::copy_n(world_begin, map_width, map_begin);
+        }
 
         const auto scene = static_cast<Scene>(scene_index % scene_count);
         const auto path = scene_image_path(scene_directory(), scene);
         std::string error;
-        if (!save_scene_ppm(path, config.grid_width, config.grid_height, cells, error))
+        if (!save_scene_ppm(path, map_width, map_height, map_cells, error))
             throw std::runtime_error("Unable to save scene image: " + error);
         if (!write_scene_material_key(scene_directory(), error))
             throw std::runtime_error("Unable to save scene material key: " + error);
-        startup_log("Saved moddable scene image: " + path.string());
+        startup_log("Saved bottom-centered 640x360 scene image: " + path.string());
     }
 
     void record_reset(const VkCommandBuffer command_buffer, const std::uint32_t scene_index) {
@@ -1714,13 +1742,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const auto requested_radius = state.brush_radius.load(std::memory_order_relaxed);
         const auto material = erase ? static_cast<std::uint32_t>(Material::oxygen)
                                     : state.selected_material.load(std::memory_order_relaxed);
-        const auto selected = static_cast<Material>(material < material_count ? material : 0u);
-        const auto radius = material == static_cast<std::uint32_t>(Material::bee_nest)
-            ? 64u
-            : (is_block_material(selected) ? 8u : requested_radius);
-        const auto shape = is_block_material(selected)
-            ? 1u : state.brush_shape.load(std::memory_order_relaxed) % 4u;
-        const auto packed_material = material | (shape << 16u);
+        const bool tile_mode = state.placement_mode.load(std::memory_order_relaxed) != 0u;
+        const auto radius = tile_mode ? 8u
+            : (material == static_cast<std::uint32_t>(Material::bee_nest) ? 64u : requested_radius);
+        const auto shape = tile_mode ? 1u : state.brush_shape.load(std::memory_order_relaxed) % 4u;
+        const auto packed_material = material | (shape << 16u) | (tile_mode ? (1u << 18u) : 0u);
         SimulationPush push{
             .width = config.grid_width,
             .height = config.grid_height,
@@ -1766,6 +1792,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .seed = random_seed,
             .radius = movement_pair_tests,
             .material = state.selected_material.load(std::memory_order_relaxed),
+            .active_section_x = state.camera_center_x.load(std::memory_order_relaxed) /
+                                active_region_width_cells,
+            .active_section_y = state.camera_center_y.load(std::memory_order_relaxed) /
+                                active_region_height_cells,
+            .active_mode = 1u,
         };
         bind_compute(command_buffer, debug_stats_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
@@ -1780,8 +1811,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     void record_simulation_step(const VkCommandBuffer command_buffer,
                                 const SharedState& state,
                                 const bool collect_debug_stats) {
-        const auto active_section_x = state.camera_center_x.load(std::memory_order_relaxed) / section_cell_size;
-        const auto active_section_y = state.camera_center_y.load(std::memory_order_relaxed) / section_cell_size;
+        const auto active_section_x = state.camera_center_x.load(std::memory_order_relaxed) / active_region_width_cells;
+        const auto active_section_y = state.camera_center_y.load(std::memory_order_relaxed) / active_region_height_cells;
         SimulationPush simulation_push{
             .width = config.grid_width,
             .height = config.grid_height,
@@ -1974,8 +2005,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .scene = state.selected_scene.load(std::memory_order_relaxed) % scene_count,
             .deposit = deposit ? 1u : 0u,
             .simulate = simulate_actor ? 1u : 0u,
-            .active_section_x = state.camera_center_x.load(std::memory_order_relaxed) / section_cell_size,
-            .active_section_y = state.camera_center_y.load(std::memory_order_relaxed) / section_cell_size,
+            .active_section_x = state.camera_center_x.load(std::memory_order_relaxed) / active_region_width_cells,
+            .active_section_y = state.camera_center_y.load(std::memory_order_relaxed) / active_region_height_cells,
             .active_mode = 1u,
         };
         bind_compute(command_buffer, actor_pipeline, current_set);
@@ -2097,11 +2128,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .view_origin_y = view.origin_y,
             .view_width = view.width,
             .view_height = view.height,
-            .brush_shape = [&state]() {
-                const auto material_id = state.selected_material.load(std::memory_order_relaxed);
-                const auto material = static_cast<Material>(material_id < material_count ? material_id : 0u);
-                return is_block_material(material) ? 1u : state.brush_shape.load(std::memory_order_relaxed) % 4u;
-            }(),
+            .brush_shape = state.placement_mode.load(std::memory_order_relaxed) != 0u
+                ? 1u : state.brush_shape.load(std::memory_order_relaxed) % 4u,
+            .placement_mode = state.placement_mode.load(std::memory_order_relaxed) != 0u ? 1u : 0u,
+            .active_area_count = state.active_section_count.load(std::memory_order_relaxed),
+            .active_area_x = state.camera_center_x.load(std::memory_order_relaxed) /
+                             active_region_width_cells,
+            .active_area_y = state.camera_center_y.load(std::memory_order_relaxed) /
+                             active_region_height_cells,
+            .active_scope_mode = state.active_scope_mode.load(std::memory_order_relaxed),
         };
         vkCmdPushConstants(command_buffer, graphics_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                            0, sizeof(push), &push);
