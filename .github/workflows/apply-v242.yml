@@ -36,8 +36,14 @@ jobs:
           echo "593af7f0b6b46508dddd015e9cd0b51415d1dd896e28697b6f80e5661293a57e  ${RUNNER_TEMP}/v242.patch.xz" | sha256sum -c -
           xz --decompress --stdout "${RUNNER_TEMP}/v242.patch.xz" > "${RUNNER_TEMP}/v242.patch"
           echo "f3c5012552a8c7af5c05deeba77170d13685cb500ffaa4856420a24c912c38ea  ${RUNNER_TEMP}/v242.patch" | sha256sum -c -
-          git apply --check --exclude=missioncache.md "${RUNNER_TEMP}/v242.patch"
-          git apply --index --exclude=missioncache.md "${RUNNER_TEMP}/v242.patch"
+          git apply --check \
+            --exclude=missioncache.md \
+            --exclude=.github/workflows/v242-ci.yml \
+            "${RUNNER_TEMP}/v242.patch"
+          git apply --index \
+            --exclude=missioncache.md \
+            --exclude=.github/workflows/v242-ci.yml \
+            "${RUNNER_TEMP}/v242.patch"
           python - <<'PY'
           from pathlib import Path
 
