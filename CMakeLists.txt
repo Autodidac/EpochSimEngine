@@ -130,7 +130,8 @@ if(EPOCH_SAND_BUILD_APP)
     else()
         find_path(XCB_INCLUDE_DIR xcb/xcb.h REQUIRED)
         find_library(XCB_LIBRARY NAMES xcb REQUIRED)
-        target_include_directories(EpochSimEngine EpochSimEngine_Demo PRIVATE ${XCB_INCLUDE_DIR})
+        target_include_directories(EpochSimEngine PRIVATE ${XCB_INCLUDE_DIR})
+        target_include_directories(EpochSimEngine_Demo PRIVATE ${XCB_INCLUDE_DIR})
         target_link_libraries(EpochSimEngine_Demo PRIVATE ${XCB_LIBRARY} dl)
     endif()
 
@@ -156,6 +157,7 @@ if(EPOCH_SAND_BUILD_APP)
     set(EPOCH_SAND_SHADER_BINARIES)
     foreach(SHADER_FILE IN LISTS EPOCH_SAND_SHADER_SOURCES)
         set(SHADER_INPUT "${SHADER_SOURCE_DIR}/${SHADER_FILE}")
+        set(SHADER_OUTPUT "${SHADER_BINARY_DIR}/generated/shaders/${SHADER_FILE}.spv")
         set(SHADER_OUTPUT "${SHADER_BINARY_DIR}/${SHADER_FILE}.spv")
         # Optimize every shader offline. Leaving move.comp unoptimized shifts
         # expensive legalization and dead-code removal into the Vulkan driver
