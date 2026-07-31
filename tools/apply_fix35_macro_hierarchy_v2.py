@@ -17,6 +17,11 @@ corrections = (
         "move machine suffix count",
     ),
     (
+        'replace(\n    "shaders/chemistry.comp",\n    "           material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||\\n           material == MAT_FACTORY_CORE;",\n    "           material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||\\n"\n    "           material == MAT_FACTORY_CORE || material == MAT_SLUICE_BOX;",\n    count=2,\n)\n',
+        '',
+        "nonexistent chemistry machine suffix",
+    ),
+    (
         'replace(\n    "HALF_WATER.md",\n    "Half-water",\n    "Half-water",\n)\n',
         '',
         "half-water no-op assertion",
