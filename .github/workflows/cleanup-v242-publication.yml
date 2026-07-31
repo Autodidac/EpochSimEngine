@@ -3,14 +3,14 @@ name: Clean up v2.4.2 publication
 on:
   pull_request:
     branches: [main]
-    types: [closed]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
 
 jobs:
   cleanup:
-    if: github.head_ref == 'agent/publish-v242'
+    if: github.head_ref == 'agent/cleanup-v242'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +32,11 @@ jobs:
 Runtime source merge: `2db7a6dad20a88f1ce65f54e3978f7f0daa9736f`
 
 Accepted CI run: `30661800841`. Windows 2022 and Ubuntu 24.04 compiled all 12 entry shaders, built the C++23 static library and thin demo, passed all four contract tests, installed packages, and uploaded platform archives. Release publication run `30662820483` published the Windows archive, Linux archive, and `SHA256SUMS.txt` under tag `v2.4.2`.
+
+Package checksums:
+
+- Windows: `1373107807d27e40da84f76a62c78443c28a4ca28ffcdcfac5096e15af54d879`
+- Linux: `03197d6c1285ca7a706654d518870aea9ea56465c282a9a5578033876cf18a58`
 
 This release records implementation attempts and build evidence only. Every runtime-unverified `OPEN`, `PARTIAL`, `REGRESSION`, or `DEFERRED` mission above remains active and carries forward unchanged until scene acceptance.
 
@@ -65,3 +70,4 @@ This release records implementation attempts and build evidence only. Every runt
           set -euo pipefail
           git push origin --delete agent/publish-v242 || true
           git push origin --delete agent/epochsim-v242-runtime || true
+          git push origin --delete agent/cleanup-v242 || true
