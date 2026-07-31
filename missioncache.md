@@ -21,14 +21,14 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 | ID | Status | Mission | Acceptance |
 |---|---|---|---|
 | MC-011 | PARTIAL | 64x64 section-first rejection | Clean inactive sections skip tile and fine-cell work while preserving safe pressure and boundary halos; runtime profiling proves it. |
-| MC-012 | REGRESSION | 8x8 bulk-element movement | Full aligned liquids, gases, falling solids, mud, and wet materials use the same gravity, diagonal, lateral, density, and displacement rules as fine cells. Real scenes show non-zero bulk moves. |
+| MC-012 | REGRESSION | 8x8 bulk-element movement | Full aligned liquids, gases, falling solids, mud, and wet materials use the same gravity, diagonal, lateral, density, erosion, and displacement rules as fine cells. Real scenes show non-zero bulk moves. A valid downward or erosive bulk move is never throttled by settling damping. |
 | MC-013 | REGRESSION | True liquid settling | Water levels quickly, reaches zero motion, and wakes only from support, pressure, volume, heat, reaction, actor, or tool disturbance. |
 | MC-014 | PARTIAL | Fractional-water consolidation | Fractional water represents only final surface volume; no lateral splitting loop, chasing, jitter, created air, or isolated pockets. |
 | MC-015 | PARTIAL | Hide hierarchy artifacts | Fine repair prevents squares, popping, seams, grid-edge clumping, and diagonal one-cell ramps. |
 | MC-016 | OPEN | Durable hierarchy terminology | Rename fine cells, 8x8 bulk elements, 64x64 sections, active starburst, frozen regions, and streamed regions in code, UI, debug, and docs together. |
-| MC-017 | REGRESSION | Prevent premature stabilization | Liquid/gas sleeps only after unchanged volume, pressure, composition, material class, impulse, and boundary height for a bounded confirmation window. Solid stability remains separate. |
-| MC-018 | OPEN | Bulk/fine parity tests | Deterministic tests prove each eligible 8x8 move matches the equivalent conserved fine-cell result, including Atmosphere displacement. |
-| MC-019 | REGRESSION | Universal medium damping | Every gas and liquid settles through bounded damping/friction. Motion requires gravity/buoyancy, pressure, heat, reaction, boundary change, tool input, or actor impulse. |
+| MC-017 | REGRESSION | Prevent premature stabilization | Liquid, gas, mud, and wet material sleep only after unchanged volume, pressure, composition, material class, impulse, boundary height, and erosion state for a bounded confirmation window. A region cannot sleep while a valid downhill, buoyant, pressure-transfer, erosion, or actor-driven path remains. Solid structural stability remains separate. |
+| MC-018 | OPEN | Bulk/fine parity tests | Deterministic tests prove each eligible 8x8 move matches the equivalent conserved fine-cell result, including Atmosphere displacement, mud erosion, and the same rest decision. |
+| MC-019 | REGRESSION | Equilibrium-only medium damping | Damping is not a per-move slowdown. Gravity, buoyancy, pressure transfer, mud erosion, falling wet material, reactions, boundary changes, tool input, and actor impulses execute at the full material-defined rate. Damping begins only after no productive move exists and reduces residual lateral oscillation toward rest. Bulk and fine representations must make the same active/rest decision. |
 
 ## Atmosphere and closed-system gas
 
@@ -37,7 +37,7 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 | MC-020 | REGRESSION | Composite Atmosphere | Replace standalone normal-air pixels with one conserved state carrying volume, pressure, temperature, and N2/O2/Ar/CO2/H2/He/vapor/contaminants. Fire, lightning, and radiation remain effects. |
 | MC-021 | OPEN | Earth-air baseline | Authored air and the Atmosphere tool use approximately 78% N2, 21% O2, 0.9% Ar, trace CO2, and remaining trace gases; packed units sum exactly. |
 | MC-022 | OPEN | Absorb all true gases into air | Gas painting and emissions modify local Atmosphere composition and pressure instead of replacing it. |
-| MC-023 | OPEN | Visible excess-gas settling | No nested mini-simulation. Excess denser than air visibly moves down then sideways until stable; lighter excess visibly moves up then sideways. It cannot cross solids, liquids, sealed barriers, paused sections, or unloaded boundaries. |
+| MC-023 | OPEN | Visible excess-gas settling | No nested mini-simulation. Excess denser than air visibly moves down then sideways until stable; lighter excess visibly moves up then sideways. It cannot cross solids, liquids, sealed barriers, paused sections, or unloaded boundaries. Productive density movement is not slowed by MC-019. |
 | MC-024 | OPEN | Reabsorb excess, hide only later | Stable excess reabsorbs when compatible air has capacity. Transit remains visible until Adam accepts it; debug always exposes transport afterward. |
 | MC-025 | PARTIAL | Respiration and combustion | Life and combustion convert available O2 to equal represented CO2 volume. Suffocation uses breathable partial pressure. Runtime rates require proof. |
 | MC-026 | OPEN | Closed-box conservation tests | Track total Atmosphere and each component, pressure transfer, separated excess, reabsorption, and conservation error. |
@@ -58,7 +58,7 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 | MC-036 | OPEN | Define or remove insect habitat | Give it explicit species, capacity, inputs, lifecycle, and outputs, or remove it; no generic silent spawning. |
 | MC-037 | OPEN | Life debug counters | Separate actor moves, species counts, respiration, suffocation, births, deaths, nest returns, and medium displacement. |
 | MC-038 | REGRESSION | Exact pre-PR19 suspended hives | Use FastFreddy commit `c8197b4526b74d66e2f04a6e858dd979c63c4eff`, `tools/fix36_hive_swarm.py`. Sandbox, Ecosystem, and buildable Bee Nest share the exact perch, shell, entrance, chamber, queen, and metadata. |
-| MC-039 | OPEN | Player-medium impulses | Player collisions minimally disturb every gas/liquid through bounded conserved directional impulse, wake touched sections, and then settle through MC-019. |
+| MC-039 | OPEN | Player-medium impulses | Player collisions minimally disturb every gas/liquid through bounded conserved directional impulse, wake touched sections, and then settle through MC-019 only after the injected impulse and resulting productive movement are exhausted. |
 
 ## UI and debug
 
@@ -75,7 +75,7 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 | ID | Status | Mission | Acceptance |
 |---|---|---|---|
 | MC-050 | OPEN | Correct fertilizer chemistry | Ember never directly becomes fertilizer; use a conserved compost path with ash, organics, silt/dirt, dirty water, air, time, and heat as appropriate. |
-| MC-051 | PARTIAL | Wet-material and sluicing proof | Wet sand/dirt/silt, mud, and Sluice Box prove bulk movement, drying, feed conservation, and gold/silt output without fine-only fallback. |
+| MC-051 | PARTIAL | Wet-material, mud-erosion, and sluicing proof | Wet sand/dirt/silt, mud, and Sluice Box prove full-speed gravity-driven bulk descent, erosion through unsupported material, drying, feed conservation, and gold/silt output without fine-only fallback or damping-induced stalls. |
 
 ## World, camera, scheduling, streaming, and concurrency
 
@@ -116,6 +116,8 @@ The canonical active shape is a **17-section starburst** centered on the camera 
 - Normal air is one Atmosphere mixture.
 - Excess-gas transit remains visible until accepted.
 - Every gas and liquid can rest and wake deterministically.
+- Damping never suppresses a valid gravity, buoyancy, pressure, erosion, reaction, tool, or actor-driven move. It only removes non-productive residual oscillation after local equilibrium.
+- Mud and wet bulk elements continue gravity-driven erosion at the same material-defined rate as equivalent fine cells.
 - Player/actor disturbance transfers bounded momentum/pressure without erasing or minting medium.
 - Only the 17-section camera starburst animates; every other section is paused.
 - The main thread never executes section simulation work.
