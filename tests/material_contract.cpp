@@ -14,7 +14,7 @@ using epoch::sand::Scene;
 static_assert(static_cast<std::uint32_t>(Material::empty) == 0u);
 static_assert(static_cast<std::uint32_t>(Material::waste) == 63u);
 static_assert(static_cast<std::uint32_t>(Material::hydrogen) == 64u);
-static_assert(epoch::sand::material_count == 65u);
+static_assert(epoch::sand::material_count == 66u);
 static_assert(epoch::sand::material_profiles.size() == epoch::sand::material_count);
 static_assert(epoch::sand::material_group_count == 8u);
 static_assert(epoch::sand::material_slots_per_group == 10u);

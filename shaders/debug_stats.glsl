@@ -32,5 +32,9 @@ const uint STAT_MACRO_TILE_MOVES = 97u;
 const uint STAT_MACRO_CELL_MOVES = 98u;
 const uint STAT_DIRTY_CHUNKS = 99u;
 const uint STAT_CHUNK_SKIPPED_CELLS = 100u;
+const uint STAT_FINE_TILES = 101u;
+const uint STAT_MACRO_TILES = 102u;
+const uint STAT_SETTLED_TILES = 103u;
+const uint STAT_FINE_REPAIR_MOVES = 104u;
 
 #endif

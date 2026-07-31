@@ -312,6 +312,15 @@ def main() -> int:
             errors.append(f"compact sidebar shader contract missing {token!r}")
 
     renderer_cpp = (ROOT / "src/vulkan_renderer.cpp").read_text(encoding="utf-8")
+    macro_move = (SHADERS / "macro_move.comp").read_text(encoding="utf-8")
+    tiles_comp = (SHADERS / "tiles.comp").read_text(encoding="utf-8")
+    chemistry = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
+    for token in ("TILE_MACRO_MOVABLE", "TILE_FINE_ACTIVE", "TILE_SETTLED_MEDIUM"):
+        if token not in macro_move + tiles_comp:
+            errors.append(f"macro hierarchy contract missing {token!r}")
+    for token in ("MAT_SLUICE_BOX", "inventory.x -= 8u", "inventory.y += 7u", "inventory.z += 1u"):
+        if token not in chemistry:
+            errors.append(f"sluice conservation contract missing {token!r}")
     cmake_text = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
     for token in (
         "Buffer ui_text_buffer{}",

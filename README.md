@@ -1,6 +1,8 @@
-# SandHybrid
+# EpochSimEngine
 
-SandHybrid is a standalone C++23 Vulkan material, terrain, ecology, factory, and combat sandbox. Fine particles, liquids, gases, machines, actors, and aligned Terraria-style terrain blocks share one deterministic cell simulation. There is no second rigid-body or voxel physics world.
+Read `missioncache.md` before repository work; `MISSION_LEDGER.md` records the current release gate.
+
+EpochSimEngine is currently a standalone C++23 Vulkan material, terrain, ecology, factory, and combat simulation testbed. Fine particles, liquids, gases, machines, actors, and aligned Terraria-style terrain blocks share one deterministic cell simulation. There is no second rigid-body or voxel physics world.
 
 - Native Win32/Vulkan on Windows
 - Native XCB/Vulkan on Linux

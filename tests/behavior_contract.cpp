@@ -118,6 +118,8 @@ static_assert(!epoch::sand::policy::should_collapse(32u));
 static_assert(epoch::sand::policy::should_collapse(31u));
 static_assert(epoch::sand::policy::water_pressure_depth == 8u);
 static_assert(epoch::sand::policy::water_half_units_per_full_cell == 2u);
+static_assert(epoch::sand::material_count == 66u);
+static_assert(epoch::sand::is_block_material(epoch::sand::Material::sluice_box));
 static_assert(!epoch::sand::policy::water_ledge_can_release(2u, 0u));
 static_assert(epoch::sand::policy::water_ledge_can_release(2u, 1u));
 static_assert(epoch::sand::policy::water_ledge_can_release(2u, 2u));

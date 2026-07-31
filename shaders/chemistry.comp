@@ -431,11 +431,11 @@ void applyStructuralHazards(ivec2 position, Cell source, inout Cell result,
 
 
 bool isMachine(uint material) {
-    return material == MAT_SMELTER || material == MAT_ASSEMBLER;
+    return material == MAT_SMELTER || material == MAT_ASSEMBLER || material == MAT_SLUICE_BOX;
 }
 
 bool isFactoryInputResource(uint material) {
-    return material == MAT_IRON || material == MAT_IRON_SHAVINGS ||
+    return material == MAT_SAND || material == MAT_IRON || material == MAT_IRON_SHAVINGS ||
            material == MAT_ALUMINUM || material == MAT_ALUMINUM_SHAVINGS ||
            material == MAT_GOLD || material == MAT_STEEL || material == MAT_COPPER ||
            material == MAT_POWER_CELL || material == MAT_PLASMA_AMMO;
@@ -445,7 +445,10 @@ bool isMachineController(ivec2 p, uint material) {
     return isMachine(material) && (p.x & 7) == 3 && (p.y & 7) == 3;
 }
 
-int machineResourceSlot(uint machine, uint resourceMaterial) {
+int machineResourceSlot(uint machine, Cell resourceCell) {
+    uint resourceMaterial = resourceCell.material;
+    if (machine == MAT_SLUICE_BOX)
+        return resourceMaterial == MAT_SAND && (resourceCell.aux & AUX_WET) != 0u ? 0 : -1;
     if (machine == MAT_SMELTER) {
         if (resourceMaterial == MAT_IRON_SHAVINGS) return 0;
         if (resourceMaterial == MAT_ALUMINUM_SHAVINGS) return 1;
@@ -467,15 +470,28 @@ int machineResourceSlot(uint machine, uint resourceMaterial) {
 }
 
 uvec4 machineRecipe(uint machine) { if (machine == MAT_ASSEMBLER) return uvec4(2u,1u,1u,1u); return uvec4(15u); }
-bool machineReady(uint machine, uvec4 inventory) { if (machine == MAT_SMELTER) return inventory.x>=4u || inventory.y>=4u; return all(greaterThanEqual(inventory,machineRecipe(machine))); }
-uvec4 machineConsumption(uint machine, uvec4 inventory) { if(machine==MAT_SMELTER) return inventory.x>=4u?uvec4(4u,0u,0u,0u):uvec4(0u,4u,0u,0u); return machineRecipe(machine); }
-uint machineOutput(uint machine, uvec4 inventory) { if(machine==MAT_SMELTER) return inventory.x>=4u?MAT_IRON:MAT_ALUMINUM; if(machine==MAT_ASSEMBLER) return MAT_PLASMA_AMMO; return MAT_EMPTY; }
+bool machineReady(uint machine, uvec4 inventory) {
+    if (machine == MAT_SMELTER) return inventory.x >= 4u || inventory.y >= 4u;
+    if (machine == MAT_SLUICE_BOX) return inventory.z > 0u || inventory.y > 0u;
+    return all(greaterThanEqual(inventory, machineRecipe(machine)));
+}
+uvec4 machineConsumption(uint machine, uvec4 inventory) {
+    if (machine == MAT_SMELTER) return inventory.x >= 4u ? uvec4(4u,0u,0u,0u) : uvec4(0u,4u,0u,0u);
+    if (machine == MAT_SLUICE_BOX) return inventory.z > 0u ? uvec4(0u,0u,1u,0u) : uvec4(0u,1u,0u,0u);
+    return machineRecipe(machine);
+}
+uint machineOutput(uint machine, uvec4 inventory) {
+    if (machine == MAT_SMELTER) return inventory.x >= 4u ? MAT_IRON : MAT_ALUMINUM;
+    if (machine == MAT_ASSEMBLER) return MAT_PLASMA_AMMO;
+    if (machine == MAT_SLUICE_BOX) return inventory.z > 0u ? MAT_GOLD : MAT_SILT;
+    return MAT_EMPTY;
+}
 
 ivec2 machineOutputPosition(ivec2 controller) {
     return controller + ivec2(5, 0);
 }
 
-ivec2 nearestAcceptingMachine(ivec2 resourcePosition, uint resourceMaterial, int radius) {
+ivec2 nearestAcceptingMachine(ivec2 resourcePosition, Cell resourceCell, int radius) {
     int best = 0x3fffffff;
     ivec2 result = resourcePosition;
     for (int y = -radius; y <= radius; ++y) {
@@ -483,7 +499,7 @@ ivec2 nearestAcceptingMachine(ivec2 resourcePosition, uint resourceMaterial, int
             ivec2 candidatePosition = resourcePosition + ivec2(x, y);
             Cell candidate = at(candidatePosition);
             if (isMachineController(candidatePosition, candidate.material) &&
-                machineResourceSlot(candidate.material, resourceMaterial) >= 0) {
+                machineResourceSlot(candidate.material, resourceCell) >= 0) {
                 int distanceSquared = x * x + y * y;
                 if (distanceSquared < best) {
                     best = distanceSquared;
@@ -501,9 +517,9 @@ uvec4 incomingMachineCounts(ivec2 controller, uint machine) {
         for (int x = -6; x <= 6; ++x) {
             ivec2 resourcePosition = controller + ivec2(x, y);
             Cell resourceCell = at(resourcePosition);
-            int slot = machineResourceSlot(machine, resourceCell.material);
+            int slot = machineResourceSlot(machine, resourceCell);
             if (slot >= 0 &&
-                all(equal(nearestAcceptingMachine(resourcePosition, resourceCell.material, 6), controller))) {
+                all(equal(nearestAcceptingMachine(resourcePosition, resourceCell, 6), controller))) {
                 incoming[slot] = min(incoming[slot] + 1u, 15u);
             }
         }
@@ -876,7 +892,11 @@ void main() {
     bool freshContact = hasNeighbor(p, MAT_WATER) || hasNeighbor(p, MAT_DIRTY_WATER);
     uint supportBelow = at(p + ivec2(0, 1)).material;
     bool stableSoil = supportBelow == MAT_DIRT || supportBelow == MAT_STONE || supportBelow == MAT_MUD;
-    if (source.material == MAT_DIRT) {
+    if (source.material == MAT_SAND || source.material == MAT_SILT) {
+        if (freshContact) result.aux |= AUX_WET;
+        else if ((result.aux & AUX_WET) != 0u && source.age > 600u && (randomValue & 127u) == 0u)
+            result.aux &= ~AUX_WET;
+    } else if (source.material == MAT_DIRT) {
         if (freshContact) result.aux |= AUX_WET;
         bool saturatedSurface = (result.aux & AUX_WET) != 0u && stableSoil && neighborCount(p, MAT_MUD) <= 2u;
         if (saturatedSurface && source.age > 90u && (randomValue & 63u) == 0u) { result = makeCell(MAT_MUD); result.aux |= AUX_WET; }
@@ -912,7 +932,7 @@ void main() {
     // Resource cells are consumed only by one deterministic nearby machine controller.
     bool storedInMachine = false;
     if (isFactoryInputResource(source.material)) {
-        ivec2 acceptingMachine = nearestAcceptingMachine(p, source.material, 6);
+        ivec2 acceptingMachine = nearestAcceptingMachine(p, source, 6);
         if (any(notEqual(acceptingMachine, p))) {
             result = makeCell(MAT_EMPTY);
             storedInMachine = true;
@@ -921,6 +941,12 @@ void main() {
 
     if (isMachineController(p, source.material)) {
         uvec4 inventory = min(machineInventory(source) + incomingMachineCounts(p, source.material), uvec4(15u));
+        if (source.material == MAT_SLUICE_BOX && inventory.x >= 8u && fallingWaterNear(p) &&
+            inventory.y <= 8u && inventory.z < 15u) {
+            inventory.x -= 8u;
+            inventory.y += 7u;
+            inventory.z += 1u;
+        }
         bool canOutput = at(machineOutputPosition(p)).material == MAT_EMPTY &&
                          machineReady(source.material, inventory) && (source.age % 24u) == 0u;
         if (canOutput) inventory -= machineConsumption(source.material, inventory);

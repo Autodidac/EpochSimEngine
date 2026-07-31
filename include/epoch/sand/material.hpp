@@ -75,6 +75,7 @@ enum class Material : std::uint32_t {
     food = 62,
     waste = 63,
     hydrogen = 64,
+    sluice_box = 65,
     count
 };
 
@@ -171,6 +172,7 @@ inline constexpr std::array<std::string_view, material_count> material_names{
     "Food",
     "Waste",
     "Hydrogen",
+    "Sluice box",
 };
 
 inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
@@ -239,6 +241,7 @@ inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
     {42u, 4u, 42u, 145u, 100, 70, 32767, 32767, 260, 180, 11u, MaterialPhase::powder, "Life", "STRONG: LIFE SUPPORT", "WEAK: AGE / FIRE", "TO: WASTE / SMOKE", "ROLE: STORED BIOMASS", "DANGER: SPOILAGE"},
     {58u, 10u, 58u, 150u, 180, 85, 32767, 32767, 400, 210, 12u, MaterialPhase::powder, "Industry", "STRONG: RECOVERABLE CARBON", "WEAK: HEAT / WATER", "TO: DIRT / DIRTY WATER / SMOKE", "ROLE: RECYCLE FEED", "DANGER: BIOHAZARD"},
     {1u, 0u, 1u, 255u, 0, 32767, 32767, 32767, 32767, 560, 180u, MaterialPhase::gas, "Engineering", "STRONG: LIGHT FUEL GAS", "WEAK: IGNITION / CONTAINMENT", "TO: STEAM / FIRE", "ROLE: ENERGY CARRIER", "DANGER: EXPLOSIVE GAS"},
+    {210u, 196u, 210u, 248u, 900, 760, 1420, 2850, 2850, 32767, 165u, MaterialPhase::solid, "Industry", "STRONG: WET SAND SEPARATION", "WEAK: DRY FEED / DAMAGE", "TO: GOLD + SILT", "ROLE: GRAVITY MINERAL PROCESSOR", "DANGER: PINCH / FLOOD"},
 }};
 
 [[nodiscard]] constexpr const MaterialProfile& material_profile(const Material material) noexcept {
@@ -282,7 +285,7 @@ inline constexpr std::array<std::uint32_t, material_group_count> material_group_
     9u,
     10u,
     8u,
-    6u,
+    7u,
 };
 
 inline constexpr std::array<std::string_view, material_group_count> material_group_names{
@@ -304,7 +307,7 @@ inline constexpr std::array<std::array<Material, material_slots_per_group>, mate
     {Material::fire, Material::lava, Material::oil, Material::ember, Material::ash, Material::gunpowder, Material::acid, Material::magma_vent, Material::smoke, Material::count},
     {Material::plastic, Material::acid_resistant_plastic, Material::aluminum, Material::aluminum_shavings, Material::iron, Material::iron_shavings, Material::copper, Material::gold, Material::steel, Material::insulator},
     {Material::magnet, Material::lightning, Material::power_cell, Material::plasma_ammo, Material::oxygen, Material::carbon_dioxide, Material::hydrogen, Material::radiation, Material::count, Material::count},
-    {Material::conveyor, Material::smelter, Material::assembler, Material::factory_core, Material::uranium, Material::waste, Material::count, Material::count, Material::count, Material::count},
+    {Material::conveyor, Material::smelter, Material::assembler, Material::factory_core, Material::uranium, Material::waste, Material::sluice_box, Material::count, Material::count, Material::count},
 }};
 
 [[nodiscard]] constexpr std::string_view material_group_name(const MaterialGroup group) noexcept {
@@ -344,6 +347,7 @@ inline constexpr std::array<std::array<Material, material_slots_per_group>, mate
     case Material::assembler:
     case Material::insect_habitat:
     case Material::factory_core:
+    case Material::sluice_box:
         return true;
     default:
         return false;

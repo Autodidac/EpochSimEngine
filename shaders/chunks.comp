@@ -16,33 +16,37 @@ void main() {
 
     uint index = chunk.y * columns + chunk.x;
     ChunkState previous = chunks[index];
+    if (chunkHas(previous, CHUNK_SLEEPING) && !chunkHas(previous, CHUNK_DIRTY)) return;
+
     uint tileColumnsValue = tileColumns(pc.width);
     uint tileRowsValue = (pc.height + TILE_SIZE - 1u) / TILE_SIZE;
     uvec2 brickOrigin = chunk * CHUNK_TILES_PER_AXIS;
-
     uint presentTiles = 0u;
     uint activeTiles = 0u;
     uint sleepingTiles = 0u;
+    uint macroTiles = 0u;
+    uint fineTiles = 0u;
     for (uint y = 0u; y < CHUNK_TILES_PER_AXIS; ++y) {
         for (uint x = 0u; x < CHUNK_TILES_PER_AXIS; ++x) {
-  uvec2 tile = brickOrigin + uvec2(x, y);
-  if (tile.x >= tileColumnsValue || tile.y >= tileRowsValue) continue;
-  ++presentTiles;
-  TileState state = tiles[tile.y * tileColumnsValue + tile.x];
-  if (tileHas(state, TILE_SLEEPING)) ++sleepingTiles;
-  if (tileHas(state, TILE_ACTIVE) || tileHas(state, TILE_COLLAPSING) ||
-      tileHas(state, TILE_DAMAGED)) ++activeTiles;
+            uvec2 tile = brickOrigin + uvec2(x, y);
+            if (tile.x >= tileColumnsValue || tile.y >= tileRowsValue) continue;
+            ++presentTiles;
+            TileState state = tiles[tile.y * tileColumnsValue + tile.x];
+            if (tileHas(state, TILE_SLEEPING)) ++sleepingTiles;
+            if (tileHas(state, TILE_ACTIVE) || tileHas(state, TILE_COLLAPSING) || tileHas(state, TILE_DAMAGED)) ++activeTiles;
+            if (tileHas(state, TILE_MACRO_MOVABLE)) ++macroTiles;
+            if (tileHas(state, TILE_FINE_ACTIVE)) ++fineTiles;
         }
     }
 
     bool dirty = chunkHas(previous, CHUNK_DIRTY);
-    bool quiet = presentTiles != 0u && sleepingTiles == presentTiles &&
-       activeTiles == 0u && !dirty;
+    bool quiet = presentTiles != 0u && sleepingTiles == presentTiles && activeTiles == 0u && !dirty;
     uint quietTicks = quiet ? min(chunkQuietTicks(previous) + 1u, CHUNK_SLEEP_TICKS) : 0u;
     bool sleeping = quiet && quietTicks >= CHUNK_SLEEP_TICKS;
-
     uint flags = sleeping ? CHUNK_SLEEPING : CHUNK_ACTIVE;
     if (presentTiles != CHUNK_TILE_COUNT) flags |= CHUNK_BOUNDARY;
+    if (macroTiles > 0u) flags |= CHUNK_MACRO_ACTIVE;
+    if (fineTiles > 0u) flags |= CHUNK_FINE_ACTIVE;
     chunks[index] = ChunkState(flags, activeTiles, sleepingTiles,
-                     packChunkCounters(quietTicks, presentTiles));
+                               packChunkCounters(quietTicks, presentTiles));
 }

@@ -1831,9 +1831,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         // partial, structural, reacting, or half-water regions fall through to
         // the ordinary fine-grained movement passes below.
         bind_compute(command_buffer, macro_movement_pipeline, current_set);
-        const std::array<std::int32_t, 5> macro_phases = (simulation_step & 1u) == 0u
-  ? std::array<std::int32_t, 5>{0, 1, 2, 3, 4}
-  : std::array<std::int32_t, 5>{0, 2, 1, 4, 3};
+        const std::array<std::int32_t, 6> macro_phases = (simulation_step & 1u) == 0u
+  ? std::array<std::int32_t, 6>{0, 5, 1, 2, 3, 4}
+  : std::array<std::int32_t, 6>{0, 5, 2, 1, 4, 3};
         const auto tile_columns = divide_round_up(config.grid_width, 8u);
         const auto tile_rows = divide_round_up(config.grid_height, 8u);
         for (std::size_t phase_index = 0; phase_index < macro_phases.size(); ++phase_index) {
@@ -1850,12 +1850,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
   };
   vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
                      0, sizeof(macro_push), &macro_push);
-  if (phase <= 2) {
+  if (phase <= 2 || phase == 5) {
       vkCmdDispatch(command_buffer, tile_columns, divide_round_up(tile_rows, 2u), 1);
   } else {
       vkCmdDispatch(command_buffer, divide_round_up(tile_columns, 2u), tile_rows, 1);
   }
   buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
+                 VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+  buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                  VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
   buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
@@ -1902,7 +1905,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         ? ((simulation_step + static_cast<std::uint32_t>(phase_index)) & 1u)
                         : ((simulation_step + static_cast<std::uint32_t>(phase)) & 1u)),
                 .reserved0 = collect_debug_stats ? 1u : 0u,
-                .reserved1 = phase_index >= 9u ? 1u : 0u,
+                .reserved1 = (phase_index >= 9u ? 1u : 0u) |
+                             (((simulation_step & 3u) == 0u) ? 2u : 0u),
             };
             vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
                                0, sizeof(movement_push), &movement_push);
@@ -2161,7 +2165,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const bool debug_visible = state.debug_visualization.load(std::memory_order_relaxed);
         bool collect_debug_stats = false;
         if (debug_visible) {
-            collect_debug_stats = !debug_was_visible || (debug_sample_frame % 8u) == 0u;
+            collect_debug_stats = !debug_was_visible || (debug_sample_frame % 16u) == 0u;
             ++debug_sample_frame;
         } else {
             debug_sample_frame = 0u;

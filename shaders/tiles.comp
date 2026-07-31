@@ -2,13 +2,21 @@
 #extension GL_GOOGLE_include_directive : require
 #include "materials.glsl"
 #include "tiles.glsl"
+#include "chunks.glsl"
 
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 4) buffer Tiles { TileState tiles[]; };
+layout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };
 
 bool tileInside(ivec2 p) {
     return p.x >= 0 && p.y >= 0 && p.x < int(pc.width) && p.y < int(pc.height);
+}
+
+bool isMacroWetMaterial(Cell cell) {
+    return cell.material == MAT_MUD ||
+           ((cell.material == MAT_SAND || cell.material == MAT_DIRT || cell.material == MAT_SILT) &&
+            (cell.aux & AUX_WET) != 0u);
 }
 
 void main() {
@@ -18,19 +26,26 @@ void main() {
     if (tile.x >= columns || tile.y >= rows) return;
 
     uint index = tile.y * columns + tile.x;
-    TileState previous = tiles[index];
     ivec2 origin = ivec2(tile * TILE_SIZE);
+    ChunkState priorChunk = chunks[chunkIndex(origin, pc.width)];
+    if (chunkHas(priorChunk, CHUNK_SLEEPING) && !chunkHas(priorChunk, CHUNK_DIRTY)) return;
 
+    TileState previous = tiles[index];
     uint counts[MATERIAL_COUNT];
     for (uint i = 0u; i < MATERIAL_COUNT; ++i) counts[i] = 0u;
+    uint represented = 0u;
     uint occupied = 0u;
     uint structural = 0u;
     uint stable = 0u;
     uint healthSum = 0u;
+    uint minimumAge = 0xffffffffu;
     bool hot = false;
     bool moving = false;
     bool reacting = false;
     bool activeContent = false;
+    bool wetContent = false;
+    bool halfWater = false;
+    bool activeAgent = false;
     bool hasQueen = false;
     bool hasHive = false;
     bool hasFlower = false;
@@ -47,47 +62,41 @@ void main() {
             ivec2 p = origin + ivec2(x, y);
             if (!tileInside(p)) continue;
             Cell cell = cells[indexOf(p)];
-            if (cell.material == MAT_EMPTY || cell.material == MAT_OXYGEN) continue;
+            if (cell.material == MAT_EMPTY) continue;
+            ++represented;
+            if (cell.material < MATERIAL_COUNT) ++counts[cell.material];
+            minimumAge = min(minimumAge, cell.age);
+            wetContent = wetContent || isMacroWetMaterial(cell);
+            halfWater = halfWater || isHalfWater(cell);
             ivec2 local = ivec2(x, y);
-            if (cell.material == MAT_QUEEN_BEE) {
-                if (!hasQueen) queenLocal = local;
-                hasQueen = true;
-            }
+            if (cell.material == MAT_QUEEN_BEE) { if (!hasQueen) queenLocal = local; hasQueen = true; }
             if (cell.material == MAT_BEE_NEST) hasHive = true;
-            if (cell.material == MAT_FLOWER) {
-                if (!hasFlower) flowerLocal = local;
-                hasFlower = true;
-            }
-            if (cell.material == MAT_HONEY) {
-                if (!hasHoney) honeyLocal = local;
-                hasHoney = true;
-            }
+            if (cell.material == MAT_FLOWER) { if (!hasFlower) flowerLocal = local; hasFlower = true; }
+            if (cell.material == MAT_HONEY) { if (!hasHoney) honeyLocal = local; hasHoney = true; }
             if (cell.material == MAT_BEE) {
                 ++beeCount;
-                if ((cell.aux & AUX_CHARGED) != 0u) {
-                    if (!hasMigratingQueen) queenLocal = local;
-                    hasMigratingQueen = true;
-                }
+                if ((cell.aux & AUX_CHARGED) != 0u) { if (!hasMigratingQueen) queenLocal = local; hasMigratingQueen = true; }
             }
+            bool agent = cell.material == MAT_BEE || cell.material == MAT_QUEEN_BEE ||
+                         cell.material == MAT_BEE_NEST || cell.material == MAT_ANT ||
+                         cell.material == MAT_BEETLE || cell.material == MAT_SEED ||
+                         cell.material == MAT_POLLEN;
+            activeAgent = activeAgent || agent;
             beeHazard = beeHazard || cell.material == MAT_FIRE || cell.material == MAT_LAVA ||
                         cell.material == MAT_ACID || cell.material == MAT_SMOKE ||
                         cell.material == MAT_DIRTY_STEAM || cell.material == MAT_LIGHTNING ||
                         cell.material == MAT_RADIATION;
-            if (isCellGas(cell) || isCellLiquid(cell)) {
-                activeContent = true;
-                moving = true;
-                continue;
-            }
-            ++occupied;
-            if (cell.material < MATERIAL_COUNT) ++counts[cell.material];
-            bool activeAgent = cell.material == MAT_BEE || cell.material == MAT_QUEEN_BEE ||
-                                cell.material == MAT_BEE_NEST || cell.material == MAT_ANT ||
-                                cell.material == MAT_BEETLE || cell.material == MAT_SEED ||
-                                cell.material == MAT_POLLEN;
-            bool activeLoose = !isStructural(cell) &&
-                               !isReconstructableMaterial(cell.material) &&
+            bool fluid = isCellGas(cell) || isCellLiquid(cell);
+            bool activeLoose = !isStructural(cell) && !isReconstructableMaterial(cell.material) &&
                                !isCellImmovable(cell);
-            activeContent = activeContent || activeAgent || activeLoose;
+            activeContent = activeContent || agent || activeLoose || fluid;
+            moving = moving || (cell.aux & AUX_MOVED) != 0u || cell.age < 8u;
+            hot = hot || abs(cell.temperature - 20) > 80;
+            reacting = reacting || cell.material == MAT_FIRE || cell.material == MAT_EMBER ||
+                       cell.material == MAT_GUNPOWDER || cell.material == MAT_ACID;
+            if (fluid) continue;
+
+            ++occupied;
             if (isStructural(cell)) {
                 ++structural;
                 uint health = stateValue(cell);
@@ -97,49 +106,57 @@ void main() {
             bool cellStable = cell.age >= 30u && (cell.aux & AUX_MOVED) == 0u &&
                               phase != PHASE_SOFTENED && phase != PHASE_MOLTEN && phase != PHASE_VAPOR;
             if (cellStable) ++stable;
-            moving = moving || activeAgent || activeLoose ||
-                     (cell.aux & AUX_MOVED) != 0u || cell.age < 8u;
-            hot = hot || abs(cell.temperature - 20) > 80;
-            reacting = reacting || cell.material == MAT_FIRE || cell.material == MAT_EMBER ||
-                       cell.material == MAT_GUNPOWDER || cell.material == MAT_ACID;
         }
     }
 
     uint dominant = MAT_EMPTY;
     uint dominantCount = 0u;
     for (uint material = 1u; material < MATERIAL_COUNT; ++material) {
-        if (counts[material] > dominantCount) {
-            dominantCount = counts[material];
-            dominant = material;
+        if (counts[material] > dominantCount) { dominantCount = counts[material]; dominant = material; }
+    }
+    bool uniformMaterial = dominant != MAT_EMPTY && dominantCount == represented;
+    bool fullRegion = uniformMaterial && represented == TILE_CELL_COUNT;
+    bool structuralTile = structural > 0u;
+    bool macroLiquid = fullRegion && isLiquid(dominant) && !halfWater;
+    bool macroGas = fullRegion && isGas(dominant);
+    bool macroPowder = fullRegion && isPowder(dominant);
+    bool macroSolid = fullRegion && isBlockCapable(dominant) && !structuralTile;
+    bool macroMovable = (macroLiquid || macroGas || macroPowder || macroSolid) &&
+                        !activeAgent && !hot && !reacting;
+
+    uint supportSamples = 0u;
+    bool anchored = origin.y + int(TILE_SIZE) >= int(pc.height);
+    if (!anchored) {
+        int belowY = origin.y + int(TILE_SIZE);
+        for (int x = 0; x < int(TILE_SIZE); ++x) {
+            Cell below = cells[indexOf(ivec2(origin.x + x, belowY))];
+            if (isStructural(below) || isCellImmovable(below) ||
+                (isBlockCapable(below.material) && !isCellLiquid(below) && !isCellGas(below))) ++supportSamples;
         }
     }
+    bool physicallySupported = anchored || supportSamples >= 4u;
 
     uint cooldown = tileCooldown(previous);
     if (cooldown > 0u) --cooldown;
-    bool uniformMaterial = dominant != MAT_EMPTY && dominantCount == occupied;
-    bool stabilizable = uniformMaterial && isReconstructableMaterial(dominant);
-    bool structuralTile = structural > 0u;
-
-    // An aligned region never fills gaps, synthesizes pixels, or becomes a second
-    // tile object. Existing represented cells may only qualify as stable terrain.
+    bool stabilizable = uniformMaterial && isReconstructableMaterial(dominant) && !wetContent;
     bool previouslyDense = tileHas(previous, TILE_STRUCTURAL) &&
-                            tileOccupancy(previous) >= TILE_STABILITY_OCCUPANCY;
+                           tileOccupancy(previous) >= TILE_STABILITY_OCCUPANCY;
     bool reducedDurability = structuralTile && dominantCount < TILE_STABILITY_OCCUPANCY;
     bool damaged = structuralTile &&
                    (reducedDurability || dominantCount < TILE_CELL_COUNT ||
                     (structural > 0u && healthSum / structural < 240u));
-    bool candidate = !structuralTile && cooldown == 0u && stabilizable &&
+    bool candidate = !structuralTile && cooldown == 0u && stabilizable && physicallySupported &&
                      occupied >= TILE_STABILITY_OCCUPANCY && stable == occupied &&
                      !moving && !hot && !reacting;
     uint stableTicks = candidate ? min(tileStableTicks(previous) + 1u, TILE_STABILIZE_TICKS) : 0u;
     bool stableRegion = candidate && stableTicks >= TILE_STABILIZE_TICKS;
-
-    // More than half dislodged means fewer than 32 represented structural cells.
-    // The chemistry pass releases every remaining cell in the same simulation tick.
     bool collapsing = structuralTile && dominantCount < TILE_MIN_COHESIVE_CELLS;
     bool terrainStable = (structuralTile || stableRegion) && !collapsing;
-    bool anchored = origin.y + int(TILE_SIZE) >= int(pc.height);
-    bool supported = terrainStable || anchored;
+    bool supported = terrainStable && (physicallySupported || structuralTile);
+
+    bool settledMedium = (macroLiquid || macroGas) && !moving && minimumAge >= 30u;
+    bool fineActive = represented != 0u && !macroMovable &&
+                      (activeAgent || moving || reacting || hot || !uniformMaterial || represented < TILE_CELL_COUNT);
 
     uint flags = 0u;
     if (structuralTile) flags |= TILE_STRUCTURAL;
@@ -147,26 +164,33 @@ void main() {
     if (candidate) flags |= TILE_CANDIDATE;
     if (terrainStable) flags |= TILE_STABLE;
     if (collapsing) flags |= TILE_COLLAPSING;
-    if (damaged) flags |= TILE_DAMAGED;
+    if (damaged || previouslyDense && reducedDurability) flags |= TILE_DAMAGED;
     if (hasQueen) flags |= TILE_HAS_QUEEN;
     if (hasHive) flags |= TILE_HAS_HIVE;
     if (hasFlower) flags |= TILE_HAS_FLOWER;
     if (hasHoney) flags |= TILE_HAS_HONEY;
     if (beeCount > 0u) flags |= TILE_HAS_BEES;
     if (hasMigratingQueen) flags |= TILE_HAS_MIGRATING_QUEEN;
-    if (beeHazard) flags |= TILE_BEE_HAZARD;    uint stableCells = structuralTile ? dominantCount : occupied;
+    if (beeHazard) flags |= TILE_BEE_HAZARD;
+    if (uniformMaterial) flags |= TILE_UNIFORM;
+    if (macroMovable) flags |= TILE_MACRO_MOVABLE;
+    if (fineActive) flags |= TILE_FINE_ACTIVE;
+    if (settledMedium) flags |= TILE_SETTLED_MEDIUM;
+    if (wetContent) flags |= TILE_WET_CONTENT;
+    if (macroSolid) flags |= TILE_MACRO_SOLID;
+    if (macroPowder) flags |= TILE_MACRO_POWDER;
+    if (macroLiquid) flags |= TILE_MACRO_LIQUID;
+    if (macroGas) flags |= TILE_MACRO_GAS;
+
     bool sleepingTerrain = terrainStable && !damaged && !moving && !hot && !reacting &&
-                 !activeContent && dominantCount == stableCells;
-    bool sleepingAtmosphere = occupied == 0u && structural == 0u &&
-                    !moving && !hot && !reacting && !activeContent;
-    bool sleeping = sleepingTerrain || sleepingAtmosphere;
-if (sleeping) flags |= TILE_SLEEPING;
+                           !activeAgent && !activeContent;
+    bool sleepingAtmosphere = represented == 0u;
+    bool sleeping = sleepingTerrain || sleepingAtmosphere || settledMedium;
+    if (sleeping) flags |= TILE_SLEEPING;
     else flags |= TILE_ACTIVE;
 
     if (collapsing) cooldown = TILE_RESTABILIZE_COOLDOWN;
     uint packedOccupancy = packTileOccupancy(
-        structuralTile ? dominantCount : occupied,
-        queenLocal, flowerLocal, honeyLocal, beeCount);
-    tiles[index] = TileState(dominant, packedOccupancy,
-                             flags, packTileCounters(stableTicks, cooldown));
+        structuralTile ? dominantCount : represented, queenLocal, flowerLocal, honeyLocal, beeCount);
+    tiles[index] = TileState(dominant, packedOccupancy, flags, packTileCounters(stableTicks, cooldown));
 }

@@ -78,7 +78,7 @@ void main() {
         bool anchored = blockEnd.y >= int(pc.height) - 1;
         Cell cell = makeStructuralCell(material, anchored);
         bool machineController = (material == MAT_SMELTER || material == MAT_ASSEMBLER ||
-                                  material == MAT_INSECT_HABITAT) &&
+                                  material == MAT_INSECT_HABITAT || material == MAT_SLUICE_BOX) &&
                                  (p.x & 7) == 3 && (p.y & 7) == 3;
         cell.aux = (cell.aux & ~AUX_RANDOM_MASK) |
                    (cellHash(p, uint(local.x + local.y * diameter)) & AUX_RANDOM_MASK) |

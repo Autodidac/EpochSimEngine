@@ -24,12 +24,22 @@ const uint TILE_HAS_HONEY = 0x00000800u;
 const uint TILE_HAS_BEES = 0x00001000u;
 const uint TILE_HAS_MIGRATING_QUEEN = 0x00002000u;
 const uint TILE_BEE_HAZARD = 0x00004000u;
+const uint TILE_UNIFORM = 0x00008000u;
+const uint TILE_MACRO_MOVABLE = 0x00010000u;
+const uint TILE_FINE_ACTIVE = 0x00020000u;
+const uint TILE_SETTLED_MEDIUM = 0x00040000u;
+const uint TILE_WET_CONTENT = 0x00080000u;
+const uint TILE_MACRO_SOLID = 0x00100000u;
+const uint TILE_MACRO_POWDER = 0x00200000u;
+const uint TILE_MACRO_LIQUID = 0x00400000u;
+const uint TILE_MACRO_GAS = 0x00800000u;
+const uint TILE_MACRO_MOVED = 0x01000000u;
 
 struct TileState {
     uint material;
     uint occupancy;
     uint flags;
-    uint counters; // low 16: stability ticks, high 16: restabilization cooldown
+    uint counters; // terrain: low 16 stability, high 16 cooldown
 };
 
 uint tileColumns(uint width) { return (width + TILE_SIZE - 1u) / TILE_SIZE; }
@@ -44,6 +54,8 @@ uint packTileCounters(uint stableTicks, uint cooldown) {
     return min(stableTicks, 0xffffu) | (min(cooldown, 0xffffu) << 16u);
 }
 bool tileHas(TileState state, uint flag) { return (state.flags & flag) != 0u; }
+bool tileIsMacro(TileState state) { return tileHas(state, TILE_MACRO_MOVABLE); }
+bool tileNeedsFine(TileState state) { return tileHas(state, TILE_FINE_ACTIVE); }
 
 const uint TILE_OCCUPANCY_MASK = 0x0000007fu;
 const uint TILE_QUEEN_X_SHIFT = 7u;

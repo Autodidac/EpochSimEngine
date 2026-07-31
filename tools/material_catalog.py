@@ -65,6 +65,7 @@ MATERIALS = [
     ('food', 'Food', 42, 4, 100, 145, 'STRONG: LIFE SUPPORT', 'WEAK: AGE / FIRE', 'TO: WASTE / SMOKE', 'ROLE: STORED BIOMASS', 'DANGER: SPOILAGE'),
     ('waste', 'Waste', 58, 10, 180, 150, 'STRONG: RECOVERABLE CARBON', 'WEAK: HEAT / WATER', 'TO: DIRT / DIRTY WATER / SMOKE', 'ROLE: RECYCLE FEED', 'DANGER: BIOHAZARD'),
     ('hydrogen', 'Hydrogen', 1, 0, 0, 255, 'STRONG: LIGHT FUEL GAS', 'WEAK: IGNITION / CONTAINMENT', 'TO: STEAM / FIRE', 'ROLE: ENERGY CARRIER', 'DANGER: EXPLOSIVE GAS'),
+    ('sluice_box', 'Sluice box', 210, 196, 900, 248, 'STRONG: WET SAND SEPARATION', 'WEAK: DRY FEED / DAMAGE', 'TO: GOLD + SILT', 'ROLE: GRAVITY MINERAL PROCESSOR', 'DANGER: PINCH / FLOOD'),
 ]
 GROUPS = [
     ('ground', 'Terrain', [0, 1, 3, 4, 6, 60, 5, 24]),
@@ -74,13 +75,13 @@ GROUPS = [
     ('fire_chemistry', 'Heat', [11, 12, 13, 23, 22, 25, 7, 41, 9]),
     ('materials', 'Materials', [15, 16, 21, 44, 36, 48, 37, 45, 49, 39]),
     ('engineering', 'Engineering', [38, 40, 54, 55, 46, 47, 64, 43]),
-    ('industry', 'Industry', [50, 51, 52, 59, 42, 63]),
+    ('industry', 'Industry', [50, 51, 52, 59, 42, 63, 65]),
 ]
 BLOCK_MATERIALS = (
     'stone', 'crystal', 'wood', 'plastic', 'acid_resistant_plastic',
     'aluminum', 'glass', 'iron', 'copper', 'gold', 'magnet', 'insulator', 'uranium',
     'steel', 'conveyor', 'smelter', 'assembler',
-    'insect_habitat', 'factory_core',
+    'insect_habitat', 'factory_core', 'sluice_box',
 )
 
 # Canonical physical configuration shared by C++ cards/tests and GLSL. Temperatures
@@ -169,6 +170,7 @@ PHYSICS_OVERRIDES = {
     'food': (42, 70, NO_TEMPERATURE, NO_TEMPERATURE, 260, 180, 11),
     'waste': (58, 85, NO_TEMPERATURE, NO_TEMPERATURE, 400, 210, 12),
     'hydrogen': (1, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, 560, 180),
+    'sluice_box': (210, 760, 1420, 2850, 2850, NO_TEMPERATURE, 165),
 }
 
 

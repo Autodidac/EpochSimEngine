@@ -201,7 +201,15 @@ vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
 
 vec4 worldColor(Cell cell, ivec2 grid) {
     vec4 base = materialColor(cell.material, cell.age, cell.aux, grid);
-    if (isHalfWater(cell)) base.rgb = mix(backgroundColor(grid), base.rgb, 0.50);
+    if (isHalfWater(cell)) {
+        uint waterNeighbors = 0u;
+        waterNeighbors += cellAt(grid + ivec2(-1, 0)).material == MAT_WATER ? 1u : 0u;
+        waterNeighbors += cellAt(grid + ivec2(1, 0)).material == MAT_WATER ? 1u : 0u;
+        waterNeighbors += cellAt(grid + ivec2(0, -1)).material == MAT_WATER ? 1u : 0u;
+        waterNeighbors += cellAt(grid + ivec2(0, 1)).material == MAT_WATER ? 1u : 0u;
+        float coverage = 0.62 + float(waterNeighbors) * 0.045;
+        base.rgb = mix(backgroundColor(grid), base.rgb, min(coverage, 0.80));
+    }
     bool metalSurface = cell.material == MAT_ALUMINUM || cell.material == MAT_IRON ||
                         cell.material == MAT_COPPER || cell.material == MAT_GOLD ||
                         cell.material == MAT_STEEL || cell.material == MAT_ALUMINUM_SHAVINGS ||
@@ -546,14 +554,19 @@ void main() {
         TileState tile = tileAt(grid);
         ChunkState chunk = chunkAt(grid);
         ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));
-        if (local.x == 0 || local.y == 0)
-  color.rgb *= renderPc.viewWidth < renderPc.gridWidth ? 0.72 : 0.88;
-        ivec2 chunkLocal = ivec2(int(gridX % CHUNK_CELL_SIZE), int(gridY % CHUNK_CELL_SIZE));
+        bool readableTileGrid = renderPc.viewportWidth / max(renderPc.viewWidth, 1u) >= 2u;
+        if (readableTileGrid && (local.x == 0 || local.y == 0)) color.rgb *= 0.82;
+        ivec2 chunkLocal = ivec2(int(gridX & (CHUNK_CELL_SIZE - 1u)),
+                                     int(gridY & (CHUNK_CELL_SIZE - 1u)));
         if (chunkLocal.x == 0 || chunkLocal.y == 0) color.rgb *= 0.42;
         vec3 overlay = vec3(0.0);
         float alpha = 0.0;
         if (tileHas(tile, TILE_COLLAPSING) || tileHas(tile, TILE_DAMAGED)) { overlay = vec3(0.95, 0.15, 0.10); alpha = 0.34; }
         else if (tileHas(tile, TILE_STABLE) || tileHas(tile, TILE_CANDIDATE)) { overlay = vec3(0.95, 0.72, 0.12); alpha = 0.30; }
+        else if (tileHas(tile, TILE_MACRO_MOVED)) { overlay = vec3(0.96, 0.48, 0.10); alpha = 0.30; }
+        else if (tileHas(tile, TILE_FINE_ACTIVE)) { overlay = vec3(0.86, 0.18, 0.74); alpha = 0.22; }
+        else if (tileHas(tile, TILE_MACRO_MOVABLE)) { overlay = vec3(0.12, 0.78, 0.88); alpha = 0.20; }
+        else if (tileHas(tile, TILE_SETTLED_MEDIUM)) { overlay = vec3(0.18, 0.70, 0.34); alpha = 0.16; }
         else if (tileHas(tile, TILE_SLEEPING)) { overlay = vec3(0.16, 0.72, 0.38); alpha = 0.22; }
         else if (tileHas(tile, TILE_ACTIVE)) { overlay = vec3(0.10, 0.65, 0.92); alpha = 0.18; }
         color.rgb = mix(color.rgb, overlay, alpha * float(tileOccupancy(tile)) / 64.0);
@@ -572,7 +585,7 @@ void main() {
         uint panelTop = renderPc.viewportTop + 4u;
         bool narrowPanel = panelWidth < 280u;
         uint columns = narrowPanel ? 2u : 4u;
-        uint rows = narrowPanel ? 6u : 3u;
+        uint rows = narrowPanel ? 7u : 4u;
         uint panelBottom = min(viewportBottom, panelTop + 23u + rows * 14u);
         if (x >= panelLeft && x < panelRight && y >= panelTop && y < panelBottom) {
             color.rgb = mix(color.rgb, vec3(0.018, 0.027, 0.040), 0.88);
@@ -581,17 +594,18 @@ void main() {
 
             bool statsText = fixedPixel(pixel, ivec2(int(panelLeft + 7u), int(panelTop + 4u)), 1, 75u);
             uint columnWidth = max((panelWidth - 12u) / columns, 1u);
-            uint fixedLabels[8] = uint[8](1u, 76u, 80u, 79u, 82u, 83u, 98u, 81u);
-            uint fixedValues[8] = uint[8](
+            uint fixedLabels[9] = uint[9](1u, 76u, 80u, 79u, 78u, 82u, 83u, 98u, 81u);
+            uint fixedValues[9] = uint[9](
                 renderPc.framesPerSecond,
                 debugStats[STAT_SIMULATION_STEP],
                 debugStats[STAT_ACTIVE_CELLS],
                 debugStats[STAT_MOVED_CELLS],
+                debugStats[STAT_MOVE_SWAPS],
                 debugStats[STAT_BEE_COUNT],
                 debugStats[STAT_BEE_MOVES],
                 debugStats[STAT_ACTIVE_TILES],
                 debugStats[STAT_SLEEPING_TILES]);
-            for (uint stat = 0u; stat < 8u; ++stat) {
+            for (uint stat = 0u; stat < 9u; ++stat) {
                 uint column = stat % columns;
                 uint row = stat / columns;
                 statsText = statsText || statPixel(
@@ -600,13 +614,14 @@ void main() {
                           int(panelTop + 19u + row * 14u)),
                     fixedLabels[stat], fixedValues[stat]);
             }
-            uint hierarchyValues[4] = uint[4](
+            uint hierarchyValues[5] = uint[5](
                 debugStats[STAT_SLEEPING_CHUNKS],
                 debugStats[STAT_ACTIVE_CHUNKS],
                 debugStats[STAT_MACRO_TILE_MOVES],
-                debugStats[STAT_MACRO_CELL_MOVES]);
-            for (uint stat = 0u; stat < 4u; ++stat) {
-                uint slot = stat + 8u;
+                debugStats[STAT_MACRO_CELL_MOVES],
+                debugStats[STAT_CHUNK_SKIPPED_CELLS]);
+            for (uint stat = 0u; stat < 5u; ++stat) {
+                uint slot = stat + 9u;
                 uint column = slot % columns;
                 uint row = slot / columns;
                 statsText = statsText || hierarchyStatPixel(

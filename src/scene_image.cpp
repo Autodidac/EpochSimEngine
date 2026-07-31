@@ -134,6 +134,7 @@ std::uint32_t default_aux(const Material material, const std::uint32_t entropy) 
         break;
     case Material::conveyor:
     case Material::factory_core:
+    case Material::sluice_box:
         aux |= aux_charged;
         set_state(aux, 255u);
         break;

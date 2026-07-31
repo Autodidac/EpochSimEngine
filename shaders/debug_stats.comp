@@ -49,6 +49,9 @@ void main() {
         TileState tile = tiles[linearIndex];
         if (tileHas(tile, TILE_SLEEPING)) atomicAdd(debugStats[STAT_SLEEPING_TILES], 1u);
         if (tileHas(tile, TILE_ACTIVE)) atomicAdd(debugStats[STAT_ACTIVE_TILES], 1u);
+        if (tileHas(tile, TILE_FINE_ACTIVE)) atomicAdd(debugStats[STAT_FINE_TILES], 1u);
+        if (tileHas(tile, TILE_MACRO_MOVABLE)) atomicAdd(debugStats[STAT_MACRO_TILES], 1u);
+        if (tileHas(tile, TILE_SETTLED_MEDIUM)) atomicAdd(debugStats[STAT_SETTLED_TILES], 1u);
     }
 
     uint chunksAcross = chunkColumns(pc.width);

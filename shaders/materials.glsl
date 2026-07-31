@@ -228,7 +228,8 @@ bool isConductive(uint material) {
            material == MAT_STEEL || material == MAT_MAGNET || material == MAT_WATER ||
            material == MAT_SALTWATER || material == MAT_DIRTY_WATER || material == MAT_GOLD ||
            material == MAT_CONVEYOR || material == MAT_SMELTER || material == MAT_ASSEMBLER ||
-           material == MAT_INSECT_HABITAT || material == MAT_FACTORY_CORE;
+           material == MAT_INSECT_HABITAT || material == MAT_FACTORY_CORE ||
+           material == MAT_SLUICE_BOX;
 }
 
 bool isMagnetic(uint material) {
@@ -267,7 +268,8 @@ bool blocksSun(uint material) {
            material == MAT_BEE_NEST || material == MAT_QUEEN_BEE || material == MAT_LAVA ||
            material == MAT_MAGMA_VENT || material == MAT_URANIUM || material == MAT_STEEL || material == MAT_CONVEYOR ||
            material == MAT_SMELTER || material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||
-           material == MAT_FACTORY_CORE || material == MAT_SILT || material == MAT_FERTILIZER ||
+           material == MAT_FACTORY_CORE || material == MAT_SLUICE_BOX ||
+           material == MAT_SILT || material == MAT_FERTILIZER ||
            material == MAT_FOOD || material == MAT_WASTE ||
            material == MAT_ALUMINUM_SHAVINGS || material == MAT_IRON_SHAVINGS;
 }
@@ -350,6 +352,7 @@ uint acidResistance(uint material) {
     case MAT_ASSEMBLER: return 250u;
     case MAT_INSECT_HABITAT: return 250u;
     case MAT_FACTORY_CORE: return 254u;
+    case MAT_SLUICE_BOX: return 248u;
     default: return acidImmune(material) ? 255u : 175u;
     }
 }
@@ -363,7 +366,7 @@ bool isBlockCapable(uint material) {
            material == MAT_COPPER || material == MAT_GOLD || material == MAT_MAGNET || material == MAT_INSULATOR ||
            material == MAT_URANIUM || material == MAT_STEEL || material == MAT_CONVEYOR || material == MAT_SMELTER ||
            material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||
-           material == MAT_FACTORY_CORE;
+           material == MAT_FACTORY_CORE || material == MAT_SLUICE_BOX;
 }
 
 // Configured terrain-forming solids may sleep as cohesive 8x8 Terraria tiles.
@@ -428,7 +431,8 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
     vec4 color;
     switch (material) {
     case MAT_EMPTY: color = vec4(0.025, 0.035, 0.055, 1.0); break;
-    case MAT_SAND: color = vec4(0.88 + variation, 0.72 + variation, 0.34, 1.0); break;
+    case MAT_SAND: { float wet = (aux & AUX_WET) != 0u ? -0.16 : 0.0;
+        color = vec4(0.88 + variation + wet, 0.72 + variation + wet * 0.75, 0.34 + wet * 0.35, 1.0); break; }
     case MAT_WATER: color = vec4(0.08, 0.34 + variation, 0.92, 0.88); break;
     case MAT_DIRT: { float wetDarken=(aux&AUX_WET)!=0u?-0.10:0.0; color=vec4(0.34+variation+wetDarken,0.19+wetDarken*0.55,0.08+wetDarken*0.30,1.0); break; }
     case MAT_STONE: {
@@ -540,6 +544,8 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
     case MAT_PLANT_STEM: color = (aux & AUX_CHARGED) != 0u
         ? vec4(0.20, 0.80, 1.0, 1.0) : vec4(1.0, 0.26, 0.12, 1.0); break;
     case MAT_FACTORY_CORE: color = vec4(0.24, 0.88, 0.82, 1.0); break;
+    case MAT_SLUICE_BOX: { bool riffle = ((position.x + position.y) & 3) == 0;
+        color = riffle ? vec4(0.72, 0.55, 0.18, 1.0) : vec4(0.22, 0.29, 0.34, 1.0); break; }
     case MAT_SILT: color = vec4(0.34 + variation, 0.29 + variation, 0.20, 1.0); break;
     case MAT_FERTILIZER: color = vec4(0.26, 0.42 + variation, 0.14, 1.0); break;
     case MAT_FOOD: color = vec4(0.88, 0.56 + variation, 0.16, 1.0); break;

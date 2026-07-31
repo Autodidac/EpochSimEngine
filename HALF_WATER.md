@@ -12,3 +12,8 @@ Fresh water uses conserved half-units without changing the canonical 16-byte cel
 - chemistry clears the half flag across material conversions
 
 All other materials and FastFreddy behavior remain unchanged.
+
+
+## v2.4.0 settling
+
+Equal-level random water hopping is removed. Half cells retain conserved displaced gas, receive deterministic short-range attraction toward another half cell, and use stronger presentation coverage without changing represented volume. Full uniform liquid regions are decided by the 8x8 macro hierarchy; mixed edges are repaired periodically by the fine pass.
