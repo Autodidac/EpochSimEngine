@@ -157,8 +157,10 @@ void main() {
     if (gl_LocalInvocationIndex == 0u) {
         TileState sourceState = tiles[sourceTileIndexShared];
         TileState targetState = tiles[targetTileIndexShared];
-        sourceState.flags = (sourceState.flags | TILE_ACTIVE | TILE_MACRO_MOVED) & ~(TILE_SLEEPING | TILE_SETTLED_MEDIUM);
-        targetState.flags = (targetState.flags | TILE_ACTIVE | TILE_MACRO_MOVED) & ~(TILE_SLEEPING | TILE_SETTLED_MEDIUM);
+        uint staleMediumFlags = TILE_SLEEPING | TILE_SETTLED_MEDIUM |
+                                TILE_MEDIUM_ENCLOSED | TILE_MEDIUM_BREAKUP;
+        sourceState.flags = (sourceState.flags | TILE_ACTIVE | TILE_MACRO_MOVED) & ~staleMediumFlags;
+        targetState.flags = (targetState.flags | TILE_ACTIVE | TILE_MACRO_MOVED) & ~staleMediumFlags;
         tiles[sourceTileIndexShared] = targetState;
         tiles[targetTileIndexShared] = sourceState;
         markMacroChunkDirty(sourcePosition);

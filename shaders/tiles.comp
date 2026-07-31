@@ -19,6 +19,26 @@ bool isMacroWetMaterial(Cell cell) {
             (cell.aux & AUX_WET) != 0u);
 }
 
+// Full gas/liquid tiles are temporary movement packets at exposed boundaries.
+// They may remain coarse only when the complete one-cell perimeter is compatible.
+bool mediumBoundaryEnclosed(ivec2 origin, bool gasBoundary) {
+    int edge = int(TILE_SIZE);
+    for (int y = -1; y <= edge; ++y) {
+        for (int x = -1; x <= edge; ++x) {
+            if (x != -1 && x != edge && y != -1 && y != edge) continue;
+            ivec2 p = origin + ivec2(x, y);
+            if (!tileInside(p)) return false;
+            Cell neighbor = cells[indexOf(p)];
+            if (gasBoundary) {
+                if (!isCellGas(neighbor)) return false;
+            } else if (neighbor.material == MAT_EMPTY || isCellGas(neighbor)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 void main() {
     uvec2 tile = gl_GlobalInvocationID.xy;
     uint columns = tileColumns(pc.width);
@@ -118,8 +138,17 @@ void main() {
     bool uniformMaterial = dominant != MAT_EMPTY && dominantCount == represented;
     bool fullRegion = uniformMaterial && represented == TILE_CELL_COUNT;
     bool structuralTile = structural > 0u;
-    bool macroLiquid = fullRegion && isLiquid(dominant) && !halfWater;
-    bool macroGas = fullRegion && isGas(dominant);
+    bool fullLiquid = fullRegion && isLiquid(dominant) && !halfWater;
+    bool fullGas = fullRegion && isGas(dominant);
+    bool liquidEnclosed = fullLiquid && mediumBoundaryEnclosed(origin, false);
+    bool gasEnclosed = fullGas && mediumBoundaryEnclosed(origin, true);
+    bool liquidBreakup = fullLiquid && !moving && !liquidEnclosed;
+    bool gasBreakup = fullGas && !moving && !gasEnclosed;
+    bool mediumBreakup = liquidBreakup || gasBreakup;
+    // Exposed full media remain macro packets only while their cells are actively
+    // moving. Once motion ends they return to fine cells at the boundary.
+    bool macroLiquid = fullLiquid && (moving || liquidEnclosed);
+    bool macroGas = fullGas && (moving || gasEnclosed);
     bool macroPowder = fullRegion && isPowder(dominant);
     bool macroSolid = fullRegion && isBlockCapable(dominant) && !structuralTile;
     bool macroMovable = (macroLiquid || macroGas || macroPowder || macroSolid) &&
@@ -157,9 +186,11 @@ void main() {
     bool terrainStable = (structuralTile || stableRegion) && !collapsing;
     bool supported = terrainStable && physicallySupported;
 
-    bool settledMedium = (macroLiquid || macroGas) && !moving && minimumAge >= 30u;
+    bool settledMedium = ((macroLiquid && liquidEnclosed) || (macroGas && gasEnclosed)) &&
+                         !moving && minimumAge >= 30u;
     bool fineActive = represented != 0u && !macroMovable &&
-                      (activeAgent || moving || reacting || hot || !uniformMaterial || represented < TILE_CELL_COUNT);
+                      (activeAgent || moving || reacting || hot || mediumBreakup ||
+                       !uniformMaterial || represented < TILE_CELL_COUNT);
 
     uint flags = 0u;
     if (structuralTile) flags |= TILE_STRUCTURAL;
@@ -184,6 +215,8 @@ void main() {
     if (macroPowder) flags |= TILE_MACRO_POWDER;
     if (macroLiquid) flags |= TILE_MACRO_LIQUID;
     if (macroGas) flags |= TILE_MACRO_GAS;
+    if (gasEnclosed || liquidEnclosed) flags |= TILE_MEDIUM_ENCLOSED;
+    if (mediumBreakup) flags |= TILE_MEDIUM_BREAKUP;
 
     bool sleepingTerrain = terrainStable && !damaged && !moving && !hot && !reacting &&
                            !activeAgent && !activeContent;

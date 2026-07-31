@@ -239,6 +239,8 @@ def main() -> int:
     xcb_cpp = (ROOT / "src/window_xcb.cpp").read_text(encoding="utf-8")
     ui_layout = (ROOT / "include/epoch/sand/ui_layout.hpp").read_text(encoding="utf-8")
     fullscreen = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
+    tiles_comp = (SHADERS / "tiles.comp").read_text(encoding="utf-8")
+    debug_stats_comp = (SHADERS / "debug_stats.comp").read_text(encoding="utf-8")
 
     if actor_comp.count("ivec2 center = ivec2(state.x, state.y - 4);") != 1:
         errors.append("actor breathing center declaration must be unique")
@@ -276,6 +278,29 @@ def main() -> int:
     for token in ("viewportLeft", "viewportWidth", "Deliberate letterbox"):
         if token not in fullscreen:
             errors.append(f"fullscreen tile-aligned viewport missing {token!r}")
+    for token in (
+        "mediumBoundaryEnclosed",
+        "fullLiquid && (moving || liquidEnclosed)",
+        "fullGas && (moving || gasEnclosed)",
+        "mediumBreakup",
+        "TILE_MEDIUM_ENCLOSED",
+        "TILE_MEDIUM_BREAKUP",
+    ):
+        if token not in tiles_comp:
+            errors.append(f"transient medium-tile contract missing {token!r}")
+    for token in (
+        "STAT_MACRO_GAS_TILES",
+        "STAT_MACRO_LIQUID_TILES",
+        "STAT_MEDIUM_ENCLOSED_TILES",
+        "STAT_MEDIUM_BREAKUP_TILES",
+    ):
+        if token not in debug_stats_comp:
+            errors.append(f"medium debug counter missing {token!r}")
+    for token in ("COLOR KEY", "TILE_MEDIUM_BREAKUP", "debugKeyColor", "textScale"):
+        if token not in fullscreen and token != "COLOR KEY":
+            errors.append(f"high-contrast debug contract missing {token!r}")
+    if "COLOR KEY" not in (ROOT / "tools/generate_ui_text.py").read_text(encoding="utf-8"):
+        errors.append("debug color-key text is missing")
     for retired in ("MAT_METAL", "MAT_GOLD_ORE", "MAT_IRON_ORE", "MAT_ALLY_BOT", "MAT_ENEMY_BOT", "MAT_BOT_FABRICATOR"):
         for shader_name in ENTRY_SHADERS:
             if retired in (SHADERS / shader_name).read_text(encoding="utf-8"):

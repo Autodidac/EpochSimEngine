@@ -34,6 +34,8 @@ const uint TILE_MACRO_POWDER = 0x00200000u;
 const uint TILE_MACRO_LIQUID = 0x00400000u;
 const uint TILE_MACRO_GAS = 0x00800000u;
 const uint TILE_MACRO_MOVED = 0x01000000u;
+const uint TILE_MEDIUM_ENCLOSED = 0x02000000u;
+const uint TILE_MEDIUM_BREAKUP = 0x04000000u;
 
 struct TileState {
     uint material;

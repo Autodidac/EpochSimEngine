@@ -29,6 +29,7 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 | MC-017 | REGRESSION | Prevent premature stabilization | Liquid, mud, and wet material sleep only after unchanged volume, support, impulse, boundary height, and erosion state for a bounded confirmation window. Gas rests only after pressure, density, composition, temperature, and incoming/outgoing transfer reach equilibrium. Touching a solid is never by itself a gas-rest condition. No region may sleep while a valid downhill, buoyant, pressure-transfer, erosion, reaction, or actor-driven path remains. |
 | MC-018 | OPEN | Bulk/fine parity tests | Deterministic tests prove each eligible 8x8 move matches the equivalent conserved fine-cell result, including Atmosphere displacement, mud erosion, gas boundary flow, and the same rest decision. |
 | MC-019 | REGRESSION | Material-specific settling without gas-wall friction | Damping is not a universal per-move slowdown. Gravity, buoyancy, pressure transfer, mud erosion, falling wet material, reactions, boundary changes, tool input, and actor impulses execute at the full material-defined rate. Liquids and mud may use viscosity/internal drag only after no productive move exists, reducing residual lateral oscillation toward rest. Gases have no friction against solids: a wall blocks the normal crossing direction but never adds tangential slowdown or pins gas to the surface. Gas motion ends only through pressure/composition equilibrium, density sorting, or exhausted impulse. Bulk and fine representations make the same active/rest decision. |
+| MC-053 | PARTIAL | Transient gas/liquid tile packets | A complete 8x8 gas or liquid region may move as one tile packet. After packet motion ends, gas remains tile-owned only when its complete one-cell perimeter is gas; liquid remains tile-owned only when its complete perimeter contains liquid or non-gas matter. Exposed resting packets become `FINE_ACTIVE` and break back to canonical cells without deleting, filling, snapping, or changing volume. Runtime proof must show moving air/water tiles, exposed breakup, enclosed retention, and stable zero-motion results. |
 
 ## Atmosphere and closed-system gas
 
@@ -66,9 +67,10 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 |---|---|---|---|
 | MC-040 | OPEN | One Atmosphere tool | Rename the large `ERASER` button to `ATMOSPHERE`; it writes balanced air, not void or pure oxygen. |
 | MC-041 | OPEN | Remove duplicate terrain eraser | Keep only the single Atmosphere control. |
-| MC-042 | OPEN | Clarify movement counters | Rename `SWAPS` to `FINE SWAPS`; add `BULK MOVES`, `BULK CELLS`, `FINE REPAIR`, `ACTOR MOVES`, `GAS EXCESS MOVES`, and `PLAYER IMPULSES`. |
+| MC-042 | PARTIAL | Clarify movement counters | Use `FINE SWAPS`, `BULK MOVES`, `BULK CELLS`, `FINE REPAIR`, `ACTOR MOVES`, `GAS EXCESS`, `PLAYER IMP`, `GAS TILES`, `LIQUID TILES`, `ENCLOSED TILES`, and `BREAKUP TILES`. Runtime values must correspond to actual work and ownership transitions. |
 | MC-043 | PARTIAL | Preserve lower GPU use | Timestamp overlay, grid, text, stats, bulk, fine, Atmosphere excess, actors, collision impulses, and presentation independently. |
 | MC-044 | OPEN | Remove grid-edge coupling | Debug grid is presentation-only and never influences movement/rest. |
+| MC-045 | PARTIAL | High-contrast readable debug UI | Debug text scales to 2x on ordinary desktop viewports, categories use distinct high-contrast colors, tile/chunk boundaries remain readable, and an on-screen color key exactly matches damaged, stable, bulk-moved, fine-active, bulk-ready, settled, sleeping, active, enclosed, and breakup overlays. Narrow windows may fall back to 1x without clipping. |
 
 ## Chemistry and materials
 

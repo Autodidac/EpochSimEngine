@@ -54,6 +54,31 @@ inline constexpr std::uint32_t vent_gas_release_pressure = 72u;
  !structural && !reacting;
 }
 
+
+// A full gas/liquid region is a temporary 8x8 transfer packet at exposed
+// boundaries. Once packet motion ends, only a completely compatible perimeter
+// may retain coarse ownership; otherwise the canonical fine cells take over.
+[[nodiscard]] constexpr bool gas_tile_eligible(
+    const bool full_region,
+    const bool moving,
+    const bool perimeter_is_all_gas) noexcept {
+    return full_region && (moving || perimeter_is_all_gas);
+}
+
+[[nodiscard]] constexpr bool liquid_tile_eligible(
+    const bool full_region,
+    const bool moving,
+    const bool perimeter_has_only_liquid_or_solid) noexcept {
+    return full_region && (moving || perimeter_has_only_liquid_or_solid);
+}
+
+[[nodiscard]] constexpr bool medium_tile_breaks_to_fine(
+    const bool full_region,
+    const bool moving,
+    const bool perimeter_compatible) noexcept {
+    return full_region && !moving && !perimeter_compatible;
+}
+
 [[nodiscard]] constexpr bool chunk_can_sleep(
     const std::uint32_t sleeping_tiles,
     const std::uint32_t present_tiles,

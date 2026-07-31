@@ -39,5 +39,9 @@ const uint STAT_FINE_REPAIR_MOVES = 104u;
 const uint STAT_PLAYER_IMPULSES = 105u;
 const uint STAT_ACTOR_MOVES = 106u;
 const uint STAT_GAS_EXCESS_MOVES = 107u;
+const uint STAT_MACRO_GAS_TILES = 108u;
+const uint STAT_MACRO_LIQUID_TILES = 109u;
+const uint STAT_MEDIUM_ENCLOSED_TILES = 110u;
+const uint STAT_MEDIUM_BREAKUP_TILES = 111u;
 
 #endif

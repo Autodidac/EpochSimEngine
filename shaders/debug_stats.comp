@@ -52,6 +52,10 @@ void main() {
         if (tileHas(tile, TILE_FINE_ACTIVE)) atomicAdd(debugStats[STAT_FINE_TILES], 1u);
         if (tileHas(tile, TILE_MACRO_MOVABLE)) atomicAdd(debugStats[STAT_MACRO_TILES], 1u);
         if (tileHas(tile, TILE_SETTLED_MEDIUM)) atomicAdd(debugStats[STAT_SETTLED_TILES], 1u);
+        if (tileHas(tile, TILE_MACRO_GAS)) atomicAdd(debugStats[STAT_MACRO_GAS_TILES], 1u);
+        if (tileHas(tile, TILE_MACRO_LIQUID)) atomicAdd(debugStats[STAT_MACRO_LIQUID_TILES], 1u);
+        if (tileHas(tile, TILE_MEDIUM_ENCLOSED)) atomicAdd(debugStats[STAT_MEDIUM_ENCLOSED_TILES], 1u);
+        if (tileHas(tile, TILE_MEDIUM_BREAKUP)) atomicAdd(debugStats[STAT_MEDIUM_BREAKUP_TILES], 1u);
     }
 
     uint chunksAcross = chunkColumns(pc.width);
