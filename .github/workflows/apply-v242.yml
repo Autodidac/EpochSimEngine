@@ -36,8 +36,21 @@ jobs:
           echo "593af7f0b6b46508dddd015e9cd0b51415d1dd896e28697b6f80e5661293a57e  ${RUNNER_TEMP}/v242.patch.xz" | sha256sum -c -
           xz --decompress --stdout "${RUNNER_TEMP}/v242.patch.xz" > "${RUNNER_TEMP}/v242.patch"
           echo "f3c5012552a8c7af5c05deeba77170d13685cb500ffaa4856420a24c912c38ea  ${RUNNER_TEMP}/v242.patch" | sha256sum -c -
-          git apply --check "${RUNNER_TEMP}/v242.patch"
-          git apply --index "${RUNNER_TEMP}/v242.patch"
+          git apply --check --exclude=missioncache.md "${RUNNER_TEMP}/v242.patch"
+          git apply --index --exclude=missioncache.md "${RUNNER_TEMP}/v242.patch"
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("missioncache.md")
+          text = path.read_text(encoding="utf-8")
+          mission = "| MC-052 | REGRESSION | Settled granular terrain becomes structural | Dry reconstructable dirt, sand, silt, salt, and ice remain loose while sliding. After at least 52 represented cells in an 8x8 region remain unchanged and physically supported for the stabilization window, those existing cells gain structural and supported state without filling or snapping missing cells. Loss of support, fewer than 32 cohesive cells, mining, heat/phase change, player impact, or renewed motion clears structural state and restores crumbling. Side bracing may support terrain but is not required for floor-supported piles to stabilize. Runtime proof must show the pictured brown slopes settle solid and later release into slides when disturbed. |"
+          marker = "\n\n## World, camera, scheduling, streaming, and concurrency"
+          if "| MC-052 |" not in text:
+              if marker not in text:
+                  raise SystemExit("mission cache insertion marker missing")
+              text = text.replace(marker, "\n" + mission + marker, 1)
+              path.write_text(text, encoding="utf-8")
+          PY
           rm -f \
             .github/v242.patch.b64 \
             .github/v242.patch.part.00 \
