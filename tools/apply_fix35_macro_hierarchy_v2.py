@@ -51,7 +51,7 @@ exec(compile(source, str(path), "exec"), namespace)
 
 root = path.parents[1]
 
-# Preserve the established ecology audit vocabulary in the new cached classifier.
+# Preserve the established ecology audit vocabulary in the cached classifier.
 tiles_path = root / "shaders/tiles.comp"
 tiles = tiles_path.read_text(encoding="utf-8")
 old = """            bool loose = !isStructural(cell) && !isReconstructableMaterial(cell.material) &&
@@ -99,4 +99,36 @@ new = """bool halfWaterAhead(ivec2 position, int direction) {
 if old not in move:
     raise SystemExit("half-water unroll marker missing")
 move = move.replace(old, new, 1)
+old = "void swapCells(ivec2 aPosition, ivec2 bPosition) {"
+new = "bool macroExclusiveCell(Cell cell);\n\nvoid swapCells(ivec2 aPosition, ivec2 bPosition) {"
+if old not in move:
+    raise SystemExit("macroExclusiveCell prototype marker missing")
+move = move.replace(old, new, 1)
 move_path.write_text(move, encoding="utf-8", newline="\n")
+
+# Sluice is an aligned engineering block in every shared path, not just in the
+# generated C++ catalog. It also occludes sunlight like the other full machines.
+materials_path = root / "shaders/materials.glsl"
+materials = materials_path.read_text(encoding="utf-8")
+old = """           material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||
+           material == MAT_FACTORY_CORE;
+}
+
+// Configured terrain-forming solids"""
+new = """           material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||
+           material == MAT_FACTORY_CORE || material == MAT_SLUICE_BOX;
+}
+
+// Configured terrain-forming solids"""
+if old not in materials:
+    raise SystemExit("shared Sluice block-capable marker missing")
+materials = materials.replace(old, new, 1)
+old = """           material == MAT_SMELTER || material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||
+           material == MAT_FACTORY_CORE || material == MAT_SILT || material == MAT_FERTILIZER ||"""
+new = """           material == MAT_SMELTER || material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||
+           material == MAT_FACTORY_CORE || material == MAT_SLUICE_BOX ||
+           material == MAT_SILT || material == MAT_FERTILIZER ||"""
+if old not in materials:
+    raise SystemExit("shared Sluice sunlight marker missing")
+materials = materials.replace(old, new, 1)
+materials_path.write_text(materials, encoding="utf-8", newline="\n")
