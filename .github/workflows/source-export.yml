@@ -59,15 +59,11 @@ jobs:
 
           path = Path('src/app.cpp')
           text = path.read_text(encoding='utf-8')
-          old = '''            const double cells_per_second = std::max(
-                120.0, static_cast<double>(std::max(active_view.width, active_view.height)) * 0.85);'''
-          new = '''            const double cells_per_second = (std::max)(
-                120.0, static_cast<double>((std::max)(active_view.width, active_view.height)) * 0.85);'''
-          if new not in text:
-              if old not in text:
-                  raise SystemExit('camera speed expression not found')
-              text = text.replace(old, new, 1)
-              path.write_text(text, encoding='utf-8')
+          unsafe_count = text.count('std::max(')
+          if unsafe_count != 2:
+              raise SystemExit(f'expected exactly two unsafe std::max tokens, found {unsafe_count}')
+          text = text.replace('std::max(', '(std::max)(')
+          path.write_text(text, encoding='utf-8')
           PY
           rm -f "$marker"
           git add -A
