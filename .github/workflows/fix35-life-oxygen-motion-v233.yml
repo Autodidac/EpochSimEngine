@@ -1,0 +1,305 @@
+name: FastFreddyTestbed Fix35 Life Oxygen Motion v2.3.3
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'tools/apply_fix35_life_oxygen_motion.py'
+      - '.github/workflows/fix35-life-oxygen-motion-v233.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: fastfreddytestbed-fix35-life-oxygen-motion-v233
+  cancel-in-progress: true
+
+env:
+  BASE_SHA: 4f3a6f7dd9ce5cd3d26c6abe0c89d986f92c343e
+  RELEASE_TAG: v2.3.3
+  VCPKG_COMMIT: 04a735608afac5844e86fc91d6ba2112cac613c1
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: work
+
+      - name: Apply and audit focused movement correction
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C work rev-parse HEAD).Trim() -ne $env:BASE_SHA) { throw 'Wrong v2.3.2 base SHA.' }
+          Copy-Item control/tools/apply_fix35_life_oxygen_motion.py work/tools/apply_fix35_life_oxygen_motion.py -Force
+          Push-Location work
+          python tools/apply_fix35_life_oxygen_motion.py
+          if ($LASTEXITCODE -ne 0) { throw 'Life movement patch failed.' }
+          Remove-Item tools/apply_fix35_life_oxygen_motion.py -Force
+          python tools/audit_material_behaviors.py
+          if ($LASTEXITCODE -ne 0) { throw 'Material audit failed.' }
+          python tools/audit_ecology_motion.py
+          if ($LASTEXITCODE -ne 0) { throw 'Ecology audit failed.' }
+          python tools/validate_shader_contracts.py
+          if ($LASTEXITCODE -ne 0) { throw 'Shader contract audit failed.' }
+          $allowed = @('shaders/chemistry.comp','shaders/move.comp','shaders/paint.comp','tools/audit_ecology_motion.py','tools/validate_shader_contracts.py') | Sort-Object
+          $changed = @((git status --porcelain=v1) | ForEach-Object { $_.Substring(3) }) | Sort-Object
+          if (Compare-Object $allowed $changed) { throw "Unexpected source delta: $($changed -join ', ')" }
+          $paint = Get-Content shaders/paint.comp -Raw
+          $move = Get-Content shaders/move.comp -Raw
+          $chemistry = Get-Content shaders/chemistry.comp -Raw
+          foreach ($token in @('isDirectPaintLife','displacePaintGas','BEE_AUX_SWARM | BEE_AUX_FED')) {
+            if ($paint -notmatch [regex]::Escape($token)) { throw "Missing paint contract: $token" }
+          }
+          foreach ($token in @('isPassableLifeMedium','insectMediumMoveAllowed','target.material == MAT_BEE')) {
+            if ($move -notmatch [regex]::Escape($token)) { throw "Missing movement contract: $token" }
+          }
+          if ($chemistry -notmatch 'Painted and loaded orphan bees self-seed') { throw 'Missing painted bee activation contract.' }
+          Pop-Location
+
+      - name: Bootstrap pinned vcpkg
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'vcpkg'
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git $root
+          git -C $root checkout $env:VCPKG_COMMIT
+          & (Join-Path $root 'bootstrap-vcpkg.bat') -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed.' }
+          "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure Windows x64 C++23 Release
+        shell: pwsh
+        working-directory: work
+        run: |
+          cmake -S . -B build/windows -G 'Visual Studio 17 2022' -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_HOST_TRIPLET=x64-windows `
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=OFF -DEPOCH_SAND_ENABLE_VALIDATION=OFF -DBUILD_TESTING=ON
+          if ($LASTEXITCODE -ne 0) { throw 'Windows configure failed.' }
+
+      - name: Build all Vulkan shaders and C++23 targets
+        shell: pwsh
+        working-directory: work
+        run: |
+          cmake --build build/windows --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed.' }
+          $shaders = @('reset.comp','paint.comp','sunlight.comp','tiles.comp','chunks.comp','chemistry.comp','macro_move.comp','move.comp','actor.comp','debug_stats.comp','fullscreen.vert','fullscreen.frag')
+          foreach ($shader in $shaders) {
+            if (-not (Test-Path (Join-Path 'build/windows/Release/shaders' ($shader + '.spv')))) { throw "Missing shader $shader" }
+          }
+
+      - name: Run Windows contracts
+        shell: pwsh
+        working-directory: work
+        run: |
+          ctest --test-dir build/windows -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Windows tests failed.' }
+
+      - name: Package Windows
+        shell: pwsh
+        working-directory: work
+        run: |
+          $dist = Join-Path $PWD 'dist/windows'
+          $stage = Join-Path $dist 'FastFreddyTestbed_Windows_x64_v2.3.3'
+          $archive = Join-Path $dist 'FastFreddyTestbed_Windows_x64_v2.3.3.zip'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item 'build/windows/Release/epoch_sand.exe' (Join-Path $stage 'FastFreddyTestbed.exe') -Force
+          Copy-Item 'build/windows/Release/shaders' (Join-Path $stage 'shaders') -Recurse -Force
+          Copy-Item 'build/windows/Release/scenes' (Join-Path $stage 'scenes') -Recurse -Force
+          Copy-Item README.md, HALF_WATER.md, LICENSE -Destination $stage -Force
+          @('@echo off','cd /d "%~dp0"','FastFreddyTestbed.exe') | Set-Content (Join-Path $stage 'run.bat') -Encoding ascii
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -CompressionLevel Optimal -Force
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "$hash  FastFreddyTestbed_Windows_x64_v2.3.3.zip" | Set-Content (Join-Path $dist 'SHA256SUMS-Windows.txt') -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FastFreddyTestbed-Windows-x64-v2.3.3
+          path: |
+            work/dist/windows/FastFreddyTestbed_Windows_x64_v2.3.3.zip
+            work/dist/windows/SHA256SUMS-Windows.txt
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CC: gcc-14
+      CXX: g++-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: work
+
+      - name: Apply and audit focused movement correction
+        run: |
+          set -euo pipefail
+          test "$(git -C work rev-parse HEAD)" = "$BASE_SHA"
+          cp control/tools/apply_fix35_life_oxygen_motion.py work/tools/
+          cd work
+          python3 tools/apply_fix35_life_oxygen_motion.py
+          rm -f tools/apply_fix35_life_oxygen_motion.py
+          python3 tools/audit_material_behaviors.py
+          python3 tools/audit_ecology_motion.py
+          python3 tools/validate_shader_contracts.py
+          expected=$(printf '%s\n' shaders/chemistry.comp shaders/move.comp shaders/paint.comp tools/audit_ecology_motion.py tools/validate_shader_contracts.py | sort)
+          actual=$(git status --porcelain=v1 | cut -c4- | sort)
+          test "$actual" = "$expected" || { printf 'Unexpected source delta:\n%s\n' "$actual"; exit 1; }
+          grep -q 'isDirectPaintLife' shaders/paint.comp
+          grep -q 'displacePaintGas' shaders/paint.comp
+          grep -q 'BEE_AUX_SWARM | BEE_AUX_FED' shaders/paint.comp
+          grep -q 'isPassableLifeMedium' shaders/move.comp
+          grep -q 'insectMediumMoveAllowed' shaders/move.comp
+          grep -q 'target.material == MAT_BEE' shaders/move.comp
+          grep -q 'Painted and loaded orphan bees self-seed' shaders/chemistry.comp
+
+      - name: Install Linux prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build gcc-14 g++-14 pkg-config libvulkan-dev libxcb1-dev libx11-xcb-dev
+
+      - name: Bootstrap pinned vcpkg
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/vcpkg"
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git "$root"
+          git -C "$root" checkout "$VCPKG_COMMIT"
+          "$root/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
+
+      - name: Configure Linux x64 C++23 Release
+        working-directory: work
+        run: |
+          cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux -DVCPKG_HOST_TRIPLET=x64-linux \
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=OFF -DEPOCH_SAND_ENABLE_VALIDATION=OFF -DBUILD_TESTING=ON
+
+      - name: Build all Vulkan shaders and C++23 targets
+        working-directory: work
+        run: |
+          set -euo pipefail
+          cmake --build build/linux --parallel
+          for shader in reset.comp paint.comp sunlight.comp tiles.comp chunks.comp chemistry.comp macro_move.comp move.comp actor.comp debug_stats.comp fullscreen.vert fullscreen.frag; do
+            test -f "build/linux/shaders/$shader.spv"
+          done
+
+      - name: Run Linux contracts
+        working-directory: work
+        run: ctest --test-dir build/linux --output-on-failure
+
+      - name: Package Linux
+        working-directory: work
+        run: |
+          set -euo pipefail
+          dist="$PWD/dist/linux"
+          stage="$dist/FastFreddyTestbed_Linux_x64_v2.3.3"
+          archive="$dist/FastFreddyTestbed_Linux_x64_v2.3.3.tar.gz"
+          mkdir -p "$stage"
+          cp build/linux/epoch_sand "$stage/FastFreddyTestbed"
+          cp -R build/linux/shaders "$stage/shaders"
+          cp -R build/linux/scenes "$stage/scenes"
+          cp README.md HALF_WATER.md LICENSE "$stage/"
+          printf '#!/usr/bin/env bash\nset -euo pipefail\ncd "$(dirname "$0")"\nexec ./FastFreddyTestbed\n' > "$stage/run.sh"
+          chmod +x "$stage/run.sh" "$stage/FastFreddyTestbed"
+          tar -C "$dist" -czf "$archive" FastFreddyTestbed_Linux_x64_v2.3.3
+          sha256sum "$archive" | sed 's# .*/#  #' > "$dist/SHA256SUMS-Linux.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FastFreddyTestbed-Linux-x64-v2.3.3
+          path: |
+            work/dist/linux/FastFreddyTestbed_Linux_x64_v2.3.3.tar.gz
+            work/dist/linux/SHA256SUMS-Linux.txt
+          if-no-files-found: error
+
+  release:
+    needs: [windows, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: work
+
+      - name: Materialize verified source
+        run: |
+          set -euo pipefail
+          test "$(git -C work rev-parse HEAD)" = "$BASE_SHA"
+          test "$(git -C work ls-remote origin refs/heads/main | cut -f1)" = "$BASE_SHA"
+          cp control/tools/apply_fix35_life_oxygen_motion.py work/tools/
+          cd work
+          python3 tools/apply_fix35_life_oxygen_motion.py
+          rm -f tools/apply_fix35_life_oxygen_motion.py
+          python3 tools/audit_material_behaviors.py
+          python3 tools/audit_ecology_motion.py
+          python3 tools/validate_shader_contracts.py
+          expected=$(printf '%s\n' shaders/chemistry.comp shaders/move.comp shaders/paint.comp tools/audit_ecology_motion.py tools/validate_shader_contracts.py | sort)
+          actual=$(git status --porcelain=v1 | cut -c4- | sort)
+          test "$actual" = "$expected"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'FastFreddyTestbed Fix35: mobile painted life in conserved oxygen'
+          release_sha=$(git rev-parse HEAD)
+          git push origin HEAD:main
+          echo "RELEASE_SHA=$release_sha" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Verify checksums and publish v2.3.3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          win='artifacts/FastFreddyTestbed-Windows-x64-v2.3.3'
+          linux='artifacts/FastFreddyTestbed-Linux-x64-v2.3.3'
+          (cd "$win" && sha256sum -c SHA256SUMS-Windows.txt)
+          (cd "$linux" && sha256sum -c SHA256SUMS-Linux.txt)
+          mkdir -p release
+          cp "$win/FastFreddyTestbed_Windows_x64_v2.3.3.zip" release/
+          cp "$linux/FastFreddyTestbed_Linux_x64_v2.3.3.tar.gz" release/
+          (cd release && sha256sum FastFreddyTestbed_Windows_x64_v2.3.3.zip FastFreddyTestbed_Linux_x64_v2.3.3.tar.gz > SHA256SUMS.txt)
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create "$RELEASE_TAG" release/FastFreddyTestbed_Windows_x64_v2.3.3.zip release/FastFreddyTestbed_Linux_x64_v2.3.3.tar.gz release/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$RELEASE_SHA" \
+            --title 'FastFreddyTestbed v2.3.3 — Mobile Life in Conserved Oxygen' \
+            --notes 'Follow-up on v2.3.2. Directly painted bees, ants, beetles, and queens are single-cell placements instead of packed immobile brush blobs. Painted and loaded orphan bees self-seed bounded local swarm metadata so they move immediately. Bees receive symmetric diagonal movement and insects receive explicit gas/liquid movement independent of grounded walking. Painting life into oxygen redistributes the exact represented gas volume into adjacent oxygen cells as pressure and aborts safely if capacity is unavailable. Existing conserved half-water, oxygen-to-CO2 respiration, suffocation, responsive UI, corrected cursor hitboxes, bee biohazard cycle, compact sampled debug overlay, Fix35 GUI/material palette, 8x8 macro hierarchy, and 64x64 sleeping chunks remain intact. All twelve Vulkan shaders, Windows/Linux C++23 Release builds, contracts, audits, and checksums passed.'
+
+      - name: Remove temporary branch and close PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGER_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          gh pr close ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" --comment 'v2.3.3 published; temporary controls removed.' || true
+          git -C work push origin --delete "$TRIGGER_BRANCH" || true
