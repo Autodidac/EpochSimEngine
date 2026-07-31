@@ -1,0 +1,86 @@
+name: Publish EpochSimEngine v2.4.2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/v242-release.trigger
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CI_RUN_ID: "30661800841"
+      RELEASE_TAG: v2.4.2
+      RELEASE_TARGET: 2db7a6dad20a88f1ce65f54e3978f7f0daa9736f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Verify the accepted CI run
+        shell: bash
+        run: |
+          set -euo pipefail
+          conclusion="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CI_RUN_ID}" --jq .conclusion)"
+          [[ "$conclusion" == "success" ]] || {
+            echo "Accepted CI run ${CI_RUN_ID} concluded ${conclusion}" >&2
+            exit 1
+          }
+
+      - name: Download the verified platform packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/windows dist/linux dist/release
+          gh run download "$CI_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name EpochSimEngine-Windows-x64-v2.4.2 \
+            --dir dist/windows
+          gh run download "$CI_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name EpochSimEngine-Linux-x64-v2.4.2 \
+            --dir dist/linux
+          windows="$(find dist/windows -type f -name 'EpochSimEngine-Windows-x64-v2.4.2.zip' -print -quit)"
+          linux="$(find dist/linux -type f -name 'EpochSimEngine-Linux-x64-v2.4.2.tar.gz' -print -quit)"
+          [[ -n "$windows" && -n "$linux" ]]
+          cp "$windows" dist/release/EpochSimEngine-Windows-x64-v2.4.2.zip
+          cp "$linux" dist/release/EpochSimEngine-Linux-x64-v2.4.2.tar.gz
+          (
+            cd dist/release
+            sha256sum \
+              EpochSimEngine-Windows-x64-v2.4.2.zip \
+              EpochSimEngine-Linux-x64-v2.4.2.tar.gz \
+              > SHA256SUMS.txt
+          )
+          cat dist/release/SHA256SUMS.txt
+
+      - name: Publish v2.4.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          fi
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$RELEASE_TARGET" \
+            --title "EpochSimEngine v2.4.2" \
+            --notes-file RELEASE_NOTES_v2.4.2.md \
+            dist/release/EpochSimEngine-Windows-x64-v2.4.2.zip \
+            dist/release/EpochSimEngine-Linux-x64-v2.4.2.tar.gz \
+            dist/release/SHA256SUMS.txt
+
+      - name: Verify published assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json tagName,targetCommitish,isDraft,isPrerelease,assets \
+            --jq '{tag: .tagName, target: .targetCommitish, draft: .isDraft, prerelease: .isPrerelease, assets: [.assets[].name]}'
