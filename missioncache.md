@@ -10,6 +10,7 @@ Before changing code:
 4. Never mark visual/runtime behavior complete from compilation, token checks, or static audits alone.
 5. Verify Windows and Linux Release builds before publishing.
 6. Move a mission to the release archive only after its acceptance criteria are met. Reopen the same mission ID when runtime evidence contradicts an earlier result.
+7. For the next broad implementation pass, attempt every active mission once. Release only build-verified work; anything unfinished or runtime-unverified remains active with evidence rather than disappearing.
 
 Status meanings: `OPEN` not implemented; `PARTIAL` code exists but acceptance is unmet; `REGRESSION` attempted behavior is visibly wrong; `DEFERRED` intentionally scheduled later with the reason retained.
 
@@ -19,12 +20,12 @@ Status meanings: `OPEN` not implemented; `PARTIAL` code exists but acceptance is
 
 | ID | Status | Mission | Acceptance criteria / evidence |
 |---|---|---|---|
-| MC-011 | PARTIAL | 64x64 chunk-first work rejection | Clean off-camera chunks skip tile and fine-cell work, including safe pressure and boundary halos. Runtime profiling must prove it. |
+| MC-011 | PARTIAL | 64x64 chunk-first work rejection | Clean inactive chunks skip tile and fine-cell work, including safe pressure and boundary halos. Runtime profiling must prove it. |
 | MC-012 | REGRESSION | 8x8 bulk-element movement | Full aligned liquids, gases, falling solids, mud, and wet materials move with the same gravity, diagonal, lateral, density, and displacement semantics as fine cells. Debug shows non-zero bulk moves in real scenes. |
 | MC-013 | REGRESSION | True liquid settling without hopping | Water remained active after roughly 300,000 ticks. It must level quickly, stop completely, and wake only from changed support, pressure, incoming volume, heat, reaction, actor, or tool disturbance. |
 | MC-014 | PARTIAL | Fractional-water consolidation | Fractional water represents only final partial surface volume. It is not created by every lateral move, does not chase or jitter, creates no air, and leaves no isolated pockets. |
 | MC-015 | PARTIAL | Hide hierarchy artifacts | Fine boundaries visually repair bulk movement without squares, popping, seams, grid-edge clumping, or diagonal one-cell ramps. |
-| MC-016 | OPEN | Rename hierarchy terminology | Choose durable names for fine cells, 8x8 bulk elements, 64x64 sections, active rings, frozen rings, and streamed regions; update code, debug UI, and docs together. |
+| MC-016 | OPEN | Rename hierarchy terminology | Choose durable names for fine cells, 8x8 bulk elements, 64x64 sections, active windows, frozen regions, and streamed regions; update code, debug UI, and docs together. |
 | MC-017 | REGRESSION | Prevent premature stabilization | A liquid/gas region sleeps only after unchanged volume, pressure, composition, material class, velocity/impulse, and boundary height for a bounded confirmation window. Solid stability remains separate. |
 | MC-018 | OPEN | Bulk/fine parity tests | Deterministic tests prove an eligible 8x8 bulk move matches the conserved result of equivalent fine-cell movement, including Atmosphere displacement. |
 | MC-019 | REGRESSION | Universal medium damping and rest | Every gas and liquid has bounded damping/friction toward rest. Density, viscosity, pressure, and buoyancy control the rate. No medium moves forever without a continuing pressure, gravity, heat, reaction, boundary, or actor impulse. Resting media wake deterministically when disturbed. |
@@ -36,7 +37,7 @@ Status meanings: `OPEN` not implemented; `PARTIAL` code exists but acceptance is
 | MC-020 | REGRESSION | Universal composite Atmosphere state | Replace standalone normal-air pixels with one conserved `Atmosphere` state carrying total volume, pressure, temperature, and N2/O2/Ar/CO2/H2/He/vapor/contaminant amounts. Fire, lightning, and radiation remain effects. |
 | MC-021 | OPEN | Canonical Earth-air baseline | The Atmosphere tool and authored air use configurable Earth-like air: about 78% N2, 21% O2, 0.9% Ar, trace CO2 and remaining trace gases. Packed units sum exactly with no rounding loss. |
 | MC-022 | OPEN | Absorb every gas emission into air | Nitrogen, oxygen, argon, CO2, hydrogen, helium, vapor, and true gas products add conserved component volume and pressure to local Atmosphere instead of replacing it. Gas painting changes composition. |
-| MC-023 | OPEN | Direct visible excess-gas settling | Do not build a nested mini-simulation. Conserved excess denser than air moves downward then sideways until stable; lighter excess moves upward then sideways. First implementation remains visible for inspection and cannot cross solids, liquids, sealed barriers, or unloaded boundaries. |
+| MC-023 | OPEN | Direct visible excess-gas settling | Do not build a nested mini-simulation. Conserved excess denser than air moves downward then sideways until stable; lighter excess moves upward then sideways. The first implementation remains visible for inspection and cannot cross solids, liquids, sealed barriers, paused regions, or unloaded boundaries. |
 | MC-024 | OPEN | Excess reabsorption and final presentation | Stable excess reabsorbs when nearby air has capacity. Only after runtime acceptance may normal rendering hide in-transit excess; debug must always reveal its route. |
 | MC-025 | PARTIAL | Respiration and combustion through composition | Life consumes O2 and returns equal represented CO2 volume. Fire/ember do the same, bounded by oxygen and fuel. Suffocation uses breathable partial fraction and enclosure. Runtime rates still need proof. |
 | MC-026 | OPEN | Closed-system gas and pressure validation | Add closed-box tests and debug totals for Atmosphere volume, each component, pressure transfer, separated excess, reabsorption, and conservation error. Component totals always equal represented gas volume. |
@@ -76,17 +77,20 @@ Status meanings: `OPEN` not implemented; `PARTIAL` code exists but acceptance is
 | MC-050 | OPEN | Correct fertilizer chemistry | Ember does not directly become fertilizer. Use a conserved compost path involving ash, organic waste, silt/dirt, dirty water, air, time, and heat where appropriate. |
 | MC-051 | PARTIAL | Wet materials and sluicing proof | Wet sand/dirt/silt, mud, and Sluice Box exist; gameplay must prove bulk movement, drying, feed conservation, and gold/silt output without pixel-only fallback. |
 
-## Performance, sections, and optional concurrency
+## World, camera, sections, and optional concurrency
 
 | ID | Status | Mission | Acceptance criteria / evidence |
 |---|---|---|---|
-| MC-060 | OPEN | Camera-visible simulation guarantee | Every visible section is loaded and fully animated before presentation. |
-| MC-061 | OPEN | Twelve-nearest active sections | Deterministically prioritize 12 nearest sections with configurable count and boundary halos. |
-| MC-062 | OPEN | Loaded frozen ring | Outside the active radius, sections remain memory-resident but frozen and restore before visibility. |
-| MC-063 | OPEN | Far-section disk streaming | Serialize clean far sections, free buffers, reload deterministically, and use versioned corruption-safe saves. |
-| MC-064 | OPEN | Optional section concurrency | Reference mode is deterministic single-thread. Optional workers process independent sections with matching boundary results. |
+| MC-060 | OPEN | Camera-visible state availability | Every section visible at any supported zoom is loaded and renderable before presentation. Sections outside the active simulation window may display their last frozen state, but never missing, corrupt, or uninitialized data. |
+| MC-061 | OPEN | Camera-centered 7x7 active simulation window | Only the section containing the camera center plus the three neighboring sections in every cardinal and diagonal direction may animate: a Chebyshev radius of 3, exactly a 7x7 section window when fully inside world bounds. This replaces the earlier twelve-nearest plan. |
+| MC-062 | OPEN | Hard pause outside the active window | Every section outside MC-061 is paused: no material motion, chemistry, ecology, actors, Atmosphere transport, pressure propagation, or debug simulation work. Frozen sections wake deterministically when entering the 7x7 window. |
+| MC-063 | OPEN | Far-section disk streaming | Serialize clean distant paused sections, free live buffers when appropriate, reload deterministically, and use versioned corruption-safe saves. Streaming must not change simulation results when a section re-enters the active window. |
+| MC-064 | OPEN | Optional section concurrency | Reference mode is deterministic single-thread. Optional workers process independent active sections only, with matching boundary results and no work scheduled outside the 7x7 window. |
 | MC-065 | OPEN | Coroutine review | Use C++23 coroutines only for useful asynchronous streaming/I/O, never ordered Vulkan submission or per-cell hot paths. |
-| MC-066 | OPEN | Safe unseen freezing | Freeze only after pending reactions, transfers, actors, impulses, pressure, and streaming dependencies resolve. |
+| MC-066 | OPEN | Safe pause, wake, and boundary transfer | Pause only after pending transfers, actors, impulses, pressure, and boundary dependencies resolve. Crossing the active-window edge conserves every material, gas component, actor, and pending impulse without allowing the paused side to continue animating. |
+| MC-067 | OPEN | Expand world to 8x8 current dimensions | Increase world width to 8 times the current width and height to 8 times the current height, producing 64 times the current cell area. Scene generation, buffers, indexing, saves, limits, and overflow checks must support the enlarged world without reducing determinism. |
+| MC-068 | OPEN | Camera zero/reset control | Add an explicit camera reset that returns pan/offset to world origin zero and restores the documented default zoom without resetting or modifying the simulation. |
+| MC-069 | OPEN | 2x2 maximum zoom-out view | Add zoom-out sufficient to display a 2-by-2 arrangement of the current pre-expansion world footprint at once, equivalent to four current-world view areas. Clamp there; maintain stable input mapping, cursor placement, culling, and camera reset behavior. |
 
 ## Library architecture and EpochEngine migration
 
@@ -106,6 +110,9 @@ Status meanings: `OPEN` not implemented; `PARTIAL` code exists but acceptance is
 - Separated excess remains visible until Adam accepts its motion; only then may normal rendering hide transit while debug keeps it visible.
 - Every gas and liquid can rest. Motion requires gravity/buoyancy, pressure, heat, reaction, boundary change, tool input, or actor impulse.
 - Player/actor disturbance transfers bounded momentum/pressure and never erases or mints medium volume.
+- Only the camera-centered 7x7 section window animates. Everything outside it is paused until the window moves.
+- World expansion, zoom, pausing, streaming, and concurrency must not change material conservation or deterministic reference results.
+- Debug rendering remains independent of simulation scheduling; the withdrawn camera-clipped debug-view idea is not an active mission.
 - 8x8 terrain regions qualify for stability only; they never reconstruct missing cells.
 - Each terrain pixel takes two laser hits to dislodge; after more than half are dislodged, the represented remainder collapses rather than vanishing.
 - Missed, avoided, failed, deferred, and runtime-regressed missions remain visible until accepted.
