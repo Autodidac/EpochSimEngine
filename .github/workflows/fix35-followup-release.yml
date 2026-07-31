@@ -1,0 +1,347 @@
+name: FastFreddyTestbed Fix35 Follow-up Release
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'tools/apply_fix35_ui_bee_oxygen_debug.py'
+      - '.github/workflows/fix35-followup-release.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: fastfreddytestbed-fix35-followup
+  cancel-in-progress: true
+
+env:
+  BASE_SHA: 3bd5b8fd2e2c5416c6ded4469dab988524f8be27
+  RELEASE_TAG: v2.3.1
+  VCPKG_COMMIT: 04a735608afac5844e86fc91d6ba2112cac613c1
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Check out release controls
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+
+      - name: Check out exact current testbed source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: work
+
+      - name: Apply focused Fix35 follow-up
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C work rev-parse HEAD).Trim() -ne $env:BASE_SHA) { throw 'Wrong testbed base SHA.' }
+          Copy-Item control/tools/apply_fix35_ui_bee_oxygen_debug.py work/tools/apply_fix35_ui_bee_oxygen_debug.py -Force
+          Push-Location work
+          python tools/apply_fix35_ui_bee_oxygen_debug.py
+          if ($LASTEXITCODE -ne 0) { throw 'Follow-up patch failed.' }
+          Remove-Item tools/apply_fix35_ui_bee_oxygen_debug.py -Force
+          Pop-Location
+
+      - name: Audit source scope and contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location work
+          python tools/audit_material_behaviors.py
+          if ($LASTEXITCODE -ne 0) { throw 'Material audit failed.' }
+          python tools/audit_ecology_motion.py
+          if ($LASTEXITCODE -ne 0) { throw 'Ecology and movement audit failed.' }
+          python tools/validate_shader_contracts.py
+          if ($LASTEXITCODE -ne 0) { throw 'Shader contract audit failed.' }
+          $allowed = @(
+            'include/epoch/sand/ui_layout.hpp',
+            'shaders/bee_swarm.glsl',
+            'shaders/fullscreen.frag',
+            'shaders/reset.comp',
+            'src/app.cpp',
+            'src/vulkan_renderer.cpp',
+            'src/window_win32.cpp',
+            'src/window_xcb.cpp'
+          ) | Sort-Object
+          $changed = @((git status --porcelain=v1) | ForEach-Object { $_.Substring(3) }) | Sort-Object
+          if (Compare-Object $allowed $changed) { throw "Unexpected source delta: $($changed -join ', ')" }
+          $layout = Get-Content include/epoch/sand/ui_layout.hpp -Raw
+          $bee = Get-Content shaders/bee_swarm.glsl -Raw
+          $reset = Get-Content shaders/reset.comp -Raw
+          $renderer = Get-Content src/vulkan_renderer.cpp -Raw
+          $fragment = Get-Content shaders/fullscreen.frag -Raw
+          if ($layout -notmatch 'keymap_height = 126u' -or $layout -notmatch 'control_button_width = 44.0f') { throw 'UI layout contract failed.' }
+          if ($bee -notmatch 'BEE_SWARM_PHASE_TICKS' -or $bee -notmatch 'phaseLocal < BEE_SWARM_BIOHAZARD_TICKS') { throw 'Bee cycle contract failed.' }
+          if ($reset -notmatch 'if \(material == MAT_EMPTY\) material = MAT_OXYGEN') { throw 'Scene oxygen contract failed.' }
+          if ($renderer -notmatch 'Material::oxygen' -or $renderer -notmatch 'debug_sample_frame % 8u') { throw 'Eraser/debug contract failed.' }
+          if ($fragment -notmatch 'panelWidth = min\(360u' -or $fragment -notmatch 'TileState tile = tileAt\(grid\)') { throw 'Compact debug contract failed.' }
+          Pop-Location
+
+      - name: Bootstrap pinned vcpkg
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'vcpkg'
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git $root
+          git -C $root checkout $env:VCPKG_COMMIT
+          & (Join-Path $root 'bootstrap-vcpkg.bat') -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed.' }
+          "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure Windows x64 C++23 Release
+        shell: pwsh
+        working-directory: work
+        run: |
+          cmake -S . -B build/windows -G 'Visual Studio 17 2022' -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DVCPKG_HOST_TRIPLET=x64-windows `
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=OFF `
+            -DEPOCH_SAND_ENABLE_VALIDATION=OFF `
+            -DBUILD_TESTING=ON
+          if ($LASTEXITCODE -ne 0) { throw 'Windows configure failed.' }
+
+      - name: Compile every Vulkan shader and C++23 target
+        shell: pwsh
+        working-directory: work
+        run: |
+          cmake --build build/windows --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed.' }
+          $shaders = @('reset.comp','paint.comp','sunlight.comp','tiles.comp','chunks.comp','chemistry.comp','macro_move.comp','move.comp','actor.comp','debug_stats.comp','fullscreen.vert','fullscreen.frag')
+          foreach ($shader in $shaders) {
+            $path = Join-Path 'build/windows/Release/shaders' ($shader + '.spv')
+            if (-not (Test-Path $path)) { throw "Missing compiled shader: $path" }
+          }
+
+      - name: Run Windows C++23 contracts
+        shell: pwsh
+        working-directory: work
+        run: |
+          ctest --test-dir build/windows -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Windows tests failed.' }
+
+      - name: Package Windows Release
+        shell: pwsh
+        working-directory: work
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dist = Join-Path $PWD 'dist/windows'
+          $stage = Join-Path $dist 'FastFreddyTestbed_Windows_x64_v2.3.1'
+          $archive = Join-Path $dist 'FastFreddyTestbed_Windows_x64_v2.3.1.zip'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item 'build/windows/Release/epoch_sand.exe' (Join-Path $stage 'FastFreddyTestbed.exe') -Force
+          Copy-Item 'build/windows/Release/shaders' (Join-Path $stage 'shaders') -Recurse -Force
+          Copy-Item 'build/windows/Release/scenes' (Join-Path $stage 'scenes') -Recurse -Force
+          Copy-Item README.md, HALF_WATER.md, LICENSE -Destination $stage -Force
+          @('@echo off','cd /d "%~dp0"','FastFreddyTestbed.exe') | Set-Content (Join-Path $stage 'run.bat') -Encoding ascii
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -CompressionLevel Optimal -Force
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "$hash  FastFreddyTestbed_Windows_x64_v2.3.1.zip" | Set-Content (Join-Path $dist 'SHA256SUMS-Windows.txt') -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FastFreddyTestbed-Windows-x64-v2.3.1
+          path: |
+            work/dist/windows/FastFreddyTestbed_Windows_x64_v2.3.1.zip
+            work/dist/windows/SHA256SUMS-Windows.txt
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CC: gcc-14
+      CXX: g++-14
+    steps:
+      - name: Check out release controls
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+
+      - name: Check out exact current testbed source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: work
+
+      - name: Apply and audit focused follow-up
+        run: |
+          set -euo pipefail
+          test "$(git -C work rev-parse HEAD)" = "$BASE_SHA"
+          cp control/tools/apply_fix35_ui_bee_oxygen_debug.py work/tools/
+          cd work
+          python3 tools/apply_fix35_ui_bee_oxygen_debug.py
+          rm -f tools/apply_fix35_ui_bee_oxygen_debug.py
+          python3 tools/audit_material_behaviors.py
+          python3 tools/audit_ecology_motion.py
+          python3 tools/validate_shader_contracts.py
+          expected=$(printf '%s\n' include/epoch/sand/ui_layout.hpp shaders/bee_swarm.glsl shaders/fullscreen.frag shaders/reset.comp src/app.cpp src/vulkan_renderer.cpp src/window_win32.cpp src/window_xcb.cpp | sort)
+          actual=$(git status --porcelain=v1 | cut -c4- | sort)
+          test "$actual" = "$expected" || { printf 'Unexpected source delta:\n%s\n' "$actual"; exit 1; }
+          grep -q 'keymap_height = 126u' include/epoch/sand/ui_layout.hpp
+          grep -q 'control_button_width = 44.0f' include/epoch/sand/ui_layout.hpp
+          grep -q 'BEE_SWARM_PHASE_TICKS' shaders/bee_swarm.glsl
+          grep -q 'phaseLocal < BEE_SWARM_BIOHAZARD_TICKS' shaders/bee_swarm.glsl
+          grep -q 'if (material == MAT_EMPTY) material = MAT_OXYGEN' shaders/reset.comp
+          grep -q 'debug_sample_frame % 8u' src/vulkan_renderer.cpp
+          grep -q 'panelWidth = min(360u' shaders/fullscreen.frag
+
+      - name: Install Linux build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build gcc-14 g++-14 pkg-config libvulkan-dev libxcb1-dev libx11-xcb-dev
+
+      - name: Bootstrap pinned vcpkg
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/vcpkg"
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git "$root"
+          git -C "$root" checkout "$VCPKG_COMMIT"
+          "$root/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
+
+      - name: Configure Linux x64 C++23 Release
+        working-directory: work
+        run: |
+          cmake -S . -B build/linux -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_HOST_TRIPLET=x64-linux \
+            -DEPOCH_SAND_WARNINGS_AS_ERRORS=OFF \
+            -DEPOCH_SAND_ENABLE_VALIDATION=OFF \
+            -DBUILD_TESTING=ON
+
+      - name: Compile every Vulkan shader and C++23 target
+        working-directory: work
+        run: |
+          set -euo pipefail
+          cmake --build build/linux --parallel
+          for shader in reset.comp paint.comp sunlight.comp tiles.comp chunks.comp chemistry.comp macro_move.comp move.comp actor.comp debug_stats.comp fullscreen.vert fullscreen.frag; do
+            test -f "build/linux/shaders/$shader.spv"
+          done
+
+      - name: Run Linux C++23 contracts
+        working-directory: work
+        run: ctest --test-dir build/linux --output-on-failure
+
+      - name: Package Linux Release
+        working-directory: work
+        run: |
+          set -euo pipefail
+          dist="$PWD/dist/linux"
+          stage="$dist/FastFreddyTestbed_Linux_x64_v2.3.1"
+          archive="$dist/FastFreddyTestbed_Linux_x64_v2.3.1.tar.gz"
+          mkdir -p "$stage"
+          cp build/linux/epoch_sand "$stage/FastFreddyTestbed"
+          cp -R build/linux/shaders "$stage/shaders"
+          cp -R build/linux/scenes "$stage/scenes"
+          cp README.md HALF_WATER.md LICENSE "$stage/"
+          printf '#!/usr/bin/env bash\nset -euo pipefail\ncd "$(dirname "$0")"\nexec ./FastFreddyTestbed\n' > "$stage/run.sh"
+          chmod +x "$stage/run.sh" "$stage/FastFreddyTestbed"
+          tar -C "$dist" -czf "$archive" FastFreddyTestbed_Linux_x64_v2.3.1
+          sha256sum "$archive" | sed 's# .*/#  #' > "$dist/SHA256SUMS-Linux.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FastFreddyTestbed-Linux-x64-v2.3.1
+          path: |
+            work/dist/linux/FastFreddyTestbed_Linux_x64_v2.3.1.tar.gz
+            work/dist/linux/SHA256SUMS-Linux.txt
+          if-no-files-found: error
+
+  release:
+    needs: [windows, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out release controls
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+
+      - name: Check out exact verified testbed base
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: work
+
+      - name: Materialize verified source commit
+        run: |
+          set -euo pipefail
+          test "$(git -C work rev-parse HEAD)" = "$BASE_SHA"
+          current_main=$(git -C work ls-remote origin refs/heads/main | cut -f1)
+          test "$current_main" = "$BASE_SHA" || { echo "main moved to $current_main"; exit 1; }
+          cp control/tools/apply_fix35_ui_bee_oxygen_debug.py work/tools/
+          cd work
+          python3 tools/apply_fix35_ui_bee_oxygen_debug.py
+          rm -f tools/apply_fix35_ui_bee_oxygen_debug.py
+          python3 tools/audit_material_behaviors.py
+          python3 tools/audit_ecology_motion.py
+          python3 tools/validate_shader_contracts.py
+          expected=$(printf '%s\n' include/epoch/sand/ui_layout.hpp shaders/bee_swarm.glsl shaders/fullscreen.frag shaders/reset.comp src/app.cpp src/vulkan_renderer.cpp src/window_win32.cpp src/window_xcb.cpp | sort)
+          actual=$(git status --porcelain=v1 | cut -c4- | sort)
+          test "$actual" = "$expected"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'FastFreddyTestbed Fix35: responsive UI, oxygen atmosphere, bee cycle, compact debug'
+          release_sha=$(git rev-parse HEAD)
+          git push origin HEAD:main
+          echo "RELEASE_SHA=$release_sha" >> "$GITHUB_ENV"
+
+      - name: Download verified packages
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Verify checksums and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          win_dir='artifacts/FastFreddyTestbed-Windows-x64-v2.3.1'
+          linux_dir='artifacts/FastFreddyTestbed-Linux-x64-v2.3.1'
+          (cd "$win_dir" && sha256sum -c SHA256SUMS-Windows.txt)
+          (cd "$linux_dir" && sha256sum -c SHA256SUMS-Linux.txt)
+          mkdir -p release
+          cp "$win_dir/FastFreddyTestbed_Windows_x64_v2.3.1.zip" release/
+          cp "$linux_dir/FastFreddyTestbed_Linux_x64_v2.3.1.tar.gz" release/
+          (cd release && sha256sum FastFreddyTestbed_Windows_x64_v2.3.1.zip FastFreddyTestbed_Linux_x64_v2.3.1.tar.gz > SHA256SUMS.txt)
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && \
+            gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create "$RELEASE_TAG" \
+            release/FastFreddyTestbed_Windows_x64_v2.3.1.zip \
+            release/FastFreddyTestbed_Linux_x64_v2.3.1.tar.gz \
+            release/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$RELEASE_SHA" \
+            --title 'FastFreddyTestbed v2.3.1 — Fix35 UI and Atmosphere Follow-up' \
+            --notes 'Fix35 follow-up on the conserved half-water testbed. Corrects the 18-pixel cursor-editor input/render mismatch, uses authoritative click coordinates on Windows, widens cursor size and zoom controls, clears captured input on focus loss, returns bee swarms to biohazard between alternate formations, starts authored level air as oxygen, makes eraser/right-click vacuum replacement produce canonical oxygen, samples full debug statistics every eight frames, avoids tile/chunk fragment reads outside debug mode, and replaces the full-width diagnostic slab with a compact adaptive panel. All twelve Vulkan shaders, Windows and Linux C++23 Release builds, three contracts per platform, source audits, and package checksums passed.'
+
+      - name: Remove trigger branch and close PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGER_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          gh pr close ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" \
+            --comment 'v2.3.1 published; temporary workflow and patch controls removed.' || true
+          git -C work push origin --delete "$TRIGGER_BRANCH" || true
