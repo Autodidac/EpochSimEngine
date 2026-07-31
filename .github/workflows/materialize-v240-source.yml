@@ -1,0 +1,45 @@
+name: Materialize v2.4.0 source for architecture pass
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/materialize-v240-source.yml'
+      - 'tools/apply_fix35_macro_hierarchy_v2.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: 1e2a73a20a93fb91e230a73c0df0991ba008d4b9
+          path: work
+      - name: Materialize audited hierarchy source
+        run: |
+          set -euo pipefail
+          cp control/tools/apply_fix35_macro_hierarchy.py control/tools/apply_fix35_macro_hierarchy_v2.py work/tools/
+          cd work
+          python3 tools/apply_fix35_macro_hierarchy_v2.py
+          rm -f tools/apply_fix35_macro_hierarchy.py tools/apply_fix35_macro_hierarchy_v2.py
+          python3 tools/audit_material_behaviors.py
+          python3 tools/audit_ecology_motion.py
+          python3 tools/validate_shader_contracts.py
+          sed -i 's/material_count == 65u/material_count == 66u/' tests/material_contract.cpp
+          tar -czf ../fastfreddytestbed-v240-materialized.tar.gz --exclude=.git .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fastfreddytestbed-v240-materialized-source
+          path: fastfreddytestbed-v240-materialized.tar.gz
+          if-no-files-found: error
