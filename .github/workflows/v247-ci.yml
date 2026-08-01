@@ -1,4 +1,4 @@
-name: SandHybrid v2.4.6 CI
+name: SandHybrid v2.4.7 CI
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: sandhybrid-v246-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: sandhybrid-v247-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -20,10 +20,10 @@ jobs:
         include:
           - os: windows-2022
             triplet: x64-windows
-            artifact: SandHybrid-Windows-x64-v2.4.6
+            artifact: SandHybrid-Windows-x64-v2.4.7
           - os: ubuntu-24.04
             triplet: x64-linux
-            artifact: SandHybrid-Linux-x64-v2.4.6
+            artifact: SandHybrid-Linux-x64-v2.4.7
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
 
@@ -105,7 +105,7 @@ jobs:
 
       - name: Add package documentation
         shell: bash
-        run: cp README.md LICENSE missioncache.md RELEASE_NOTES_v2.4.6.md "dist/${{ matrix.artifact }}/"
+        run: cp README.md LICENSE missioncache.md RELEASE_NOTES_v2.4.7.md "dist/${{ matrix.artifact }}/"
 
       - name: Archive Windows package
         if: runner.os == 'Windows'

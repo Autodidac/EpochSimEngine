@@ -77,8 +77,8 @@ void main() {
         ivec2 blockEnd = blockOrigin + ivec2(int(STRUCTURAL_BLOCK_SIZE));
         if (p.x < blockOrigin.x || p.y < blockOrigin.y || p.x >= blockEnd.x || p.y >= blockEnd.y) return;
         bool anchored = blockEnd.y >= int(pc.height) - 1;
-        Cell cell = isBlockCapable(material) ? makeStructuralCell(material, anchored)
-                                             : makeCell(material);
+        Cell cell = isReconstructableMaterial(material) ? makeStructuralCell(material, anchored)
+                                                       : makeCell(material);
         bool machineController = (material == MAT_SMELTER || material == MAT_ASSEMBLER ||
                                   material == MAT_INSECT_HABITAT || material == MAT_SLUICE_BOX) &&
                                  (p.x & 7) == 3 && (p.y & 7) == 3;

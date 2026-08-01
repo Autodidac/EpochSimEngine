@@ -47,6 +47,23 @@ ivec2 worldBrickSize() {
     return (authored + ivec2(BRICK_SIZE - 1)) / BRICK_SIZE;
 }
 
+uint sceneBoundaryMaterial(uint scene) {
+    if (scene == SCENE_ENGINEERING) return MAT_INSULATOR;
+    if (scene == SCENE_GOLD_MINE || scene == SCENE_DEMOLITION) return MAT_STEEL;
+    return MAT_STONE;
+}
+
+// Keep every authored object at its original bottom-centered 640x360 coordinate.
+// Only a sparse one-brick floor and one-brick side walls extend to the resident
+// horizontal bounds, upgrading old scenes without stretching or duplicating them.
+uint residentSceneEnvelopeMaterial(uint scene, ivec2 worldPosition) {
+    int sceneTop = max(int(pc.height) - AUTHORED_WORLD_CELLS.y, 0);
+    bool floor = worldPosition.y >= int(pc.height) - BRICK_SIZE;
+    bool sideWall = worldPosition.y >= sceneTop &&
+        (worldPosition.x < BRICK_SIZE || worldPosition.x >= int(pc.width) - BRICK_SIZE);
+    return floor || sideWall ? sceneBoundaryMaterial(scene) : MAT_EMPTY;
+}
+
 bool brickRect(ivec2 p, ivec2 minimumBrick, ivec2 maximumBrick) {
     ivec2 brick = brickCoordinate(p);
     return all(greaterThanEqual(brick, minimumBrick)) && all(lessThan(brick, maximumBrick));
@@ -291,12 +308,39 @@ uint engineeringMaterial(ivec2 p) {
     if (brickRect(p, ivec2(outlet + 1, hopperMax.y), ivec2(outlet + 2, lineY + 1)))
         material = MAT_WATER;
 
-    // Right brick gas chamber.
+    // Right brick gas chamber: two controlled reservoirs share exactly one
+    // aperture so diffusion is observable instead of beginning as an arbitrary mix.
     ivec2 gasMin = ivec2(world.x - 23, 5);
     ivec2 gasMax = ivec2(world.x - 2, 21);
+    int gasDivider = (gasMin.x + gasMax.x) / 2;
     if (brickFrame(p, gasMin, gasMax, 1)) material = MAT_GLASS;
     else if (brickRect(p, gasMin + ivec2(1), gasMax - ivec2(1)))
-        material = b.x < (gasMin.x + gasMax.x) / 2 ? MAT_HYDROGEN : MAT_OXYGEN;
+        material = b.x < gasDivider ? MAT_HYDROGEN : MAT_OXYGEN;
+    if (b.x == gasDivider && b.y > gasMin.y && b.y < gasMax.y - 1)
+        material = b.y == (gasMin.y + gasMax.y) / 2 ? MAT_EMPTY : MAT_GLASS;
+
+    // Paired compost experiment below the gas chamber. The left control contains
+    // ash/mineral feed plus clean water and must not produce fertilizer. The right
+    // treatment supplies ash, waste, silt, dirty water, air, and time so the actual
+    // compost mechanics are visible without any hidden ember-to-fertilizer shortcut.
+    ivec2 controlMin = ivec2(world.x - 23, 24);
+    ivec2 controlMax = ivec2(world.x - 13, floorRow);
+    ivec2 treatmentMin = ivec2(world.x - 12, 24);
+    ivec2 treatmentMax = ivec2(world.x - 2, floorRow);
+    if (brickFrame(p, controlMin, controlMax, 1)) material = MAT_GLASS;
+    else if (brickRect(p, controlMin + ivec2(1), controlMax - ivec2(1))) {
+        if (b.y >= controlMax.y - 3) material = MAT_SILT;
+        else if (b.y == controlMax.y - 4) material = MAT_ASH;
+        else if (b.y == controlMax.y - 5) material = MAT_WATER;
+        else material = MAT_OXYGEN;
+    }
+    if (brickFrame(p, treatmentMin, treatmentMax, 1)) material = MAT_GLASS;
+    else if (brickRect(p, treatmentMin + ivec2(1), treatmentMax - ivec2(1))) {
+        if (b.y >= treatmentMax.y - 3) material = MAT_SILT;
+        else if (b.y == treatmentMax.y - 4) material = (b.x & 1) == 0 ? MAT_ASH : MAT_WASTE;
+        else if (b.y == treatmentMax.y - 5) material = MAT_DIRTY_WATER;
+        else material = MAT_OXYGEN;
+    }
     return material;
 }
 
@@ -340,6 +384,19 @@ uint goldMineMaterial(ivec2 p) {
     ivec2 poolMax = ivec2(world.x - 3, middle + 1);
     if (brickFrame(p, poolMin, poolMax, 1)) material = MAT_GLASS;
     else if (brickRect(p, poolMin + ivec2(1), poolMax - ivec2(1))) material = MAT_WATER;
+
+    // Scientific wet-separation station. The existing sediment pile is untouched;
+    // its right edge reaches this powered belt, which feeds one aligned sluice.
+    // A narrow reservoir downcomer provides visible process water and the belt
+    // continues beyond the output so retained water and trace gold can be observed.
+    int sluiceX = world.x - 28;
+    if (brickRect(p, ivec2(43, middle - 1), ivec2(sluiceX, middle))) material = MAT_CONVEYOR;
+    if (brickRect(p, ivec2(sluiceX, middle - 1), ivec2(sluiceX + 1, middle))) material = MAT_SLUICE_BOX;
+    if (brickRect(p, ivec2(sluiceX + 1, middle - 1), ivec2(sluiceX + 7, middle))) material = MAT_CONVEYOR;
+    if (brickRect(p, ivec2(sluiceX - 1, reservoirMax.y - 1), ivec2(sluiceX, middle - 1)))
+        material = MAT_WATER;
+    if (brickRect(p, ivec2(sluiceX - 2, reservoirMax.y - 1), ivec2(sluiceX - 1, middle - 1)))
+        material = MAT_GLASS;
     return material;
 }
 
@@ -482,9 +539,12 @@ void main() {
     bool authored = insideAuthoredWorld(p);
     ivec2 local = authoredLocalCoordinate(p);
     uint material = authored ? materialForScene(scene, local) : MAT_EMPTY;
+    uint envelopeMaterial = residentSceneEnvelopeMaterial(scene, p);
+    bool envelopeCell = material == MAT_EMPTY && envelopeMaterial != MAT_EMPTY;
+    if (envelopeCell) material = envelopeMaterial;
     if (material == MAT_EMPTY) material = MAT_OXYGEN;
-    bool structural = authored && authoredStructuralCell(scene, local, material);
-    bool anchored = authored && brickCoordinate(local).y >= worldBrickSize().y - 2;
+    bool structural = envelopeCell || (authored && authoredStructuralCell(scene, local, material));
+    bool anchored = envelopeCell || (authored && brickCoordinate(local).y >= worldBrickSize().y - 2);
     Cell cell = structural ? makeStructuralCell(material, true) : makeCell(material);
     bool machineController = authored &&
         (material == MAT_SMELTER || material == MAT_ASSEMBLER ||

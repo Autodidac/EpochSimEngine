@@ -347,7 +347,7 @@ def main() -> int:
     for token in ("TILE_MACRO_MOVABLE", "TILE_FINE_ACTIVE", "TILE_SETTLED_MEDIUM"):
         if token not in macro_move + tiles_comp:
             errors.append(f"macro hierarchy contract missing {token!r}")
-    for token in ("MAT_SLUICE_BOX", "inventory.x -= 8u", "inventory.y += 7u", "inventory.z += 1u"):
+    for token in ("MAT_SLUICE_BOX", "inventory.x -= 8u", "inventory.y += 7u", "inventory.z += 1u", "return inventory.z > 0u ? MAT_GOLD : MAT_WATER"):
         if token not in chemistry:
             errors.append(f"sluice conservation contract missing {token!r}")
     cmake_text = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
@@ -553,7 +553,7 @@ def main() -> int:
             errors.append(f"map-area active scope missing GLSL contract {token!r}")
     for token in (
         "bool tileMode = ((pc.material >> 18u) & 1u) != 0u;",
-        "Cell cell = isBlockCapable(material) ? makeStructuralCell(material, anchored)",
+        "Cell cell = isReconstructableMaterial(material) ? makeStructuralCell(material, anchored)",
     ):
         if token not in paint:
             errors.append(f"universal cell/tile placement contract missing {token!r}")
@@ -607,6 +607,14 @@ def main() -> int:
     for token in ("authoredStructuralCell", "looseAuthoredCargo", "Large upper reservoir", "real sediment sifter"):
         if token not in reset:
             errors.append(f"authored scene contract missing {token!r}")
+    for token in ("residentSceneEnvelopeMaterial", "sceneBoundaryMaterial", "Paired compost experiment", "aperture so diffusion", "Scientific wet-separation station"):
+        if token not in reset:
+            errors.append(f"resident/scientific scene contract missing {token!r}")
+    for token in ("compostFeedReady", "compostWaterReady", "compostPairEvent", "compostIngredientsPresent", "MAT_DIRTY_WATER", "result = makeCell(MAT_FERTILIZER)", "result = makeCell(MAT_WATER)"):
+        if token not in chemistry:
+            errors.append(f"paired compost contract missing {token!r}")
+    if "source.material == MAT_ASH && hasAnyWater" in chemistry:
+        errors.append("ash still converts directly to fertilizer from arbitrary water contact")
     if "MAT_GOLD_ORE" in reset or "MAT_IRON_ORE" in reset or "MAT_GOLD_ORE" in actor or "MAT_IRON_ORE" in actor:
         errors.append("ore blocks remain in authored scenes or player mining")
     for token in ("previouslyDense", "tileOccupancy(previous) >= TILE_STABILITY_OCCUPANCY",
@@ -629,7 +637,7 @@ def main() -> int:
         if token not in labels: errors.append(f"activity debug label missing {token!r}")
     for token in ("vec3(1.00, 0.10, 0.72)", "vec3(0.035, 0.10, 0.30)", "debugStats[STAT_STRUCTURAL_COLLAPSES]", "debugStats[STAT_CONVEYOR_MOVES]", "debugStats[STAT_MACHINE_INPUTS]", "debugStats[STAT_MACHINE_OUTPUTS]", "debugStats[STAT_VOLCANO_LAVA_OUTPUTS]", "debugStats[STAT_VOLCANO_GAS_OUTPUTS]"):
         if token not in renderer: errors.append(f"resource-first debug contract missing {token!r}")
-    project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/v245-ci.yml"]
+    project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/v247-ci.yml"]
     forbidden_branding = ("Epoch" + "SimEngine", "Epoch" + "Sand", "epoch" + "_sand", "namespace epoch" + "::sand", "include/epoch" + "/sand")
     for project_file in project_owned_files:
         source_text = project_file.read_text(encoding="utf-8")

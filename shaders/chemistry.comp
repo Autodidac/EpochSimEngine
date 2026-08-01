@@ -455,7 +455,8 @@ bool isMachineController(ivec2 p, uint material) {
 int machineResourceSlot(uint machine, Cell resourceCell) {
     uint resourceMaterial = resourceCell.material;
     if (machine == MAT_SLUICE_BOX)
-        return resourceMaterial == MAT_SAND || resourceMaterial == MAT_SILT ? 0 : -1;
+        return (resourceMaterial == MAT_SAND || resourceMaterial == MAT_SILT) &&
+               (resourceCell.aux & AUX_WET) != 0u ? 0 : -1;
     if (machine == MAT_SMELTER) {
         if (resourceMaterial == MAT_IRON || resourceMaterial == MAT_IRON_SHAVINGS) return 0;
         if (resourceMaterial == MAT_ALUMINUM || resourceMaterial == MAT_ALUMINUM_SHAVINGS) return 1;
@@ -498,7 +499,7 @@ uvec4 machineConsumption(uint machine, uvec4 inventory) {
 uint machineOutput(uint machine, uvec4 inventory) {
     if (machine == MAT_SMELTER) return inventory.x >= 4u ? MAT_STEEL : MAT_ALUMINUM;
     if (machine == MAT_ASSEMBLER) return MAT_PLASMA_AMMO;
-    if (machine == MAT_SLUICE_BOX) return inventory.z > 0u ? MAT_GOLD : MAT_SILT;
+    if (machine == MAT_SLUICE_BOX) return inventory.z > 0u ? MAT_GOLD : MAT_WATER;
     if (machine == MAT_INSECT_HABITAT) return MAT_BEETLE;
     return MAT_EMPTY;
 }
@@ -621,6 +622,75 @@ bool dirtyWaterSeparationReady(ivec2 waterPosition, Cell water) {
     bool settled = above.material == MAT_EMPTY && below.material != MAT_EMPTY &&
                    !isGas(below.material) && !isLiquid(below.material);
     return settled && ((pc.step + indexOf(waterPosition)) & 255u) == 0u;
+}
+
+bool compostFeedMaterial(uint material) {
+    return material == MAT_ASH || material == MAT_SILT || material == MAT_WASTE;
+}
+
+bool compostIngredientsPresent(ivec2 p) {
+    bool ash = hasWithin(p, MAT_ASH, 2);
+    bool organic = hasWithin(p, MAT_WASTE, 2) || hasWithin(p, MAT_FOOD, 2);
+    bool mineral = hasWithin(p, MAT_SILT, 2) || hasWithin(p, MAT_DIRT, 2) || hasWithin(p, MAT_MUD, 2);
+    bool oxygen = hasWithin(p, MAT_OXYGEN, 2);
+    return ash && organic && mineral && oxygen;
+}
+
+ivec2 compostWaterTarget(ivec2 feedPosition) {
+    ivec2 best = feedPosition;
+    uint bestIndex = 0xffffffffu;
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 candidate = feedPosition + cardinalOffsets[i];
+        Cell water = at(candidate);
+        if (water.material != MAT_DIRTY_WATER) continue;
+        uint candidateIndex = indexOf(candidate);
+        if (candidateIndex < bestIndex) {
+            bestIndex = candidateIndex;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+ivec2 compostFeedTarget(ivec2 waterPosition) {
+    ivec2 best = waterPosition;
+    uint bestIndex = 0xffffffffu;
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 candidate = waterPosition + cardinalOffsets[i];
+        Cell feed = at(candidate);
+        if (!compostFeedMaterial(feed.material) || feed.age < 1800u ||
+            !compostIngredientsPresent(candidate)) continue;
+        uint candidateIndex = indexOf(candidate);
+        if (candidateIndex < bestIndex) {
+            bestIndex = candidateIndex;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+bool compostPairEvent(ivec2 feedPosition, ivec2 waterPosition) {
+    uint feedIndex = indexOf(feedPosition);
+    uint waterIndex = indexOf(waterPosition);
+    uint pairKey = min(feedIndex, waterIndex) ^ (max(feedIndex, waterIndex) * 0x9e3779b9u);
+    return (hash32(pairKey ^ pc.step ^ pc.seed ^ 0xc06f057u) & 255u) == 0u;
+}
+
+bool compostFeedReady(ivec2 feedPosition, Cell feed) {
+    if (!compostFeedMaterial(feed.material) || feed.age < 1800u ||
+        !compostIngredientsPresent(feedPosition)) return false;
+    ivec2 waterPosition = compostWaterTarget(feedPosition);
+    return any(notEqual(waterPosition, feedPosition)) &&
+           all(equal(compostFeedTarget(waterPosition), feedPosition)) &&
+           compostPairEvent(feedPosition, waterPosition);
+}
+
+bool compostWaterReady(ivec2 waterPosition, Cell water) {
+    if (water.material != MAT_DIRTY_WATER || water.age < 1800u) return false;
+    ivec2 feedPosition = compostFeedTarget(waterPosition);
+    return any(notEqual(feedPosition, waterPosition)) &&
+           all(equal(compostWaterTarget(feedPosition), waterPosition)) &&
+           compostPairEvent(feedPosition, waterPosition);
 }
 
 bool fertilizerBaseReady(ivec2 fertilizerPosition, Cell fertilizer) {
@@ -960,12 +1030,17 @@ void main() {
     // Fresh water visibly wets soil before mud forms; moisture remains on the
     // dirt cell so drainage never silently deletes a water cell.
     bool freshContact = hasNeighbor(p, MAT_WATER) || hasNeighbor(p, MAT_DIRTY_WATER);
+    bool shallowSandContact = freshContact &&
+        (isGas(at(p + ivec2(0, -1)).material) ||
+         isGas(at(p + ivec2(0, -2)).material) ||
+         isGas(at(p + ivec2(-1, 0)).material) ||
+         isGas(at(p + ivec2(1, 0)).material));
     uint supportBelow = at(p + ivec2(0, 1)).material;
     bool stableSoil = supportBelow == MAT_DIRT || supportBelow == MAT_STONE || supportBelow == MAT_MUD;
     if (source.material == MAT_SAND || source.material == MAT_SILT) {
-        if (freshContact) result.aux |= AUX_WET;
-        else if ((result.aux & AUX_WET) != 0u && source.age > 600u && (randomValue & 127u) == 0u)
-            result.aux &= ~AUX_WET;
+        // Wet granular feed retains its represented wash water. Only the
+        // shallow surface band can absorb new water; drying may not delete it.
+        if (shallowSandContact) result.aux |= AUX_WET;
     } else if (source.material == MAT_DIRT) {
         if (freshContact) result.aux |= AUX_WET;
         bool saturatedSurface = (result.aux & AUX_WET) != 0u && stableSoil && neighborCount(p, MAT_MUD) <= 2u;
@@ -1051,13 +1126,15 @@ void main() {
         result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
     }
 
-    // Meager closed-system correction: wet ash/silt/waste are slowly reclaimed
-    // into fertilizer instead of being silently deleted. Every transition is
-    // one world cell to one world cell and therefore remains conservation-auditable.
-    if ((source.material == MAT_ASH || source.material == MAT_SILT || source.material == MAT_WASTE) &&
-        hasFreshMoistureRadius(p, 2) && hasNeighbor(p, MAT_OXYGEN) &&
-        light[index] > 80u && source.age > 1800u && (randomValue & 1023u) == 0u) {
+    // Explicit paired compost path: ember can only age into ash. Fertilizer
+    // requires ash, organic waste, mineral soil/silt, dirty water, oxygen, and
+    // time. One selected feed cell becomes fertilizer while its mutually paired
+    // dirty-water cell becomes clean water, keeping the represented cell count
+    // auditable and making the required ingredients visible in the scene.
+    if (compostFeedReady(p, source)) {
         result = makeCell(MAT_FERTILIZER);
+    } else if (compostWaterReady(p, source)) {
+        result = makeCell(MAT_WATER);
     }
 
     // Structure chemistry only reduces integrity. It cannot replace a wall with
@@ -1191,10 +1268,6 @@ void main() {
     if (source.material == MAT_SAND && (nearLava || result.temperature > 1050) &&
         (randomValue & 31u) == 0u) {
         result = makeCell(MAT_GLASS);
-    }
-
-    if (source.material == MAT_ASH && hasAnyWater(p) && (randomValue & 511u) == 0u) {
-        result = makeCell(MAT_FERTILIZER);
     }
 
     // Grass is a surface cover on dirt, never a vertical dirt-like stem.
