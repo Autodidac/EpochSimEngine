@@ -38,6 +38,10 @@ jobs:
           cmake --build build/contracts --parallel
           ctest --test-dir build/contracts --output-on-failure
           rm -rf build/contracts
+          # GitHub's app token may update source but cannot create or modify
+          # workflow files. They were still validated above; restore the exact
+          # current main workflow directory before committing production code.
+          git checkout origin/main -- .github/workflows
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
