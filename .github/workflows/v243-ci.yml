@@ -1,4 +1,4 @@
-name: EpochSimEngine v2.4.2 CI
+name: EpochSimEngine v2.4.3 CI
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: epochsim-v242-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: epochsim-v243-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -20,10 +20,10 @@ jobs:
         include:
           - os: windows-2022
             triplet: x64-windows
-            artifact: EpochSimEngine-Windows-x64-v2.4.2
+            artifact: EpochSimEngine-Windows-x64-v2.4.3
           - os: ubuntu-24.04
             triplet: x64-linux
-            artifact: EpochSimEngine-Linux-x64-v2.4.2
+            artifact: EpochSimEngine-Linux-x64-v2.4.3
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
 
