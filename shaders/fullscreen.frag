@@ -626,7 +626,10 @@ void main() {
         if (y >= cardTop && y < cardBottom) {
             if (borderPixel(x, y, contentLeft, cardTop, contentLeft + contentWidth, cardBottom))
                 color = vec3(0.13, 0.29, 0.43);
-            text = text || materialPixel(pixel, ivec2(int(contentLeft + 10u), int(cardTop + 9u)), 3, cardMaterial);
+            if (renderPc.inspectMode != 0u && isHalfWater(inspected))
+                text = text || fixedPixel(pixel, ivec2(int(contentLeft + 10u), int(cardTop + 9u)), 3, 157u);
+            else
+                text = text || materialPixel(pixel, ivec2(int(contentLeft + 10u), int(cardTop + 9u)), 3, cardMaterial);
             if (renderPc.inspectMode != 0u) {
                 uint phase = cellPhase(inspected);
                 text = text || fixedPixel(pixel, ivec2(int(contentLeft + 10u), int(cardTop + 36u)), 2, 12u) ||

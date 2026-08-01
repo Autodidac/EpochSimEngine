@@ -2225,18 +2225,18 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         record_paint(frame.command_buffer, state);
 
         const bool debug_visible = state.debug_visualization.load(std::memory_order_relaxed);
+        const bool step_once = state.single_step.exchange(false, std::memory_order_acq_rel);
+        const bool run_simulation = !reset_this_frame && (step_once ||
+            (simulation_tick && !state.paused.load(std::memory_order_relaxed)));
         bool collect_debug_stats = false;
-        if (debug_visible) {
+        if (debug_visible && run_simulation) {
             collect_debug_stats = !debug_was_visible || (debug_sample_frame % 16u) == 0u;
             ++debug_sample_frame;
-        } else {
+        } else if (!debug_visible) {
             debug_sample_frame = 0u;
         }
         debug_was_visible = debug_visible;
         if (collect_debug_stats) reset_debug_stats(frame.command_buffer);
-        const bool step_once = state.single_step.exchange(false, std::memory_order_acq_rel);
-        const bool run_simulation = !reset_this_frame && (step_once ||
-            (simulation_tick && !state.paused.load(std::memory_order_relaxed)));
         if (run_simulation) record_simulation_step(frame.command_buffer, state, collect_debug_stats);
         const bool actor_action = state.fire_tool.load(std::memory_order_relaxed) ||
                                   state.deposit_resource.load(std::memory_order_relaxed) ||
@@ -2251,9 +2251,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             record_actor(frame.command_buffer, state, reset_actor, actor_simulation);
 
         if (collect_debug_stats) {
-            const auto movement_pair_tests = run_simulation
-                ? config.grid_width * config.grid_height * 13u / 2u
-                : 0u;
+            const auto movement_pair_tests = config.grid_width * config.grid_height * 13u / 2u;
             record_debug_stats(frame.command_buffer, state, movement_pair_tests);
         }
         record_render(frame.command_buffer, image_index, state);

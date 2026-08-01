@@ -498,15 +498,17 @@ bool liquidCanSpread(ivec2 sourcePosition, ivec2 targetPosition, Cell source, ui
     return source.age < 12u && sourcePressure > 0 && targetPressure + 1 < sourcePressure;
 }
 
-bool halfWaterAhead(ivec2 position, int direction) {
-    Cell candidate2 = sampleAt(position + ivec2(direction * 2, 0));
-    if (isHalfWaterCell(candidate2)) return true;
-    if (!isOpenGas(candidate2)) return false;
-    Cell candidate3 = sampleAt(position + ivec2(direction * 3, 0));
-    if (isHalfWaterCell(candidate3)) return true;
-    if (!isOpenGas(candidate3)) return false;
-    Cell candidate4 = sampleAt(position + ivec2(direction * 4, 0));
-    return isHalfWaterCell(candidate4);
+bool solidSupportsWaterAt(ivec2 position) {
+    Cell below = sampleAt(position + ivec2(0, 1));
+    return isStructural(below) || isCellImmovable(below) ||
+           (isCellSolid(below) && !isCellLiquid(below) && !isCellGas(below));
+}
+
+bool solidLedgePrecedesDrop(ivec2 position, int direction) {
+    if (!solidSupportsWaterAt(position)) return false;
+    ivec2 beyond = position + ivec2(direction, 0);
+    return moveInside(beyond) && isOpenGas(sampleAt(beyond)) &&
+           isOpenGas(sampleAt(beyond + ivec2(0, 1)));
 }
 
 bool isMovementHazard(uint material) {
@@ -995,16 +997,20 @@ void processHorizontal(ivec2 left, ivec2 right) {
                                keepLeft ? a : b, keepLeft ? b : a)) return;
     }
 
-    // Fractional surface cells converge in one direction so chains terminate instead of chasing forever.
-    if (isHalfWaterCell(a) && isOpenGas(b) && halfWaterAhead(left, 1)) { swapCells(left, right); return; }
+    // Half-water is a pre-fall solid-ledge state only. It never hops along
+    // exposed water edges and never crawls after entering open air.
 
     if ((movePc.reserved1 & 1u) != 0u && !isHalfWaterCell(a) && !isHalfWaterCell(b)) return;
 
     if (isCellLiquid(a) && isOpenGas(b) && liquidCanSpread(left, right, a, randomValue)) {
-        swapCells(left, right);
+        if (a.material == MAT_WATER && !isHalfWaterCell(a) &&
+            solidLedgePrecedesDrop(right, 1)) splitFullWaterPair(left, right, a, b);
+        else swapCells(left, right);
     } else if (isCellLiquid(b) && isOpenGas(a) &&
                liquidCanSpread(right, left, b, randomValue >> 1u)) {
-        swapCells(left, right);
+        if (b.material == MAT_WATER && !isHalfWaterCell(b) &&
+            solidLedgePrecedesDrop(left, -1)) splitFullWaterPair(right, left, b, a);
+        else swapCells(left, right);
     } else if (isCellGas(a) && b.material == MAT_EMPTY && gasHorizontalAllows(a, randomValue) &&
                (a.material != MAT_LIGHTNING || lightningMoveAllowed(left, right, randomValue))) {
         swapCells(left, right);

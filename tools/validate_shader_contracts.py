@@ -553,7 +553,7 @@ def main() -> int:
             errors.append(f"map-area active scope missing GLSL contract {token!r}")
     for token in (
         "bool tileMode = ((pc.material >> 18u) & 1u) != 0u;",
-        "Cell cell = isBlockCapable(material) ? makeStructuralCell(material, anchored)",
+        "Cell cell = isReconstructableMaterial(material) ? makeStructuralCell(material, anchored)",
     ):
         if token not in paint:
             errors.append(f"universal cell/tile placement contract missing {token!r}")
@@ -629,7 +629,7 @@ def main() -> int:
         if token not in labels: errors.append(f"activity debug label missing {token!r}")
     for token in ("vec3(1.00, 0.10, 0.72)", "vec3(0.035, 0.10, 0.30)", "debugStats[STAT_STRUCTURAL_COLLAPSES]", "debugStats[STAT_CONVEYOR_MOVES]", "debugStats[STAT_MACHINE_INPUTS]", "debugStats[STAT_MACHINE_OUTPUTS]", "debugStats[STAT_VOLCANO_LAVA_OUTPUTS]", "debugStats[STAT_VOLCANO_GAS_OUTPUTS]"):
         if token not in renderer: errors.append(f"resource-first debug contract missing {token!r}")
-    project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/v245-ci.yml"]
+    project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/v246-ci.yml"]
     forbidden_branding = ("Epoch" + "SimEngine", "Epoch" + "Sand", "epoch" + "_sand", "namespace epoch" + "::sand", "include/epoch" + "/sand")
     for project_file in project_owned_files:
         source_text = project_file.read_text(encoding="utf-8")
