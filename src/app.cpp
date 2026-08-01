@@ -1,5 +1,6 @@
 #include "epoch/sand/app.hpp"
 
+#include "epoch/sand/input_routing.hpp"
 #include "epoch/sand/material.hpp"
 #include "epoch/sand/scene.hpp"
 #include "epoch/sand/section_scheduler.hpp"
@@ -293,12 +294,15 @@ int run_application() {
         const auto camera_seconds = std::clamp(
             std::chrono::duration<double>(camera_now - last_camera_update).count(), 0.0, 0.05);
         last_camera_update = camera_now;
-        int camera_direction_x = 0;
-        int camera_direction_y = 0;
-        // Camera navigation is universal. Character scenes continue forwarding the
-        // same input to the actor below, so W/A/S/D moves both the player and view.
-        camera_direction_x += (input.move_right ? 1 : 0) - (input.move_left ? 1 : 0);
-        camera_direction_y += (input.move_down ? 1 : 0) - (input.move_up ? 1 : 0);
+        const bool player_controls = scene_has_character(scene);
+        const auto directional_input = route_directional_input(
+            player_controls,
+            input.move_left,
+            input.move_right,
+            input.move_up,
+            input.move_down);
+        int camera_direction_x = directional_input.camera_x;
+        int camera_direction_y = directional_input.camera_y;
         if (over_simulation && !pan_dragging) {
             constexpr int edge_band_pixels = 28;
             const int local_x = input.mouse_x - static_cast<int>(simulation_viewport.rect.position.x);
@@ -446,13 +450,8 @@ int run_application() {
             shared_state.fire_tool_pressed.store(true, std::memory_order_release);
         if (secondary_pressed && tool_active)
             shared_state.deposit_resource_pressed.store(true, std::memory_order_release);
-        const bool player_controls = scene_has_character(scene);
-        shared_state.move_x.store(player_controls
-            ? (input.move_right ? 1 : 0) - (input.move_left ? 1 : 0) : 0,
-            std::memory_order_relaxed);
-        shared_state.move_y.store(player_controls
-            ? (input.move_down ? 1 : 0) - (input.move_up ? 1 : 0) : 0,
-            std::memory_order_relaxed);
+        shared_state.move_x.store(directional_input.player_x, std::memory_order_relaxed);
+        shared_state.move_y.store(directional_input.player_y, std::memory_order_relaxed);
         shared_state.jump.store(player_controls && input.jump, std::memory_order_relaxed);
 
 
