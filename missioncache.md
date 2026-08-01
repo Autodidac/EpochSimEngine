@@ -223,3 +223,17 @@ Runtime-observed missions remain active until accepted in the packaged Windows V
 ```
 
 Runtime-observed missions remain active until accepted in the packaged Windows Vulkan build.
+
+## SandHybrid v2.4.7 release evidence
+
+- Release tag: `v2.4.7` (`SandHybrid v2.4.7`)
+- Release target: `b7bdbee7b450f7402af437705eefecc8468d7bca`
+- Accepted Windows/Linux CI: run `30723137326`, source head `1b882aed522e53441381ef049d50caae8284e568`
+- Packages: `SandHybrid-Windows-x64-v2.4.7.zip`, `SandHybrid-Linux-x64-v2.4.7.tar.gz`, and `SHA256SUMS.txt`
+
+```text
+fffb95619af76d49ca202b260d8d8b41997021ade4bfc31fe03153c351322948  windows/SandHybrid-Windows-x64-v2.4.7.zip
+2ce1170c7b2b49d833f12737c12f88cf6f827ead5b9b66711a4de1abf327ee42  linux/SandHybrid-Linux-x64-v2.4.7.tar.gz
+```
+
+Active cache count at publication: 72 missions — 29 PARTIAL, 27 OPEN, 15 REGRESSION, and 1 DEFERRED. Runtime-observed missions remain active until accepted in the packaged Windows Vulkan build.
