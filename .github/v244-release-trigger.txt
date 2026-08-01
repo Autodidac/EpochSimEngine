@@ -1,0 +1,1 @@
+Publish the accepted v2.4.4 Windows and Linux artifacts, then delete this branch and the one-shot publisher.
