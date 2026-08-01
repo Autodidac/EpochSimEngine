@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace epoch::sand::policy {
+namespace sandhybrid::policy {
 
 // Fine cells remain the canonical simulation state. An aligned 8x8 region may
 // be transferred as one macro-cell only while every represented cell can make
@@ -104,11 +104,34 @@ inline constexpr std::uint32_t vent_gas_release_pressure = 72u;
     return represented_cells < collapse_occupancy;
 }
 
+enum class VentEmission : std::uint8_t { none, gas, lava };
+
+[[nodiscard]] constexpr VentEmission vent_emission(
+    const std::uint32_t pressure, const std::uint32_t random_value) noexcept {
+    if (pressure >= vent_eruption_pressure && (random_value & 3u) == 0u)
+        return VentEmission::lava;
+    if (pressure >= vent_gas_release_pressure && (random_value & 15u) == 0u)
+        return VentEmission::gas;
+    return VentEmission::none;
+}
+
+[[nodiscard]] constexpr std::uint32_t vent_emission_cost(
+    const VentEmission emission) noexcept {
+    return emission == VentEmission::lava ? 96u :
+           emission == VentEmission::gas ? 24u : 0u;
+}
+
+[[nodiscard]] constexpr std::uint32_t consume_vent_pressure(
+    const std::uint32_t pressure, const VentEmission emission) noexcept {
+    const auto cost = vent_emission_cost(emission);
+    return pressure > cost ? pressure - cost : 0u;
+}
+
 [[nodiscard]] constexpr std::uint32_t update_vent_pressure(
     const std::uint32_t pressure, const bool blocked, const bool open) noexcept {
-    if (blocked) return pressure >= 252u ? 255u : pressure + 3u;
+    if (blocked) return pressure >= 250u ? 255u : pressure + 5u;
     if (open) return pressure > 4u ? pressure - 4u : 0u;
     return pressure == 255u ? 255u : pressure + 1u;
 }
 
-} // namespace epoch::sand::policy
+} // namespace sandhybrid::policy

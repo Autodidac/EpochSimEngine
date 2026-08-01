@@ -1,6 +1,6 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
-#define EPOCH_SAND_NO_SIM_PUSH
+#define SANDHYBRID_NO_SIM_PUSH
 #include "materials.glsl"
 #include "tiles.glsl"
 #include "chunks.glsl"
@@ -166,10 +166,10 @@ vec3 debugKeyColor(uint key) {
     if (key == 0u) return vec3(1.00, 0.08, 0.05);       // damaged/collapsing
     if (key == 1u) return vec3(1.00, 0.88, 0.08);       // stable/candidate
     if (key == 2u) return vec3(1.00, 0.42, 0.04);       // bulk moved
-    if (key == 3u) return vec3(0.96, 0.08, 0.78);       // fine active
+    if (key == 3u) return vec3(1.00, 0.10, 0.72);       // fine active: vivid hot state
     if (key == 4u) return vec3(0.02, 0.88, 1.00);       // bulk ready
     if (key == 5u) return vec3(0.08, 0.88, 0.34);       // settled medium
-    if (key == 6u) return vec3(0.58, 0.28, 1.00);       // sleeping
+    if (key == 6u) return vec3(0.035, 0.10, 0.30);      // sleeping: dark cool state
     if (key == 7u) return vec3(0.04, 0.52, 1.00);       // active
     if (key == 8u) return vec3(0.12, 0.72, 0.94);       // enclosed medium
     return vec3(1.00, 0.10, 0.56);                      // breakup
@@ -199,30 +199,36 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
         textColor = vec3(0.52, 0.94, 0.58);
     }
 
-    const uint statCount = 16u;
+    const uint statCount = 22u;
     uint rowHeight = textScale == 2 ? 18u : 12u;
     uint headerHeight = textScale == 2 ? 24u : 15u;
     uint fixedLabels[statCount] = uint[statCount](
-        105u, 137u,
-        1u, 76u, 80u, 79u, 78u, 82u,
-        98u, 81u, 110u, 111u, 112u, 113u, 117u, 126u);
+        1u, 143u, 137u, 144u, 145u, 98u, 81u,
+        146u, 78u, 117u, 147u, 148u, 149u, 150u,
+        151u, 152u, 153u, 154u, 155u, 156u, 110u, 82u);
     uint fixedValues[statCount] = uint[statCount](
-        max(renderPc.gridWidth / max(renderPc.viewWidth, 1u), 1u),
-        renderPc.activeAreaCount,
         renderPc.framesPerSecond,
-        debugStats[STAT_SIMULATION_STEP],
-        debugStats[STAT_ACTIVE_CELLS],
-        debugStats[STAT_MOVED_CELLS],
-        debugStats[STAT_MOVE_SWAPS],
-        debugStats[STAT_BEE_COUNT],
+        renderPc.gridWidth * renderPc.gridHeight * 36u / (1024u * 1024u),
+        renderPc.activeAreaCount,
+        debugStats[STAT_MOVE_PAIR_TESTS],
+        debugStats[STAT_CHUNK_SKIPPED_CELLS],
         debugStats[STAT_ACTIVE_TILES],
         debugStats[STAT_SLEEPING_TILES],
-        debugStats[STAT_ACTOR_MOVES],
-        debugStats[STAT_PLAYER_IMPULSES],
-        debugStats[STAT_FINE_REPAIR_MOVES],
-        debugStats[STAT_GAS_EXCESS_MOVES],
+        debugStats[STAT_MOVED_CELLS],
+        debugStats[STAT_MOVE_SWAPS],
         debugStats[STAT_MACRO_TILE_MOVES],
-        debugStats[STAT_MEDIUM_BREAKUP_TILES]);
+        debugStats[STAT_MACRO_GAS_TILES],
+        debugStats[STAT_MACRO_LIQUID_TILES],
+        debugStats[STAT_STRUCTURAL_COLLAPSES],
+        debugStats[STAT_CONVEYOR_MOVES],
+        debugStats[STAT_MACHINE_INPUTS],
+        debugStats[STAT_MACHINE_OUTPUTS],
+        debugStats[STAT_VOLCANO_LAVA_OUTPUTS],
+        debugStats[STAT_VOLCANO_GAS_OUTPUTS],
+        debugStats[STAT_GAS_EDGE_ACTIVE_TILES],
+        debugStats[STAT_CHEMISTRY_CHANGES],
+        debugStats[STAT_ACTOR_MOVES],
+        debugStats[STAT_BEE_COUNT]);
     for (uint stat = 0u; stat < statCount; ++stat) {
         bool hit = statPixel(pixel,
             ivec2(int(panelLeft + 10u), int(panelTop + headerHeight + stat * rowHeight)),
@@ -241,7 +247,9 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
     }
     const uint keyCount = 10u;
     uint keyLabels[keyCount] = uint[keyCount](
-        128u, 129u, 130u, 131u, 132u, 133u, 28u, 29u, 134u, 135u);
+        128u, 130u, 131u, 29u, 132u, 135u, 133u, 134u, 28u, 129u);
+    uint keyColorMap[keyCount] = uint[keyCount](
+        0u, 2u, 3u, 7u, 4u, 9u, 5u, 8u, 6u, 1u);
     uint keyColumns = panelRight - panelLeft >= 330u ? 2u : 1u;
     uint keyColumnWidth = max((panelRight - panelLeft - 20u) / keyColumns, 1u);
     uint swatchSize = textScale == 2 ? 12u : 8u;
@@ -252,7 +260,8 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
         uint keyY = keyTop + keyTitleHeight + row * rowHeight;
         if (keyY + swatchSize < panelBottom && x >= keyLeft && x < keyLeft + swatchSize &&
             y >= keyY && y < keyY + swatchSize) {
-            color = debugKeyColor(key);
+            uint colorKey = keyColorMap[key];
+            color = debugKeyColor(colorKey);
             if (borderPixel(x, y, keyLeft, keyY, keyLeft + swatchSize, keyY + swatchSize))
                 color = vec3(1.00);
         }
@@ -726,7 +735,7 @@ void main() {
         color.rgb = mix(color.rgb, overlay, alpha * occupancyAlpha);
 
         vec3 chunkOverlay = chunkHas(chunk, CHUNK_DIRTY) ? vec3(1.00, 0.10, 0.04) :
-            (chunkHas(chunk, CHUNK_SLEEPING) ? vec3(0.58, 0.28, 1.00)
+            (chunkHas(chunk, CHUNK_SLEEPING) ? vec3(0.035, 0.10, 0.30)
                                              : vec3(0.05, 0.42, 0.90));
         color.rgb = mix(color.rgb, chunkOverlay, chunkHas(chunk, CHUNK_SLEEPING) ? 0.12 : 0.07);
     }

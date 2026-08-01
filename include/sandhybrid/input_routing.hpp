@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace epoch::sand {
+namespace sandhybrid {
 
 struct DirectionalInputRouting final {
     std::int32_t camera_x{};
@@ -31,4 +31,4 @@ struct DirectionalInputRouting final {
     return {horizontal, vertical, 0, 0};
 }
 
-} // namespace epoch::sand
+} // namespace sandhybrid

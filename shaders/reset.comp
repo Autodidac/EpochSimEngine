@@ -280,6 +280,17 @@ uint engineeringMaterial(ivec2 p) {
     if (brickRect(p, ivec2(hopperMin.x, floorRow - 7), ivec2(hopperMax.x + 8, floorRow - 6)))
         material = MAT_STEEL;
 
+    // Functional industrial line: loose sediment falls onto a powered conveyor,
+    // the aligned sluice consumes nearby sand/silt only while water is present,
+    // and separated gold/silt exits onto the continuing belt.
+    int lineY = floorRow - 4;
+    if (brickRect(p, ivec2(hopperMin.x, lineY + 1), ivec2(hopperMax.x + 8, lineY + 2)))
+        material = MAT_CONVEYOR;
+    if (brickRect(p, ivec2(outlet + 2, lineY), ivec2(outlet + 3, lineY + 1)))
+        material = MAT_SLUICE_BOX;
+    if (brickRect(p, ivec2(outlet + 1, hopperMax.y), ivec2(outlet + 2, lineY + 1)))
+        material = MAT_WATER;
+
     // Right brick gas chamber.
     ivec2 gasMin = ivec2(world.x - 23, 5);
     ivec2 gasMax = ivec2(world.x - 2, 21);
@@ -474,10 +485,10 @@ void main() {
     if (material == MAT_EMPTY) material = MAT_OXYGEN;
     bool structural = authored && authoredStructuralCell(scene, local, material);
     bool anchored = authored && brickCoordinate(local).y >= worldBrickSize().y - 2;
-    Cell cell = structural ? makeStructuralCell(material, anchored) : makeCell(material);
+    Cell cell = structural ? makeStructuralCell(material, true) : makeCell(material);
     bool machineController = authored &&
         (material == MAT_SMELTER || material == MAT_ASSEMBLER ||
-         material == MAT_INSECT_HABITAT) && (local.x & 7) == 3 && (local.y & 7) == 3;
+         material == MAT_INSECT_HABITAT || material == MAT_SLUICE_BOX) && (local.x & 7) == 3 && (local.y & 7) == 3;
 
     cell.aux = (cell.aux & ~AUX_RANDOM_MASK) | (hash32(indexOf(p) ^ pc.seed) & AUX_RANDOM_MASK) |
                (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |

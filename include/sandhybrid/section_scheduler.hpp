@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <span>
 
-namespace epoch::sand {
+namespace sandhybrid {
 
 inline constexpr std::int32_t active_region_width_cells = 640;
 inline constexpr std::int32_t active_region_height_cells = 360;
@@ -54,4 +54,4 @@ struct SectionSchedule final {
     std::uint32_t section_rows,
     std::uint32_t hardware_threads) noexcept;
 
-} // namespace epoch::sand
+} // namespace sandhybrid

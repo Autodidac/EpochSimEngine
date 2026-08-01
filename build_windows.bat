@@ -11,11 +11,11 @@ rem Keep the project on Adam's standalone vcpkg installation. Do not call
 rem VsDevCmd.bat here: it can overwrite VCPKG_ROOT with Visual Studio's
 rem private vcpkg copy.
 if defined VCPKG_ROOT (
-    set "EPOCH_VCPKG_ROOT=%VCPKG_ROOT%"
+    set "SANDHYBRID_VCPKG_ROOT=%VCPKG_ROOT%"
 ) else (
-    set "EPOCH_VCPKG_ROOT=C:\Users\iammi\source\repos\vcpkg"
+    set "SANDHYBRID_VCPKG_ROOT=C:\Users\iammi\source\repos\vcpkg"
 )
-set "VCPKG_ROOT=%EPOCH_VCPKG_ROOT%"
+set "VCPKG_ROOT=%SANDHYBRID_VCPKG_ROOT%"
 
 if not exist "%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" (
     echo ERROR: vcpkg toolchain not found at "%VCPKG_ROOT%".
@@ -86,6 +86,6 @@ if errorlevel 1 (
 )
 
 
-echo Built: %CD%\%BUILD_DIR%\%CONFIG%\epoch_sand.exe
+echo Built: %CD%\%BUILD_DIR%\%CONFIG%\sandhybrid.exe
 popd >nul
 exit /b 0

@@ -1,10 +1,10 @@
-#include "epoch/sand/section_scheduler.hpp"
+#include "sandhybrid/section_scheduler.hpp"
 
 #include <algorithm>
 #include <array>
 #include <limits>
 
-namespace epoch::sand {
+namespace sandhybrid {
 
 namespace {
 
@@ -77,4 +77,4 @@ SectionSchedule make_section_schedule(
     return result;
 }
 
-} // namespace epoch::sand
+} // namespace sandhybrid

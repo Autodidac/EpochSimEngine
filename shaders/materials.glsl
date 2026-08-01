@@ -1,5 +1,5 @@
-#ifndef EPOCH_SAND_MATERIALS_GLSL
-#define EPOCH_SAND_MATERIALS_GLSL
+#ifndef SANDHYBRID_MATERIALS_GLSL
+#define SANDHYBRID_MATERIALS_GLSL
 
 #include "material_ids.glsl"
 #include "material_physics.glsl"
@@ -40,7 +40,7 @@ void setHalfWater(inout Cell cell, bool halfState) {
     else cell.aux &= ~AUX_WATER_HALF;
 }
 
-#ifndef EPOCH_SAND_NO_SIM_PUSH
+#ifndef SANDHYBRID_NO_SIM_PUSH
 layout(push_constant) uniform SimulationPush {
     uint width;
     uint height;
@@ -132,7 +132,7 @@ Cell makeCellWithEntropy(uint material, uint seed, uint step) {
     return Cell(material, 0u, temperature, aux);
 }
 
-#ifndef EPOCH_SAND_NO_SIM_PUSH
+#ifndef SANDHYBRID_NO_SIM_PUSH
 uint cellHash(ivec2 position, uint salt) {
     return hash32(uint(position.x) * 73856093u ^ uint(position.y) * 19349663u ^ pc.step * 83492791u ^ pc.seed ^ salt);
 }
@@ -392,7 +392,7 @@ bool isLooseSolid(Cell cell) {
     return isBlockCapable(cell.material) && !isStructural(cell) && isCellSolid(cell);
 }
 
-#ifndef EPOCH_SAND_NO_SIM_PUSH
+#ifndef SANDHYBRID_NO_SIM_PUSH
 Cell makeStructuralCell(uint material, bool supported) {
     Cell cell = makeCell(material);
     cell.aux |= AUX_STRUCTURAL;

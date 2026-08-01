@@ -1,6 +1,6 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
-#define EPOCH_SAND_NO_SIM_PUSH
+#define SANDHYBRID_NO_SIM_PUSH
 #include "materials.glsl"
 #include "tiles.glsl"
 #include "chunks.glsl"

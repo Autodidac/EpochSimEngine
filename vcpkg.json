@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
-  "name": "epoch-sand",
+  "name": "sandhybrid",
   "version-string": "2.4.2",
   "builtin-baseline": "04a735608afac5844e86fc91d6ba2112cac613c1",
   "description": "C++23 Vulkan particle, material, atmosphere, ecology, and terrain simulation engine for Windows and Linux.",

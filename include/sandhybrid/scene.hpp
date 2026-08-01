@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace epoch::sand {
+namespace sandhybrid {
 
 enum class Scene : std::uint32_t {
     sandbox = 0,
@@ -43,4 +43,4 @@ inline constexpr std::array<std::string_view, scene_count> scene_names{
     return scene == Scene::gold_mine || scene == Scene::demolition || scene == Scene::frontier_base;
 }
 
-} // namespace epoch::sand
+} // namespace sandhybrid

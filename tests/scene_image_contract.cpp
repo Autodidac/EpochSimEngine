@@ -1,6 +1,6 @@
-#include "epoch/sand/material.hpp"
-#include "epoch/sand/scene.hpp"
-#include "epoch/sand/scene_image.hpp"
+#include "sandhybrid/material.hpp"
+#include "sandhybrid/scene.hpp"
+#include "sandhybrid/scene_image.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -20,33 +20,33 @@ constexpr std::uint32_t bee_target_none = 0xffffu;
 int main() {
     constexpr std::uint32_t width = 32u;
     constexpr std::uint32_t height = 16u;
-    std::vector<epoch::sand::SceneCell> source(width * height);
+    std::vector<sandhybrid::SceneCell> source(width * height);
 
     // 31 stone cells: below the cohesive minimum, so the imported pixels crumble.
     for (std::uint32_t index = 0u; index < 31u; ++index)
-        source[index].material = static_cast<std::uint32_t>(epoch::sand::Material::stone);
+        source[index].material = static_cast<std::uint32_t>(sandhybrid::Material::stone);
 
     // 40 glass cells in the second aligned region: coherent but deliberately weakened.
     for (std::uint32_t index = 0u; index < 40u; ++index)
         source[8u + (index / 8u) * width + index % 8u].material =
-            static_cast<std::uint32_t>(epoch::sand::Material::glass);
+            static_cast<std::uint32_t>(sandhybrid::Material::glass);
 
     constexpr std::uint32_t queen_x = 20u;
     constexpr std::uint32_t queen_y = 12u;
     source[queen_y * width + queen_x].material =
-        static_cast<std::uint32_t>(epoch::sand::Material::queen_bee);
+        static_cast<std::uint32_t>(sandhybrid::Material::queen_bee);
     for (const auto x : {17u, 18u, 22u, 23u})
-        source[queen_y * width + x].material = static_cast<std::uint32_t>(epoch::sand::Material::bee);
+        source[queen_y * width + x].material = static_cast<std::uint32_t>(sandhybrid::Material::bee);
 
     const auto root = std::filesystem::temp_directory_path() / "sandhybrid_scene_image_contract";
     std::error_code cleanup_error;
     std::filesystem::remove_all(root, cleanup_error);
     std::string error;
-    const auto path = epoch::sand::scene_image_path(root, epoch::sand::Scene::sandbox);
-    if (!epoch::sand::save_scene_ppm(path, width, height, source, error)) return 1;
+    const auto path = sandhybrid::scene_image_path(root, sandhybrid::Scene::sandbox);
+    if (!sandhybrid::save_scene_ppm(path, width, height, source, error)) return 1;
 
-    std::vector<epoch::sand::SceneCell> loaded(width * height);
-    if (!epoch::sand::load_scene_ppm(path, width, height, loaded, error)) return 2;
+    std::vector<sandhybrid::SceneCell> loaded(width * height);
+    if (!sandhybrid::load_scene_ppm(path, width, height, loaded, error)) return 2;
 
     const auto weak_stone = loaded[0u];
     if ((weak_stone.aux & aux_structural) != 0u ||
@@ -72,7 +72,7 @@ int main() {
         ++expected_slot;
     }
 
-    if (!epoch::sand::write_scene_material_key(root, error)) return 8;
+    if (!sandhybrid::write_scene_material_key(root, error)) return 8;
     if (!std::filesystem::is_regular_file(root / "material_key.txt") ||
         !std::filesystem::is_regular_file(root / "material_key.ppm")) return 9;
 

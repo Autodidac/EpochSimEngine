@@ -1,11 +1,11 @@
-#include "epoch/sand/vulkan_renderer.hpp"
+#include "sandhybrid/vulkan_renderer.hpp"
 
-#include "epoch/sand/material.hpp"
-#include "epoch/sand/scene.hpp"
-#include "epoch/sand/section_scheduler.hpp"
-#include "epoch/sand/scene_image.hpp"
-#include "epoch/sand/ui_layout.hpp"
-#include "epoch/sand/ui_text_data.hpp"
+#include "sandhybrid/material.hpp"
+#include "sandhybrid/scene.hpp"
+#include "sandhybrid/section_scheduler.hpp"
+#include "sandhybrid/scene_image.hpp"
+#include "sandhybrid/ui_layout.hpp"
+#include "sandhybrid/ui_text_data.hpp"
 
 #include <vulkan/vulkan.h>
 
@@ -34,7 +34,7 @@
 #include <utility>
 #include <vector>
 
-namespace epoch::sand {
+namespace sandhybrid {
 
 namespace {
 
@@ -124,10 +124,10 @@ std::filesystem::path executable_directory() {
 }
 
 void startup_log(const std::string_view message) {
-    std::fprintf(stderr, "[EpochSand] %.*s\n", static_cast<int>(message.size()), message.data());
+    std::fprintf(stderr, "[SandHybrid] %.*s\n", static_cast<int>(message.size()), message.data());
     std::fflush(stderr);
 #ifdef _WIN32
-    const std::string line = std::string{"[EpochSand] "} + std::string{message} + "\n";
+    const std::string line = std::string{"[SandHybrid] "} + std::string{message} + "\n";
     OutputDebugStringA(line.c_str());
 #endif
 }
@@ -373,7 +373,7 @@ struct VulkanRenderer::Impl final {
     bool debug_was_visible{};
     std::uint32_t debug_sample_frame{};
     std::optional<std::uint32_t> pending_scene_export{};
-#if EPOCH_SAND_ENABLE_VALIDATION
+#if SANDHYBRID_ENABLE_VALIDATION
     std::chrono::steady_clock::time_point next_conservation_log{};
 #endif
 
@@ -512,7 +512,7 @@ struct VulkanRenderer::Impl final {
 
         std::vector<const char*> layers;
         bool enable_debug = false;
-#if EPOCH_SAND_ENABLE_VALIDATION
+#if SANDHYBRID_ENABLE_VALIDATION
         if (contains_layer(available_layers, "VK_LAYER_KHRONOS_validation")) {
             layers.push_back("VK_LAYER_KHRONOS_validation");
             if (contains_extension(available_extensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
@@ -526,7 +526,7 @@ struct VulkanRenderer::Impl final {
             .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
             .pApplicationName = "SandHybrid",
             .applicationVersion = VK_MAKE_API_VERSION(0, 1, 0, 0),
-            .pEngineName = "Epoch",
+            .pEngineName = "SandHybrid",
             .engineVersion = VK_MAKE_API_VERSION(0, 1, 0, 0),
             .apiVersion = VK_API_VERSION_1_2,
         };
@@ -1797,6 +1797,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .active_section_y = state.camera_center_y.load(std::memory_order_relaxed) /
                                 active_region_height_cells,
             .active_mode = 1u,
+            .reserved = collect_debug_stats ? 1u : 0u,
         };
         bind_compute(command_buffer, debug_stats_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
@@ -2152,7 +2153,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             gpu_stalled = true;
             throw std::runtime_error(
                 "GPU fence timed out after 5 seconds. The first simulation submission stalled; "
-                "update the GPU driver and inspect the last EpochSand startup line.");
+                "update the GPU driver and inspect the last SandHybrid startup line.");
         }
         check_vk(fence_result, "vkWaitForFences");
 
@@ -2304,11 +2305,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     }
 
 
-#if EPOCH_SAND_ENABLE_VALIDATION
+#if SANDHYBRID_ENABLE_VALIDATION
     void log_conservation_if_due(const SharedState& state) {
         if (!state.debug_visualization.load(std::memory_order_relaxed)) return;
         const auto now = std::chrono::steady_clock::now();
-        if (next_conservation_log.time_since_epoch().count() != 0 && now < next_conservation_log) return;
+        if (next_conservation_log != std::chrono::steady_clock::time_point{} && now < next_conservation_log) return;
         next_conservation_log = now + std::chrono::seconds{5};
 
         check_vk(vkDeviceWaitIdle(device), "vkDeviceWaitIdle(conservation log)");
@@ -2319,7 +2320,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         std::memcpy(counters.data(), mapped, sizeof(counters));
         vkUnmapMemory(device, conservation_buffer.memory);
         std::fprintf(stderr,
-            "[EpochSand conservation] created=%u destroyed=%u converted=%u boundary=%u "
+            "[SandHybrid conservation] created=%u destroyed=%u converted=%u boundary=%u "
             "phase=%u rebuilt=%u broken=%u errors=%u\n",
             counters[0], counters[1], counters[2], counters[3],
             counters[4], counters[5], counters[6], counters[7]);
@@ -2366,7 +2367,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             } else {
                 ++rendered_frames;
             }
-#if EPOCH_SAND_ENABLE_VALIDATION
+#if SANDHYBRID_ENABLE_VALIDATION
             log_conservation_if_due(state);
 #endif
 
@@ -2406,4 +2407,4 @@ void VulkanRenderer::run(const std::atomic_bool& stop_requested, SharedState& sh
     impl_->run(stop_requested, shared_state);
 }
 
-} // namespace epoch::sand
+} // namespace sandhybrid

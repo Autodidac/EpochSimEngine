@@ -1,4 +1,4 @@
-# EpochSimEngine v2.4.2
+# SandHybrid v2.4.2
 
 This release is a broad runtime implementation pass against the unified `missioncache.md`.
 
@@ -6,7 +6,7 @@ This release is a broad runtime implementation pass against the unified `mission
 
 - Camera-centered 17-section starburst and deterministic section-worker assignment.
 - Expanded world/camera foundation, camera-zero control, and wider zoom range.
-- C++23 `EpochSimEngine` static-library target with a thin demo executable.
+- C++23 `SandHybrid` static-library target with a thin demo executable.
 - Exact suspended-hive restoration path.
 - Settled granular terrain transition to structural state, with collapse on renewed instability.
 - Gas/liquid damping and bounded player-medium disturbance.

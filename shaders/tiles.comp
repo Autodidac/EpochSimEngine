@@ -3,10 +3,12 @@
 #include "materials.glsl"
 #include "tiles.glsl"
 #include "chunks.glsl"
+#include "debug_stats.glsl"
 
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 4) buffer Tiles { TileState tiles[]; };
+layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };
 layout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };
 
 bool tileInside(ivec2 p) {
@@ -27,7 +29,8 @@ bool mediumBoundaryEnclosed(ivec2 origin, bool gasBoundary) {
         for (int x = -1; x <= edge; ++x) {
             if (x != -1 && x != edge && y != -1 && y != edge) continue;
             ivec2 p = origin + ivec2(x, y);
-            if (!tileInside(p)) return false;
+            // The finite resident-world edge is a sealed boundary, not an exposed gas leak.
+            if (!tileInside(p)) continue;
             Cell neighbor = cells[indexOf(p)];
             if (gasBoundary) {
                 if (!isCellGas(neighbor)) return false;
@@ -57,6 +60,7 @@ void main() {
     uint represented = 0u;
     uint occupied = 0u;
     uint structural = 0u;
+    uint supportedStructural = 0u;
     uint stable = 0u;
     uint healthSum = 0u;
     uint minimumAge = 0xffffffffu;
@@ -110,7 +114,11 @@ void main() {
             bool fluid = isCellGas(cell) || isCellLiquid(cell);
             bool activeLoose = !isStructural(cell) && !isReconstructableMaterial(cell.material) &&
                                !isCellImmovable(cell);
-            activeContent = activeContent || agent || activeLoose || fluid;
+            bool activeStructure = cell.material == MAT_CONVEYOR || cell.material == MAT_SMELTER ||
+                                   cell.material == MAT_ASSEMBLER || cell.material == MAT_SLUICE_BOX ||
+                                   cell.material == MAT_INSECT_HABITAT || cell.material == MAT_FACTORY_CORE ||
+                                   cell.material == MAT_MAGMA_VENT;
+            activeContent = activeContent || agent || activeLoose || fluid || activeStructure;
             moving = moving || (cell.aux & AUX_MOVED) != 0u || cell.age < 8u;
             hot = hot || abs(cell.temperature - 20) > 80;
             reacting = reacting || cell.material == MAT_FIRE || cell.material == MAT_EMBER ||
@@ -120,6 +128,7 @@ void main() {
             ++occupied;
             if (isStructural(cell)) {
                 ++structural;
+                if (isSupported(cell)) ++supportedStructural;
                 uint health = stateValue(cell);
                 healthSum += health == 0u ? 255u : health;
             }
@@ -164,7 +173,11 @@ void main() {
                 (isBlockCapable(below.material) && !isCellLiquid(below) && !isCellGas(below))) ++supportSamples;
         }
     }
-    bool physicallySupported = anchored || supportSamples >= 4u;
+    // Authored and previously qualified structures retain support until the
+    // established >50% represented-cell collapse rule is crossed. This prevents
+    // beams, walls, machines, and side-braced structures from being misread as
+    // unsupported merely because four cells are not directly beneath the tile.
+    bool physicallySupported = anchored || supportSamples >= 4u || supportedStructural > 0u;
 
     uint cooldown = tileCooldown(previous);
     if (cooldown > 0u) --cooldown;
@@ -183,6 +196,10 @@ void main() {
     bool unsupportedStructural = structuralTile && !physicallySupported;
     bool collapsing = structuralTile &&
                       (dominantCount < TILE_MIN_COHESIVE_CELLS || unsupportedStructural);
+    if (pc.reserved != 0u && collapsing && !tileHas(previous, TILE_COLLAPSING))
+        atomicAdd(debugStats[STAT_STRUCTURAL_COLLAPSES], 1u);
+    if (pc.reserved != 0u && gasBreakup)
+        atomicAdd(debugStats[STAT_GAS_EDGE_ACTIVE_TILES], 1u);
     bool terrainStable = (structuralTile || stableRegion) && !collapsing;
     bool supported = terrainStable && physicallySupported;
 

@@ -1,4 +1,4 @@
-#include "epoch/sand/window.hpp"
+#include "sandhybrid/window.hpp"
 
 #include <windows.h>
 #include <windowsx.h>
@@ -8,11 +8,11 @@
 #include <string>
 #include <utility>
 
-namespace epoch::sand {
+namespace sandhybrid {
 
 namespace {
 
-constexpr wchar_t window_class_name[] = L"EpochSandNativeWindow";
+constexpr wchar_t window_class_name[] = L"SandHybridNativeWindow";
 
 std::wstring widen(const std::string_view text) {
     if (text.empty()) {
@@ -417,4 +417,4 @@ VkSurfaceKHR NativeWindow::create_surface(const VkInstance instance) const {
     return surface;
 }
 
-} // namespace epoch::sand
+} // namespace sandhybrid

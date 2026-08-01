@@ -1,13 +1,13 @@
 #pragma once
 
-#include "epoch/sand/scene.hpp"
+#include "sandhybrid/scene.hpp"
 
 #include <cstdint>
 #include <filesystem>
 #include <span>
 #include <string>
 
-namespace epoch::sand {
+namespace sandhybrid {
 
 struct SceneCell final {
     std::uint32_t material{};
@@ -35,4 +35,4 @@ bool save_scene_ppm(const std::filesystem::path& path,
 
 bool write_scene_material_key(const std::filesystem::path& directory, std::string& error);
 
-} // namespace epoch::sand
+} // namespace sandhybrid

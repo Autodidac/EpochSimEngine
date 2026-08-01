@@ -1,4 +1,4 @@
-# EpochSimEngine v2.4.4
+# SandHybrid v2.4.4
 
 ## Critical Windows GPU stability correction
 
