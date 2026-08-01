@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace epoch::sand {
+namespace sandhybrid {
 
 struct WindowInput final {
     std::uint32_t width{};
@@ -64,4 +64,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-} // namespace epoch::sand
+} // namespace sandhybrid

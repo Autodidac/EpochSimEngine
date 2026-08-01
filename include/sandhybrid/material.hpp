@@ -5,7 +5,7 @@
 #include <limits>
 #include <string_view>
 
-namespace epoch::sand {
+namespace sandhybrid {
 
 inline constexpr std::int16_t no_temperature = std::numeric_limits<std::int16_t>::max();
 
@@ -354,4 +354,4 @@ inline constexpr std::array<std::array<Material, material_slots_per_group>, mate
     }
 }
 
-} // namespace epoch::sand
+} // namespace sandhybrid

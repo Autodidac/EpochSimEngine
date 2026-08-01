@@ -5,12 +5,14 @@
 #include "chunks.glsl"
 #include "bee_swarm.glsl"
 #include "conservation.glsl"
+#include "debug_stats.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 1) writeonly buffer NextCells { Cell nextCells[]; };
 layout(std430, binding = 2) readonly buffer Sunlight { uint light[]; };
 layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
+layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };
 layout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };
 
 const ivec2 neighborOffsets[8] = ivec2[8](
@@ -26,6 +28,8 @@ Cell at(ivec2 p) {
 void commitResult(uint index, Cell before, Cell after) {
     if (after.material != MAT_WATER || before.material != MAT_WATER)
         after.aux &= ~AUX_WATER_HALF;
+    if (pc.reserved != 0u && (after.material != before.material || after.temperature != before.temperature))
+        atomicAdd(debugStats[STAT_CHEMISTRY_CHANGES], 1u);
     recordConservation(before, after);
     nextCells[index] = after;
 }
@@ -433,7 +437,8 @@ void applyStructuralHazards(ivec2 position, Cell source, inout Cell result,
 
 
 bool isMachine(uint material) {
-    return material == MAT_SMELTER || material == MAT_ASSEMBLER || material == MAT_SLUICE_BOX;
+    return material == MAT_SMELTER || material == MAT_ASSEMBLER ||
+           material == MAT_SLUICE_BOX || material == MAT_INSECT_HABITAT;
 }
 
 bool isFactoryInputResource(uint material) {
@@ -450,10 +455,10 @@ bool isMachineController(ivec2 p, uint material) {
 int machineResourceSlot(uint machine, Cell resourceCell) {
     uint resourceMaterial = resourceCell.material;
     if (machine == MAT_SLUICE_BOX)
-        return resourceMaterial == MAT_SAND && (resourceCell.aux & AUX_WET) != 0u ? 0 : -1;
+        return resourceMaterial == MAT_SAND || resourceMaterial == MAT_SILT ? 0 : -1;
     if (machine == MAT_SMELTER) {
-        if (resourceMaterial == MAT_IRON_SHAVINGS) return 0;
-        if (resourceMaterial == MAT_ALUMINUM_SHAVINGS) return 1;
+        if (resourceMaterial == MAT_IRON || resourceMaterial == MAT_IRON_SHAVINGS) return 0;
+        if (resourceMaterial == MAT_ALUMINUM || resourceMaterial == MAT_ALUMINUM_SHAVINGS) return 1;
         return -1;
     }
     if (machine == MAT_ASSEMBLER) {
@@ -471,10 +476,18 @@ int machineResourceSlot(uint machine, Cell resourceCell) {
     return -1;
 }
 
-uvec4 machineRecipe(uint machine) { if (machine == MAT_ASSEMBLER) return uvec4(2u,1u,1u,1u); return uvec4(15u); }
+uvec4 machineRecipe(uint machine) {
+    if (machine == MAT_ASSEMBLER) return uvec4(2u,1u,1u,1u);
+    if (machine == MAT_INSECT_HABITAT) return uvec4(2u,1u,1u,0u);
+    return uvec4(15u);
+}
 bool machineReady(uint machine, uvec4 inventory) {
     if (machine == MAT_SMELTER) return inventory.x >= 4u || inventory.y >= 4u;
     if (machine == MAT_SLUICE_BOX) return inventory.z > 0u || inventory.y > 0u;
+    if (machine == MAT_INSECT_HABITAT) {
+        uvec4 recipe = machineRecipe(machine);
+        return inventory.x >= recipe.x && inventory.y >= recipe.y && inventory.z >= recipe.z;
+    }
     return all(greaterThanEqual(inventory, machineRecipe(machine)));
 }
 uvec4 machineConsumption(uint machine, uvec4 inventory) {
@@ -483,9 +496,10 @@ uvec4 machineConsumption(uint machine, uvec4 inventory) {
     return machineRecipe(machine);
 }
 uint machineOutput(uint machine, uvec4 inventory) {
-    if (machine == MAT_SMELTER) return inventory.x >= 4u ? MAT_IRON : MAT_ALUMINUM;
+    if (machine == MAT_SMELTER) return inventory.x >= 4u ? MAT_STEEL : MAT_ALUMINUM;
     if (machine == MAT_ASSEMBLER) return MAT_PLASMA_AMMO;
     if (machine == MAT_SLUICE_BOX) return inventory.z > 0u ? MAT_GOLD : MAT_SILT;
+    if (machine == MAT_INSECT_HABITAT) return MAT_BEETLE;
     return MAT_EMPTY;
 }
 
@@ -513,6 +527,30 @@ ivec2 nearestAcceptingMachine(ivec2 resourcePosition, Cell resourceCell, int rad
     return result;
 }
 
+uint machineInputRank(ivec2 resourcePosition, ivec2 controller, uint machine, int slot) {
+    uint rank = 0u;
+    uint resourceIndex = indexOf(resourcePosition);
+    for (int y = -6; y <= 6; ++y) {
+        for (int x = -6; x <= 6; ++x) {
+            ivec2 candidatePosition = controller + ivec2(x, y);
+            if (!inside(candidatePosition) || indexOf(candidatePosition) >= resourceIndex) continue;
+            Cell candidate = at(candidatePosition);
+            if (machineResourceSlot(machine, candidate) != slot) continue;
+            if (all(equal(nearestAcceptingMachine(candidatePosition, candidate, 6), controller))) ++rank;
+        }
+    }
+    return rank;
+}
+
+bool machineAcceptsResource(ivec2 resourcePosition, ivec2 controller, Cell resourceCell) {
+    Cell machine = at(controller);
+    int slot = machineResourceSlot(machine.material, resourceCell);
+    if (slot < 0) return false;
+    uvec4 inventory = machineInventory(machine);
+    uint capacity = 15u - inventory[slot];
+    return machineInputRank(resourcePosition, controller, machine.material, slot) < capacity;
+}
+
 uvec4 incomingMachineCounts(ivec2 controller, uint machine) {
     uvec4 incoming = uvec4(0u);
     for (int y = -6; y <= 6; ++y) {
@@ -521,8 +559,9 @@ uvec4 incomingMachineCounts(ivec2 controller, uint machine) {
             Cell resourceCell = at(resourcePosition);
             int slot = machineResourceSlot(machine, resourceCell);
             if (slot >= 0 &&
-                all(equal(nearestAcceptingMachine(resourcePosition, resourceCell, 6), controller))) {
-                incoming[slot] = min(incoming[slot] + 1u, 15u);
+                all(equal(nearestAcceptingMachine(resourcePosition, resourceCell, 6), controller)) &&
+                machineAcceptsResource(resourcePosition, controller, resourceCell)) {
+                incoming[slot] += 1u;
             }
         }
     }
@@ -533,16 +572,28 @@ bool machineIsAllied(ivec2 controller) {
     return (at(controller).aux & AUX_CHARGED) != 0u;
 }
 
-bool fallingWaterNear(ivec2 p) {
-    for (uint i = 0u; i < 8u; ++i) {
-        ivec2 waterPosition = p + neighborOffsets[i];
-        Cell water = at(waterPosition);
-        if ((water.material == MAT_WATER || water.material == MAT_DIRTY_WATER) &&
-            (at(waterPosition + ivec2(0, 1)).material == MAT_EMPTY ||
-             isGas(at(waterPosition + ivec2(0, 1)).material)) &&
-            at(waterPosition + ivec2(0, -1)).material == water.material) return true;
+bool machineWaterFlowNear(ivec2 p) {
+    for (int y = -8; y <= 8; ++y) {
+        for (int x = -8; x <= 8; ++x) {
+            ivec2 waterPosition = p + ivec2(x, y);
+            Cell water = at(waterPosition);
+            if (water.material != MAT_WATER && water.material != MAT_DIRTY_WATER) continue;
+            Cell above = at(waterPosition + ivec2(0, -1));
+            Cell below = at(waterPosition + ivec2(0, 1));
+            bool verticalSupply = above.material == water.material;
+            bool movingStream = (water.aux & AUX_MOVED) != 0u ||
+                                below.material == MAT_EMPTY || isGas(below.material);
+            if (verticalSupply && movingStream) return true;
+        }
     }
     return false;
+}
+
+uint ventEmissionKind(ivec2 ventPosition, uint pressure) {
+    uint roll = hash32(indexOf(ventPosition) ^ pc.step ^ 0x76e17u);
+    if (pressure >= 220u && (roll & 3u) == 0u) return 2u;
+    if (pressure >= 72u && (roll & 15u) == 0u) return 1u;
+    return 0u;
 }
 
 bool lineHasMaterial(ivec2 p, int direction, uint material, int distance) {
@@ -664,8 +715,14 @@ bool sleepingChunkNeighborhood(ivec2 position) {
     return true;
 }
 
+bool activeStructuralProcess(uint material) {
+    return isMachine(material) || material == MAT_CONVEYOR ||
+           material == MAT_FACTORY_CORE || material == MAT_MAGMA_VENT;
+}
+
 bool sleepingStructuralNeighborhood(ivec2 position, Cell source) {
     if (!isStructural(source)) return false;
+    if (activeStructuralProcess(source.material)) return false;
     uvec2 center = tileCoordinate(position);
     uint columns = tileColumns(pc.width);
     uint rows = (pc.height + TILE_SIZE - 1u) / TILE_SIZE;
@@ -696,7 +753,7 @@ void main() {
     Cell result = source;
     result.age = source.age + 1u;
 
-    if (sleepingChunkNeighborhood(p)) {
+    if (!activeStructuralProcess(source.material) && sleepingChunkNeighborhood(p)) {
         result.aux &= ~AUX_MOVED;
         nextCells[index] = result;
         return;
@@ -789,17 +846,20 @@ void main() {
         } else if (fertilizerHarvestReady(p + ivec2(0, 1), belowSource)) {
             result = makeCell(MAT_FOOD);
         } else if (at(p + ivec2(0, 1)).material == MAT_MAGMA_VENT) {
-            Cell vent = at(p + ivec2(0, 1));
+            ivec2 ventPosition = p + ivec2(0, 1);
+            Cell vent = at(ventPosition);
             uint pressure = stateValue(vent);
-            if (pressure >= 220u && (randomValue & 3u) == 0u) {
+            uint emission = ventEmissionKind(ventPosition, pressure);
+            if (emission == 2u) {
                 result = makeCell(MAT_LAVA);
-                setStateValue(result, pressure - 96u);
-            } else if (pressure >= 72u && (randomValue & 15u) == 0u) {
-                result = makeCell((randomValue & 16u) == 0u ? MAT_SMOKE : MAT_STEAM);
+                setStateValue(result, pressure > 96u ? pressure - 96u : 0u);
+                if (pc.reserved != 0u) atomicAdd(debugStats[STAT_VOLCANO_LAVA_OUTPUTS], 1u);
+            } else if (emission == 1u) {
+                uint roll = hash32(indexOf(ventPosition) ^ pc.step ^ 0x9a551u);
+                result = makeCell((roll & 1u) == 0u ? MAT_SMOKE : MAT_STEAM);
                 result.temperature = 240;
+                if (pc.reserved != 0u) atomicAdd(debugStats[STAT_VOLCANO_GAS_OUTPUTS], 1u);
             }
-        } else if (fallingWaterNear(p)) {
-            // Aeration redistributes existing atmosphere in movement; it never creates oxygen.
         } else if (burningOilBelow(p) && (randomValue & 3u) == 0u) {
             result = makeCell(MAT_SMOKE);
         } else if (hotWaterBelow(p, MAT_SALTWATER) && (randomValue & 7u) == 0u) {
@@ -819,6 +879,7 @@ void main() {
                         machineReady(machine.material, machineInventory(machine)) &&
                         (machine.age % 24u) == 0u) {
                         result = makeCell(machineOutput(machine.material, machineInventory(machine)));
+                        if (pc.reserved != 0u) atomicAdd(debugStats[STAT_MACHINE_OUTPUTS], 1u);
                         if (result.material == MAT_BEETLE) result.aux &= ~AUX_CHARGED;
                         produced = true;
                     }
@@ -948,23 +1009,30 @@ void main() {
     bool storedInMachine = false;
     if (isFactoryInputResource(source.material)) {
         ivec2 acceptingMachine = nearestAcceptingMachine(p, source, 6);
-        if (any(notEqual(acceptingMachine, p))) {
+        if (any(notEqual(acceptingMachine, p)) &&
+            machineAcceptsResource(p, acceptingMachine, source)) {
             result = makeCell(MAT_EMPTY);
             storedInMachine = true;
+            if (pc.reserved != 0u) atomicAdd(debugStats[STAT_MACHINE_INPUTS], 1u);
         }
     }
 
     if (isMachineController(p, source.material)) {
-        uvec4 inventory = min(machineInventory(source) + incomingMachineCounts(p, source.material), uvec4(15u));
-        if (source.material == MAT_SLUICE_BOX && inventory.x >= 8u && fallingWaterNear(p) &&
+        uvec4 currentInventory = machineInventory(source);
+        uvec4 inventory = min(currentInventory + incomingMachineCounts(p, source.material), uvec4(15u));
+        if (source.material == MAT_SLUICE_BOX && inventory.x >= 8u && machineWaterFlowNear(p) &&
             inventory.y <= 8u && inventory.z < 15u) {
             inventory.x -= 8u;
             inventory.y += 7u;
             inventory.z += 1u;
         }
+        // Output and inventory consumption use the same current-frame inventory
+        // observed by the output cell. Newly arrived or newly separated feed is
+        // available on the next tick, preventing consume-without-output loss.
         bool canOutput = at(machineOutputPosition(p)).material == MAT_EMPTY &&
-                         machineReady(source.material, inventory) && (source.age % 24u) == 0u;
-        if (canOutput) inventory -= machineConsumption(source.material, inventory);
+                         machineReady(source.material, currentInventory) &&
+                         (source.age % 24u) == 0u;
+        if (canOutput) inventory -= machineConsumption(source.material, currentInventory);
         setMachineInventory(result, inventory);
         result.temperature = source.material == MAT_SMELTER ? max(result.temperature, 260) : result.temperature;
     }
@@ -1054,9 +1122,12 @@ void main() {
                        at(p + ivec2(-1, 0)).material != MAT_EMPTY &&
                        at(p + ivec2(1, 0)).material != MAT_EMPTY;
         uint pressure = stateValue(source);
-        if (blocked) pressure = min(255u, pressure + 5u);
-        else if (openOutlet) pressure = min(255u, pressure + 2u);
-        else pressure = min(255u, pressure + 3u);
+        uint emission = ventEmissionKind(p, pressure);
+        if (emission == 2u) pressure = pressure > 96u ? pressure - 96u : 0u;
+        else if (emission == 1u) pressure = pressure > 24u ? pressure - 24u : 0u;
+        else if (blocked) pressure = min(255u, pressure + 5u);
+        else if (openOutlet) pressure = pressure > 4u ? pressure - 4u : 0u;
+        else pressure = min(255u, pressure + 1u);
         setStateValue(result, pressure);
     }
 

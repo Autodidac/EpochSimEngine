@@ -23,8 +23,8 @@ def replace(path: str, old: str, new: str) -> None:
 
 write(
     "shaders/tiles.glsl",
-    """#ifndef EPOCH_SAND_TILES_GLSL
-#define EPOCH_SAND_TILES_GLSL
+    """#ifndef SANDHYBRID_TILES_GLSL
+#define SANDHYBRID_TILES_GLSL
 
 const uint TILE_SIZE = 8u;
 const uint TILE_CELL_COUNT = 64u;
@@ -183,12 +183,12 @@ void main() {
 )
 
 write(
-    "include/epoch/sand/simulation_policy.hpp",
+    "include/sandhybrid/simulation_policy.hpp",
     """#pragma once
 
 #include <cstdint>
 
-namespace epoch::sand::policy {
+namespace sandhybrid::policy {
 
 inline constexpr std::uint32_t tile_size = 8u;
 inline constexpr std::uint32_t tile_cells = tile_size * tile_size;
@@ -228,14 +228,14 @@ inline constexpr std::uint32_t vent_gas_release_pressure = 72u;
     return pressure == 255u ? 255u : pressure + 1u;
 }
 
-} // namespace epoch::sand::policy
+} // namespace sandhybrid::policy
 """,
 )
 
 write(
     "tests/behavior_contract.cpp",
-    """#include "epoch/sand/material.hpp"
-#include "epoch/sand/simulation_policy.hpp"
+    """#include "sandhybrid/material.hpp"
+#include "sandhybrid/simulation_policy.hpp"
 
 #include <algorithm>
 #include <array>
@@ -248,8 +248,8 @@ enum class CreationPath : std::uint8_t {
 };
 
 struct CanonicalState final {
-    epoch::sand::Material material{};
-    epoch::sand::MaterialPhase phase{};
+    sandhybrid::Material material{};
+    sandhybrid::MaterialPhase phase{};
     std::int32_t temperature{};
     std::uint32_t represented_mass{};
     std::uint32_t damage{};
@@ -259,11 +259,11 @@ struct CanonicalState final {
 
 [[nodiscard]] constexpr CanonicalState canonical_state(
     [[maybe_unused]] const CreationPath path,
-    const epoch::sand::Material material,
+    const sandhybrid::Material material,
     const std::int32_t temperature,
     const std::uint32_t represented_mass,
     const std::uint32_t damage) noexcept {
-    return {material, epoch::sand::phase_at(material, temperature), temperature, represented_mass, damage};
+    return {material, sandhybrid::phase_at(material, temperature), temperature, represented_mass, damage};
 }
 
 [[nodiscard]] constexpr bool creation_paths_are_canonical() noexcept {
@@ -273,8 +273,8 @@ struct CanonicalState final {
         CreationPath::save,
     };
     constexpr std::array temperatures{-100, 20, 180, 1300, 3000};
-    for (std::uint32_t material_id = 0; material_id < epoch::sand::material_count; ++material_id) {
-        const auto material = static_cast<epoch::sand::Material>(material_id);
+    for (std::uint32_t material_id = 0; material_id < sandhybrid::material_count; ++material_id) {
+        const auto material = static_cast<sandhybrid::Material>(material_id);
         for (const auto temperature : temperatures) {
             const auto expected = canonical_state(paths.front(), material, temperature, 37u, 72u);
             for (const auto path : paths) {
@@ -296,7 +296,7 @@ struct CanonicalState final {
                                         static_cast<std::int32_t>(columns[x + 1]);
                 if (difference == 0) continue;
                 const auto magnitude = static_cast<std::uint32_t>(difference > 0 ? difference : -difference);
-                const auto transfer = (std::min)(epoch::sand::policy::water_pressure_depth,
+                const auto transfer = (std::min)(sandhybrid::policy::water_pressure_depth,
                                                  (std::max)(1u, magnitude / 2u));
                 if (difference > 0) {
                     columns[x] -= transfer;
@@ -323,7 +323,7 @@ struct CanonicalState final {
     constexpr std::uint32_t initial_mass = 64u;
     constexpr std::uint32_t detached_pixels = 33u;
     constexpr std::uint32_t remaining_pixels = initial_mass - detached_pixels;
-    static_assert(epoch::sand::policy::should_collapse(remaining_pixels));
+    static_assert(sandhybrid::policy::should_collapse(remaining_pixels));
     constexpr std::uint32_t settled_mass = remaining_pixels + detached_pixels;
     return settled_mass == initial_mass;
 }
@@ -331,14 +331,14 @@ struct CanonicalState final {
 static_assert(creation_paths_are_canonical());
 static_assert(local_water_equalization_preserves_volume());
 static_assert(terrain_stability_preserves_representation());
-static_assert(epoch::sand::policy::stability_ready(52u, 120u, true, true, false, false, 0u));
-static_assert(!epoch::sand::policy::stability_ready(51u, 120u, true, true, false, false, 0u));
-static_assert(epoch::sand::policy::laser_hits_to_dislodge == 2u);
-static_assert(!epoch::sand::policy::should_collapse(32u));
-static_assert(epoch::sand::policy::should_collapse(31u));
-static_assert(epoch::sand::policy::water_pressure_depth == 8u);
-static_assert(epoch::sand::policy::vent_eruption_pressure > epoch::sand::policy::vent_gas_release_pressure);
-static_assert(epoch::sand::policy::restabilization_cooldown_ticks > epoch::sand::policy::stability_ticks);
+static_assert(sandhybrid::policy::stability_ready(52u, 120u, true, true, false, false, 0u));
+static_assert(!sandhybrid::policy::stability_ready(51u, 120u, true, true, false, false, 0u));
+static_assert(sandhybrid::policy::laser_hits_to_dislodge == 2u);
+static_assert(!sandhybrid::policy::should_collapse(32u));
+static_assert(sandhybrid::policy::should_collapse(31u));
+static_assert(sandhybrid::policy::water_pressure_depth == 8u);
+static_assert(sandhybrid::policy::vent_eruption_pressure > sandhybrid::policy::vent_gas_release_pressure);
+static_assert(sandhybrid::policy::restabilization_cooldown_ticks > sandhybrid::policy::stability_ticks);
 
 } // namespace
 
@@ -351,7 +351,7 @@ int main() {
 
 write(
     "VALIDATION.md",
-    """# EpochSand Fix22 validation matrix
+    """# SandHybrid Fix22 validation matrix
 
 The project separates three validation levels:
 

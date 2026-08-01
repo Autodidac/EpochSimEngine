@@ -1,6 +1,7 @@
-#include "epoch/sand/input_routing.hpp"
-#include "epoch/sand/material.hpp"
-#include "epoch/sand/simulation_policy.hpp"
+#include "sandhybrid/input_routing.hpp"
+#include "sandhybrid/material.hpp"
+#include "sandhybrid/simulation_policy.hpp"
+#include "sandhybrid/camera_policy.hpp"
 
 #include <algorithm>
 #include <array>
@@ -13,8 +14,8 @@ enum class CreationPath : std::uint8_t {
 };
 
 struct CanonicalState final {
-    epoch::sand::Material material{};
-    epoch::sand::MaterialPhase phase{};
+    sandhybrid::Material material{};
+    sandhybrid::MaterialPhase phase{};
     std::int32_t temperature{};
     std::uint32_t represented_mass{};
     std::uint32_t damage{};
@@ -24,11 +25,11 @@ struct CanonicalState final {
 
 [[nodiscard]] constexpr CanonicalState canonical_state(
     [[maybe_unused]] const CreationPath path,
-    const epoch::sand::Material material,
+    const sandhybrid::Material material,
     const std::int32_t temperature,
     const std::uint32_t represented_mass,
     const std::uint32_t damage) noexcept {
-    return {material, epoch::sand::phase_at(material, temperature), temperature, represented_mass, damage};
+    return {material, sandhybrid::phase_at(material, temperature), temperature, represented_mass, damage};
 }
 
 [[nodiscard]] constexpr bool creation_paths_are_canonical() noexcept {
@@ -38,8 +39,8 @@ struct CanonicalState final {
         CreationPath::save,
     };
     constexpr std::array temperatures{-100, 20, 180, 1300, 3000};
-    for (std::uint32_t material_id = 0; material_id < epoch::sand::material_count; ++material_id) {
-        const auto material = static_cast<epoch::sand::Material>(material_id);
+    for (std::uint32_t material_id = 0; material_id < sandhybrid::material_count; ++material_id) {
+        const auto material = static_cast<sandhybrid::Material>(material_id);
         for (const auto temperature : temperatures) {
             const auto expected = canonical_state(paths.front(), material, temperature, 37u, 72u);
             for (const auto path : paths) {
@@ -61,7 +62,7 @@ struct CanonicalState final {
                                         static_cast<std::int32_t>(columns[x + 1]);
                 if (difference == 0) continue;
                 const auto magnitude = static_cast<std::uint32_t>(difference > 0 ? difference : -difference);
-                const auto transfer = (std::min)(epoch::sand::policy::water_pressure_depth,
+                const auto transfer = (std::min)(sandhybrid::policy::water_pressure_depth,
                                                  (std::max)(1u, magnitude / 2u));
                 if (difference > 0) {
                     columns[x] -= transfer;
@@ -99,8 +100,8 @@ struct CanonicalState final {
 }
 
 [[nodiscard]] constexpr bool directional_input_routes_by_scene() noexcept {
-    using epoch::sand::DirectionalInputRouting;
-    using epoch::sand::route_directional_input;
+    using sandhybrid::DirectionalInputRouting;
+    using sandhybrid::route_directional_input;
 
     constexpr auto camera_scene = route_directional_input(false, false, true, true, false);
     constexpr auto player_scene = route_directional_input(true, false, true, true, false);
@@ -115,7 +116,7 @@ struct CanonicalState final {
     constexpr std::uint32_t initial_mass = 64u;
     constexpr std::uint32_t detached_pixels = 33u;
     constexpr std::uint32_t remaining_pixels = initial_mass - detached_pixels;
-    static_assert(epoch::sand::policy::should_collapse(remaining_pixels));
+    static_assert(sandhybrid::policy::should_collapse(remaining_pixels));
     constexpr std::uint32_t settled_mass = remaining_pixels + detached_pixels;
     return settled_mass == initial_mass;
 }
@@ -126,30 +127,51 @@ static_assert(half_water_medium_exchange_preserves_volume());
 static_assert(breathing_requires_explicit_oxygen());
 static_assert(terrain_stability_preserves_representation());
 static_assert(directional_input_routes_by_scene());
-static_assert(epoch::sand::policy::stability_ready(52u, 120u, true, true, false, false, 0u));
-static_assert(!epoch::sand::policy::stability_ready(51u, 120u, true, true, false, false, 0u));
-static_assert(epoch::sand::policy::laser_hits_to_dislodge == 2u);
-static_assert(!epoch::sand::policy::should_collapse(32u));
-static_assert(epoch::sand::policy::should_collapse(31u));
-static_assert(epoch::sand::policy::water_pressure_depth == 8u);
-static_assert(epoch::sand::policy::water_half_units_per_full_cell == 2u);
-static_assert(epoch::sand::policy::gas_tile_eligible(true, true, false));
-static_assert(epoch::sand::policy::gas_tile_eligible(true, false, true));
-static_assert(!epoch::sand::policy::gas_tile_eligible(true, false, false));
-static_assert(epoch::sand::policy::liquid_tile_eligible(true, true, false));
-static_assert(epoch::sand::policy::liquid_tile_eligible(true, false, true));
-static_assert(!epoch::sand::policy::liquid_tile_eligible(true, false, false));
-static_assert(epoch::sand::policy::medium_tile_breaks_to_fine(true, false, false));
-static_assert(!epoch::sand::policy::medium_tile_breaks_to_fine(true, true, false));
-static_assert(epoch::sand::material_count == 66u);
-static_assert(epoch::sand::is_block_material(epoch::sand::Material::sluice_box));
-static_assert(!epoch::sand::policy::water_ledge_can_release(2u, 0u));
-static_assert(epoch::sand::policy::water_ledge_can_release(2u, 1u));
-static_assert(epoch::sand::policy::water_ledge_can_release(2u, 2u));
-static_assert(epoch::sand::policy::water_half_horizontal_passes ==
-              epoch::sand::policy::water_full_horizontal_passes * 2u);
-static_assert(epoch::sand::policy::vent_eruption_pressure > epoch::sand::policy::vent_gas_release_pressure);
-static_assert(epoch::sand::policy::restabilization_cooldown_ticks > epoch::sand::policy::stability_ticks);
+static_assert(sandhybrid::policy::stability_ready(52u, 120u, true, true, false, false, 0u));
+static_assert(!sandhybrid::policy::stability_ready(51u, 120u, true, true, false, false, 0u));
+static_assert(sandhybrid::policy::laser_hits_to_dislodge == 2u);
+static_assert(!sandhybrid::policy::should_collapse(32u));
+static_assert(sandhybrid::policy::should_collapse(31u));
+static_assert(sandhybrid::policy::water_pressure_depth == 8u);
+static_assert(sandhybrid::policy::water_half_units_per_full_cell == 2u);
+static_assert(sandhybrid::policy::gas_tile_eligible(true, true, false));
+static_assert(sandhybrid::policy::gas_tile_eligible(true, false, true));
+static_assert(!sandhybrid::policy::gas_tile_eligible(true, false, false));
+static_assert(sandhybrid::policy::liquid_tile_eligible(true, true, false));
+static_assert(sandhybrid::policy::liquid_tile_eligible(true, false, true));
+static_assert(!sandhybrid::policy::liquid_tile_eligible(true, false, false));
+static_assert(sandhybrid::policy::medium_tile_breaks_to_fine(true, false, false));
+static_assert(!sandhybrid::policy::medium_tile_breaks_to_fine(true, true, false));
+static_assert(sandhybrid::material_count == 66u);
+static_assert(sandhybrid::is_block_material(sandhybrid::Material::sluice_box));
+static_assert(!sandhybrid::policy::water_ledge_can_release(2u, 0u));
+static_assert(sandhybrid::policy::water_ledge_can_release(2u, 1u));
+static_assert(sandhybrid::policy::water_ledge_can_release(2u, 2u));
+static_assert(sandhybrid::policy::water_half_horizontal_passes ==
+              sandhybrid::policy::water_full_horizontal_passes * 2u);
+static_assert(sandhybrid::policy::vent_eruption_pressure > sandhybrid::policy::vent_gas_release_pressure);
+static_assert(sandhybrid::policy::restabilization_cooldown_ticks > sandhybrid::policy::stability_ticks);
+static_assert(sandhybrid::resident_world_dimension_scale == 4u);
+static_assert(sandhybrid::logical_world_dimension_scale == 8u);
+static_assert(sandhybrid::camera_zoom_min == 2u);
+static_assert(sandhybrid::camera_zoom_default == 4u);
+static_assert(sandhybrid::camera_zoom_max == 32u);
+static_assert((sandhybrid::pre_expansion_world_width * sandhybrid::resident_world_dimension_scale) /
+                  sandhybrid::camera_zoom_min == 1280u);
+static_assert((sandhybrid::pre_expansion_world_height * sandhybrid::resident_world_dimension_scale) /
+                  sandhybrid::camera_zoom_min == 720u);
+static_assert((sandhybrid::pre_expansion_world_width * sandhybrid::resident_world_dimension_scale) /
+                  sandhybrid::camera_zoom_default == 640u);
+static_assert((sandhybrid::pre_expansion_world_height * sandhybrid::resident_world_dimension_scale) /
+                  sandhybrid::camera_zoom_default == 360u);
+static_assert(sandhybrid::policy::vent_emission(220u, 0u) ==
+              sandhybrid::policy::VentEmission::lava);
+static_assert(sandhybrid::policy::consume_vent_pressure(
+                  220u, sandhybrid::policy::VentEmission::lava) == 124u);
+static_assert(sandhybrid::policy::vent_emission(72u, 0u) ==
+              sandhybrid::policy::VentEmission::gas);
+static_assert(sandhybrid::policy::consume_vent_pressure(
+                  72u, sandhybrid::policy::VentEmission::gas) == 48u);
 
 } // namespace
 

@@ -1,5 +1,5 @@
-#ifndef EPOCH_SAND_ACTOR_GLSL
-#define EPOCH_SAND_ACTOR_GLSL
+#ifndef SANDHYBRID_ACTOR_GLSL
+#define SANDHYBRID_ACTOR_GLSL
 
 struct ActorState {
     int x;

@@ -6,7 +6,7 @@ pushd "%PROJECT_ROOT%" >nul || exit /b 1
 
 set "CONFIG=%~1"
 if not defined CONFIG set "CONFIG=Release"
-set "EXE=build\windows\%CONFIG%\epoch_sand.exe"
+set "EXE=build\windows\%CONFIG%\sandhybrid.exe"
 
 rem Always rebuild. Shader sources and generated SPIR-V can change while an old
 rem executable still exists, and launching that stale build makes fixes appear
@@ -23,9 +23,9 @@ if not exist "%EXE%" (
     exit /b 1
 )
 
-echo [EpochSand] Launching %EXE%...
+echo [SandHybrid] Launching %EXE%...
 "%EXE%"
 set "RESULT=%ERRORLEVEL%"
-echo [EpochSand] Process exited with code %RESULT%.
+echo [SandHybrid] Process exited with code %RESULT%.
 popd >nul
 exit /b %RESULT%

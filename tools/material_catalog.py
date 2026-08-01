@@ -1,4 +1,4 @@
-"""Single source of truth for EpochSand material UI/catalog metadata."""
+"""Single source of truth for SandHybrid material UI/catalog metadata."""
 MATERIALS = [
     ('empty', 'Vacuum', 0, 0, 2000, 255, 'OPEN SPACE', 'ANY MATERIAL', 'TO: PLACED MATERIAL', 'ROLE: VACUUM / AIR GAP', 'DANGER: DECOMPRESSION'),
     ('sand', 'Sand', 84, 52, 1050, 255, 'STRONG: PACKING / FILTERING', 'WEAK: FLOWING WATER', 'TO: GLASS / SILT', 'ROLE: MINERAL MATRIX', 'DANGER: BURIAL'),

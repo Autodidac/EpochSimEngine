@@ -1,12 +1,12 @@
 #pragma once
 
-#include "epoch/sand/material.hpp"
-#include "epoch/sand/scene.hpp"
+#include "sandhybrid/material.hpp"
+#include "sandhybrid/scene.hpp"
 
 #include <atomic>
 #include <cstdint>
 
-namespace epoch::sand {
+namespace sandhybrid {
 
 struct SharedState final {
     std::atomic_bool quit{false};
@@ -36,9 +36,9 @@ struct SharedState final {
     std::atomic_uint32_t brush_radius{6};
     std::atomic_uint32_t brush_shape{0};
     std::atomic_uint32_t placement_mode{0}; // 0 = cells, 1 = aligned 8x8 tile
-    std::atomic_uint32_t camera_zoom{8};
-    std::atomic_int camera_center_x{320};
-    std::atomic_int camera_center_y{180};
+    std::atomic_uint32_t camera_zoom{4};
+    std::atomic_int camera_center_x{1280};
+    std::atomic_int camera_center_y{1260};
     std::atomic_uint32_t section_worker_count{0};
     std::atomic_uint32_t active_section_count{0};
     std::atomic_uint32_t active_scope_mode{1}; // 1 = 17 map-area starburst, 2 = camera-visible fallback
@@ -55,4 +55,4 @@ struct SharedState final {
     std::atomic_bool deposit_resource_pressed{false};
 };
 
-} // namespace epoch::sand
+} // namespace sandhybrid

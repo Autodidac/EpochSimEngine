@@ -1,13 +1,13 @@
-#include "epoch/sand/app.hpp"
+#include "sandhybrid/app.hpp"
 
-#include "epoch/sand/input_routing.hpp"
-#include "epoch/sand/material.hpp"
-#include "epoch/sand/scene.hpp"
-#include "epoch/sand/section_scheduler.hpp"
-#include "epoch/sand/shared_state.hpp"
-#include "epoch/sand/ui_layout.hpp"
-#include "epoch/sand/vulkan_renderer.hpp"
-#include "epoch/sand/window.hpp"
+#include "sandhybrid/input_routing.hpp"
+#include "sandhybrid/material.hpp"
+#include "sandhybrid/scene.hpp"
+#include "sandhybrid/section_scheduler.hpp"
+#include "sandhybrid/shared_state.hpp"
+#include "sandhybrid/ui_layout.hpp"
+#include "sandhybrid/vulkan_renderer.hpp"
+#include "sandhybrid/window.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -20,7 +20,7 @@
 #include <thread>
 #include <utility>
 
-namespace epoch::sand {
+namespace sandhybrid {
 
 namespace {
 
@@ -140,10 +140,10 @@ void reset_camera_to_zero(SharedState& state, const SimulationConfig& config) no
 } // namespace
 
 int run_application() {
-    std::fprintf(stderr, "[EpochSand] Creating native window...\n");
+    std::fprintf(stderr, "[SandHybrid] Creating native window...\n");
     NativeWindow window{"SandHybrid", 1280, 720};
     window.show_startup_message("Compiling Shaders...");
-    std::fprintf(stderr, "[EpochSand] Native window created.\n");
+    std::fprintf(stderr, "[SandHybrid] Native window created.\n");
     SharedState shared_state{};
     const SimulationConfig simulation_config{};
     reset_camera_to_zero(shared_state, simulation_config);
@@ -158,10 +158,10 @@ int run_application() {
     std::atomic_bool stop_renderer{false};
     std::thread render_thread([&] {
         try {
-            std::fprintf(stderr, "[EpochSand] Vulkan initialization started.\n");
+            std::fprintf(stderr, "[SandHybrid] Vulkan initialization started.\n");
             VulkanRenderer renderer{window, simulation_config};
             renderer_ready.store(true, std::memory_order_release);
-            std::fprintf(stderr, "[EpochSand] Vulkan renderer ready.\n");
+            std::fprintf(stderr, "[SandHybrid] Vulkan renderer ready.\n");
             renderer.run(stop_renderer, shared_state);
         } catch (...) {
             {
@@ -458,7 +458,7 @@ int run_application() {
         std::this_thread::sleep_for(std::chrono::milliseconds{1});
     }
 
-    std::fprintf(stderr, "[EpochSand] Shutting down.\n");
+    std::fprintf(stderr, "[SandHybrid] Shutting down.\n");
     shared_state.quit.store(true, std::memory_order_release);
     stop_renderer.store(true, std::memory_order_release);
     if (render_thread.joinable()) render_thread.join();
@@ -473,4 +473,4 @@ int run_application() {
     return 0;
 }
 
-} // namespace epoch::sand
+} // namespace sandhybrid

@@ -1,4 +1,4 @@
-# EpochSimEngine v2.4.3
+# SandHybrid v2.4.3
 
 This patch release completes the requested universal keyboard camera-control implementation and preserves the mission ledger's runtime-evidence rules.
 

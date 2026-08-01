@@ -955,10 +955,12 @@ void processHorizontal(ivec2 left, ivec2 right) {
     int rightBelt = conveyorDirectionBelow(right);
     if (isConveyorCargo(a) && b.material == MAT_EMPTY && leftBelt > 0) {
         swapCells(left, right);
+        if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_CONVEYOR_MOVES], 1u);
         return;
     }
     if (isConveyorCargo(b) && a.material == MAT_EMPTY && rightBelt < 0) {
         swapCells(left, right);
+        if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_CONVEYOR_MOVES], 1u);
         return;
     }
 

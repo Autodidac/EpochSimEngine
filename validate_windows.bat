@@ -21,7 +21,7 @@ cmake -S . -B "%VALIDATION_DIR%" ^
     -DVCPKG_TARGET_TRIPLET:STRING=x64-windows ^
     -DVCPKG_HOST_TRIPLET:STRING=x64-windows ^
     -DBUILD_TESTING:BOOL=ON ^
-    -DEPOCH_SAND_WARNINGS_AS_ERRORS:BOOL=ON
+    -DSANDHYBRID_WARNINGS_AS_ERRORS:BOOL=ON
 if errorlevel 1 goto :fail
 
 cmake --build "%VALIDATION_DIR%" --config "%CONFIG%" --parallel
@@ -29,7 +29,7 @@ if errorlevel 1 goto :fail
 ctest --test-dir "%VALIDATION_DIR%" -C "%CONFIG%" --output-on-failure
 if errorlevel 1 goto :fail
 
-echo EpochSand validation passed.
+echo SandHybrid validation passed.
 popd >nul
 exit /b 0
 

@@ -1,6 +1,6 @@
-# EpochSimEngine Mission Cache
+# SandHybrid Mission Cache
 
-This is the **single canonical mission document** for EpochSimEngine. It contains active work, permanent invariants, and archived release history. There is no separate mission ledger.
+This is the **single canonical mission document** for SandHybrid. It contains active work, permanent invariants, and archived release history. There is no separate mission ledger.
 
 Before changing code:
 
@@ -29,6 +29,7 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 | MC-017 | REGRESSION | Prevent premature stabilization | Liquid, mud, and wet material sleep only after unchanged volume, support, impulse, boundary height, and erosion state for a bounded confirmation window. Gas rests only after pressure, density, composition, temperature, and incoming/outgoing transfer reach equilibrium. Touching a solid is never by itself a gas-rest condition. No region may sleep while a valid downhill, buoyant, pressure-transfer, erosion, reaction, or actor-driven path remains. |
 | MC-018 | OPEN | Bulk/fine parity tests | Deterministic tests prove each eligible 8x8 move matches the equivalent conserved fine-cell result, including Atmosphere displacement, mud erosion, gas boundary flow, and the same rest decision. |
 | MC-019 | REGRESSION | Material-specific settling without gas-wall friction | Damping is not a universal per-move slowdown. Gravity, buoyancy, pressure transfer, mud erosion, falling wet material, reactions, boundary changes, tool input, and actor impulses execute at the full material-defined rate. Liquids and mud may use viscosity/internal drag only after no productive move exists, reducing residual lateral oscillation toward rest. Gases have no friction against solids: a wall blocks the normal crossing direction but never adds tangential slowdown or pins gas to the surface. Gas motion ends only through pressure/composition equilibrium, density sorting, or exhausted impulse. Bulk and fine representations make the same active/rest decision. |
+| MC-078 | PARTIAL | Authored structures remain intact | Authored beams, walls, machines, tanks, hives, and platforms retain structural support unless phase change, mining/damage, or the established fewer-than-32-of-64 collapse threshold releases them. Side-connected and suspended authored construction never collapses merely because four cells are not directly underneath an 8x8 tile. Runtime scene cycling must show no spontaneous disassembly. |
 | MC-053 | PARTIAL | Transient gas/liquid tile packets | A complete 8x8 gas or liquid region may move as one tile packet. After packet motion ends, gas remains tile-owned only when its complete one-cell perimeter is gas; liquid remains tile-owned only when its complete perimeter contains liquid or non-gas matter. Exposed resting packets become `FINE_ACTIVE` and break back to canonical cells without deleting, filling, snapping, or changing volume. Runtime proof must show moving air/water tiles, exposed breakup, enclosed retention, and stable zero-motion results. |
 
 ## Atmosphere and closed-system gas
@@ -45,6 +46,7 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 | MC-027 | OPEN | Composition rendering | Balanced air renders smoothly; validation builds show excess transport clearly; accepted builds may later hide normal transit. |
 | MC-028 | OPEN | Validate corner pressure structures | Preserve corner patterns only when conserved pressure/composition produces them. Reject structures created by gas-wall friction, sticky corners, or solid-adjacency sleep. |
 | MC-029 | OPEN | Atmosphere inspection/tools | Cursor/card show pressure and gas percentages. Gas tools add components; the large Atmosphere tool restores balanced air. |
+| MC-079 | PARTIAL | Uniform atmosphere edge equilibrium | A completely atmosphere-filled resident map reaches zero gas-edge activity, including outer world boundaries. Finite world edges are sealed boundaries, not permanent exposed-gas breakup edges. Real excess gas remains active until pressure/density equilibrium. |
 
 ## Life, ecology, and player interaction
 
@@ -72,6 +74,7 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 | MC-044 | OPEN | Remove grid-edge coupling | Debug grid is presentation-only and never influences movement/rest. |
 | MC-045 | PARTIAL | High-contrast readable debug UI | Preserve the accepted current text size. Categories use distinct high-contrast colors, tile/chunk and active-region boundaries remain readable, and the color key exactly matches damaged, stable, bulk-moved, fine-active, bulk-ready, settled, sleeping, active, enclosed, and breakup overlays. |
 | MC-046 | REGRESSION | Debug never blocks the world | On ordinary layouts the complete debug panel occupies the existing sidebar instead of covering the simulation viewport. The world remains visible and interactive; no full-screen stats rectangle is permitted. Very small windows may hide or page nonessential counters, but may not cover the simulation. |
+| MC-080 | PARTIAL | Resource-first activity debug | Keep the accepted UI layout and text size. Sort resource-critical metrics first: FPS, resident cells, active map areas, tested pairs, skipped work, active/sleeping hierarchy. Follow with meaningful activity by cause: fine/bulk motion, gas/liquid transport, structural failures, conveyors, machine input/output, volcano lava/gas, chemistry, actors, and ecology. `FINE ACTIVE` is vivid/hot while `SLEEPING` is dark/cool and their legend order shows active -> settling -> sleeping. Runtime readability remains required. |
 | MC-047 | OPEN | Universal cell-or-tile placement | Every selectable material can be painted as ordinary fine cells or as one aligned 8x8 tile packet through an explicit `CELLS` / `TILES` selector. Placement preserves canonical material behavior, conservation, machine metadata, actor rules, cursor mapping, and dirty-region wakeup. Block-capable material is not forced into tile mode. |
 
 ## Chemistry and materials
@@ -80,6 +83,8 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 |---|---|---|---|
 | MC-050 | OPEN | Correct fertilizer chemistry | Ember never directly becomes fertilizer; use a conserved compost path with ash, organics, silt/dirt, dirty water, air, time, and heat as appropriate. |
 | MC-051 | PARTIAL | Wet-material, mud-erosion, and sluicing proof | Wet sand/dirt/silt, mud, and Sluice Box prove full-speed gravity-driven bulk descent, erosion through unsupported material, drying, feed conservation, and gold/silt output without fine-only fallback or damping-induced stalls. |
+| MC-081 | PARTIAL | Local conserved volcano output | A magma vent uses only its own bounded pressure state. Blockage builds pressure; an open outlet releases it. Deterministic pressure events may emit lava, smoke, or steam only immediately at that vent and deduct represented pressure. Ordinary gas activity elsewhere never creates lava. Runtime Volcano proof remains required. |
+| MC-082 | PARTIAL | Functional industrial machinery | Powered conveyors visibly transport loose cargo. Smelters consume iron/aluminum feed and output steel/aluminum. Assemblers consume steel/copper/gold/power cells and output plasma ammunition. Sluice boxes consume sand/silt only with nearby vertical water flow and conserve output as seven silt plus one gold per eight feed. Habitat controllers process explicit inputs. Machines stay simulation-active, never consume without matching output, and debug reports conveyor moves plus machine input/output. |
 | MC-052 | REGRESSION | Settled granular terrain becomes structural | Dry reconstructable dirt, sand, silt, salt, and ice remain loose while sliding. After at least 52 represented cells in an 8x8 region remain unchanged and physically supported for the stabilization window, those existing cells gain structural and supported state without filling or snapping missing cells. Loss of support, fewer than 32 cohesive cells, mining, heat/phase change, player impact, or renewed motion clears structural state and restores crumbling. Side bracing may support terrain but is not required for floor-supported piles to stabilize. Runtime proof must show the pictured brown slopes settle solid and later release into slides when disturbed. |
 
 ## World, camera, scheduling, streaming, and concurrency
@@ -104,8 +109,8 @@ If runtime profiling proves the map-sized starburst too expensive, the only perm
 | MC-065 | OPEN | Coroutine review | Use C++23 coroutines only for asynchronous streaming/I/O where useful, never Vulkan submission or per-cell hot paths. |
 | MC-066 | OPEN | Safe pause/wake/boundary transfer | Resolve pending transfers, actors, impulses, pressure, and dependencies before pause. Crossing the starburst edge conserves all state without allowing the paused side to animate. |
 | MC-067 | PARTIAL | Expand logical world 8x8 dimensions | The logical address space is 8 times the old width and height. Until MC-063 streams distant regions, only a bounded 4x4-map-footprint resident window may occupy GPU memory. Update generation, buffers, indexing, saves, limits, overflow checks, paging, and profiling without restoring a fully resident 64x cell allocation. |
-| MC-068 | PARTIAL | Camera home/reset | Explicit reset returns camera to the authored 640x360 map at the bottom center of the expanded world and the documented default zoom without touching simulation state. |
-| MC-069 | PARTIAL | 2x2 maximum zoom-out | Maximum zoom-out displays four pre-expansion world footprints in a 2x2 view; clamp there and preserve input/cursor mapping, active-scope clarity, and culling. |
+| MC-068 | PARTIAL | Camera home/reset | Every scene starts centered on its authored 640x360 footprint at the absolute bottom center. Reset returns to exactly that center and one-map scale without touching simulation state. The resident-window reduction must not halve or offset the start view. Runtime verification remains required. |
+| MC-069 | PARTIAL | 2x2 maximum zoom-out | Maximum zoom-out displays exactly 1280x720 cells: four 640x360 footprints in a 2x2 view. Default/reset displays exactly 640x360. Minimum/default/maximum zoom values scale with the resident window, preserving pointer mapping, panning, active-scope clarity, and culling. |
 | MC-074 | REGRESSION | Bottom-centered authored maps | Every authored scene occupies exactly one 640x360 footprint centered horizontally at the absolute bottom of the expanded world. Scene generation never repeats, stretches, or fills the remaining 8x8 world; actors, hives, machines, metadata, saves, reset, and camera home use the same offset. |
 | MC-075 | PARTIAL | Camera navigation and scope HUD | Middle-mouse drag, mouse-edge scrolling, and camera reset work at every zoom. Keyboard camera panning is permitted only when the current scene has no player; MC-076 owns that routing contract. The sidebar always shows current zoom, active-region mode, and active-region count, while debug draws map-area boundaries clearly. Drag, edge, reset, HUD, and boundary rendering remain runtime-unverified. |
 | MC-077 | PARTIAL | Windows GPU memory-manager crash in tile mode | Selecting `TILES` never allocates, resizes, or rebinds GPU memory. The logical world remains 8x8 map footprints, but the resident GPU window is bounded to 4x4 map footprints until MC-063 implements deterministic streaming. Windows/Linux CI must pass; Windows runtime must prove repeated CELLS/TILES switching, painting, reset, scene cycling, save/load, and debug use without device loss, TDR, WDDM reset, allocation growth, or stale descriptors. |
@@ -114,10 +119,11 @@ If runtime profiling proves the map-sized starburst too expensive, the only perm
 
 | ID | Status | Mission | Acceptance |
 |---|---|---|---|
-| MC-070 | OPEN | `EpochSimEngine` static library | C++23 static library with ownership-safe public headers; windowing, UI host, and `main` remain outside. |
-| MC-071 | OPEN | Thin `EpochSimEngine_Demo` | Small executable links the library and owns native startup/events. |
+| MC-070 | OPEN | `SandHybrid` static library | C++23 static library with ownership-safe public headers; windowing, UI host, and `main` remain outside. |
+| MC-071 | OPEN | Thin `SandHybrid_Demo` | Small executable links the library and owns native startup/events. |
 | MC-072 | OPEN | Optional subsystems | Concurrency, streaming, debug, UI, actors, ecology, and factories disable cleanly without forking the core. |
-| MC-073 | DEFERRED | EpochEngine integration | Later migrate/rewrite using canonical `epochengine::` APIs while preserving reusable `EpochSimEngine` boundaries. |
+| MC-083 | PARTIAL | SandHybrid-only project branding | Remove this project's legacy project-owned names from UI, logs, namespaces, include paths, CMake targets, binaries, packages, workflows, docs, and tests. Preserve proper external names such as `EpochGui`, `EpochEngine`, and the external `epochengine::gui_lib` namespace. Repository-host rename is separate if GitHub settings cannot be changed through available tooling. |
+| MC-073 | DEFERRED | EpochEngine integration | Later migrate/rewrite using canonical `epochengine::` APIs while preserving reusable `SandHybrid` boundaries. |
 
 # Permanent invariants
 
@@ -139,6 +145,10 @@ If runtime profiling proves the map-sized starburst too expensive, the only perm
 - Debug statistics never cover the normal simulation viewport; debug state coloring and active-area boundaries may render in the world.
 - 8x8 terrain regions qualify for stability only and never reconstruct missing cells.
 - Each terrain pixel takes two laser hits; after more than half are dislodged, the represented remainder collapses rather than vanishes.
+- Authored structural assemblies do not infer failure solely from missing direct-below support; they release only through explicit damage, phase change, mining, or the represented collapse threshold.
+- Uniform atmosphere may sleep at sealed resident-world edges; world boundaries never manufacture perpetual gas activity.
+- Industrial machines are active simulation participants, and every consumed represented input has a matching inventory/output transition.
+- Project-owned branding is `SandHybrid`; Legacy branding remains only when it is part of a proper external dependency or integration name.
 - Failed, missed, deferred, and regressed missions remain active until accepted.
 
 # Archived release history

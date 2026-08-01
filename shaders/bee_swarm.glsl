@@ -1,5 +1,5 @@
-#ifndef EPOCH_SAND_BEE_SWARM_GLSL
-#define EPOCH_SAND_BEE_SWARM_GLSL
+#ifndef SANDHYBRID_BEE_SWARM_GLSL
+#define SANDHYBRID_BEE_SWARM_GLSL
 
 const uint BEE_FORMATION_COUNT = 100u;
 const uint BEE_COLONY_MAX = 100u;
@@ -135,9 +135,9 @@ uint beeSwarmState(uint aux, uint step, uint width, uint height) {
 
 ivec2 beeBiohazardTargetOffset(uint slot, uint step, ivec2 home) {
     const uint increments[8] = uint[8](1u, 3u, 7u, 9u, 11u, 13u, 17u, 19u);
-    uint epoch = step / 360u;
-    uint increment = increments[beeHash32(uint(home.x) ^ (uint(home.y) << 16u) ^ epoch) & 7u];
-    uint targetSlot = (slot + epoch * increment) % BEE_FORMATION_COUNT;
+    uint formationCycle = step / 360u;
+    uint increment = increments[beeHash32(uint(home.x) ^ (uint(home.y) << 16u) ^ formationCycle) & 7u];
+    uint targetSlot = (slot + formationCycle * increment) % BEE_FORMATION_COUNT;
     // A stable, slightly enlarged mask reads as a symbol instead of 100 unrelated insects.
     ivec2 anchor = beeFormationOffset(targetSlot) * 5 / 4;
     ivec2 flutter = beeRotateOffset(ivec2(1, 0), step / 8u + slot * 5u);

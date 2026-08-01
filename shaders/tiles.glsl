@@ -1,5 +1,5 @@
-#ifndef EPOCH_SAND_TILES_GLSL
-#define EPOCH_SAND_TILES_GLSL
+#ifndef SANDHYBRID_TILES_GLSL
+#define SANDHYBRID_TILES_GLSL
 
 const uint TILE_SIZE = 8u;
 const uint TILE_CELL_COUNT = 64u;

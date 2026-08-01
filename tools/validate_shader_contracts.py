@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static cross-contract checks for EpochSand's C++ and GLSL material model.
+"""Static cross-contract checks for SandHybrid's C++ and GLSL material model.
 
 This intentionally complements, rather than replaces, glslc. It catches ID drift,
 generated-UI drift, missing includes, delimiter damage, reserved identifiers that
@@ -72,7 +72,7 @@ def extract_uint_function(text: str, name: str) -> str:
 
 
 def parse_generated_storage() -> list[int]:
-    header = (ROOT / "include/epoch/sand/ui_text_data.hpp").read_text(encoding="utf-8")
+    header = (ROOT / "include/sandhybrid/ui_text_data.hpp").read_text(encoding="utf-8")
     match = re.search(r"text_storage\s*\{(.*?)\};", header, re.S)
     if not match:
         raise RuntimeError("generated UI text storage array not found")
@@ -87,7 +87,7 @@ def parse_glsl_uint_constant(text: str, name: str) -> int:
 
 
 def parse_material_ids() -> dict[str, int]:
-    header = (ROOT / "include/epoch/sand/material.hpp").read_text(encoding="utf-8")
+    header = (ROOT / "include/sandhybrid/material.hpp").read_text(encoding="utf-8")
     match = re.search(r"enum class Material[^\{]*\{(.*?)\n\};", header, re.S)
     if not match:
         raise RuntimeError("Material enum not found")
@@ -234,11 +234,11 @@ def main() -> int:
     chemistry_comp = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
     reset_comp = (SHADERS / "reset.comp").read_text(encoding="utf-8")
     app_cpp = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
-    input_routing_hpp = (ROOT / "include/epoch/sand/input_routing.hpp").read_text(encoding="utf-8")
-    window_hpp = (ROOT / "include/epoch/sand/window.hpp").read_text(encoding="utf-8")
+    input_routing_hpp = (ROOT / "include/sandhybrid/input_routing.hpp").read_text(encoding="utf-8")
+    window_hpp = (ROOT / "include/sandhybrid/window.hpp").read_text(encoding="utf-8")
     win32_cpp = (ROOT / "src/window_win32.cpp").read_text(encoding="utf-8")
     xcb_cpp = (ROOT / "src/window_xcb.cpp").read_text(encoding="utf-8")
-    ui_layout = (ROOT / "include/epoch/sand/ui_layout.hpp").read_text(encoding="utf-8")
+    ui_layout = (ROOT / "include/sandhybrid/ui_layout.hpp").read_text(encoding="utf-8")
     fullscreen = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
     tiles_comp = (SHADERS / "tiles.comp").read_text(encoding="utf-8")
     debug_stats_comp = (SHADERS / "debug_stats.comp").read_text(encoding="utf-8")
@@ -520,7 +520,25 @@ def main() -> int:
     paint = (SHADERS / "paint.comp").read_text(encoding="utf-8")
     chunks_contract = (SHADERS / "chunks.glsl").read_text(encoding="utf-8")
     app_cpp = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
-    section_header = (ROOT / "include/epoch/sand/section_scheduler.hpp").read_text(encoding="utf-8")
+    section_header = (ROOT / "include/sandhybrid/section_scheduler.hpp").read_text(encoding="utf-8")
+    camera_policy = (ROOT / "include/sandhybrid/camera_policy.hpp").read_text(encoding="utf-8")
+    debug_stats_contract = (SHADERS / "debug_stats.glsl").read_text(encoding="utf-8")
+
+    for token in (
+        "resident_world_dimension_scale = 4u", "logical_world_dimension_scale = 8u",
+        "camera_zoom_min = resident_world_dimension_scale / 2u",
+        "camera_zoom_default = resident_world_dimension_scale",
+        "camera_zoom_max = resident_world_dimension_scale * 8u",
+        "camera_view_width(camera_zoom_min) == 1280u", "camera_view_height(camera_zoom_min) == 720u",
+        "camera_view_width(camera_zoom_default) == 640u", "camera_view_height(camera_zoom_default) == 360u",
+    ):
+        if token not in camera_policy: errors.append(f"camera footprint scale contract missing {token!r}")
+    stat_word_match = re.search(r"DEBUG_STAT_WORD_COUNT\s*=\s*(\d+)u", debug_stats_contract)
+    stat_values = {name: int(value) for name, value in re.findall(r"const uint (STAT_[A-Z0-9_]+)\s*=\s*(\d+)u", debug_stats_contract)}
+    if not stat_word_match: errors.append("debug stat word count is missing")
+    elif any(value >= int(stat_word_match.group(1)) for value in stat_values.values()): errors.append("debug stat index exceeds the allocated buffer")
+    if len(stat_values.values()) != len(set(stat_values.values())): errors.append("debug stat indices overlap")
+    if stat_values.get("STAT_MATERIAL_BASE") != 32 or stat_values.get("STAT_MACRO_TILE_MOVES", 0) < 32 + material_count: errors.append("material counters overlap custom activity counters")
     for token in (
         "active_region_width_cells = 640",
         "active_region_height_cells = 360",
@@ -598,6 +616,25 @@ def main() -> int:
             errors.append(f"bounded structural collapse contract missing {token!r}")
     if "sameNeighbors" not in renderer or "sameNeighbors == 0u" not in renderer:
         errors.append("gas renderer no longer suppresses isolated particle halos")
+
+    for token in ("if (!tileInside(p)) continue;", "supportedStructural > 0u", "STAT_STRUCTURAL_COLLAPSES", "STAT_GAS_EDGE_ACTIVE_TILES"):
+        if token not in tiles: errors.append(f"structure/atmosphere regression contract missing {token!r}")
+    if re.search(r"for \(int x = 0; x < int\(TILE_SIZE\); \+\+x\) \{\s*for \(int x = 0;", tiles): errors.append("tile support sampling contains a duplicated nested x loop")
+    for token in ("activeStructuralProcess(source.material)", "machineAcceptsResource(resourcePosition, controller, resourceCell)", "machineInputRank", "currentInventory", "machineWaterFlowNear", "MAT_SLUICE_BOX", "MAT_SMELTER", "MAT_ASSEMBLER", "ventEmissionKind", "pressure > 96u ? pressure - 96u : 0u", "pressure > 24u ? pressure - 24u : 0u", "STAT_MACHINE_INPUTS", "STAT_MACHINE_OUTPUTS", "STAT_VOLCANO_LAVA_OUTPUTS", "STAT_VOLCANO_GAS_OUTPUTS"):
+        if token not in chemistry: errors.append(f"industry/volcano regression contract missing {token!r}")
+    for token in ("Functional industrial line", "material = MAT_CONVEYOR", "material = MAT_SLUICE_BOX", "material = MAT_WATER"):
+        if token not in reset: errors.append(f"engineering industry scene contract missing {token!r}")
+    labels = (ROOT / "tools/generate_ui_text.py").read_text(encoding="utf-8")
+    for token in ("RESIDENT MB", "STRUCT FAIL", "CONVEYOR", "MACHINE IN", "MACHINE OUT", "VOLCANO LAVA", "VOLCANO GAS", "GAS EDGE", "REACTIONS"):
+        if token not in labels: errors.append(f"activity debug label missing {token!r}")
+    for token in ("vec3(1.00, 0.10, 0.72)", "vec3(0.035, 0.10, 0.30)", "debugStats[STAT_STRUCTURAL_COLLAPSES]", "debugStats[STAT_CONVEYOR_MOVES]", "debugStats[STAT_MACHINE_INPUTS]", "debugStats[STAT_MACHINE_OUTPUTS]", "debugStats[STAT_VOLCANO_LAVA_OUTPUTS]", "debugStats[STAT_VOLCANO_GAS_OUTPUTS]"):
+        if token not in renderer: errors.append(f"resource-first debug contract missing {token!r}")
+    project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/v245-ci.yml"]
+    forbidden_branding = ("Epoch" + "SimEngine", "Epoch" + "Sand", "epoch" + "_sand", "namespace epoch" + "::sand", "include/epoch" + "/sand")
+    for project_file in project_owned_files:
+        source_text = project_file.read_text(encoding="utf-8")
+        for forbidden in forbidden_branding:
+            if forbidden in source_text: errors.append(f"legacy project branding remains in {project_file.relative_to(ROOT)}: {forbidden!r}")
 
     motion_ecology_contracts = {
         "tiles": (tiles, ("activeContent", "!activeContent", "activeAgent", "activeLoose")),

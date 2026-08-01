@@ -37,4 +37,4 @@ cmake -S . -B "$BUILD_DIR" -G Ninja \
     -DVCPKG_TARGET_TRIPLET=x64-linux \
     -DBUILD_TESTING=OFF
 cmake --build "$BUILD_DIR" --parallel
-echo "Built: $PWD/$BUILD_DIR/epoch_sand"
+echo "Built: $PWD/$BUILD_DIR/sandhybrid"

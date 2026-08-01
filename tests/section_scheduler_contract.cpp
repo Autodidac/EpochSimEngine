@@ -1,10 +1,10 @@
-#include "epoch/sand/section_scheduler.hpp"
+#include "sandhybrid/section_scheduler.hpp"
 
 #include <array>
 #include <cstddef>
 
 int main() {
-    using namespace epoch::sand;
+    using namespace sandhybrid;
 
     static_assert(active_region_width_cells == 640);
     static_assert(active_region_height_cells == 360);

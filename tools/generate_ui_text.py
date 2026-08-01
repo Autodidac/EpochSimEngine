@@ -34,6 +34,9 @@ FIXED = [
     "LIQUID TILES", "ENCLOSED TILES", "BREAKUP TILES", "COLOR KEY", "DAMAGED",
     "STABLE", "BULK MOVED", "FINE ACTIVE", "BULK READY", "SETTLED", "ENCLOSED", "BREAKUP",
     "TILES", "ACTIVE AREAS", "MAP STAR", "CAMERA VIEW", "WASD PAN", "EDGE PAN", "PLACEMENT",
+    "RESIDENT MB", "PAIR TESTS", "SKIPPED", "MOVING", "GAS FLOW", "LIQUID FLOW",
+    "STRUCT FAIL", "CONVEYOR", "MACHINE IN", "MACHINE OUT", "VOLCANO LAVA",
+    "VOLCANO GAS", "GAS EDGE", "REACTIONS",
 ]
 SCENES = [
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",
@@ -120,7 +123,7 @@ def _cpp_uint_array(values: list[int], columns: int = 12) -> str:
         "#include <array>",
         "#include <cstdint>",
         "",
-        "namespace epoch::sand::ui {",
+        "namespace sandhybrid::ui {",
         "",
         f"inline constexpr std::array<std::uint32_t, {len(values)}> text_storage{{",
     ]
@@ -128,7 +131,7 @@ def _cpp_uint_array(values: list[int], columns: int = 12) -> str:
         rendered = ", ".join(f"{value}u" for value in values[offset:offset + columns])
         suffix = "," if offset + columns < len(values) else ""
         lines.append(f"    {rendered}{suffix}")
-    lines.extend(["};", "", "} // namespace epoch::sand::ui", ""])
+    lines.extend(["};", "", "} // namespace sandhybrid::ui", ""])
     return "\n".join(lines)
 
 
@@ -167,7 +170,7 @@ def generate_material_header():
     groups = material_group_labels()
     lines = [
         "#pragma once", "", "#include <array>", "#include <cstdint>", "#include <limits>",
-        "#include <string_view>", "", "namespace epoch::sand {", "",
+        "#include <string_view>", "", "namespace sandhybrid {", "",
         "inline constexpr std::int16_t no_temperature = std::numeric_limits<std::int16_t>::max();", "",
         "enum class Material : std::uint32_t {",
     ]
@@ -273,13 +276,13 @@ def generate_material_header():
         lines.append(f"    case Material::{name}:")
     lines += [
         "        return true;", "    default:", "        return false;", "    }", "}", "",
-        "} // namespace epoch::sand", "",
+        "} // namespace sandhybrid", "",
     ]
-    (ROOT / "include/epoch/sand/material.hpp").write_text("\n".join(lines), encoding="utf-8", newline="\n")
+    (ROOT / "include/sandhybrid/material.hpp").write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
 
 def generate_material_ids():
-    lines = ["#ifndef EPOCH_SAND_MATERIAL_IDS_GLSL", "#define EPOCH_SAND_MATERIAL_IDS_GLSL", ""]
+    lines = ["#ifndef SANDHYBRID_MATERIAL_IDS_GLSL", "#define SANDHYBRID_MATERIAL_IDS_GLSL", ""]
     for material_id, material in enumerate(MATERIALS):
         lines.append(f"const uint MAT_{material[0].upper()} = {material_id}u;")
     lines += [f"const uint MATERIAL_COUNT = {len(MATERIALS)}u;", "", "#endif", ""]
@@ -299,7 +302,7 @@ def generate_material_physics():
         ("materialThermalConductivity", "conductivity", "uint", "32u"),
     ]
     lines = [
-        "#ifndef EPOCH_SAND_MATERIAL_PHYSICS_GLSL", "#define EPOCH_SAND_MATERIAL_PHYSICS_GLSL", "",
+        "#ifndef SANDHYBRID_MATERIAL_PHYSICS_GLSL", "#define SANDHYBRID_MATERIAL_PHYSICS_GLSL", "",
         "const int NO_TEMPERATURE = 32767;", "const uint PHASE_EMPTY = 0u;", "const uint PHASE_SOLID = 1u;",
         "const uint PHASE_POWDER = 2u;", "const uint PHASE_LIQUID = 3u;", "const uint PHASE_GAS = 4u;",
         "const uint PHASE_PLASMA = 5u;", "const uint PHASE_SOFTENED = 6u;", "const uint PHASE_MOLTEN = 7u;",
@@ -338,8 +341,8 @@ def generate_ui_text():
     card_offsets_base, card_words_base, card_material_count, card_line_count = _append_card_table(storage)
 
     output = [
-        "#ifndef EPOCH_SAND_UI_TEXT_GLSL",
-        "#define EPOCH_SAND_UI_TEXT_GLSL",
+        "#ifndef SANDHYBRID_UI_TEXT_GLSL",
+        "#define SANDHYBRID_UI_TEXT_GLSL",
         "",
         "layout(std430, binding = 6) readonly buffer UiTextStorageBuffer {",
         "    uint uiTextStorage[];",
@@ -393,7 +396,7 @@ def generate_ui_text():
     ])
 
     (ROOT / "shaders/ui_text.glsl").write_text("\n".join(output), encoding="utf-8", newline="\n")
-    (ROOT / "include/epoch/sand/ui_text_data.hpp").write_text(
+    (ROOT / "include/sandhybrid/ui_text_data.hpp").write_text(
         _cpp_uint_array(storage), encoding="utf-8", newline="\n"
     )
 

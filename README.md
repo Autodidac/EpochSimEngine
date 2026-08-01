@@ -1,8 +1,8 @@
-# EpochSimEngine
+# SandHybrid
 
 Read `missioncache.md` before repository work. It is the single canonical mission document.
 
-EpochSimEngine is currently a standalone C++23 Vulkan material, terrain, ecology, factory, and combat simulation testbed. Fine particles, liquids, gases, machines, actors, and aligned Terraria-style terrain blocks share one deterministic cell simulation. There is no second rigid-body or voxel physics world.
+SandHybrid is currently a standalone C++23 Vulkan material, terrain, ecology, factory, and combat simulation testbed. Fine particles, liquids, gases, machines, actors, and aligned Terraria-style terrain blocks share one deterministic cell simulation. There is no second rigid-body or voxel physics world.
 
 - Native Win32/Vulkan on Windows
 - Native XCB/Vulkan on Linux
@@ -147,7 +147,7 @@ Gas drawing is isolated behind `gasPresentation(...)`. The current pass uses res
 
 The interface was rebuilt as a pixel-aligned EpochGui layout. The native title bar remains simple; game controls stay inside the Vulkan viewport.
 
-- compact `Epoch Sand` header and FPS display
+- compact `SandHybrid` header and FPS display
 - responsive scene and mode controls
 - eight consistent material groups and slots
 - larger title, FPS, controls, palette labels, and character HUD
@@ -219,7 +219,7 @@ All scenes use the same canonical material and structural rules.
 - machine work restricted to valid controller/output locations
 - paused state performs no continuous simulation ticks
 
-The current world is a dense 5120x2880 GPU grid. Authored 640x360 scene content is centered at the bottom of that world. The active simulation gate uses map-footprint-sized 640x360 regions in a 17-position starburst around the camera; everything outside the active set is rejected by simulation shaders. Stable regions still exit before expensive chemistry, neighborhood, and movement work. Sparse far-region streaming remains an open mission in `missioncache.md`.
+The logical world is 5120x2880 cells, while the current bounded resident GPU window is 2560x1440 cells until deterministic far-section streaming is complete. Authored 640x360 scene content is centered at the bottom of the resident window. The active simulation gate uses map-footprint-sized 640x360 regions in a 17-position starburst around the camera; everything outside the active set is rejected by simulation shaders. Stable regions still exit before expensive chemistry, neighborhood, and movement work. Sparse far-region streaming remains an open mission in `missioncache.md`.
 
 ## Windows build
 
@@ -237,7 +237,7 @@ run_windows.bat Release
 Output:
 
 ```text
-build\windows\Release\epoch_sand.exe
+build\windows\Release\sandhybrid.exe
 ```
 
 Run the complete build, shader, warning, and contract validation separately:
@@ -263,7 +263,7 @@ See [`VALIDATION.md`](VALIDATION.md) for the required 24-item validation matrix 
 Manual contract commands:
 
 ```bash
-cmake -S . -B build/tests -DSAND_HYBRID_BUILD_APP=OFF -DBUILD_TESTING=ON
+cmake -S . -B build/tests -DSANDHYBRID_BUILD_APP=OFF -DBUILD_TESTING=ON
 cmake --build build/tests
 ctest --test-dir build/tests --output-on-failure
 python tools/generate_ui_text.py

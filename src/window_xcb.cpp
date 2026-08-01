@@ -1,4 +1,4 @@
-#include "epoch/sand/window.hpp"
+#include "sandhybrid/window.hpp"
 
 #include <xcb/xcb.h>
 
@@ -8,7 +8,7 @@
 #include <string>
 #include <utility>
 
-namespace epoch::sand {
+namespace sandhybrid {
 
 namespace {
 
@@ -456,4 +456,4 @@ VkSurfaceKHR NativeWindow::create_surface(const VkInstance instance) const {
     return surface;
 }
 
-} // namespace epoch::sand
+} // namespace sandhybrid

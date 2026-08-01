@@ -1,6 +1,6 @@
-#include "epoch/sand/scene_image.hpp"
+#include "sandhybrid/scene_image.hpp"
 
-#include "epoch/sand/material.hpp"
+#include "sandhybrid/material.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,7 +12,7 @@
 #include <string_view>
 #include <vector>
 
-namespace epoch::sand {
+namespace sandhybrid {
 namespace {
 
 constexpr std::uint32_t aux_charged = 0x40000000u;
@@ -434,4 +434,4 @@ bool write_scene_material_key(const std::filesystem::path& directory, std::strin
     return true;
 }
 
-} // namespace epoch::sand
+} // namespace sandhybrid

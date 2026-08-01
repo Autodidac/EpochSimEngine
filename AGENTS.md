@@ -1,6 +1,6 @@
 # Repository Work Instructions
 
-Before planning, editing, reviewing, building, or releasing EpochSimEngine:
+Before planning, editing, reviewing, building, or releasing SandHybrid:
 
 1. Read `missioncache.md` and `MISSION_LEDGER.md`.
 2. Preserve every non-COMPLETE mission and its acceptance criteria.

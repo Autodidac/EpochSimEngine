@@ -1,11 +1,11 @@
 #pragma once
-#include "epoch/sand/material.hpp"
+#include "sandhybrid/material.hpp"
 #include <gui/floating_window.hpp>
 #include <gui/font.hpp>
 #include <algorithm>
 #include <cstdint>
 
-namespace epoch::sand::ui {
+namespace sandhybrid::ui {
 inline constexpr std::uint32_t preferred_sidebar_width = 384u;
 inline constexpr std::uint32_t minimum_sidebar_width = 300u;
 inline constexpr std::uint32_t status_height = 126u;
@@ -161,4 +161,4 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
     const auto slot = palette_slot_at(layout, group, point);
     return slot < material_group_size(group) ? grouped_material(group, slot) : Material::count;
 }
-} // namespace epoch::sand::ui
+} // namespace sandhybrid::ui

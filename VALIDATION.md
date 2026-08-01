@@ -1,4 +1,4 @@
-# EpochSand Fix22 validation matrix
+# SandHybrid Fix22 validation matrix
 
 The project separates three validation levels:
 
