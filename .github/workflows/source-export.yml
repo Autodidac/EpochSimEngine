@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   export:
@@ -35,40 +35,3 @@ jobs:
             ${{ runner.temp }}/EpochSimEngine-source.tar.gz.sha256
           if-no-files-found: error
           retention-days: 1
-
-  apply_v243_version:
-    if: github.head_ref == 'agent/release-v243'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout release branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-
-      - name: Bump project version and restore source export
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('CMakeLists.txt')
-          text = path.read_text(encoding='utf-8')
-          old = 'project(EpochSimEngine VERSION 2.4.2 LANGUAGES CXX)'
-          new = 'project(EpochSimEngine VERSION 2.4.3 LANGUAGES CXX)'
-          if text.count(old) != 1:
-              raise SystemExit(f'expected one v2.4.2 project declaration, found {text.count(old)}')
-          path.write_text(text.replace(old, new), encoding='utf-8')
-          PY
-          git show origin/main:.github/workflows/source-export.yml > .github/workflows/source-export.yml
-
-      - name: Commit release version
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'EpochSimEngine Release Agent'
-          git config user.email 'actions@users.noreply.github.com'
-          git add CMakeLists.txt .github/workflows/source-export.yml
-          git commit -m 'Bump EpochSimEngine to v2.4.3'
-          git push origin "HEAD:${{ github.head_ref }}"
