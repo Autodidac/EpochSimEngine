@@ -108,7 +108,6 @@ If runtime profiling proves the map-sized starburst too expensive, the only perm
 | MC-069 | PARTIAL | 2x2 maximum zoom-out | Maximum zoom-out displays four pre-expansion world footprints in a 2x2 view; clamp there and preserve input/cursor mapping, active-scope clarity, and culling. |
 | MC-074 | REGRESSION | Bottom-centered authored maps | Every authored scene occupies exactly one 640x360 footprint centered horizontally at the absolute bottom of the expanded world. Scene generation never repeats, stretches, or fills the remaining 8x8 world; actors, hives, machines, metadata, saves, reset, and camera home use the same offset. |
 | MC-075 | PARTIAL | Camera navigation and scope HUD | Middle-mouse drag, mouse-edge scrolling, and camera reset work at every zoom. Keyboard camera panning is permitted only when the current scene has no player; MC-076 owns that routing contract. The sidebar always shows current zoom, active-region mode, and active-region count, while debug draws map-area boundaries clearly. Drag, edge, reset, HUD, and boundary rendering remain runtime-unverified. |
-| MC-076 | PARTIAL | Context-sensitive W/A/S/D ownership | Directional keyboard input has exactly one owner. When a scene has a player, W/A/S/D controls the player and contributes zero camera motion. When no player exists, W/A/S/D pans the camera and contributes zero actor motion. Mouse-edge and middle-mouse camera controls remain independent. A shared constexpr router and behavior contract are implemented; Windows/Linux CI evidence is pending. |
 
 ## Library architecture
 
@@ -169,6 +168,10 @@ Package checksums:
 - Linux: `4d5a8600d99d2d9e133f3cc50e0d9f35ed2d3daae5198215cdf0315dbb52e0b3`
 
 `MC-075` was later corrected: player scenes must not route W/A/S/D to the camera. The incorrect simultaneous-routing behavior from this release is superseded by MC-076 and must not be restored.
+
+## MC-076 — context-sensitive W/A/S/D ownership
+
+Completed by PR #24, merge `e7da78441a1076601764043e0825aecf982daf5d`. Directional input now has exactly one owner: player scenes route W/A/S/D exclusively to the player, while scenes without a player route it exclusively to the camera. Mouse-edge scrolling and middle-mouse drag remain independent camera controls. A shared `constexpr` router is exercised by the C++ behavior contract, and the static source validator rejects simultaneous player/camera routing. Accepted Windows/Linux CI run: `30679657812`.
 
 ## Carry-forward rule
 
