@@ -61,78 +61,34 @@ jobs:
                   raise SystemExit(f'{path}: expected exactly one match, found {count}')
               file_path.write_text(text.replace(old, new), encoding='utf-8')
 
-          replace_exact(
-              'src/app.cpp',
-              '''        const bool player_scene = scene_has_character(scene);
-          if (!player_scene) {
-              camera_direction_x += (input.move_right ? 1 : 0) - (input.move_left ? 1 : 0);
-              camera_direction_y += (input.move_down ? 1 : 0) - (input.move_up ? 1 : 0);
-          }
-          ''',
-              '''        // Camera navigation is universal. Character scenes continue forwarding the
-          // same input to the actor below, so W/A/S/D moves both the player and view.
-          camera_direction_x += (input.move_right ? 1 : 0) - (input.move_left ? 1 : 0);
-          camera_direction_y += (input.move_down ? 1 : 0) - (input.move_up ? 1 : 0);
-          ''')
+          app_old = (
+              '        const bool player_scene = scene_has_character(scene);\n'
+              '        if (!player_scene) {\n'
+              '            camera_direction_x += (input.move_right ? 1 : 0) - (input.move_left ? 1 : 0);\n'
+              '            camera_direction_y += (input.move_down ? 1 : 0) - (input.move_up ? 1 : 0);\n'
+              '        }\n'
+          )
+          app_new = (
+              '        // Camera navigation is universal. Character scenes continue forwarding the\n'
+              '        // same input to the actor below, so W/A/S/D moves both the player and view.\n'
+              '        camera_direction_x += (input.move_right ? 1 : 0) - (input.move_left ? 1 : 0);\n'
+              '        camera_direction_y += (input.move_down ? 1 : 0) - (input.move_up ? 1 : 0);\n'
+          )
+          replace_exact('src/app.cpp', app_old, app_new)
 
-          replace_exact(
-              'README.md',
-              '''### Scenes without a player
+          readme_old = '### Scenes without a player\n\n- `W` / `A` / `S` / `D`: pan camera\n'
+          readme_new = (
+              '### Camera navigation\n\n'
+              '- `W` / `A` / `S` / `D`: pan camera in every scene\n'
+              '- Character scenes also continue forwarding `W` / `A` / `S` / `D` to the player\n'
+          )
+          replace_exact('README.md', readme_old, readme_new)
 
-          - `W` / `A` / `S` / `D`: pan camera
-          ''',
-              '''### Camera navigation
-
-          - `W` / `A` / `S` / `D`: pan camera in every scene
-          - Character scenes also continue forwarding `W` / `A` / `S` / `D` to the player
-          ''')
-
-          replace_exact(
-              'missioncache.md',
-              '''| MC-075 | OPEN | Complete camera navigation and scope HUD | Middle-mouse drag, mouse-edge scrolling, and camera reset work at every zoom. On scenes without a player, W/A/S/D pan the camera; player scenes retain W/A/S/D player controls. The sidebar always shows current zoom, active-region mode, and active-region count, while debug draws map-area boundaries clearly. |
-          ''',
-              '''| MC-075 | PARTIAL | Complete camera navigation and scope HUD | Middle-mouse drag, mouse-edge scrolling, and camera reset work at every zoom. W/A/S/D pans the camera in every scene; character scenes simultaneously retain W/A/S/D player controls. The sidebar always shows current zoom, active-region mode, and active-region count, while debug draws map-area boundaries clearly. Static implementation is present; runtime scene verification remains required. |
-          ''')
-
-          Path('.github/workflows/source-export.yml').write_text('''name: EpochSimEngine Source Export
-
-          on:
-            pull_request:
-              branches:
-                - main
-              types: [opened, synchronize, reopened]
-            workflow_dispatch:
-
-          permissions:
-            contents: read
-
-          jobs:
-            export:
-              runs-on: ubuntu-24.04
-              steps:
-                - name: Checkout exact PR source
-                  uses: actions/checkout@v4
-                  with:
-                    fetch-depth: 1
-
-                - name: Package source
-                  shell: bash
-                  run: |
-                    set -euo pipefail
-                    git archive --format=tar.gz --output="${RUNNER_TEMP}/EpochSimEngine-source.tar.gz" HEAD
-                    sha256sum "${RUNNER_TEMP}/EpochSimEngine-source.tar.gz" > "${RUNNER_TEMP}/EpochSimEngine-source.tar.gz.sha256"
-
-                - name: Upload source artifact
-                  uses: actions/upload-artifact@v4
-                  with:
-                    name: EpochSimEngine-source
-                    path: |
-                      ${{ runner.temp }}/EpochSimEngine-source.tar.gz
-                      ${{ runner.temp }}/EpochSimEngine-source.tar.gz.sha256
-                    if-no-files-found: error
-                    retention-days: 1
-          ''', encoding='utf-8')
+          mission_old = '| MC-075 | OPEN | Complete camera navigation and scope HUD | Middle-mouse drag, mouse-edge scrolling, and camera reset work at every zoom. On scenes without a player, W/A/S/D pan the camera; player scenes retain W/A/S/D player controls. The sidebar always shows current zoom, active-region mode, and active-region count, while debug draws map-area boundaries clearly. |\n'
+          mission_new = '| MC-075 | PARTIAL | Complete camera navigation and scope HUD | Middle-mouse drag, mouse-edge scrolling, and camera reset work at every zoom. W/A/S/D pans the camera in every scene; character scenes simultaneously retain W/A/S/D player controls. The sidebar always shows current zoom, active-region mode, and active-region count, while debug draws map-area boundaries clearly. Static implementation is present; runtime scene verification remains required. |\n'
+          replace_exact('missioncache.md', mission_old, mission_new)
           PY
+          git show origin/main:.github/workflows/source-export.yml > .github/workflows/source-export.yml
 
       - name: Commit implementation and restore read-only export
         shell: bash
