@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   export:
@@ -35,3 +35,27 @@ jobs:
             ${{ runner.temp }}/EpochSimEngine-source.tar.gz.sha256
           if-no-files-found: error
           retention-days: 1
+
+  apply_context_wasd:
+    if: github.head_ref == 'agent/fix-context-wasd'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout correction branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/fix-context-wasd
+          fetch-depth: 0
+
+      - name: Apply source, tests, documentation, and mission updates
+        shell: bash
+        run: python .github/apply-context-wasd.py
+
+      - name: Commit canonical correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'EpochSimEngine Input Agent'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'Route WASD exclusively to player or camera'
+          git push origin agent/fix-context-wasd
