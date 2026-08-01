@@ -21,9 +21,27 @@ inline constexpr std::uint32_t pre_expansion_world_height = 360u;
 inline constexpr std::uint32_t logical_world_dimension_scale = 8u;
 inline constexpr std::uint32_t resident_world_dimension_scale = 4u;
 
-inline constexpr std::uint32_t camera_zoom_min = 4u;
-inline constexpr std::uint32_t camera_zoom_default = 8u;
-inline constexpr std::uint32_t camera_zoom_max = 64u;
+// The v2.4.4 resident-window reduction accidentally reused the old numeric
+// zoom limits against half-sized resident dimensions. That cut every camera
+// view in half. Scale the zoom values with the resident window so the visual
+// contract remains unchanged: 2x2 map footprints at maximum zoom-out, one
+// complete 640x360 map at reset, and the original close-up limit.
+inline constexpr std::uint32_t camera_zoom_min = resident_world_dimension_scale / 2u;
+inline constexpr std::uint32_t camera_zoom_default = resident_world_dimension_scale;
+inline constexpr std::uint32_t camera_zoom_max = resident_world_dimension_scale * 8u;
+
+static_assert((pre_expansion_world_width * resident_world_dimension_scale) /
+                  camera_zoom_min ==
+              pre_expansion_world_width * 2u);
+static_assert((pre_expansion_world_height * resident_world_dimension_scale) /
+                  camera_zoom_min ==
+              pre_expansion_world_height * 2u);
+static_assert((pre_expansion_world_width * resident_world_dimension_scale) /
+                  camera_zoom_default ==
+              pre_expansion_world_width);
+static_assert((pre_expansion_world_height * resident_world_dimension_scale) /
+                  camera_zoom_default ==
+              pre_expansion_world_height);
 
 struct SimulationConfig final {
     std::uint32_t grid_width{pre_expansion_world_width * resident_world_dimension_scale};
