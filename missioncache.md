@@ -187,3 +187,17 @@ Completed by PR #24, merge `e7da78441a1076601764043e0825aecf982daf5d`. Direction
 ## Carry-forward rule
 
 New work receives a stable `MC-###` ID. Failed, missed, deferred, or regressed missions remain active. Completed missions move here with release evidence. Runtime contradiction reopens the same ID.
+
+## SandHybrid v2.4.5 release evidence
+
+- Release tag: `v2.4.5` (`SandHybrid v2.4.5`)
+- Release target: `ef05ac7e53ddcdcf42dfc4410f8aeb742c6ff8f0`
+- Accepted Windows/Linux CI: run `30692507199`, source head `4099e415e73f15fcb96e3baa8c050e7c07994657`
+- Packages: `SandHybrid-Windows-x64-v2.4.5.zip`, `SandHybrid-Linux-x64-v2.4.5.tar.gz`, and `SHA256SUMS.txt`
+
+```text
+b578ad5286aefb67746f4c845d268884e1443ea8e95f88dd05efcd580d3e6462  windows/SandHybrid-Windows-x64-v2.4.5.zip
+87d217da1496883a061f853f88df6c47993fdb6e5b73b33692e2d28506900138  linux/SandHybrid-Linux-x64-v2.4.5.tar.gz
+```
+
+Runtime-observed missions remain active until accepted in the packaged Windows Vulkan build.
