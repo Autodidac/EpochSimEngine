@@ -234,6 +234,7 @@ def main() -> int:
     chemistry_comp = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
     reset_comp = (SHADERS / "reset.comp").read_text(encoding="utf-8")
     app_cpp = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
+    input_routing_hpp = (ROOT / "include/epoch/sand/input_routing.hpp").read_text(encoding="utf-8")
     window_hpp = (ROOT / "include/epoch/sand/window.hpp").read_text(encoding="utf-8")
     win32_cpp = (ROOT / "src/window_win32.cpp").read_text(encoding="utf-8")
     xcb_cpp = (ROOT / "src/window_xcb.cpp").read_text(encoding="utf-8")
@@ -546,14 +547,32 @@ def main() -> int:
             errors.append(f"bottom-centered authored map contract missing {token!r}")
     for token in (
         "edge_band_pixels = 28",
-        "(input.move_right ? 1 : 0) - (input.move_left ? 1 : 0)",
+        "route_directional_input(",
+        "camera_direction_x = directional_input.camera_x",
+        "camera_direction_y = directional_input.camera_y",
+        "shared_state.move_x.store(directional_input.player_x",
+        "shared_state.move_y.store(directional_input.player_y",
         "layout.placement_cells",
         "layout.placement_tiles",
     ):
         if token not in app_cpp:
             errors.append(f"camera/placement input contract missing {token!r}")
-    if "if (!player_scene)" in app_cpp:
-        errors.append("camera WASD is incorrectly disabled on player scenes")
+    for token in (
+        "struct DirectionalInputRouting final",
+        "if (player_present)",
+        "return {0, 0, horizontal, vertical};",
+        "return {horizontal, vertical, 0, 0};",
+    ):
+        if token not in input_routing_hpp:
+            errors.append(f"context-sensitive directional routing contract missing {token!r}")
+    for forbidden in (
+        "Camera navigation is universal",
+        "W/A/S/D moves both the player and view",
+        "camera_direction_x += (input.move_right ? 1 : 0)",
+        "camera_direction_y += (input.move_down ? 1 : 0)",
+    ):
+        if forbidden in app_cpp:
+            errors.append(f"player-scene camera duplication remains: {forbidden!r}")
     if "recordConservation(oxygen, carbonDioxide)" not in actor:
         errors.append("actor respiration does not exchange oxygen for equal-volume CO2")
     if "state.y < 112" in actor:

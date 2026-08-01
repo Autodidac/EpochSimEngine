@@ -1,3 +1,4 @@
+#include "epoch/sand/input_routing.hpp"
 #include "epoch/sand/material.hpp"
 #include "epoch/sand/simulation_policy.hpp"
 
@@ -97,6 +98,19 @@ struct CanonicalState final {
     return vacuum_volume == 0u && oxygen_volume > 0u;
 }
 
+[[nodiscard]] constexpr bool directional_input_routes_by_scene() noexcept {
+    using epoch::sand::DirectionalInputRouting;
+    using epoch::sand::route_directional_input;
+
+    constexpr auto camera_scene = route_directional_input(false, false, true, true, false);
+    constexpr auto player_scene = route_directional_input(true, false, true, true, false);
+    constexpr auto neutral_scene = route_directional_input(true, true, true, true, true);
+
+    return camera_scene == DirectionalInputRouting{1, -1, 0, 0} &&
+           player_scene == DirectionalInputRouting{0, 0, 1, -1} &&
+           neutral_scene == DirectionalInputRouting{0, 0, 0, 0};
+}
+
 [[nodiscard]] constexpr bool terrain_stability_preserves_representation() noexcept {
     constexpr std::uint32_t initial_mass = 64u;
     constexpr std::uint32_t detached_pixels = 33u;
@@ -111,6 +125,7 @@ static_assert(local_water_equalization_preserves_volume());
 static_assert(half_water_medium_exchange_preserves_volume());
 static_assert(breathing_requires_explicit_oxygen());
 static_assert(terrain_stability_preserves_representation());
+static_assert(directional_input_routes_by_scene());
 static_assert(epoch::sand::policy::stability_ready(52u, 120u, true, true, false, false, 0u));
 static_assert(!epoch::sand::policy::stability_ready(51u, 120u, true, true, false, false, 0u));
 static_assert(epoch::sand::policy::laser_hits_to_dislodge == 2u);
@@ -142,5 +157,6 @@ int main() {
     return creation_paths_are_canonical() && local_water_equalization_preserves_volume() &&
            half_water_medium_exchange_preserves_volume() &&
            breathing_requires_explicit_oxygen() &&
-           terrain_stability_preserves_representation() ? 0 : 1;
+           terrain_stability_preserves_representation() &&
+           directional_input_routes_by_scene() ? 0 : 1;
 }

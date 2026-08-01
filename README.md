@@ -196,13 +196,12 @@ All scenes use the same canonical material and structural rules.
 
 ### Camera navigation
 
-- `W` / `A` / `S` / `D`: pan camera in every scene
-- Character scenes also continue forwarding `W` / `A` / `S` / `D` to the player
+- `W` / `A` / `S` / `D`: pan the camera only in scenes without a player
+- Mouse-edge scrolling and middle-mouse drag remain available in every scene
 
 ### Character scenes
 
-- `A` / `D`: walk
-- `W`: jump
+- `W` / `A` / `S` / `D`: control the player exclusively; these keys do not pan the camera
 - Mine mode, left mouse: drill terrain; automatically fire plasma when the first hit is a hostile and ammo is available
 - Mine mode, right mouse: deposit carried resource
 - Build mode, left mouse: place selected material

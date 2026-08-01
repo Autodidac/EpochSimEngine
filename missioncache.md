@@ -107,7 +107,8 @@ If runtime profiling proves the map-sized starburst too expensive, the only perm
 | MC-068 | PARTIAL | Camera home/reset | Explicit reset returns camera to the authored 640x360 map at the bottom center of the expanded world and the documented default zoom without touching simulation state. |
 | MC-069 | PARTIAL | 2x2 maximum zoom-out | Maximum zoom-out displays four pre-expansion world footprints in a 2x2 view; clamp there and preserve input/cursor mapping, active-scope clarity, and culling. |
 | MC-074 | REGRESSION | Bottom-centered authored maps | Every authored scene occupies exactly one 640x360 footprint centered horizontally at the absolute bottom of the expanded world. Scene generation never repeats, stretches, or fills the remaining 8x8 world; actors, hives, machines, metadata, saves, reset, and camera home use the same offset. |
-| MC-075 | PARTIAL | Complete camera navigation and scope HUD | Middle-mouse drag, mouse-edge scrolling, and camera reset work at every zoom. W/A/S/D pans the camera in every scene; character scenes simultaneously retain W/A/S/D player controls. The sidebar always shows current zoom, active-region mode, and active-region count, while debug draws map-area boundaries clearly. Static implementation is present; runtime scene verification remains required. |
+| MC-075 | PARTIAL | Camera navigation and scope HUD | Middle-mouse drag, mouse-edge scrolling, and camera reset work at every zoom. Keyboard camera panning is permitted only when the current scene has no player; MC-076 owns that routing contract. The sidebar always shows current zoom, active-region mode, and active-region count, while debug draws map-area boundaries clearly. Drag, edge, reset, HUD, and boundary rendering remain runtime-unverified. |
+| MC-076 | PARTIAL | Context-sensitive W/A/S/D ownership | Directional keyboard input has exactly one owner. When a scene has a player, W/A/S/D controls the player and contributes zero camera motion. When no player exists, W/A/S/D pans the camera and contributes zero actor motion. Mouse-edge and middle-mouse camera controls remain independent. A shared constexpr router and behavior contract are implemented; Windows/Linux CI evidence is pending. |
 
 ## Library architecture
 
@@ -134,6 +135,7 @@ If runtime profiling proves the map-sized starburst too expensive, the only perm
 - The main thread never executes section simulation work.
 - Worker assignment is deterministic and pairs outer map-area regions first when fewer than 17 workers are available.
 - World expansion, zoom, pausing, streaming, and concurrency do not change deterministic reference results.
+- Directional keyboard input has exactly one owner: the player when present, otherwise the camera. Mouse-edge and middle-mouse camera input remain independent.
 - Debug statistics never cover the normal simulation viewport; debug state coloring and active-area boundaries may render in the world.
 - 8x8 terrain regions qualify for stability only and never reconstruct missing cells.
 - Each terrain pixel takes two laser hits; after more than half are dislodged, the represented remainder collapses rather than vanishes.
@@ -166,7 +168,7 @@ Package checksums:
 - Windows: `f37fc8cf4aba001c14a1821223eb13a10f20ee85ac961efd5d32a58509d7bd22`
 - Linux: `4d5a8600d99d2d9e133f3cc50e0d9f35ed2d3daae5198215cdf0315dbb52e0b3`
 
-`MC-075` contains the universal W/A/S/D implementation and regression contract. Runtime scene verification remains active; unrelated open, partial, regressed, and deferred missions carry forward under their existing IDs.
+`MC-075` was later corrected: player scenes must not route W/A/S/D to the camera. The incorrect simultaneous-routing behavior from this release is superseded by MC-076 and must not be restored.
 
 ## Carry-forward rule
 
