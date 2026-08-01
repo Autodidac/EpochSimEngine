@@ -303,9 +303,16 @@ Uniform 8x8 material regions can now move as 64-cell macro-cells using the same 
 
 ## Half-volume fresh water
 
-Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and half-only extra horizontal passes. See `HALF_WATER.md`.
+Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and solid-supported pre-fall droplets that cannot hop along water edges or crawl after falling. See `HALF_WATER.md`.
 
 
 ## v2.4.1 correction
 
 Restores the approved suspended hive, caps autonomous colonies at 100 bees, slows bee respiration, bounds fire/ember oxygen-to-CO2 exchange, stabilizes and enlarges the biohazard mask, and fixes horizontal 8x8 bulk movement so represented oxygen/CO2 is displaceable atmosphere rather than requiring literal empty cells. Runtime acceptance remains tracked in `missioncache.md`.
+
+
+## Resident-width scene envelopes
+
+Every scene keeps its original authored objects at the same coordinates inside the bottom-centered 640x360 footprint. A sparse one-brick floor extends to both resident horizontal edges, with one-brick side walls around the playable bottom band. The expanded space is not tiled, repeated, or densely filled.
+
+Engineering now presents controlled thermal, single-aperture gas diffusion, sediment separation, and paired compost control/treatment experiments. Gold Mine includes a visible water-fed conveyor and sluice line. Ember becomes ash only; fertilizer requires ash, organic waste, mineral soil/silt, dirty water, oxygen, and time.
