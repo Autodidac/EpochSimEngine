@@ -1,0 +1,68 @@
+name: Publish EpochSimEngine v2.4.4
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-v244.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout merged release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download accepted Windows and Linux packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf release-assets
+          mkdir -p release-assets/windows release-assets/linux
+          gh run download 30684121727 --repo "$GITHUB_REPOSITORY" --name EpochSimEngine-Windows-x64-v2.4.4 --dir release-assets/windows
+          gh run download 30684121727 --repo "$GITHUB_REPOSITORY" --name EpochSimEngine-Linux-x64-v2.4.4 --dir release-assets/linux
+          find release-assets -type f -maxdepth 3 -print
+
+      - name: Create or repair v2.4.4 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find release-assets -type f -maxdepth 3 | sort)
+          test "${#assets[@]}" -eq 2
+          if gh release view v2.4.4 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload v2.4.4 "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create v2.4.4 "${assets[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target de0154cf4453ebb490b398301593ee7f17d9a62b \
+              --title "EpochSimEngine v2.4.4" \
+              --notes-file RELEASE_NOTES_v2.4.4.md \
+              --verify-tag
+          fi
+
+      - name: Delete merged release branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin --delete agent/v244-gpu-stability || true
+
+      - name: Remove one-shot publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/publish-v244.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows/publish-v244.yml
+          git commit -m "Remove one-shot v2.4.4 publisher"
+          git push origin HEAD:main
