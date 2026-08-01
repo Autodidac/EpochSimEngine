@@ -1,22 +1,24 @@
 name: Publish EpochSimEngine v2.4.4
 
 on:
-  push:
+  pull_request:
     branches: [main]
-    paths:
-      - .github/workflows/publish-v244.yml
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
   actions: read
+  pull-requests: write
 
 jobs:
   publish:
+    if: github.head_ref == 'agent/publish-v244'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout merged release source
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Download accepted Windows and Linux packages
@@ -29,7 +31,7 @@ jobs:
           mkdir -p release-assets/windows release-assets/linux
           gh run download 30684121727 --repo "$GITHUB_REPOSITORY" --name EpochSimEngine-Windows-x64-v2.4.4 --dir release-assets/windows
           gh run download 30684121727 --repo "$GITHUB_REPOSITORY" --name EpochSimEngine-Linux-x64-v2.4.4 --dir release-assets/linux
-          find release-assets -type f -maxdepth 3 -print
+          find release-assets -maxdepth 3 -type f -print
 
       - name: Create or repair v2.4.4 release
         env:
@@ -37,7 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t assets < <(find release-assets -type f -maxdepth 3 | sort)
+          mapfile -t assets < <(find release-assets -maxdepth 3 -type f | sort)
           test "${#assets[@]}" -eq 2
           if gh release view v2.4.4 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload v2.4.4 "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
@@ -46,17 +48,21 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --target de0154cf4453ebb490b398301593ee7f17d9a62b \
               --title "EpochSimEngine v2.4.4" \
-              --notes-file RELEASE_NOTES_v2.4.4.md \
-              --verify-tag
+              --notes-file RELEASE_NOTES_v2.4.4.md
           fi
 
-      - name: Delete merged release branch
+      - name: Close publisher PR and remove temporary branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           set -euo pipefail
+          gh pr close "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --comment "v2.4.4 published; cleanup completed."
           git push origin --delete agent/v244-gpu-stability || true
+          git push origin --delete agent/publish-v244 || true
 
-      - name: Remove one-shot publisher
+      - name: Remove one-shot publisher from main
         shell: bash
         run: |
           set -euo pipefail
