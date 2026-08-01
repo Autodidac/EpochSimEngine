@@ -107,7 +107,7 @@ If runtime profiling proves the map-sized starburst too expensive, the only perm
 | MC-068 | PARTIAL | Camera home/reset | Explicit reset returns camera to the authored 640x360 map at the bottom center of the expanded world and the documented default zoom without touching simulation state. |
 | MC-069 | PARTIAL | 2x2 maximum zoom-out | Maximum zoom-out displays four pre-expansion world footprints in a 2x2 view; clamp there and preserve input/cursor mapping, active-scope clarity, and culling. |
 | MC-074 | REGRESSION | Bottom-centered authored maps | Every authored scene occupies exactly one 640x360 footprint centered horizontally at the absolute bottom of the expanded world. Scene generation never repeats, stretches, or fills the remaining 8x8 world; actors, hives, machines, metadata, saves, reset, and camera home use the same offset. |
-| MC-075 | OPEN | Complete camera navigation and scope HUD | Middle-mouse drag, mouse-edge scrolling, and camera reset work at every zoom. On scenes without a player, W/A/S/D pan the camera; player scenes retain W/A/S/D player controls. The sidebar always shows current zoom, active-region mode, and active-region count, while debug draws map-area boundaries clearly. |
+| MC-075 | PARTIAL | Complete camera navigation and scope HUD | Middle-mouse drag, mouse-edge scrolling, and camera reset work at every zoom. W/A/S/D pans the camera in every scene; character scenes simultaneously retain W/A/S/D player controls. The sidebar always shows current zoom, active-region mode, and active-region count, while debug draws map-area boundaries clearly. Static implementation is present; runtime scene verification remains required. |
 
 ## Library architecture
 

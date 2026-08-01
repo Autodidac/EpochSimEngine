@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   export:
@@ -35,67 +35,3 @@ jobs:
             ${{ runner.temp }}/EpochSimEngine-source.tar.gz.sha256
           if-no-files-found: error
           retention-days: 1
-
-  apply_wasd_camera_all_scenes:
-    if: github.head_ref == 'agent/wasd-camera-all-scenes'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout implementation branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-
-      - name: Apply universal WASD camera navigation
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          def replace_exact(path: str, old: str, new: str) -> None:
-              file_path = Path(path)
-              text = file_path.read_text(encoding='utf-8')
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected exactly one match, found {count}')
-              file_path.write_text(text.replace(old, new), encoding='utf-8')
-
-          app_old = (
-              '        const bool player_scene = scene_has_character(scene);\n'
-              '        if (!player_scene) {\n'
-              '            camera_direction_x += (input.move_right ? 1 : 0) - (input.move_left ? 1 : 0);\n'
-              '            camera_direction_y += (input.move_down ? 1 : 0) - (input.move_up ? 1 : 0);\n'
-              '        }\n'
-          )
-          app_new = (
-              '        // Camera navigation is universal. Character scenes continue forwarding the\n'
-              '        // same input to the actor below, so W/A/S/D moves both the player and view.\n'
-              '        camera_direction_x += (input.move_right ? 1 : 0) - (input.move_left ? 1 : 0);\n'
-              '        camera_direction_y += (input.move_down ? 1 : 0) - (input.move_up ? 1 : 0);\n'
-          )
-          replace_exact('src/app.cpp', app_old, app_new)
-
-          readme_old = '### Scenes without a player\n\n- `W` / `A` / `S` / `D`: pan camera\n'
-          readme_new = (
-              '### Camera navigation\n\n'
-              '- `W` / `A` / `S` / `D`: pan camera in every scene\n'
-              '- Character scenes also continue forwarding `W` / `A` / `S` / `D` to the player\n'
-          )
-          replace_exact('README.md', readme_old, readme_new)
-
-          mission_old = '| MC-075 | OPEN | Complete camera navigation and scope HUD | Middle-mouse drag, mouse-edge scrolling, and camera reset work at every zoom. On scenes without a player, W/A/S/D pan the camera; player scenes retain W/A/S/D player controls. The sidebar always shows current zoom, active-region mode, and active-region count, while debug draws map-area boundaries clearly. |\n'
-          mission_new = '| MC-075 | PARTIAL | Complete camera navigation and scope HUD | Middle-mouse drag, mouse-edge scrolling, and camera reset work at every zoom. W/A/S/D pans the camera in every scene; character scenes simultaneously retain W/A/S/D player controls. The sidebar always shows current zoom, active-region mode, and active-region count, while debug draws map-area boundaries clearly. Static implementation is present; runtime scene verification remains required. |\n'
-          replace_exact('missioncache.md', mission_old, mission_new)
-          PY
-          git show origin/main:.github/workflows/source-export.yml > .github/workflows/source-export.yml
-
-      - name: Commit implementation and restore read-only export
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'EpochSimEngine Runtime Agent'
-          git config user.email 'actions@users.noreply.github.com'
-          git add src/app.cpp README.md missioncache.md .github/workflows/source-export.yml
-          git commit -m 'Enable WASD camera navigation in every scene'
-          git push origin "HEAD:${{ github.head_ref }}"

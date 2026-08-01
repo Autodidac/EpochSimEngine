@@ -295,11 +295,10 @@ int run_application() {
         last_camera_update = camera_now;
         int camera_direction_x = 0;
         int camera_direction_y = 0;
-        const bool player_scene = scene_has_character(scene);
-        if (!player_scene) {
-            camera_direction_x += (input.move_right ? 1 : 0) - (input.move_left ? 1 : 0);
-            camera_direction_y += (input.move_down ? 1 : 0) - (input.move_up ? 1 : 0);
-        }
+        // Camera navigation is universal. Character scenes continue forwarding the
+        // same input to the actor below, so W/A/S/D moves both the player and view.
+        camera_direction_x += (input.move_right ? 1 : 0) - (input.move_left ? 1 : 0);
+        camera_direction_y += (input.move_down ? 1 : 0) - (input.move_up ? 1 : 0);
         if (over_simulation && !pan_dragging) {
             constexpr int edge_band_pixels = 28;
             const int local_x = input.mouse_x - static_cast<int>(simulation_viewport.rect.position.x);
