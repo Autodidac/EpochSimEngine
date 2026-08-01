@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   apply:
-    if: ${{ hashFiles('.github/apply_v244.py') != '' }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout patch branch
