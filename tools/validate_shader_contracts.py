@@ -546,12 +546,14 @@ def main() -> int:
             errors.append(f"bottom-centered authored map contract missing {token!r}")
     for token in (
         "edge_band_pixels = 28",
-        "if (!player_scene)",
+        "(input.move_right ? 1 : 0) - (input.move_left ? 1 : 0)",
         "layout.placement_cells",
         "layout.placement_tiles",
     ):
         if token not in app_cpp:
             errors.append(f"camera/placement input contract missing {token!r}")
+    if "if (!player_scene)" in app_cpp:
+        errors.append("camera WASD is incorrectly disabled on player scenes")
     if "recordConservation(oxygen, carbonDioxide)" not in actor:
         errors.append("actor respiration does not exchange oxygen for equal-volume CO2")
     if "state.y < 112" in actor:

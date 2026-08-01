@@ -194,9 +194,10 @@ All scenes use the same canonical material and structural rules.
 - Cell/Tile placement selector: place any selected material as fine cells or one aligned 8x8 tile
 - Escape: exit
 
-### Scenes without a player
+### Camera navigation
 
-- `W` / `A` / `S` / `D`: pan camera
+- `W` / `A` / `S` / `D`: pan camera in every scene
+- Character scenes also continue forwarding `W` / `A` / `S` / `D` to the player
 
 ### Character scenes
 
