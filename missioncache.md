@@ -157,6 +157,17 @@ Windows/Linux C++23 builds, shaders, tests, packages, and checksums passed. Runt
 
 Runtime source merge: `2db7a6dad20a88f1ce65f54e3978f7f0daa9736f`. Windows/Linux CI run `30661800841` compiled all 12 shaders, built the C++23 library and demo, passed four contracts, and produced the published `v2.4.2` packages. Runtime observation reopened or retained the debug-layout, map placement, active-scope, settling, actors, Atmosphere, and hierarchy missions above.
 
+## v2.4.3 — universal camera navigation
+
+Release source: `bcd8c5135ab78d02a335329997e18d6b6fa36b1f`. Accepted CI run `30677627697` compiled all 12 shaders, built the C++23 library and demo on Windows 2022 and Ubuntu 24.04, passed all four contracts, installed packages, and uploaded both platform archives. Publication run `30678429804` published tag `v2.4.3`, the Windows archive, Linux archive, and `SHA256SUMS.txt`.
+
+Package checksums:
+
+- Windows: `f37fc8cf4aba001c14a1821223eb13a10f20ee85ac961efd5d32a58509d7bd22`
+- Linux: `4d5a8600d99d2d9e133f3cc50e0d9f35ed2d3daae5198215cdf0315dbb52e0b3`
+
+`MC-075` contains the universal W/A/S/D implementation and regression contract. Runtime scene verification remains active; unrelated open, partial, regressed, and deferred missions carry forward under their existing IDs.
+
 ## Carry-forward rule
 
 New work receives a stable `MC-###` ID. Failed, missed, deferred, or regressed missions remain active. Completed missions move here with release evidence. Runtime contradiction reopens the same ID.
