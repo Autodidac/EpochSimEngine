@@ -1,4 +1,4 @@
-name: EpochSimEngine v2.4.3 CI
+name: EpochSimEngine v2.4.4 CI
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: epochsim-v243-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: epochsim-v244-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -20,10 +20,10 @@ jobs:
         include:
           - os: windows-2022
             triplet: x64-windows
-            artifact: EpochSimEngine-Windows-x64-v2.4.3
+            artifact: EpochSimEngine-Windows-x64-v2.4.4
           - os: ubuntu-24.04
             triplet: x64-linux
-            artifact: EpochSimEngine-Linux-x64-v2.4.3
+            artifact: EpochSimEngine-Linux-x64-v2.4.4
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
 
@@ -105,7 +105,7 @@ jobs:
 
       - name: Add package documentation
         shell: bash
-        run: cp README.md LICENSE missioncache.md "dist/${{ matrix.artifact }}/"
+        run: cp README.md LICENSE missioncache.md RELEASE_NOTES_v2.4.4.md "dist/${{ matrix.artifact }}/"
 
       - name: Archive Windows package
         if: runner.os == 'Windows'
