@@ -1797,7 +1797,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .active_section_y = state.camera_center_y.load(std::memory_order_relaxed) /
                                 active_region_height_cells,
             .active_mode = 1u,
-            .reserved = collect_debug_stats ? 1u : 0u,
+            .reserved = 1u,
         };
         bind_compute(command_buffer, debug_stats_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
