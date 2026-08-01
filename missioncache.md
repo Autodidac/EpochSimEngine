@@ -201,3 +201,17 @@ b578ad5286aefb67746f4c845d268884e1443ea8e95f88dd05efcd580d3e6462  windows/SandHy
 ```
 
 Runtime-observed missions remain active until accepted in the packaged Windows Vulkan build.
+
+## SandHybrid v2.4.6 release evidence
+
+- Release tag: `v2.4.6` (`SandHybrid v2.4.6`)
+- Release target: `3ce05ff6a2ad14131e8dcf8c6302643e71dfcf5c`
+- Accepted Windows/Linux CI: run `30717524416`, source head `9fcf5b422d5e078e53537c5164259e8abd4c14c0`
+- Packages: `SandHybrid-Windows-x64-v2.4.6.zip`, `SandHybrid-Linux-x64-v2.4.6.tar.gz`, and `SHA256SUMS.txt`
+
+```text
+5f0289612dd65c8c9e2d2ba64c412fdd97222d95ce6bcfc4a31089ba9c9e1a77  windows/SandHybrid-Windows-x64-v2.4.6.zip
+8d9e03e1d61944f3060bed995108ec9d00257fa679ceb8ff47b3952db63c0fde  linux/SandHybrid-Linux-x64-v2.4.6.tar.gz
+```
+
+Runtime-observed missions remain active until accepted in the packaged Windows Vulkan build.
