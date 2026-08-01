@@ -1,4 +1,4 @@
-name: EpochSimEngine Source Export
+name: SandHybrid Source Export
 
 on:
   pull_request:
@@ -23,15 +23,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git archive --format=tar.gz --output="${RUNNER_TEMP}/EpochSimEngine-source.tar.gz" HEAD
-          sha256sum "${RUNNER_TEMP}/EpochSimEngine-source.tar.gz" > "${RUNNER_TEMP}/EpochSimEngine-source.tar.gz.sha256"
+          git archive --format=tar.gz --output="${RUNNER_TEMP}/SandHybrid-source.tar.gz" HEAD
+          sha256sum "${RUNNER_TEMP}/SandHybrid-source.tar.gz" > "${RUNNER_TEMP}/SandHybrid-source.tar.gz.sha256"
 
       - name: Upload source artifact
         uses: actions/upload-artifact@v4
         with:
-          name: EpochSimEngine-source
+          name: SandHybrid-source
           path: |
-            ${{ runner.temp }}/EpochSimEngine-source.tar.gz
-            ${{ runner.temp }}/EpochSimEngine-source.tar.gz.sha256
+            ${{ runner.temp }}/SandHybrid-source.tar.gz
+            ${{ runner.temp }}/SandHybrid-source.tar.gz.sha256
           if-no-files-found: error
           retention-days: 1
