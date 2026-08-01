@@ -27,6 +27,7 @@ jobs:
             exit 0
           fi
           python3 .github/apply_fix_half_water.py
+          sed -i 's#\.github/workflows/v245-ci.yml#.github/workflows/v246-ci.yml#g' tools/validate_shader_contracts.py
           python3 tools/generate_ui_text.py
           python3 tools/validate_shader_contracts.py
           cmake -S . -B build/contracts -G Ninja \
