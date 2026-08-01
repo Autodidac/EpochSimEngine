@@ -501,7 +501,7 @@ bool liquidCanSpread(ivec2 sourcePosition, ivec2 targetPosition, Cell source, ui
 bool solidSupportsWaterAt(ivec2 position) {
     Cell below = sampleAt(position + ivec2(0, 1));
     return isStructural(below) || isCellImmovable(below) ||
-           (isCellSolid(below) && !isCellLiquid(below) && !isCellGas(below));
+           (isBlockCapable(below.material) && !isCellLiquid(below) && !isCellGas(below));
 }
 
 bool solidLedgePrecedesDrop(ivec2 position, int direction) {
