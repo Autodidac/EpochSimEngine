@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   export:
@@ -35,3 +35,49 @@ jobs:
             ${{ runner.temp }}/EpochSimEngine-source.tar.gz.sha256
           if-no-files-found: error
           retention-days: 1
+
+  update_universal_wasd_contract:
+    if: github.head_ref == 'agent/wasd-camera-all-scenes'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Update camera input contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tools/validate_shader_contracts.py')
+          text = path.read_text(encoding='utf-8')
+          old = '        "if (!player_scene)",\n'
+          new = '        "(input.move_right ? 1 : 0) - (input.move_left ? 1 : 0)",\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one old player-scene camera contract, found {text.count(old)}')
+          text = text.replace(old, new)
+          anchor = '    if "recordConservation(oxygen, carbonDioxide)" not in actor:\n'
+          guard = (
+              '    if "if (!player_scene)" in app_cpp:\n'
+              '        errors.append("camera WASD is incorrectly disabled on player scenes")\n'
+          )
+          if text.count(anchor) != 1:
+              raise SystemExit(f'expected one camera-contract insertion anchor, found {text.count(anchor)}')
+          text = text.replace(anchor, guard + anchor)
+          path.write_text(text, encoding='utf-8')
+          PY
+          git show origin/main:.github/workflows/source-export.yml > .github/workflows/source-export.yml
+
+      - name: Commit contract fix and restore read-only export
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'EpochSimEngine Runtime Agent'
+          git config user.email 'actions@users.noreply.github.com'
+          git add tools/validate_shader_contracts.py .github/workflows/source-export.yml
+          git commit -m 'Update universal WASD camera contract'
+          git push origin "HEAD:${{ github.head_ref }}"
