@@ -1,0 +1,66 @@
+name: SandHybrid headless library CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandhybrid-headless-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  headless-library:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate source contracts
+        run: |
+          python tools/validate_shader_contracts.py
+          python tools/validate_mission_cache.py
+
+      - name: Configure Windows headless library
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake -S . -B build/library -G 'Visual Studio 17 2022' -A x64 `
+            -DSANDHYBRID_BUILD_APP=OFF `
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF `
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON `
+            -DBUILD_TESTING=ON
+
+      - name: Configure Linux headless library
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cmake -S . -B build/library -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+
+      - name: Build Windows headless library
+        if: runner.os == 'Windows'
+        run: cmake --build build/library --config Release --parallel
+
+      - name: Build Linux headless library
+        if: runner.os == 'Linux'
+        run: cmake --build build/library --parallel
+
+      - name: Test Windows headless library
+        if: runner.os == 'Windows'
+        run: ctest --test-dir build/library -C Release --output-on-failure
+
+      - name: Test Linux headless library
+        if: runner.os == 'Linux'
+        run: ctest --test-dir build/library --output-on-failure
