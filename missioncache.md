@@ -16,11 +16,26 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 
 # Active missions
 
+## Production rewrite and sparse world migration
+
+| ID | Status | Mission | Acceptance |
+|---|---|---|---|
+| MC-101 | PARTIAL | Execute the production rewrite program | `REWRITE_PLAN.md` is the authoritative staged migration plan. Each stage lands behind deterministic contracts, preserves the old runtime until parity passes, updates this ledger in the same commit, and removes compatibility code only after Windows/Linux runtime acceptance. R1 is complete and R2 is initiated. |
+| MC-102 | PARTIAL | Sparse 64x64 section metadata | The platform-neutral core owns signed sparse section coordinates, per-section dirty rectangles, four non-touching phases, boundary-halo wakeups, automatic sleep, and clean metadata retirement. Deterministic contracts pass. Runtime dispatch must still prove that clean sections execute zero material work. |
+| MC-103 | OPEN | Canonical paged cell storage | Replace duplicated hierarchy authority with one append-only, save-versioned cell store. Hot fields use structure-of-arrays storage; half-water, moisture, atmosphere components, damage, temperature, and material identity survive page load/save exactly. |
+| MC-104 | OPEN | Transactional liquid and gas packet acceleration | Eligible 8x8 liquid/gas packets are derived from canonical cells, validate into scratch state, and atomically commit or run fine fallback in the same tick. No ownership ping-pong, volume loss, hidden fill, or one-frame classification loop is permitted. |
+| MC-105 | PARTIAL | Structural solids are metadata only | Stone, iron ore, refined iron, and other block-capable solids use 8x8 support/cohesion/sleep metadata without whole-tile translation. At 31 destroyed cells of 64, the remaining 33 release individually. Runtime fracture and persistence acceptance remain required. |
+| MC-106 | OPEN | Canonical packed atmosphere | Atmosphere cells conserve N2/O2/Ar/CO2/H2/He/vapor/contaminants, pressure, and temperature. Painting individual gases modifies composition instead of replacing air, and closed-box tests prove conservation. |
+| MC-107 | OPEN | Component actors and directional machinery | Player, insects, conveyors, sluices, smelters, assemblers, vents, and habitats use occupancy/components outside material identity. Machines expose configurable ports, consume explicit inputs, produce explicit outputs, and report accepted/rejected transactions. |
+| MC-108 | OPEN | Sparse 512x512 stream pages | Eight-by-eight section pages allocate on demand, load before cross-page transfer, save modified distant pages asynchronously, and evict clean pages. Large mostly-static worlds avoid fixed full-world allocation and scanning. |
+| MC-109 | OPEN | Section-driven Vulkan runtime | Vulkan consumes immutable section batches and dirty rectangles from the core, dispatches only active work, retains a CPU reference path, and reports separate simulation/debug/presentation timings. Shader code does not own world policy. |
+| MC-110 | OPEN | Deterministic cutover and old-hardware gate | Old and replacement runtimes run identical seeded scenes and compare material totals, gas components, moisture, heat, damage, actors, and machine outputs. One-million-active-cell and mostly-static-large-world baselines pass on Windows/Linux and representative older four-core hardware before old hierarchy code is deleted. |
+
 ## Simulation hierarchy and settling
 
 | ID | Status | Mission | Acceptance |
 |---|---|---|---|
-| MC-011 | PARTIAL | 64x64 section-first rejection | Clean inactive sections skip tile and fine-cell work while preserving safe pressure and boundary halos; runtime profiling proves it. |
+| MC-011 | PARTIAL | 64x64 section-first rejection | `SparseSectionGrid` now provides dirty rectangles, safe phases, halo wakeups, and sleeping metadata. The production runtime must consume those batches so clean sections execute zero tile/fine/material work while pressure and boundary exchange remain safe. Runtime profiling proves it. |
 | MC-012 | REGRESSION | 8x8 bulk-element movement | Full aligned liquids, gases, powders, mud, and wet granular materials use the same gravity, diagonal, lateral, density, erosion, and displacement rules as fine cells. Block-capable solids such as stone never translate as whole tiles; tile metadata is limited to cohesion, support, sleep, and debug state. Real eligible scenes show non-zero bulk moves. |
 | MC-100 | PARTIAL | Solid tiles never move wholesale | Full stone and other block-capable solid regions may report `BULK READY` and sleep through tile metadata, but only individual cells may fall after damage or support loss. No macro dispatch may swap a block-capable 8x8 region. Sand, soil, silt, salt, and ice retain granular stability qualification without granting block-capable reconstruction. At 31 destroyed cells (48.4375%), the remaining 33 cells crumble to fine loose cells. Static contracts pass; packaged runtime acceptance remains required. |
 | MC-013 | REGRESSION | True liquid settling | Water levels quickly, reaches zero motion, and wakes only from support, pressure, volume, heat, reaction, actor, or tool disturbance. |

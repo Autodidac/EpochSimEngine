@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SandHybrid VERSION 2.4.9 LANGUAGES CXX)
+project(SandHybrid VERSION 2.5.0 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -49,6 +49,7 @@ endfunction()
 # and application event handling are intentionally absent from this target.
 add_library(SandHybrid STATIC
     src/scene_image.cpp
+    src/section_grid.cpp
     src/section_scheduler.cpp
 )
 add_library(SandHybrid::SandHybrid ALIAS SandHybrid)
@@ -253,6 +254,7 @@ set(SANDHYBRID_CORE_PUBLIC_HEADERS
     include/sandhybrid/material.hpp
     include/sandhybrid/scene.hpp
     include/sandhybrid/scene_image.hpp
+    include/sandhybrid/section_grid.hpp
     include/sandhybrid/section_scheduler.hpp
     include/sandhybrid/simulation_policy.hpp
 )
@@ -311,6 +313,12 @@ if(BUILD_TESTING)
     target_compile_features(sandhybrid_section_scheduler_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_section_scheduler_contract)
     add_test(NAME sandhybrid_section_scheduler_contract COMMAND sandhybrid_section_scheduler_contract)
+
+    add_executable(sandhybrid_section_grid_contract tests/section_grid_contract.cpp)
+    target_link_libraries(sandhybrid_section_grid_contract PRIVATE SandHybrid)
+    target_compile_features(sandhybrid_section_grid_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_section_grid_contract)
+    add_test(NAME sandhybrid_section_grid_contract COMMAND sandhybrid_section_grid_contract)
 
     add_executable(sandhybrid_public_api_contract tests/public_api_contract.cpp)
     target_link_libraries(sandhybrid_public_api_contract PRIVATE SandHybrid::SandHybrid)

@@ -1,6 +1,6 @@
 #include <sandhybrid/library.hpp>
 
-static_assert(sandhybrid::library_api_version == 1u);
+static_assert(sandhybrid::library_api_version == 2u);
 static_assert(sandhybrid::library_name == "SandHybrid");
 static_assert(sandhybrid::core_library_capabilities.native_startup_owned_by_consumer);
 static_assert(!sandhybrid::core_library_capabilities.windowing_required);
