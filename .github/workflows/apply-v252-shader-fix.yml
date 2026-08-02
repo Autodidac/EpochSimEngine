@@ -1,0 +1,50 @@
+name: Apply SandHybrid v2.5.2 Shader Fix
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/beehive-primary-cache-release-v252'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply correction
+        shell: bash
+        run: python3 tools/apply_v252_shader_fix.py
+
+      - name: Validate contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          cmake -S . -B build/contracts -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build/contracts --parallel
+          ctest --test-dir build/contracts --output-on-failure
+
+      - name: Commit correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout HEAD -- .github/workflows/apply-v252-shader-fix.yml
+          git add -A
+          git commit -m 'Fix reserved GLSL geology identifier'
+          git push origin HEAD:${{ github.head_ref }}
