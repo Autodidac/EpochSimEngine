@@ -55,7 +55,7 @@ const uint MATERIAL_DENSITY[MATERIAL_COUNT] = uint[](
       1u, 255u, 230u,   1u, 150u, 210u,   7u,  11u,
     225u, 245u, 220u, 240u, 225u, 175u,  92u,  93u,
      10u,  18u,  70u, 254u,  60u,  55u,  42u,  58u,
-      1u, 210u
+      1u, 210u,   2u
 );
 
 uint moveHash(ivec2 p, uint salt) {
