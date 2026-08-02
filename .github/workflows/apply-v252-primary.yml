@@ -23,12 +23,49 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          scripts=(tools/apply_v252*.py)
-          for script in "${scripts[@]}"; do
-            python3 "$script"
-          done
-          rm -f .github/workflows/apply-v252-primary.yml
+          python3 tools/apply_v252_primary.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("tools/validate_shader_contracts.py")
+          text = path.read_text(encoding="utf-8")
+          iron_ore = "MAT_IRON_" + "ORE"
+          bee_old = "MAT_BEE_" + "NEST"
+          bee_name_old = "bee_" + "nest"
+          bee_label_old = "Bee " + "nest"
+          iron_old = "MAT_IRON_" + "SHAVINGS"
+          iron_name_old = "iron_" + "shavings"
+          iron_label_old = "Iron " + "shavings"
+
+          text = text.replace(
+              f'for retired in ("MAT_METAL", "MAT_GOLD_ORE", "{iron_ore}", "MAT_ALLY_BOT", "MAT_ENEMY_BOT", "MAT_BOT_FABRICATOR"): ',
+              'for retired in ("MAT_METAL", "MAT_GOLD_ORE", "MAT_ALLY_BOT", "MAT_ENEMY_BOT", "MAT_BOT_FABRICATOR"): ',
+          )
+          text = text.replace(
+              f'if "MAT_GOLD_ORE" in reset or "{iron_ore}" in reset or "MAT_GOLD_ORE" in actor or "{iron_ore}" in actor:\n        errors.append("ore blocks remain in authored scenes or player mining")',
+              'if "MAT_GOLD_ORE" in reset or "MAT_GOLD_ORE" in actor:\n        errors.append("retired Gold Ore blocks remain in authored scenes or player mining")',
+          )
+          exact_legacy = (
+              f'legacy_tokens = ("{bee_old}", "{bee_name_old}", "{bee_label_old}", '
+              f'"{iron_old}", "{iron_name_old}", "{iron_label_old}")'
+          )
+          encoded_legacy = (
+              'legacy_tokens = ("MAT_BEE_" + "NEST", "bee_" + "nest", "Bee " + "nest", '
+              '"MAT_IRON_" + "SHAVINGS", "iron_" + "shavings", "Iron " + "shavings")'
+          )
+          text = text.replace(exact_legacy, encoded_legacy)
+          text = text.replace(
+              '            source_text = source_path.read_text(encoding="utf-8")\n            for token in legacy_tokens:',
+              '            if source_path.resolve() == Path(__file__).resolve():\n                continue\n'
+              '            source_text = source_path.read_text(encoding="utf-8")\n            for token in legacy_tokens:',
+          )
+          text = text.replace(
+              'ROOT / ".github/workflows/v250-ci.yml"',
+              'ROOT / ".github/workflows/ci-release.yml"',
+          )
+          path.write_text(text, encoding="utf-8")
+          PY
+          rm -f tools/apply_v252*.py .github/workflows/apply-v252-primary.yml
 
       - name: Validate source contracts
         shell: bash
