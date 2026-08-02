@@ -31,6 +31,7 @@ This release fixes the Atmosphere/Fill UI regression in v2.4.8 while preserving 
 
 - Static contracts reject any Atmosphere handler that raises `fill_region`.
 - Static contracts require the independent Fill handler and Atmosphere composition initialization.
+- Static contracts require granular-only stability promotion and reject block-capable structural reattachment.
 - Static contracts reject block-capable macro movement and stable-tile cell reconstruction.
 - The canonical mission cache carries 81 active missions forward: 50 partial, 15 open, 15 regressions, and 1 deferred.
 
