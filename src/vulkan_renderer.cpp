@@ -5,6 +5,7 @@
 #include "sandhybrid/section_scheduler.hpp"
 #include "sandhybrid/scene_image.hpp"
 #include "sandhybrid/ui_layout.hpp"
+#include "sandhybrid/world_layout.hpp"
 #include "sandhybrid/ui_text_data.hpp"
 
 #include <vulkan/vulkan.h>
@@ -98,6 +99,17 @@ SceneCell make_fill_cell(const std::uint32_t material_id, const std::uint32_t in
     else if (material == Material::hydrogen) cell.aux |= 210u;
 
     if (is_block_material(material)) {
+        cell.aux |= fill_aux_structural | fill_aux_supported;
+        cell.aux = (cell.aux & ~fill_aux_state_mask) | 255u;
+    }
+    return cell;
+}
+
+SceneCell make_resident_substrate_cell(
+    const Material material,
+    const std::uint32_t index) {
+    auto cell = make_fill_cell(static_cast<std::uint32_t>(material), index);
+    if (resident_substrate_is_structural(material)) {
         cell.aux |= fill_aux_structural | fill_aux_supported;
         cell.aux = (cell.aux & ~fill_aux_state_mask) | 255u;
     }
@@ -1573,13 +1585,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     }
 
     [[nodiscard]] std::uint32_t authored_map_origin_x() const noexcept {
-        return config.grid_width > pre_expansion_world_width
-            ? (config.grid_width - pre_expansion_world_width) / 2u : 0u;
+        return authored_scene_origin_x(config.grid_width);
     }
 
     [[nodiscard]] std::uint32_t authored_map_origin_y() const noexcept {
-        return config.grid_height > pre_expansion_world_height
-            ? config.grid_height - pre_expansion_world_height : 0u;
+        return authored_scene_origin_y(config.grid_height);
     }
 
     [[nodiscard]] bool load_scene_image(const std::uint32_t scene_index) {
@@ -1598,7 +1608,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             static_cast<std::size_t>(config.grid_width) * config.grid_height);
         for (std::size_t index = 0u; index < world_cells.size(); ++index)
             world_cells[index] = make_fill_cell(
-                static_cast<std::uint32_t>(Material::oxygen),
+                static_cast<std::uint32_t>(Material::atmosphere),
                 static_cast<std::uint32_t>(index));
 
         const auto origin_x = authored_map_origin_x();
@@ -1613,11 +1623,22 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 world_cells[world_index] = cell;
             }
         }
+
+        for (std::uint32_t y = 0u; y < config.grid_height; ++y) {
+            for (std::uint32_t x = 0u; x < config.grid_width; ++x) {
+                const auto material = resident_substrate_material(
+                    config.grid_width, config.grid_height, x, y);
+                if (material == Material::empty) continue;
+                const auto index = static_cast<std::size_t>(y) * config.grid_width + x;
+                world_cells[index] = make_resident_substrate_cell(
+                    material, static_cast<std::uint32_t>(index));
+            }
+        }
         upload_scene_cells(world_cells);
         std::string key_error;
         if (!write_scene_material_key(scene_directory(), key_error))
             startup_log("Scene material-key warning: " + key_error);
-        startup_log("Loaded bottom-centered 640x360 scene image: " + path.string());
+        startup_log("Loaded upper-center 640x360 scene image with common subterranean geology: " + path.string());
         return true;
     }
 
@@ -1643,7 +1664,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             throw std::runtime_error("Unable to save scene image: " + error);
         if (!write_scene_material_key(scene_directory(), error))
             throw std::runtime_error("Unable to save scene material key: " + error);
-        startup_log("Saved bottom-centered 640x360 scene image: " + path.string());
+        startup_log("Saved upper-center 640x360 authored scene image: " + path.string());
     }
 
     void record_reset(const VkCommandBuffer command_buffer, const std::uint32_t scene_index) {

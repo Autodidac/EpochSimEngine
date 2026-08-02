@@ -3,6 +3,7 @@
 #include "sandhybrid/scene_image.hpp"
 #include "sandhybrid/section_grid.hpp"
 #include "sandhybrid/section_scheduler.hpp"
+#include "sandhybrid/world_layout.hpp"
 
 #include <cstdint>
 #include <string_view>

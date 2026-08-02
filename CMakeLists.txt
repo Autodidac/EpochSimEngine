@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SandHybrid VERSION 2.5.0 LANGUAGES CXX)
+project(SandHybrid VERSION 2.5.1 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -257,6 +257,7 @@ set(SANDHYBRID_CORE_PUBLIC_HEADERS
     include/sandhybrid/section_grid.hpp
     include/sandhybrid/section_scheduler.hpp
     include/sandhybrid/simulation_policy.hpp
+    include/sandhybrid/world_layout.hpp
 )
 install(FILES ${SANDHYBRID_CORE_PUBLIC_HEADERS}
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sandhybrid)
@@ -325,6 +326,12 @@ if(BUILD_TESTING)
     target_compile_features(sandhybrid_public_api_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_public_api_contract)
     add_test(NAME sandhybrid_public_api_contract COMMAND sandhybrid_public_api_contract)
+
+    add_executable(sandhybrid_world_layout_contract tests/world_layout_contract.cpp)
+    target_link_libraries(sandhybrid_world_layout_contract PRIVATE SandHybrid::SandHybrid)
+    target_compile_features(sandhybrid_world_layout_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_world_layout_contract)
+    add_test(NAME sandhybrid_world_layout_contract COMMAND sandhybrid_world_layout_contract)
 
     if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         add_executable(sandhybrid_ui_layout_contract tests/ui_layout_contract.cpp)

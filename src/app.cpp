@@ -1,6 +1,7 @@
 #include "sandhybrid/app.hpp"
 
 #include "sandhybrid/input_routing.hpp"
+#include "sandhybrid/world_layout.hpp"
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/scene.hpp"
 #include "sandhybrid/section_scheduler.hpp"
@@ -126,10 +127,8 @@ void pan_camera_cells(SharedState& state, const SimulationConfig& config,
 void reset_camera_to_zero(SharedState& state, const SimulationConfig& config) noexcept {
     const auto visible_width = (std::max)(8u, config.grid_width / camera_zoom_default);
     const auto visible_height = (std::max)(8u, config.grid_height / camera_zoom_default);
-    const auto map_origin_x = config.grid_width > pre_expansion_world_width
-        ? (config.grid_width - pre_expansion_world_width) / 2u : 0u;
-    const auto map_origin_y = config.grid_height > pre_expansion_world_height
-        ? config.grid_height - pre_expansion_world_height : 0u;
+    const auto map_origin_x = authored_scene_origin_x(config.grid_width);
+    const auto map_origin_y = authored_scene_origin_y(config.grid_height);
     state.camera_zoom.store(camera_zoom_default, std::memory_order_relaxed);
     const CameraView view{map_origin_x, map_origin_y, visible_width, visible_height};
     set_camera_center_clamped(state, config, view,
