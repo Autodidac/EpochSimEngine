@@ -1,0 +1,64 @@
+name: Apply SandHybrid v2.5.2 Primary Missions
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/beehive-primary-cache-release-v252'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply primary mission pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f tools/apply_v252_primary.py ]]; then
+            python3 tools/apply_v252_primary.py
+          fi
+          rm -f .github/workflows/apply-v252-primary.yml
+
+      - name: Validate source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+
+      - name: Build headless C++23 contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build/contracts -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build/contracts --parallel
+          ctest --test-dir build/contracts --output-on-failure
+          rm -rf build/contracts
+
+      - name: Commit canonical source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'Primary pass is already applied.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'SandHybrid v2.5.2: complete primary cache missions'
+          git push origin HEAD:${{ github.head_ref }}
