@@ -176,7 +176,7 @@ void main() {
         }
     }
     // Authored and previously qualified structures retain support until the
-    // established >50% represented-cell collapse rule is crossed. This prevents
+    // 31-destroyed-cell (48.4375%) collapse threshold is crossed. This prevents
     // beams, walls, machines, and side-braced structures from being misread as
     // unsupported merely because four cells are not directly beneath the tile.
     bool physicallySupported = anchored || supportSamples >= 4u || supportedStructural > 0u;

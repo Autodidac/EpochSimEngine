@@ -694,6 +694,17 @@ def main() -> int:
         errors.append("stable tile metadata still reconstructs damaged cells")
     if "TILE_BULK_READY) || tileHas(tile, TILE_MACRO_MOVABLE)" not in fullscreen:
         errors.append("bulk-ready debug state is not decoupled from macro movement")
+    simulation_policy = (ROOT / "include/sandhybrid/simulation_policy.hpp").read_text(encoding="utf-8")
+    for token in (
+        "destroyed_cells_to_crumble = 31u",
+        "tile_cells - destroyed_cells_to_crumble + 1u",
+        "const bool block_capable = false",
+        "!structural && !reacting && !block_capable",
+    ):
+        if token not in simulation_policy:
+            errors.append(f"C++ solid tile policy contract missing {token!r}")
+    if (ROOT / "tools/apply_terrain_stability_fix.py").exists():
+        errors.append("obsolete terrain rewrite tool can restore pre-v2.4.9 tile behavior")
     project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/v249-ci.yml"]
     forbidden_branding = ("Epoch" + "SimEngine", "Epoch" + "Sand", "epoch" + "_sand", "namespace epoch" + "::sand", "include/epoch" + "/sand")
     for project_file in project_owned_files:

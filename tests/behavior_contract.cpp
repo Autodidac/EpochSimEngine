@@ -117,7 +117,7 @@ struct CanonicalState final {
 
 [[nodiscard]] constexpr bool terrain_stability_preserves_representation() noexcept {
     constexpr std::uint32_t initial_mass = 64u;
-    constexpr std::uint32_t detached_pixels = 33u;
+    constexpr std::uint32_t detached_pixels = 31u;
     constexpr std::uint32_t remaining_pixels = initial_mass - detached_pixels;
     static_assert(sandhybrid::policy::should_collapse(remaining_pixels));
     constexpr std::uint32_t settled_mass = remaining_pixels + detached_pixels;
@@ -133,8 +133,8 @@ static_assert(directional_input_routes_by_scene());
 static_assert(sandhybrid::policy::stability_ready(52u, 120u, true, true, false, false, 0u));
 static_assert(!sandhybrid::policy::stability_ready(51u, 120u, true, true, false, false, 0u));
 static_assert(sandhybrid::policy::laser_hits_to_dislodge == 2u);
-static_assert(!sandhybrid::policy::should_collapse(32u));
-static_assert(sandhybrid::policy::should_collapse(31u));
+static_assert(!sandhybrid::policy::should_collapse(34u));
+static_assert(sandhybrid::policy::should_collapse(33u));
 static_assert(sandhybrid::policy::water_pressure_depth == 8u);
 static_assert(sandhybrid::policy::water_half_units_per_full_cell == 2u);
 static_assert(sandhybrid::policy::gas_tile_eligible(true, true, false));
