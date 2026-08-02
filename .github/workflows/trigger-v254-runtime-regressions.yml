@@ -1,4 +1,5 @@
 name: Trigger v2.5.4 runtime regression closeout
+# Retrigger after repairing validator indentation and closeout sequencing.
 
 on:
   pull_request:
