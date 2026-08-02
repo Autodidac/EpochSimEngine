@@ -424,10 +424,10 @@ int run_application() {
             } else if (epochengine::gui_lib::contains(layout.zoom_in, pointer)) {
                 adjust_zoom_centered(1);
             } else if (epochengine::gui_lib::contains(layout.atmosphere, pointer)) {
-                const auto previous = shared_state.selected_material.exchange(
+                shared_state.selected_material.store(
                     static_cast<std::uint32_t>(Material::atmosphere), std::memory_order_relaxed);
+            } else if (epochengine::gui_lib::contains(layout.fill, pointer)) {
                 shared_state.fill_region.store(true, std::memory_order_release);
-                shared_state.selected_material.store(previous, std::memory_order_relaxed);
             } else if (epochengine::gui_lib::contains(layout.eraser, pointer)) {
                 shared_state.selected_material.store(static_cast<std::uint32_t>(Material::empty),
                                                      std::memory_order_relaxed);
