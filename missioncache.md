@@ -134,9 +134,8 @@ If runtime profiling proves the map-sized starburst too expensive, the only perm
 
 | ID | Status | Mission | Acceptance |
 |---|---|---|---|
-| MC-070 | PARTIAL | `SandHybrid` static library | CMake builds a C++23 `SandHybrid` static library with public headers under `include/sandhybrid`; native startup and `main` remain outside. Broader ownership/API review and downstream reuse acceptance remain required. |
-| MC-071 | PARTIAL | Thin `SandHybrid_Demo` | `SandHybrid_Demo` is a separate executable linking the static library and owning native startup/events. Full thinning of renderer/UI host responsibilities and downstream embedding acceptance remain required. |
-| MC-072 | PARTIAL | Optional subsystems | `SANDHYBRID_BUILD_APP=OFF` cleanly builds/tests the core library without Vulkan/windowing. Independent switches for streaming, debug, UI, actors, ecology, and factories remain open. |
+| MC-071 | PARTIAL | Thin `SandHybrid_Demo` | `SandHybrid_Demo` owns native startup/events and links the optional in-tree `SandHybrid::VulkanRuntime`; Vulkan renderer code no longer enters the core archive. Exported runtime/native-host embedding acceptance remains required. |
+| MC-072 | PARTIAL | Optional subsystems | `SANDHYBRID_BUILD_APP=OFF` with `SANDHYBRID_BUILD_VULKAN_RUNTIME=OFF` builds, tests, installs, and externally consumes a clean core package without configuring Vulkan, EpochGui, shaders, windowing, or native event sources. Independent switches for streaming, debug, UI, actors, ecology, and factories remain open. |
 | MC-083 | PARTIAL | SandHybrid-only project branding | Remove this project's legacy project-owned names from UI, logs, namespaces, include paths, CMake targets, binaries, packages, workflows, docs, and tests. Preserve proper external names such as `EpochGui`, `EpochEngine`, and the external `epochengine::gui_lib` namespace. Repository-host rename is separate if GitHub settings cannot be changed through available tooling. |
 | MC-073 | DEFERRED | EpochEngine integration | Later migrate/rewrite using canonical `epochengine::` APIs while preserving reusable `SandHybrid` boundaries. |
 
@@ -179,6 +178,26 @@ Every active mission was reviewed once during this release pass. The ledger vali
 
 
 # Archived release history
+
+## MC-070 — reusable SandHybrid core library
+
+Validated source: `402b744b1e92d6f3334665112b30fdd4a3cba590` on branch `agent/complete-sandhybrid-library`.
+
+Accepted CI:
+
+- Headless library/package matrix: GitHub Actions run `30736832042` passed on Windows 2022 and Ubuntu 24.04.
+- Full Vulkan/demo matrix: GitHub Actions run `30736832063` passed on Windows 2022 and Ubuntu 24.04, including shader compilation, demo build, tests, install, archive, and artifact upload.
+
+Acceptance evidence:
+
+- `SandHybrid::SandHybrid` is a platform-neutral C++23 static library containing only scene image I/O and section scheduling implementation units; it has no process entry point, native window source, Vulkan renderer source, Vulkan/Threads/EpochGui link dependency, or hidden application ownership.
+- The installed package exports `SandHybridConfig.cmake`, `SandHybridConfigVersion.cmake`, `SandHybridTargets.cmake`, and `SandHybrid::SandHybrid`.
+- A clean external project installs the package, resolves it with `find_package(SandHybrid CONFIG REQUIRED)`, links it, and runs without repository-private include paths.
+- The package contract rejects runtime-only application, shared-state, UI, Vulkan renderer, window, and EpochGui header leakage.
+- Ownership and consumption are documented in `LIBRARY.md`; compile-time public API and downstream package contracts run under strict warnings on both supported platforms.
+
+MC-070 is complete. MC-071 and MC-072 remain active for exported native-runtime embedding and independent subsystem switches.
+
 
 ## v2.4.0 — macro hierarchy baseline
 
