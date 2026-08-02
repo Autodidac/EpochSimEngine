@@ -17,6 +17,7 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 ## Priority lanes
 
 - **P0 / primary release gate:** MC-038, MC-112, MC-115, and MC-116. These are the current release blockers and must pass deterministic contracts plus Windows/Linux Release packaging before publication.
+- **P0 / next external handoff integration:** MC-117. When Adam's other thread publishes its completion branch, record the exact branch and head SHA, preserve it, and integrate it before starting another broad feature pass. It is not part of the current v2.5.2 publication.
 - **P1 / runtime correctness:** simulation, conservation, water, atmosphere, ecology, machinery, UI, scene, and performance missions that require packaged observation or deterministic runtime evidence.
 - **P2 / architecture and later integration:** streaming, full replacement-runtime cutover, optional subsystem extraction, and EpochEngine integration.
 - Priority is a scheduling property, not a second status system. Every unfinished row remains in this table exactly once.
@@ -40,6 +41,7 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 | MC-108 | OPEN | Sparse 512x512 stream pages | Eight-by-eight section pages allocate on demand, load before cross-page transfer, save modified distant pages asynchronously, and evict clean pages. Large mostly-static worlds avoid fixed full-world allocation and scanning. |
 | MC-109 | OPEN | Section-driven Vulkan runtime | Vulkan consumes immutable section batches and dirty rectangles from the core, dispatches only active work, retains a CPU reference path, and reports separate simulation/debug/presentation timings. Shader code does not own world policy. |
 | MC-110 | OPEN | Deterministic cutover and old-hardware gate | Old and replacement runtimes run identical seeded scenes and compare material totals, gas components, moisture, heat, damage, actors, and machine outputs. One-million-active-cell and mostly-static-large-world baselines pass on Windows/Linux and representative older four-core hardware before old hierarchy code is deleted. |
+| MC-117 | OPEN | Preserve and integrate external completion branch | The branch produced by Adam's other thread is a protected handoff. Once it appears, record its exact branch name and head SHA in this row; do not delete, force-update, or include it in release-branch cleanup before integration. Diff it against `main` and this mission cache, reconcile completed and unfinished work without dropping missions, integrate the valid changes, run source/shader/cache validation plus Windows and Linux Release builds, and delete the handoff branch only after the integration is merged and accepted. |
 
 ## Simulation hierarchy and settling
 
