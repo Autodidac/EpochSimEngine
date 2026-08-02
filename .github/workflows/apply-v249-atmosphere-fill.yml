@@ -28,6 +28,17 @@ jobs:
             exit 0
           fi
           python3 tools/apply_v249.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tools/validate_shader_contracts.py')
+          text = path.read_text(encoding='utf-8')
+          old = '.github/workflows/v248-ci.yml'
+          new = '.github/workflows/v249-ci.yml'
+          if old in text:
+              path.write_text(text.replace(old, new), encoding='utf-8')
+          elif new not in text:
+              raise SystemExit('release CI path contract was not found')
+          PY
           python3 tools/validate_shader_contracts.py
           python3 tools/validate_mission_cache.py
           cmake -S . -B build/contracts -G Ninja \
