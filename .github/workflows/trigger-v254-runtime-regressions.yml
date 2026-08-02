@@ -1,5 +1,5 @@
 name: Trigger v2.5.4 runtime regression closeout
-# Retrigger after repairing validator indentation and closeout sequencing.
+# Push-triggered closeout is now armed; this PR trigger remains a safety fallback.
 
 on:
   pull_request:
