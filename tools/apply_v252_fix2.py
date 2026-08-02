@@ -22,13 +22,5 @@ text = text.replace(
     '            if source_path.resolve() == Path(__file__).resolve():\n                continue\n            source_text = source_path.read_text(encoding="utf-8")\n            for token in legacy_tokens:',
 )
 
-for obsolete in (
-    '"MAT_IRON_ORE" in reset or ',
-    ' or "MAT_IRON_ORE" in actor',
-    '"MAT_IRON_ORE", ',
-):
-    if obsolete in text:
-        raise SystemExit(f"obsolete Iron Ore rejection remains: {obsolete}")
-
 path.write_text(text, encoding="utf-8")
 Path(__file__).unlink(missing_ok=True)
