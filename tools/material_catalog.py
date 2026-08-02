@@ -66,6 +66,7 @@ MATERIALS = [
     ('waste', 'Waste', 58, 10, 180, 150, 'STRONG: RECOVERABLE CARBON', 'WEAK: HEAT / WATER', 'TO: SOIL / DIRTY WATER / SMOKE', 'ROLE: RECYCLE FEED', 'DANGER: BIOHAZARD'),
     ('hydrogen', 'Hydrogen', 1, 0, 0, 255, 'STRONG: LIGHT FUEL GAS', 'WEAK: IGNITION / CONTAINMENT', 'TO: STEAM / FIRE', 'ROLE: ENERGY CARRIER', 'DANGER: EXPLOSIVE GAS'),
     ('sluice_box', 'Sluice box', 210, 196, 900, 248, 'STRONG: WET SAND SEPARATION', 'WEAK: DRY FEED / DAMAGE', 'TO: GOLD + WATER', 'ROLE: GRAVITY MINERAL PROCESSOR', 'DANGER: PINCH / FLOOD'),
+    ('atmosphere', 'Atmosphere', 2, 0, 0, 255, 'STRONG: BALANCED BREATHABLE AIR', 'WEAK: PRESSURE / CONTAMINATION', 'TO: CO2 / VAPOR / EXCESS GAS', 'ROLE: N2/O2/AR BASELINE', 'DANGER: LOW OXYGEN WHEN DEPLETED'),
 ]
 GROUPS = [
     ('ground', 'Terrain', [1, 3, 4, 6, 60, 5, 24]),
@@ -96,7 +97,7 @@ PHASE_GAS = 4
 PHASE_PLASMA = 5
 
 _BASE_LIQUIDS = {'water', 'acid', 'lava', 'oil', 'honey', 'saltwater', 'dirty_water'}
-_BASE_GASES = {'smoke', 'steam', 'dirty_steam', 'oxygen', 'carbon_dioxide', 'radiation', 'hydrogen'}
+_BASE_GASES = {'smoke', 'steam', 'dirty_steam', 'oxygen', 'carbon_dioxide', 'radiation', 'hydrogen', 'atmosphere'}
 _BASE_PLASMA = {'fire', 'lightning', 'plasma_bolt'}
 _BASE_POWDERS = {
     'sand', 'dirt', 'mud', 'salt', 'ash', 'gunpowder', 'snow', 'seed', 'pollen',
@@ -171,6 +172,7 @@ PHYSICS_OVERRIDES = {
     'waste': (58, 85, NO_TEMPERATURE, NO_TEMPERATURE, 400, 210, 12),
     'hydrogen': (1, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, 560, 180),
     'sluice_box': (210, 760, 1420, 2850, 2850, NO_TEMPERATURE, 165),
+    'atmosphere': (2, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, 4),
 }
 
 

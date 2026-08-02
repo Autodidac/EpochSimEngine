@@ -1,6 +1,7 @@
 #include "sandhybrid/input_routing.hpp"
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/simulation_policy.hpp"
+#include "sandhybrid/shared_state.hpp"
 #include "sandhybrid/camera_policy.hpp"
 
 #include <algorithm>
@@ -95,8 +96,10 @@ struct CanonicalState final {
 
 [[nodiscard]] constexpr bool breathing_requires_explicit_oxygen() noexcept {
     constexpr std::uint32_t vacuum_volume = 0u;
-    constexpr std::uint32_t oxygen_volume = 1u;
-    return vacuum_volume == 0u && oxygen_volume > 0u;
+    constexpr std::uint32_t pure_oxygen_volume = 255u;
+    constexpr std::uint32_t atmosphere_oxygen_volume = 54u;
+    return vacuum_volume == 0u && pure_oxygen_volume > 0u &&
+           atmosphere_oxygen_volume > 0u && atmosphere_oxygen_volume < pure_oxygen_volume;
 }
 
 [[nodiscard]] constexpr bool directional_input_routes_by_scene() noexcept {
@@ -142,7 +145,14 @@ static_assert(sandhybrid::policy::liquid_tile_eligible(true, false, true));
 static_assert(!sandhybrid::policy::liquid_tile_eligible(true, false, false));
 static_assert(sandhybrid::policy::medium_tile_breaks_to_fine(true, false, false));
 static_assert(!sandhybrid::policy::medium_tile_breaks_to_fine(true, true, false));
-static_assert(sandhybrid::material_count == 66u);
+
+static_assert(sandhybrid::material_names[static_cast<std::uint32_t>(sandhybrid::Material::dirt)] == "Soil");
+static_assert(sandhybrid::default_brush_radius == 2u);
+static_assert(sandhybrid::default_brush_shape == 1u);
+static_assert(sandhybrid::policy::effective_wet_density(1050u, true) > 100u);
+static_assert(sandhybrid::policy::effective_wet_density(1050u, false) == 1050u);
+static_assert(sandhybrid::material_count == 67u);
+static_assert(sandhybrid::material_names[static_cast<std::uint32_t>(sandhybrid::Material::atmosphere)] == "Atmosphere");
 static_assert(sandhybrid::is_block_material(sandhybrid::Material::sluice_box));
 static_assert(!sandhybrid::policy::water_ledge_can_release(2u, 0u));
 static_assert(sandhybrid::policy::water_ledge_can_release(2u, 1u));

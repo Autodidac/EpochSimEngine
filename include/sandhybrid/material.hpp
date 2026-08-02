@@ -76,6 +76,7 @@ enum class Material : std::uint32_t {
     waste = 63,
     hydrogen = 64,
     sluice_box = 65,
+    atmosphere = 66,
     count
 };
 
@@ -173,6 +174,7 @@ inline constexpr std::array<std::string_view, material_count> material_names{
     "Waste",
     "Hydrogen",
     "Sluice box",
+    "Atmosphere",
 };
 
 inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
@@ -242,6 +244,7 @@ inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
     {58u, 10u, 58u, 150u, 180, 85, 32767, 32767, 400, 210, 12u, MaterialPhase::powder, "Industry", "STRONG: RECOVERABLE CARBON", "WEAK: HEAT / WATER", "TO: SOIL / DIRTY WATER / SMOKE", "ROLE: RECYCLE FEED", "DANGER: BIOHAZARD"},
     {1u, 0u, 1u, 255u, 0, 32767, 32767, 32767, 32767, 560, 180u, MaterialPhase::gas, "Engineering", "STRONG: LIGHT FUEL GAS", "WEAK: IGNITION / CONTAINMENT", "TO: STEAM / FIRE", "ROLE: ENERGY CARRIER", "DANGER: EXPLOSIVE GAS"},
     {210u, 196u, 210u, 248u, 900, 760, 1420, 2850, 2850, 32767, 165u, MaterialPhase::solid, "Industry", "STRONG: WET SAND SEPARATION", "WEAK: DRY FEED / DAMAGE", "TO: GOLD + WATER", "ROLE: GRAVITY MINERAL PROCESSOR", "DANGER: PINCH / FLOOD"},
+    {2u, 0u, 2u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 4u, MaterialPhase::gas, "Unknown", "STRONG: BALANCED BREATHABLE AIR", "WEAK: PRESSURE / CONTAMINATION", "TO: CO2 / VAPOR / EXCESS GAS", "ROLE: N2/O2/AR BASELINE", "DANGER: LOW OXYGEN WHEN DEPLETED"},
 }};
 
 [[nodiscard]] constexpr const MaterialProfile& material_profile(const Material material) noexcept {

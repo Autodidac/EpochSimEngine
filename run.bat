@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 set "EXE="
-for %%F in ("build\Release\sandhybrid.exe" "build\sandhybrid.exe" "build\ci\Release\sandhybrid.exe" "bin\sandhybrid.exe") do (
+for %%F in ("sandhybrid.exe" "bin\sandhybrid.exe" "Release\sandhybrid.exe" "build\Release\sandhybrid.exe" "build\sandhybrid.exe" "build\ci\Release\sandhybrid.exe" "build\ci\sandhybrid.exe") do (
     if exist "%%~F" set "EXE=%%~F"
 )
 

@@ -14,8 +14,11 @@ using sandhybrid::Scene;
 static_assert(static_cast<std::uint32_t>(Material::empty) == 0u);
 static_assert(static_cast<std::uint32_t>(Material::waste) == 63u);
 static_assert(static_cast<std::uint32_t>(Material::hydrogen) == 64u);
-static_assert(sandhybrid::material_count == 66u);
+static_assert(static_cast<std::uint32_t>(Material::atmosphere) == 66u);
+static_assert(sandhybrid::material_count == 67u);
 static_assert(sandhybrid::material_profiles.size() == sandhybrid::material_count);
+static_assert(sandhybrid::material_names[static_cast<std::uint32_t>(Material::atmosphere)] == "Atmosphere");
+static_assert(sandhybrid::material_profile(Material::atmosphere).base_phase == MaterialPhase::gas);
 static_assert(sandhybrid::material_group_count == 8u);
 static_assert(sandhybrid::material_slots_per_group == 10u);
 static_assert(sandhybrid::material_group_size(MaterialGroup::ground) == 7u);
@@ -79,7 +82,8 @@ constexpr bool palette_materials_are_unique() {
         }
     }
     return counts[static_cast<std::uint32_t>(Material::aluminum_shavings)] == 1u &&
-           counts[static_cast<std::uint32_t>(Material::iron_shavings)] == 1u;
+           counts[static_cast<std::uint32_t>(Material::iron_shavings)] == 1u &&
+           counts[static_cast<std::uint32_t>(Material::atmosphere)] == 0u;
 }
 static_assert(palette_materials_are_unique());
 

@@ -131,7 +131,7 @@ const uint AUX_HALF_MEDIUM_VOLUME_MASK = 0x007f8000u;
 bool isStoredGasMaterial(uint material) {
     return material == MAT_SMOKE || material == MAT_STEAM || material == MAT_DIRTY_STEAM ||
            material == MAT_FIRE || material == MAT_LIGHTNING || material == MAT_RADIATION ||
-           material == MAT_OXYGEN || material == MAT_CARBON_DIOXIDE ||
+           material == MAT_OXYGEN || material == MAT_ATMOSPHERE || material == MAT_CARBON_DIOXIDE ||
            material == MAT_HYDROGEN;
 }
 
@@ -675,7 +675,7 @@ bool gasHorizontalAllows(Cell cell, uint randomValue) {
     if (cell.age >= 48u) return false;
     uint material = cell.material;
     if (material == MAT_HYDROGEN) return true;
-    if (material == MAT_OXYGEN) return (randomValue & 1u) == 0u;
+    if (material == MAT_OXYGEN || material == MAT_ATMOSPHERE) return (randomValue & 1u) == 0u;
     if (material == MAT_CARBON_DIOXIDE || material == MAT_STEAM || material == MAT_DIRTY_STEAM) {
         return (randomValue & 3u) != 0u;
     }
@@ -817,7 +817,7 @@ void processVertical(ivec2 top, ivec2 bottom) {
     }
 
     if (a.material == MAT_CARBON_DIOXIDE &&
-        (b.material == MAT_EMPTY || b.material == MAT_OXYGEN || b.material == MAT_SMOKE) &&
+        (b.material == MAT_EMPTY || b.material == MAT_OXYGEN || b.material == MAT_ATMOSPHERE || b.material == MAT_SMOKE) &&
         (randomValue & 1u) == 0u) {
         swapCells(top, bottom);
         return;

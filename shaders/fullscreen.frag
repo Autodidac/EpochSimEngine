@@ -107,6 +107,7 @@ bool cardPixel(ivec2 pixel, ivec2 origin, int scale, uint materialId, uint line)
 }
 
 uint decimalLength(uint value) {
+    if (value >= 10000000u) return 8u;
     if (value >= 1000000u) return 7u;
     if (value >= 100000u) return 6u;
     if (value >= 10000u) return 5u;
@@ -116,6 +117,7 @@ uint decimalLength(uint value) {
     return 1u;
 }
 uint decimalDivisor(uint positionFromRight) {
+    if (positionFromRight == 7u) return 10000000u;
     if (positionFromRight == 6u) return 1000000u;
     if (positionFromRight == 5u) return 100000u;
     if (positionFromRight == 4u) return 10000u;
@@ -125,7 +127,7 @@ uint decimalDivisor(uint positionFromRight) {
     return 1u;
 }
 bool numberPixel(ivec2 pixel, ivec2 origin, int scale, uint value) {
-    value = min(value, 9999999u);
+    value = min(value, 99999999u);
     uint length = decimalLength(value);
     for (uint i = 0u; i < length; ++i) {
         uint divisor = decimalDivisor(length - i - 1u);
@@ -237,6 +239,19 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
             textHit = true;
             textColor = debugStatColor(stat > 1u ? stat - 2u : stat);
         }
+    }
+
+    // Restrained visual grouping: resource pressure, hierarchy/activity, and
+    // world events remain readable without surrounding every row with boxes.
+    uint separatorYs[3] = uint[3](
+        panelTop + headerHeight + 5u * rowHeight - 4u,
+        panelTop + headerHeight + 9u * rowHeight - 4u,
+        panelTop + headerHeight + 13u * rowHeight - 4u);
+    for (uint separator = 0u; separator < 3u; ++separator) {
+        uint separatorY = separatorYs[separator];
+        if (y >= separatorY && y < separatorY + 1u &&
+            x >= panelLeft + 8u && x < panelRight - 8u)
+            color = vec3(0.10, 0.21, 0.30);
     }
 
     uint keyRows = 5u;
@@ -429,6 +444,11 @@ void main() {
                fixedPixel(pixel, ivec2(int(sidebarLeft + 220u), 51), 1, 138u) ||
                numberPixel(pixel, ivec2(int(sidebarLeft + 274u), 51), 1,
                            renderPc.activeAreaCount);
+
+        // A small divider separates scene/navigation controls from editing
+        // controls without consuming another boxed panel.
+        if (y >= 97u && y < 98u && x >= sidebarLeft + 8u && x < renderPc.windowWidth - 8u)
+            color = vec3(0.10, 0.21, 0.30);
 
         uint sceneGap = 3u;
         uint sceneLeft = sidebarLeft + 8u;
