@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.28)
+project(SandHybridDownstreamConsumer LANGUAGES CXX)
+
+find_package(SandHybrid CONFIG REQUIRED)
+
+add_executable(sandhybrid_downstream_consumer main.cpp)
+target_link_libraries(sandhybrid_downstream_consumer PRIVATE SandHybrid::SandHybrid)
+target_compile_features(sandhybrid_downstream_consumer PRIVATE cxx_std_23)
