@@ -1,0 +1,121 @@
+name: Finalize v2.5.3 mission integration
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.head_ref == 'agent/finalize-missioncache-release-v253'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Reconcile mission cache and release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          cache_path = Path('missioncache.md')
+          lines = cache_path.read_text(encoding='utf-8').splitlines()
+          removed_ids = ('| MC-065 |', '| MC-083 |', '| MC-117 |')
+          lines = [
+              line for line in lines
+              if not line.startswith(removed_ids)
+              and 'P0 / next external handoff integration' not in line
+          ]
+          cache = '\n'.join(lines).rstrip() + '\n'
+          marker = '| MC-070 | Reusable platform-neutral `SandHybrid::SandHybrid` core library, optional Vulkan runtime, thin demo host, installed CMake package, and downstream consumer contract. | `CHANGELOG.md`; Windows/Linux CI history. |\n'
+          accepted = (
+              marker
+              + '| MC-065 | Deterministic simulation code has no coroutine execution path. CI rejects coroutine machinery across production C++ until bounded streaming or I/O ownership and cancellation are defined under MC-063. | `tools/validate_no_simulation_coroutines.py`; `.github/workflows/core-hygiene-contracts.yml`; CI history. |\n'
+              + '| MC-083 | `SandHybrid` is the only project-owned product identity across production code, build files, workflows, docs, and tests. Proper external names and the current repository-host URL remain explicitly allowed. | `tools/validate_project_branding.py`; `HALF_WATER.md`; `.github/workflows/core-hygiene-contracts.yml`; CI history. |\n'
+              + '| MC-117 | Protected handoff `agent/nonoverlap-core-hygiene` at `bf2d052a9dbd275ce968cab9453b70b26b6a2771` was reconciled onto current `main` without dropping later mission-cache work. Adam explicitly required the source branch to remain preserved. | PR #45 validation history; PR #46 integration history; Windows/Linux v2.5.3 Release CI. |\n'
+          )
+          if marker not in cache:
+              raise SystemExit('accepted-foundation marker missing')
+          cache_path.write_text(cache.replace(marker, accepted, 1), encoding='utf-8')
+
+          cmake_path = Path('CMakeLists.txt')
+          cmake = cmake_path.read_text(encoding='utf-8')
+          cmake = cmake.replace('project(SandHybrid VERSION 2.5.2', 'project(SandHybrid VERSION 2.5.3')
+          cmake_path.write_text(cmake, encoding='utf-8')
+
+          changelog_path = Path('CHANGELOG.md')
+          changelog = changelog_path.read_text(encoding='utf-8')
+          if '## 2.5.3' not in changelog:
+              section = (
+                  '## 2.5.3\n\n'
+                  '- Integrated the protected `agent/nonoverlap-core-hygiene` handoff while preserving its source branch.\n'
+                  '- Completed MC-065 with a deterministic CI contract rejecting coroutine machinery from simulation code.\n'
+                  '- Completed MC-083 with a repository-wide SandHybrid branding contract while preserving proper external EpochGui and EpochEngine names.\n'
+                  '- Completed MC-117 by reconciling the handoff onto current `main` without dropping later mission-cache work.\n'
+                  '- Added both core-hygiene contracts to pull-request and Windows/Linux release validation.\n\n'
+              )
+              changelog = changelog.replace('# Changelog\n\n', '# Changelog\n\n' + section, 1)
+          changelog_path.write_text(changelog, encoding='utf-8')
+
+          workflow_path = Path('.github/workflows/ci-release.yml')
+          workflow = workflow_path.read_text(encoding='utf-8')
+          workflow = workflow.replace('sandhybrid-v252-', 'sandhybrid-v253-')
+          workflow = workflow.replace('SandHybrid-Windows-x64-v2.5.2', 'SandHybrid-Windows-x64-v2.5.3')
+          workflow = workflow.replace('SandHybrid-Linux-x64-v2.5.2', 'SandHybrid-Linux-x64-v2.5.3')
+          workflow = workflow.replace('Publish v2.5.2 release', 'Publish v2.5.3 release')
+          workflow = workflow.replace('gh release view v2.5.2', 'gh release view v2.5.3')
+          workflow = workflow.replace('gh release upload v2.5.2', 'gh release upload v2.5.3')
+          workflow = workflow.replace('gh release edit v2.5.2', 'gh release edit v2.5.3')
+          workflow = workflow.replace('gh release create v2.5.2', 'gh release create v2.5.3')
+          workflow = workflow.replace("--title 'SandHybrid v2.5.2'", "--title 'SandHybrid v2.5.3'")
+
+          mission_step = '      - name: Validate canonical mission cache\n        run: python tools/validate_mission_cache.py\n'
+          validator_steps = (
+              mission_step
+              + '\n      - name: Reject simulation coroutines\n'
+              + '        run: python tools/validate_no_simulation_coroutines.py\n'
+              + '\n      - name: Enforce SandHybrid branding\n'
+              + '        run: python tools/validate_project_branding.py\n'
+          )
+          if 'Reject simulation coroutines' not in workflow:
+              if mission_step not in workflow:
+                  raise SystemExit('mission validation step missing')
+              workflow = workflow.replace(mission_step, validator_steps, 1)
+
+          cleanup_anchor = '          git push origin --delete agent/scene-geology-stack-v251 || true\n'
+          cleanup = (
+              cleanup_anchor
+              + '          git push origin --delete agent/integrate-core-hygiene-release-v253 || true\n'
+              + '          git push origin --delete agent/finalize-missioncache-release-v253 || true\n'
+              + '          git push origin --delete agent/external-handoff-priority-note || true\n'
+              + '          git push origin --delete agent/tmp-noop || true\n'
+              + '          # Preserve agent/nonoverlap-core-hygiene per Adam\'s explicit instruction.\n'
+          )
+          if 'agent/finalize-missioncache-release-v253' not in workflow:
+              if cleanup_anchor not in workflow:
+                  raise SystemExit('release branch cleanup anchor missing')
+              workflow = workflow.replace(cleanup_anchor, cleanup, 1)
+          workflow_path.write_text(workflow, encoding='utf-8')
+
+          Path('.github/workflows/apply-v253-integration.yml').unlink(missing_ok=True)
+          Path('.github/workflows/finalize-v253.yml').unlink(missing_ok=True)
+          PY
+
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_shader_contracts.py
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'Finalize mission integration and prepare v2.5.3'
+          git push origin HEAD:${{ github.head_ref }}
