@@ -18,6 +18,17 @@ if(NOT install_result EQUAL 0)
     message(FATAL_ERROR "Installing the SandHybrid package failed: ${install_result}")
 endif()
 
+foreach(runtime_header IN ITEMS app.hpp shared_state.hpp ui_layout.hpp ui_text_data.hpp
+                                vulkan_renderer.hpp window.hpp)
+    if(EXISTS "${prefix}/include/sandhybrid/${runtime_header}")
+        message(FATAL_ERROR
+            "Headless package leaked runtime-only header: ${runtime_header}")
+    endif()
+endforeach()
+if(EXISTS "${prefix}/include/gui")
+    message(FATAL_ERROR "Headless package leaked the EpochGui header tree")
+endif()
+
 set(configure_command
     "${CMAKE_COMMAND}"
     -S "${SANDHYBRID_SOURCE_DIR}/tests/downstream"
