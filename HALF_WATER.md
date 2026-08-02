@@ -12,7 +12,7 @@ Fresh water uses conserved half-units without changing the canonical 16-byte cel
 - half-water never enters an 8x8 macro transfer; it stays in the fine simulation
 - chemistry clears the half flag across material conversions
 
-All other materials and FastFreddy behavior remain unchanged.
+All other material behavior remains unchanged.
 
 
 ## v2.4.0 settling
