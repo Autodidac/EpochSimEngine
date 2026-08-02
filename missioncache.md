@@ -159,6 +159,14 @@ If runtime profiling proves the map-sized starburst too expensive, the only perm
 - Project-owned branding is `SandHybrid`; Legacy branding remains only when it is part of a proper external dependency or integration name.
 - Failed, missed, deferred, and regressed missions remain active until accepted.
 
+
+| MC-092 | PARTIAL | Soil-facing terminology | Player-facing cards, palette labels, documentation, and UI call material ID 3 `SOIL`; internal IDs remain stable for saves and shader compatibility. Runtime inspection acceptance remains required. |
+| MC-093 | PARTIAL | Distinct Atmosphere, Oxygen, and Eraser controls | `ATMOSPHERE` is an always-visible balanced-air fill action, `OXYGEN` remains a selectable material, and adjacent `ERASER` selects vacuum/empty deletion. Their labels, colors, and actions are never aliases. Runtime UI acceptance remains required. |
+| MC-094 | PARTIAL | Debug state cards and distinct ready/steady colors | The bottom of debug info contains readable cards with a large actual color block plus state name. `BULK READY` is vivid violet and `SETTLED` is vivid green; all relational states remain distinguishable in hue and brightness. Runtime screenshot acceptance remains required. |
+| MC-095 | PARTIAL | Default square size-two brush | Fresh startup defaults to square brush shape and size 2 without changing saved user selection semantics. Runtime startup acceptance remains required. |
+| MC-096 | PARTIAL | Restore Windows launcher | Root `run.bat` finds common Release package/build locations, launches `sandhybrid.exe`, forwards arguments, and reports failures without silently closing. Packaged Windows acceptance remains required. |
+| MC-097 | PARTIAL | Derived wet material variants | Moisture-retaining solids/powders expose derived `WET <MATERIAL>` card identity and wet color treatment without separate palette tools. Wet states arise only through physical mixing, absorption, reaction, or loaded state. Sand remains slightly hydrophobic; wet sand gains explicit density and sinks through ordinary liquids. Runtime mixing and sinking acceptance remains required. |
+
 # Archived release history
 
 ## v2.4.0 — macro hierarchy baseline

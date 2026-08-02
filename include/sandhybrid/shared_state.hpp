@@ -33,8 +33,8 @@ struct SharedState final {
     std::atomic_uint32_t hovered_material{material_count};
     std::atomic_uint32_t hovered_group{material_group_count};
     std::atomic_uint32_t selected_scene{static_cast<std::uint32_t>(Scene::ecosystem)};
-    std::atomic_uint32_t brush_radius{6};
-    std::atomic_uint32_t brush_shape{0};
+    std::atomic_uint32_t brush_radius{2};
+    std::atomic_uint32_t brush_shape{1};
     std::atomic_uint32_t placement_mode{0}; // 0 = cells, 1 = aligned 8x8 tile
     std::atomic_uint32_t camera_zoom{4};
     std::atomic_int camera_center_x{1280};

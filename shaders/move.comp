@@ -236,6 +236,15 @@ uint densityOf(uint material) {
     return material < MATERIAL_COUNT ? MATERIAL_DENSITY[material] : 0u;
 }
 
+uint effectiveDensity(Cell cell) {
+    uint base = densityOf(cell.material);
+    if ((cell.aux & AUX_WET) != 0u &&
+        (cell.material == MAT_SAND || cell.material == MAT_DIRT || cell.material == MAT_SILT ||
+         cell.material == MAT_ASH || cell.material == MAT_FERTILIZER || cell.material == MAT_WASTE))
+        return base + 32u;
+    return base;
+}
+
 bool isBaseGas(uint material) { return isStoredGasMaterial(material); }
 
 bool isBaseLiquid(uint material) {
@@ -446,11 +455,11 @@ bool canCellFallInto(Cell moving, Cell target) {
     if (moving.material == MAT_BEE || moving.material == MAT_QUEEN_BEE) return false;
     if (isCellGas(target) && !isCellGas(moving)) return true;
     if (isCellPowder(moving) || isLooseSolid(moving)) {
-        return isCellLiquid(target) && densityOf(moving.material) > densityOf(target.material);
+        return isCellLiquid(target) && effectiveDensity(moving) > effectiveDensity(target);
     }
     if (isCellLiquid(moving)) {
         return isCellGas(target) ||
-               (isCellLiquid(target) && densityOf(moving.material) > densityOf(target.material));
+               (isCellLiquid(target) && effectiveDensity(moving) > effectiveDensity(target));
     }
     return false;
 }
@@ -920,7 +929,7 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
 
     if (upward && isCellGas(source) &&
         (target.material == MAT_EMPTY ||
-         (isCellGas(target) && densityOf(source.material) < densityOf(target.material)))) {
+         (isCellGas(target) && effectiveDensity(source) < effectiveDensity(target)))) {
         if (source.material != MAT_LIGHTNING ||
             lightningMoveAllowed(sourcePosition, targetPosition, randomValue)) {
             swapCells(sourcePosition, targetPosition);

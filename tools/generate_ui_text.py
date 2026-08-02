@@ -36,7 +36,7 @@ FIXED = [
     "TILES", "ACTIVE AREAS", "MAP STAR", "CAMERA VIEW", "WASD PAN", "EDGE PAN", "PLACEMENT",
     "RESIDENT MB", "PAIR TESTS", "SKIPPED", "MOVING", "GAS FLOW", "LIQUID FLOW",
     "STRUCT FAIL", "CONVEYOR", "MACHINE IN", "MACHINE OUT", "VOLCANO LAVA",
-    "VOLCANO GAS", "GAS EDGE", "REACTIONS", "HALF WATER",
+    "VOLCANO GAS", "GAS EDGE", "REACTIONS", "HALF WATER", "WET", "ERASER",
 ]
 SCENES = [
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",

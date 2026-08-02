@@ -167,8 +167,8 @@ vec3 debugKeyColor(uint key) {
     if (key == 1u) return vec3(1.00, 0.88, 0.08);       // stable/candidate
     if (key == 2u) return vec3(1.00, 0.42, 0.04);       // bulk moved
     if (key == 3u) return vec3(1.00, 0.10, 0.72);       // fine active: vivid hot state
-    if (key == 4u) return vec3(0.02, 0.88, 1.00);       // bulk ready
-    if (key == 5u) return vec3(0.08, 0.88, 0.34);       // settled medium
+    if (key == 4u) return vec3(0.58, 0.20, 1.00);       // bulk ready: vivid violet
+    if (key == 5u) return vec3(0.08, 0.96, 0.28);       // settled medium: vivid green
     if (key == 6u) return vec3(0.035, 0.10, 0.30);      // sleeping: dark cool state
     if (key == 7u) return vec3(0.04, 0.52, 1.00);       // active
     if (key == 8u) return vec3(0.12, 0.72, 0.94);       // enclosed medium
@@ -239,8 +239,12 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
         }
     }
 
-    uint keyTop = panelTop + headerHeight + statCount * rowHeight + 8u;
+    uint keyRows = 5u;
+    uint cardHeight = textScale == 2 ? 36u : 28u;
     uint keyTitleHeight = textScale == 2 ? 22u : 14u;
+    uint cardsHeight = keyTitleHeight + keyRows * cardHeight + 10u;
+    uint keyTop = max(panelTop + headerHeight + statCount * rowHeight + 8u,
+                      panelBottom > cardsHeight ? panelBottom - cardsHeight : panelTop);
     if (fixedPixel(pixel, ivec2(int(panelLeft + 10u), int(keyTop)), textScale, 127u)) {
         textHit = true;
         textColor = vec3(1.00);
@@ -252,21 +256,30 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
         0u, 2u, 3u, 7u, 4u, 9u, 5u, 8u, 6u, 1u);
     uint keyColumns = panelRight - panelLeft >= 330u ? 2u : 1u;
     uint keyColumnWidth = max((panelRight - panelLeft - 20u) / keyColumns, 1u);
-    uint swatchSize = textScale == 2 ? 12u : 8u;
+    uint swatchSize = textScale == 2 ? 24u : 18u;
     for (uint key = 0u; key < keyCount; ++key) {
         uint column = key % keyColumns;
         uint row = key / keyColumns;
         uint keyLeft = panelLeft + 10u + column * keyColumnWidth;
-        uint keyY = keyTop + keyTitleHeight + row * rowHeight;
-        if (keyY + swatchSize < panelBottom && x >= keyLeft && x < keyLeft + swatchSize &&
-            y >= keyY && y < keyY + swatchSize) {
+        uint keyY = keyTop + keyTitleHeight + row * cardHeight;
+        uint cardRight = min(keyLeft + keyColumnWidth - 5u, panelRight - 5u);
+        uint cardBottom = min(keyY + cardHeight - 4u, panelBottom - 4u);
+        if (x >= keyLeft && x < cardRight && y >= keyY && y < cardBottom) {
+            color = vec3(0.025, 0.040, 0.060);
+            if (borderPixel(x, y, keyLeft, keyY, cardRight, cardBottom))
+                color = vec3(0.16, 0.26, 0.36);
+        }
+        uint swatchTop = keyY + 4u;
+        if (swatchTop + swatchSize < cardBottom && x >= keyLeft + 4u && x < keyLeft + 4u + swatchSize &&
+            y >= swatchTop && y < swatchTop + swatchSize) {
             uint colorKey = keyColorMap[key];
             color = debugKeyColor(colorKey);
-            if (borderPixel(x, y, keyLeft, keyY, keyLeft + swatchSize, keyY + swatchSize))
+            if (borderPixel(x, y, keyLeft + 4u, swatchTop,
+                            keyLeft + 4u + swatchSize, swatchTop + swatchSize))
                 color = vec3(1.00);
         }
         if (keyY + 7u * uint(textScale) < panelBottom && fixedPixel(pixel,
-            ivec2(int(keyLeft + swatchSize + 6u), int(keyY)), textScale, keyLabels[key])) {
+            ivec2(int(keyLeft + swatchSize + 12u), int(keyY + 7u)), textScale, keyLabels[key])) {
             textHit = true;
             textColor = vec3(0.94, 0.98, 1.00);
         }
@@ -308,6 +321,10 @@ vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
 
 vec4 worldColor(Cell cell, ivec2 grid) {
     vec4 base = materialColor(cell.material, cell.age, cell.aux, grid);
+    if ((cell.aux & AUX_WET) != 0u && !isCellLiquid(cell) && !isCellGas(cell)) {
+        base.rgb = mix(base.rgb, vec3(0.08, 0.24, 0.42), 0.20);
+        base.rgb *= 0.84;
+    }
     if (isHalfWater(cell)) {
         uint waterNeighbors = 0u;
         waterNeighbors += cellAt(grid + ivec2(-1, 0)).material == MAT_WATER ? 1u : 0u;
@@ -511,13 +528,21 @@ void main() {
 
         uint eraserTop = paletteTop + palettePanelHeight + 3u;
         uint eraserBottom = eraserTop + 24u;
+        uint utilityGap = 4u;
+        uint atmosphereRight = contentLeft + (contentWidth - utilityGap) / 2u;
+        uint eraserLeft = atmosphereRight + utilityGap;
         if (y >= eraserTop && y < eraserBottom && x >= contentLeft && x < contentLeft + contentWidth) {
-            color = renderPc.selectedMaterial == MAT_OXYGEN ? vec3(0.12, 0.31, 0.44) : vec3(0.055, 0.13, 0.19);
-            if (borderPixel(x, y, contentLeft, eraserTop, contentLeft + contentWidth, eraserBottom)) color *= 0.55;
-            uint length = fixedTextLength(67u);
+            bool atmosphereButton = x < atmosphereRight;
+            uint left = atmosphereButton ? contentLeft : eraserLeft;
+            uint right = atmosphereButton ? atmosphereRight : contentLeft + contentWidth;
+            color = atmosphereButton ? vec3(0.08, 0.30, 0.46) :
+                    (renderPc.selectedMaterial == MAT_EMPTY ? vec3(0.62, 0.12, 0.16) : vec3(0.22, 0.055, 0.07));
+            if (borderPixel(x, y, left, eraserTop, right, eraserBottom)) color *= 0.55;
+            uint label = atmosphereButton ? 67u : 159u;
+            uint length = fixedTextLength(label);
             int width = int(length) * 12 - 2;
-            if (fixedPixel(pixel, ivec2(int(contentLeft + contentWidth / 2u) - width / 2,
-                                        int(eraserTop + 5u)), 2, 67u)) color = vec3(1.0, 0.90, 0.90);
+            if (fixedPixel(pixel, ivec2(int(left + (right - left) / 2u) - width / 2,
+                                        int(eraserTop + 5u)), 2, label)) color = vec3(1.0, 0.94, 0.94);
             outColor = vec4(color, 1.0);
             return;
         }
@@ -626,10 +651,15 @@ void main() {
         if (y >= cardTop && y < cardBottom) {
             if (borderPixel(x, y, contentLeft, cardTop, contentLeft + contentWidth, cardBottom))
                 color = vec3(0.13, 0.29, 0.43);
-            if (renderPc.inspectMode != 0u && isHalfWater(inspected))
+            if (renderPc.inspectMode != 0u && isHalfWater(inspected)) {
                 text = text || fixedPixel(pixel, ivec2(int(contentLeft + 10u), int(cardTop + 9u)), 3, 157u);
-            else
+            } else if (renderPc.inspectMode != 0u && (inspected.aux & AUX_WET) != 0u &&
+                       !isCellLiquid(inspected) && !isCellGas(inspected)) {
+                text = text || fixedPixel(pixel, ivec2(int(contentLeft + 10u), int(cardTop + 9u)), 3, 158u) ||
+                       materialPixel(pixel, ivec2(int(contentLeft + 82u), int(cardTop + 9u)), 3, cardMaterial);
+            } else {
                 text = text || materialPixel(pixel, ivec2(int(contentLeft + 10u), int(cardTop + 9u)), 3, cardMaterial);
+            }
             if (renderPc.inspectMode != 0u) {
                 uint phase = cellPhase(inspected);
                 text = text || fixedPixel(pixel, ivec2(int(contentLeft + 10u), int(cardTop + 36u)), 2, 12u) ||
