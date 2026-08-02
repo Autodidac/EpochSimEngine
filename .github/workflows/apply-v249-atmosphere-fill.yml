@@ -1,0 +1,46 @@
+name: Apply SandHybrid v2.4.9 Atmosphere Fill Split
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/atmosphere-fill-split-v249'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply and validate release fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/apply_v249.py
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          cmake -S . -B build/contracts -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build/contracts --parallel
+          ctest --test-dir build/contracts --output-on-failure
+          rm -rf build/contracts
+
+          if git diff --quiet; then
+            echo 'Atmosphere/Fill split already applied.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Fix Atmosphere and Fill controls for v2.4.9'
+          git push origin HEAD:${{ github.head_ref }}
