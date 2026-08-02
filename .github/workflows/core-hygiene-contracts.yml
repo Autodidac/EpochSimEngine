@@ -1,0 +1,24 @@
+name: Core hygiene contracts
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: Deterministic core policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Reject simulation coroutines
+        run: python3 tools/validate_no_simulation_coroutines.py
+
+      - name: Enforce SandHybrid branding
+        run: python3 tools/validate_project_branding.py
