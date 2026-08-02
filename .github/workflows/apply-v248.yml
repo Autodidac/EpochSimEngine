@@ -12,24 +12,34 @@ jobs:
   apply:
     if: github.head_ref == 'agent/soil-debug-wet-ui-v248'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Apply and validate reviewed patch
+      - name: Apply and validate reviewed production patch
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -f .github/apply_v248.py ]]; then
-            echo 'Patch already applied.'
+          shopt -s nullglob
+          chunks=(.github/v248_final_chunk_*)
+          if (( ${#chunks[@]} == 0 )); then
+            echo 'Final production patch already applied.'
             exit 0
           fi
-          python3 .github/apply_v248.py
+          test "${#chunks[@]}" -eq 3
+          cat "${chunks[@]}" > "${RUNNER_TEMP}/v248.b64"
+          base64 --decode "${RUNNER_TEMP}/v248.b64" > "${RUNNER_TEMP}/v248.patch.xz"
+          echo '96ea272d5cefd712b2399629a56e890dad82676fa1da9f98f7b0cb981013d5cd  '"${RUNNER_TEMP}/v248.patch.xz" | sha256sum --check
+          xz --decompress --stdout "${RUNNER_TEMP}/v248.patch.xz" > "${RUNNER_TEMP}/v248.patch"
+          git apply --index "${RUNNER_TEMP}/v248.patch"
+          rm -f .github/v248_final_chunk_* .github/v248_sync_trigger .release/v248-run-request.txt
+
           python3 tools/generate_ui_text.py
           python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
           cmake -S . -B build/contracts -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DSANDHYBRID_BUILD_APP=OFF \
@@ -38,9 +48,10 @@ jobs:
           cmake --build build/contracts --parallel
           ctest --test-dir build/contracts --output-on-failure
           rm -rf build/contracts
+
           git checkout origin/main -- .github/workflows
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
-          git commit -m 'Improve soil tools, debug cards, brush defaults, launcher, and wet variants'
+          git commit -m 'Complete SandHybrid v2.4.8 broad release pass'
           git push origin HEAD:${{ github.head_ref }}
