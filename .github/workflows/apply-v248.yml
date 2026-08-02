@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.head_ref == 'agent/soil-debug-wet-ui-v248'
+    if: github.head_ref == 'agent/v248-final'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
