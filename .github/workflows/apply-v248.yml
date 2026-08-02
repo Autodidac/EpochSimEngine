@@ -24,19 +24,20 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          chunks=(.github/v248_final_chunk_*)
+          chunks=(.github/v248_exact_*)
           if (( ${#chunks[@]} == 0 )); then
             echo 'Final production patch already applied.'
             exit 0
           fi
-          test "${#chunks[@]}" -eq 9
+          test "${#chunks[@]}" -eq 18
           cat "${chunks[@]}" > "${RUNNER_TEMP}/v248.b64"
           base64 --decode "${RUNNER_TEMP}/v248.b64" > "${RUNNER_TEMP}/v248.patch.xz"
           echo '96ea272d5cefd712b2399629a56e890dad82676fa1da9f98f7b0cb981013d5cd  '"${RUNNER_TEMP}/v248.patch.xz" | sha256sum --check
           xz --decompress --stdout "${RUNNER_TEMP}/v248.patch.xz" > "${RUNNER_TEMP}/v248.patch"
           git apply --index "${RUNNER_TEMP}/v248.patch"
-          rm -f .github/v248_final_chunk_* .github/v248_sync_trigger \
-            .release/v248-run-request.txt .github/apply_v248_sep.py
+          rm -f .github/v248_exact_* .github/v248_final_chunk_* \
+            .github/v248_sync_trigger .release/v248-run-request.txt \
+            .github/apply_v248_sep.py
 
           python3 tools/generate_ui_text.py
           python3 tools/validate_shader_contracts.py
