@@ -1,6 +1,6 @@
 # SandHybrid Mission Cache
 
-This is the **single canonical mission document** for SandHybrid. It contains active work, permanent invariants, and archived release history. There is no separate mission ledger.
+This is the **single canonical product backlog** for SandHybrid. It contains active work, priority, acceptance criteria, permanent invariants, and concise accepted foundations. Release history lives only in `CHANGELOG.md`.
 
 Before changing code:
 
@@ -13,6 +13,13 @@ Before changing code:
 7. During the next broad pass, attempt every active mission once. Anything unfinished or runtime-unverified remains active with evidence.
 
 Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
+
+## Priority lanes
+
+- **P0 / primary release gate:** MC-038, MC-112, MC-115, and MC-116. These are the current release blockers and must pass deterministic contracts plus Windows/Linux Release packaging before publication.
+- **P1 / runtime correctness:** simulation, conservation, water, atmosphere, ecology, machinery, UI, scene, and performance missions that require packaged observation or deterministic runtime evidence.
+- **P2 / architecture and later integration:** streaming, full replacement-runtime cutover, optional subsystem extraction, and EpochEngine integration.
+- Priority is a scheduling property, not a second status system. Every unfinished row remains in this table exactly once.
 
 # Active missions
 
@@ -27,7 +34,7 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 | MC-105 | PARTIAL | Structural solids are metadata only | Stone, iron ore, refined iron, and other block-capable solids use 8x8 support/cohesion/sleep metadata without whole-tile translation. At 31 destroyed cells of 64, the remaining 33 release individually. Runtime fracture and persistence acceptance remain required. |
 | MC-106 | OPEN | Canonical packed atmosphere | Atmosphere cells conserve N2/O2/Ar/CO2/H2/He/vapor/contaminants, pressure, and temperature. Painting individual gases modifies composition instead of replacing air, and closed-box tests prove conservation. |
 | MC-111 | OPEN | Selectable atmosphere component gases | The palette exposes Nitrogen, Oxygen, Argon, Carbon Dioxide, Neon, Hydrogen, and Helium as distinct tools while retaining balanced Atmosphere. Append-only material/save IDs are preserved. In the replacement core, painting a component changes packed local composition and pressure rather than deleting the other atmosphere components; cards show identity, density, and local percentage. |
-| MC-112 | OPEN | Stone, Iron Ore, and Iron cell/tile parity | Retire Iron Shavings as a player-facing material and provide append-only compatible Iron Ore and refined Iron identities. For Stone, Iron Ore, and Iron, `CELLS` places loose individual pixels that fall when unsupported; `TILES` places supported structural 8x8 arrangements. Tile metadata never moves the solid wholesale, and at 31 destroyed cells the remaining 33 release as loose cells. Saves migrate without reusing old IDs. |
+| MC-112 | PARTIAL | Stone, Iron Ore, and Iron cell/tile parity | Save ID 48 is canonically `Iron Ore`; no Iron Shavings identifier or alias remains. Stone, Iron Ore, and refined Iron use `CELLS` for loose individual pixels and `TILES` for supported structural 8x8 arrangements. Tile metadata never translates the solid wholesale, and at 31 destroyed cells the remainder releases as loose cells. Static ID, palette, phase, block-capability, and shader contracts pass; packaged placement/fracture proof remains required. |
 | MC-113 | OPEN | Exact directional production transactions | Every industrial machine defines input material, power/medium requirements, processing latency, output material, input port, output port, blocked-output behavior, and a player-switchable direction where meaningful. One accepted transaction produces its documented goods on the output side or consumes nothing. Sluice transactions follow MC-088 exactly. |
 | MC-107 | OPEN | Component actors and directional machinery | Player, insects, conveyors, sluices, smelters, assemblers, vents, and habitats use occupancy/components outside material identity. Machines expose configurable input/output ports, consume explicit input cells, produce explicit output cells on the opposite side, support player-switchable output sides/directions where applicable, and report accepted/rejected transactions. |
 | MC-108 | OPEN | Sparse 512x512 stream pages | Eight-by-eight section pages allocate on demand, load before cross-page transfer, save modified distant pages asynchronously, and evict clean pages. Large mostly-static worlds avoid fixed full-world allocation and scanning. |
@@ -74,13 +81,13 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 |---|---|---|---|
 | MC-030 | REGRESSION | Remove life from fine swaps | Bees, ants, beetles, queens, and player use actor/occupancy state, never exchange material records, stand on hierarchy edges, or count as fine swaps. |
 | MC-031 | OPEN | Actor occupancy and medium overlap | Actors overlap air/liquid independently, conservatively displace media, breathe local composition, and can drown or suffocate. |
-| MC-032 | PARTIAL | Complete bee lifecycle | Forage, pollen, return, deposit, honey feeding, queen/nest aging, migration, hazards, respiration, replacement, and 100-bee autonomous cap pass multi-cycle runtime testing. |
+| MC-032 | PARTIAL | Complete bee lifecycle | Forage, pollen, Beehive return, deposit, honey feeding, queen/Beehive aging, migration, hazards, respiration, replacement, and the 100-bee autonomous cap pass multi-cycle runtime testing. |
 | MC-033 | REGRESSION | Recurring readable biohazard | Formation is recognizable, dominant, recurring, and free of grid-edge clumping or premature colony death. |
 | MC-034 | OPEN | Real ant behavior | Colonies, pheromone trails, forage/carry/home behavior, hazards, flooding, and permitted digging replace generic particle wandering. |
 | MC-035 | OPEN | Real beetle behavior | Beetles crawl surfaces/walls, seek food/shelter, respond to light/hazards, and turn at obstacles without flying/jittering as particles. |
 | MC-036 | OPEN | Define or remove insect habitat | Give it explicit species, capacity, inputs, lifecycle, and outputs, or remove it; no generic silent spawning. |
-| MC-037 | PARTIAL | Life debug counters | Debug reports actor moves and species counts for bees, queens, nests, ants, beetles, habitats, flowers, pollen, and honey. Respiration, suffocation, births, deaths, nest returns, and medium displacement still require separate counters and runtime acceptance. |
-| MC-038 | REGRESSION | Exact pre-PR19 suspended hives | Use FastFreddy commit `c8197b4526b74d66e2f04a6e858dd979c63c4eff`, `tools/fix36_hive_swarm.py`. Sandbox, Ecosystem, and buildable Bee Nest share the exact perch, shell, entrance, chamber, queen, and metadata. |
+| MC-037 | PARTIAL | Life debug counters | Debug reports actor moves and species counts for bees, queens, Beehives, ants, beetles, habitats, flowers, pollen, and honey. Respiration, suffocation, births, deaths, Beehive returns, and medium displacement require separate counters and runtime acceptance. |
+| MC-038 | PARTIAL | Canonical Fix28 Beehive prefab | Material save ID 31 is named `Beehive` in code, shaders, UI, cards, debug, docs, scene keys, and mission text with no alias constant. Sandbox, Ecosystem, and the buildable tool use one shared Fix28 compact prefab: shell `28 <= radius² < 108`, chamber `radius² < 28`, queen at center, and right entrance `x=1..12`, `|y|<=1`. Reset/place/save/load preserve queen and 100-bee colony metadata. Static contracts pass; packaged reset/place/save/load observation remains required. |
 | MC-039 | OPEN | Player-medium impulses | Player collisions minimally disturb every gas/liquid through bounded conserved directional impulse, wake touched sections, and then settle through MC-019 only after the injected impulse and resulting productive movement are exhausted. |
 
 ## UI and debug
@@ -104,6 +111,13 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 | MC-098 | PARTIAL | Restrained GUI group separation | Thin dividers separate scene navigation, editing controls, resource metrics, activity metrics, event counters, and debug state cards. Separation clarifies hierarchy without dense boxed clutter or reduced text size. Packaged visual acceptance remains required. |
 | MC-099 | PARTIAL | Separate Atmosphere and Fill actions | The always-visible Atmosphere control only selects balanced air. The separate Fill control alone raises the region-fill command and preserves the selected material. Eraser remains a third independent control. Static action, composition, and hit-region contracts pass; packaged runtime acceptance remains required. |
 | MC-047 | PARTIAL | Universal cell-or-tile placement | Every selectable material routes through the explicit `CELLS` / `TILES` selector and aligned tile painting path while retaining canonical material IDs and wakeup. Machine metadata, actor exclusions, and runtime parity still require broader acceptance. |
+
+## Scene authoring and repository hygiene
+
+| ID | Status | Mission | Acceptance |
+|---|---|---|---|
+| MC-115 | PARTIAL | Paint-editable scene image palette | Every material has one unique stable RGB scene color chosen near its ordinary rendered cell color. Save, Load, `material_key.txt`, and `material_key.ppm` use the same shared C++ table; exact colors round-trip losslessly and small Paint/resampling differences choose the nearest material. The old hashed permutation palette is removed. Static round-trip contracts pass; packaged Paint edit/load observation remains required. |
+| MC-116 | PARTIAL | Canonical backlog and one brief changelog | `missioncache.md` contains each unfinished requirement once with priority and acceptance criteria, not per-release prose. `CHANGELOG.md` is the only release-history file. Versioned release-note files, one-shot patch payloads, obsolete workflows, and completed agent branches are removed before publication. CI validates the cache and release tree. |
 
 ## Chemistry and materials
 
@@ -160,19 +174,15 @@ If runtime profiling proves the map-sized starburst too expensive, the only perm
 | MC-083 | PARTIAL | SandHybrid-only project branding | Remove this project's legacy project-owned names from UI, logs, namespaces, include paths, CMake targets, binaries, packages, workflows, docs, and tests. Preserve proper external names such as `EpochGui`, `EpochEngine`, and the external `epochengine::gui_lib` namespace. Repository-host rename is separate if GitHub settings cannot be changed through available tooling. |
 | MC-073 | DEFERRED | EpochEngine integration | Later migrate/rewrite using canonical `epochengine::` APIs while preserving reusable `SandHybrid` boundaries. |
 
-## v2.4.8 broad-pass audit
+## Backlog review policy
 
-Every active mission was reviewed once during this release pass. The ledger validator now fails CI when a mission row is duplicated, malformed, placed outside the active section, or when recent requirements MC-092 through MC-098 are missing.
-
-- Active missions reviewed: **79** (47 PARTIAL, 16 OPEN, 15 REGRESSION, 1 DEFERRED).
-- Direct v2.4.8 implementation focus: MC-029, MC-037, MC-040, MC-041, MC-044, MC-045, MC-046, MC-080, MC-085, MC-092, MC-093, MC-094, MC-095, MC-096, MC-097, and MC-098.
-- Static/library progress reviewed and recorded: MC-047, MC-060, MC-065, MC-070, MC-071, MC-072, and MC-083.
-- Large simulation, Atmosphere, ecology, streaming, and runtime-observed missions remain active rather than being falsely closed from compilation.
-- Reviewed IDs: MC-011, MC-012, MC-013, MC-084, MC-014, MC-015, MC-016, MC-017, MC-018, MC-019, MC-078, MC-053, MC-020, MC-021, MC-022, MC-023, MC-024, MC-025, MC-026, MC-027, MC-028, MC-029, MC-079, MC-030, MC-031, MC-032, MC-033, MC-034, MC-035, MC-036, MC-037, MC-038, MC-039, MC-040, MC-041, MC-042, MC-043, MC-044, MC-045, MC-046, MC-085, MC-080, MC-092, MC-093, MC-094, MC-095, MC-096, MC-098, MC-047, MC-050, MC-086, MC-087, MC-088, MC-097, MC-051, MC-081, MC-082, MC-052, MC-060, MC-061, MC-062, MC-063, MC-064, MC-065, MC-066, MC-067, MC-068, MC-069, MC-074, MC-075, MC-089, MC-090, MC-091, MC-077, MC-070, MC-071, MC-072, MC-083, MC-073.
+Every P0 mission is attempted in the current release. Every P1/P2 row is reviewed for contradiction and retained until its own acceptance passes. Static compilation never closes visual, runtime, conservation, or performance work.
 
 # Permanent invariants
 
 - Every generated scene and every loaded saved counterpart uses the same upper-center authored footprint, three-zone subterranean geology stack, and stone-wrapped two-brick bottom lava band.
+- Scene PPM colors are unique, stable, paint-friendly representatives of visible cell colors and share one Save/Load/material-key table.
+- Material save ID 31 is Beehive and ID 48 is Iron Ore; neither has a deprecated source alias.
 - Material cells, actors, Atmosphere composition, and medium impulses are authoritative; hierarchy metadata only accelerates them.
 - Behavior is canonical and provenance-independent.
 - Gas/liquid volume, every gas component, pressure, and cross-boundary transfer are conserved.
@@ -199,115 +209,10 @@ Every active mission was reviewed once during this release pass. The ledger vali
 
 
 
-# Archived release history
+# Accepted foundations
 
-## MC-070 — reusable SandHybrid core library
+| ID | Accepted foundation | Evidence location |
+|---|---|---|
+| MC-070 | Reusable platform-neutral `SandHybrid::SandHybrid` core library, optional Vulkan runtime, thin demo host, installed CMake package, and downstream consumer contract. | `CHANGELOG.md`; Windows/Linux CI history. |
 
-Validated source: `402b744b1e92d6f3334665112b30fdd4a3cba590` on branch `agent/complete-sandhybrid-library`.
-
-Accepted CI:
-
-- Headless library/package matrix: GitHub Actions run `30736832042` passed on Windows 2022 and Ubuntu 24.04.
-- Full Vulkan/demo matrix: GitHub Actions run `30736832063` passed on Windows 2022 and Ubuntu 24.04, including shader compilation, demo build, tests, install, archive, and artifact upload.
-
-Acceptance evidence:
-
-- `SandHybrid::SandHybrid` is a platform-neutral C++23 static library containing only scene image I/O and section scheduling implementation units; it has no process entry point, native window source, Vulkan renderer source, Vulkan/Threads/EpochGui link dependency, or hidden application ownership.
-- The installed package exports `SandHybridConfig.cmake`, `SandHybridConfigVersion.cmake`, `SandHybridTargets.cmake`, and `SandHybrid::SandHybrid`.
-- A clean external project installs the package, resolves it with `find_package(SandHybrid CONFIG REQUIRED)`, links it, and runs without repository-private include paths.
-- The package contract rejects runtime-only application, shared-state, UI, Vulkan renderer, window, and EpochGui header leakage.
-- Ownership and consumption are documented in `LIBRARY.md`; compile-time public API and downstream package contracts run under strict warnings on both supported platforms.
-
-MC-070 is complete. MC-071 and MC-072 remain active for exported native-runtime embedding and independent subsystem switches.
-
-
-## v2.4.0 — macro hierarchy baseline
-
-Source: `84d435300b5544a36312a6e17404f36a81ee955c`
-
-Shipped cached 8x8 classification, supported structural solids, canonical wet state, Sluice Box baseline, and reduced debug cost. Runtime reopened hierarchy movement and settling missions.
-
-## v2.4.1 — colony and represented-space correction
-
-Source: `c73d0b97804bdefb1552a3f5ce613682d414c3ff`
-
-Windows/Linux C++23 builds, shaders, tests, packages, and checksums passed. Runtime reopened hives, actors, Atmosphere, parity, and settling missions.
-
-## v2.4.2 — runtime hierarchy, scheduling, and diagnostics pass
-
-Runtime source merge: `2db7a6dad20a88f1ce65f54e3978f7f0daa9736f`. Windows/Linux CI run `30661800841` compiled all 12 shaders, built the C++23 library and demo, passed four contracts, and produced the published `v2.4.2` packages. Runtime observation reopened or retained the debug-layout, map placement, active-scope, settling, actors, Atmosphere, and hierarchy missions above.
-
-## v2.4.3 — universal camera navigation
-
-Release source: `bcd8c5135ab78d02a335329997e18d6b6fa36b1f`. Accepted CI run `30677627697` compiled all 12 shaders, built the C++23 library and demo on Windows 2022 and Ubuntu 24.04, passed all four contracts, installed packages, and uploaded both platform archives. Publication run `30678429804` published tag `v2.4.3`, the Windows archive, Linux archive, and `SHA256SUMS.txt`.
-
-Package checksums:
-
-- Windows: `f37fc8cf4aba001c14a1821223eb13a10f20ee85ac961efd5d32a58509d7bd22`
-- Linux: `4d5a8600d99d2d9e133f3cc50e0d9f35ed2d3daae5198215cdf0315dbb52e0b3`
-
-`MC-075` was later corrected: player scenes must not route W/A/S/D to the camera. The incorrect simultaneous-routing behavior from this release is superseded by MC-076 and must not be restored.
-
-## MC-076 — context-sensitive W/A/S/D ownership
-
-Completed by PR #24, merge `e7da78441a1076601764043e0825aecf982daf5d`. Directional input now has exactly one owner: player scenes route W/A/S/D exclusively to the player, while scenes without a player route it exclusively to the camera. Mouse-edge scrolling and middle-mouse drag remain independent camera controls. A shared `constexpr` router is exercised by the C++ behavior contract, and the static source validator rejects simultaneous player/camera routing. Accepted Windows/Linux CI run: `30679657812`.
-
-## Carry-forward rule
-
-New work receives a stable `MC-###` ID. Failed, missed, deferred, or regressed missions remain active. Completed missions move here with release evidence. Runtime contradiction reopens the same ID.
-
-## SandHybrid v2.4.5 release evidence
-
-- Release tag: `v2.4.5` (`SandHybrid v2.4.5`)
-- Release target: `ef05ac7e53ddcdcf42dfc4410f8aeb742c6ff8f0`
-- Accepted Windows/Linux CI: run `30692507199`, source head `4099e415e73f15fcb96e3baa8c050e7c07994657`
-- Packages: `SandHybrid-Windows-x64-v2.4.5.zip`, `SandHybrid-Linux-x64-v2.4.5.tar.gz`, and `SHA256SUMS.txt`
-
-```text
-b578ad5286aefb67746f4c845d268884e1443ea8e95f88dd05efcd580d3e6462  windows/SandHybrid-Windows-x64-v2.4.5.zip
-87d217da1496883a061f853f88df6c47993fdb6e5b73b33692e2d28506900138  linux/SandHybrid-Linux-x64-v2.4.5.tar.gz
-```
-
-Runtime-observed missions remain active until accepted in the packaged Windows Vulkan build.
-
-## SandHybrid v2.4.6 release evidence
-
-- Release tag: `v2.4.6` (`SandHybrid v2.4.6`)
-- Release target: `3ce05ff6a2ad14131e8dcf8c6302643e71dfcf5c`
-- Accepted Windows/Linux CI: run `30717524416`, source head `9fcf5b422d5e078e53537c5164259e8abd4c14c0`
-- Packages: `SandHybrid-Windows-x64-v2.4.6.zip`, `SandHybrid-Linux-x64-v2.4.6.tar.gz`, and `SHA256SUMS.txt`
-
-```text
-5f0289612dd65c8c9e2d2ba64c412fdd97222d95ce6bcfc4a31089ba9c9e1a77  windows/SandHybrid-Windows-x64-v2.4.6.zip
-8d9e03e1d61944f3060bed995108ec9d00257fa679ceb8ff47b3952db63c0fde  linux/SandHybrid-Linux-x64-v2.4.6.tar.gz
-```
-
-Runtime-observed missions remain active until accepted in the packaged Windows Vulkan build.
-
-## SandHybrid v2.4.7 release evidence
-
-- Release tag: `v2.4.7` (`SandHybrid v2.4.7`)
-- Release target: `b7bdbee7b450f7402af437705eefecc8468d7bca`
-- Accepted Windows/Linux CI: run `30723137326`, source head `1b882aed522e53441381ef049d50caae8284e568`
-- Packages: `SandHybrid-Windows-x64-v2.4.7.zip`, `SandHybrid-Linux-x64-v2.4.7.tar.gz`, and `SHA256SUMS.txt`
-
-```text
-fffb95619af76d49ca202b260d8d8b41997021ade4bfc31fe03153c351322948  windows/SandHybrid-Windows-x64-v2.4.7.zip
-2ce1170c7b2b49d833f12737c12f88cf6f827ead5b9b66711a4de1abf327ee42  linux/SandHybrid-Linux-x64-v2.4.7.tar.gz
-```
-
-Active cache count at publication: 72 missions — 29 PARTIAL, 27 OPEN, 15 REGRESSION, and 1 DEFERRED. Runtime-observed missions remain active until accepted in the packaged Windows Vulkan build.
-
-## SandHybrid v2.4.8 release evidence
-
-- Release tag: `v2.4.8` (`SandHybrid v2.4.8`)
-- Release target: `22b572b3489fd0bc68915d638b63013fa6b5f957`
-- Accepted Windows/Linux CI: run `30730378799`, source head `6bd22e032c6d13d29a3916a0f0adc4a97b876545`
-- Packages: `SandHybrid-Windows-x64-v2.4.8.zip`, `SandHybrid-Linux-x64-v2.4.8.tar.gz`, and `SHA256SUMS.txt`
-
-```text
-f869360a1f24a24c1d2214a4aa6562b6d868b0f8e166eeac57484905e112292c  windows/SandHybrid-Windows-x64-v2.4.8.zip
-eadf8d3e5f8ff8bf3b71dac2bea2341316cc0dcb80bd3f9667c9c41a38ad75fe  linux/SandHybrid-Linux-x64-v2.4.8.tar.gz
-```
-
-Active cache count at publication: 79 missions — 48 PARTIAL, 15 OPEN, 15 REGRESSION, and 1 DEFERRED. Every active mission was reviewed and attempted in the broad pass; runtime-observed and architectural missions remain active until their acceptance criteria pass.
+Detailed release history belongs only in `CHANGELOG.md`. Completed source branches and one-shot patch machinery are deleted after publication.

@@ -23,7 +23,7 @@ def main() -> int:
     try:
         active_start = text.index("# Active missions")
         permanent_start = text.index("# Permanent invariants")
-        archive_start = text.index("# Archived release history")
+        archive_start = text.index("# Accepted foundations")
     except ValueError as error:
         fail(f"missing canonical section: {error}")
 

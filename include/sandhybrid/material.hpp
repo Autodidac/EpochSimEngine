@@ -41,7 +41,7 @@ enum class Material : std::uint32_t {
     beeswax = 28,
     flower = 29,
     saltwater = 30,
-    bee_nest = 31,
+    beehive = 31,
     dirty_steam = 32,
     dirty_water = 33,
     pollen = 34,
@@ -58,7 +58,7 @@ enum class Material : std::uint32_t {
     gold = 45,
     oxygen = 46,
     carbon_dioxide = 47,
-    iron_shavings = 48,
+    iron_ore = 48,
     steel = 49,
     conveyor = 50,
     smelter = 51,
@@ -139,7 +139,7 @@ inline constexpr std::array<std::string_view, material_count> material_names{
     "Beeswax",
     "Flower",
     "Saltwater",
-    "Bee nest",
+    "Beehive",
     "Dirty steam",
     "Dirty water",
     "Pollen",
@@ -156,7 +156,7 @@ inline constexpr std::array<std::string_view, material_count> material_names{
     "Gold",
     "Oxygen",
     "CO2",
-    "Iron shavings",
+    "Iron ore",
     "Steel",
     "Conveyor",
     "Smelter",
@@ -306,9 +306,9 @@ inline constexpr std::array<std::array<Material, material_slots_per_group>, mate
     {Material::sand, Material::dirt, Material::stone, Material::mud, Material::silt, Material::crystal, Material::glass, Material::count, Material::count, Material::count},
     {Material::water, Material::saltwater, Material::dirty_water, Material::ice, Material::snow, Material::steam, Material::dirty_steam, Material::salt, Material::count, Material::count},
     {Material::grass, Material::seed, Material::plant_stem, Material::flower, Material::wood, Material::food, Material::fertilizer, Material::pollen, Material::count, Material::count},
-    {Material::honey, Material::bee, Material::queen_bee, Material::bee_nest, Material::beeswax, Material::ant, Material::beetle, Material::insect_habitat, Material::count, Material::count},
+    {Material::honey, Material::bee, Material::queen_bee, Material::beehive, Material::beeswax, Material::ant, Material::beetle, Material::insect_habitat, Material::count, Material::count},
     {Material::fire, Material::lava, Material::oil, Material::ember, Material::ash, Material::gunpowder, Material::acid, Material::magma_vent, Material::smoke, Material::count},
-    {Material::plastic, Material::acid_resistant_plastic, Material::aluminum, Material::aluminum_shavings, Material::iron, Material::iron_shavings, Material::copper, Material::gold, Material::steel, Material::insulator},
+    {Material::plastic, Material::acid_resistant_plastic, Material::aluminum, Material::aluminum_shavings, Material::iron, Material::iron_ore, Material::copper, Material::gold, Material::steel, Material::insulator},
     {Material::magnet, Material::lightning, Material::power_cell, Material::plasma_ammo, Material::oxygen, Material::carbon_dioxide, Material::hydrogen, Material::radiation, Material::count, Material::count},
     {Material::conveyor, Material::smelter, Material::assembler, Material::factory_core, Material::uranium, Material::waste, Material::sluice_box, Material::count, Material::count, Material::count},
 }};
@@ -339,6 +339,7 @@ inline constexpr std::array<std::array<Material, material_slots_per_group>, mate
     case Material::aluminum:
     case Material::glass:
     case Material::iron:
+    case Material::iron_ore:
     case Material::copper:
     case Material::gold:
     case Material::magnet:

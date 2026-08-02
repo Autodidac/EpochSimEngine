@@ -259,7 +259,7 @@ bool isPowderCellMaterial(uint material) {
            material == MAT_GUNPOWDER || material == MAT_SNOW || material == MAT_SEED ||
            material == MAT_POLLEN || material == MAT_SILT || material == MAT_FERTILIZER ||
            material == MAT_FOOD || material == MAT_WASTE ||
-           material == MAT_ALUMINUM_SHAVINGS || material == MAT_IRON_SHAVINGS;
+           material == MAT_ALUMINUM_SHAVINGS || material == MAT_IRON_ORE;
 }
 
 bool isConveyorPowderMaterial(uint material) {
@@ -273,6 +273,7 @@ bool isBlockCapable(uint material) {
     return material == MAT_STONE || material == MAT_CRYSTAL || material == MAT_WOOD ||
            material == MAT_PLASTIC || material == MAT_ACID_RESISTANT_PLASTIC ||
            material == MAT_ALUMINUM || material == MAT_GLASS || material == MAT_IRON ||
+           material == MAT_IRON_ORE ||
            material == MAT_COPPER || material == MAT_MAGNET || material == MAT_INSULATOR ||
            material == MAT_URANIUM || material == MAT_STEEL || material == MAT_CONVEYOR || material == MAT_SMELTER ||
            material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||
@@ -293,7 +294,7 @@ bool isMolten(Cell cell) {
            (material == MAT_URANIUM && temperature >= 1132) ||
            (material == MAT_ALUMINUM_SHAVINGS && temperature >= 1064) ||
            (material == MAT_GOLD && temperature >= 1064) ||
-           (material == MAT_IRON_SHAVINGS && temperature >= 1538) ||
+           (material == MAT_IRON_ORE && temperature >= 1538) ||
            (material == MAT_STEEL && temperature >= 1450) ||
            (material == MAT_POWER_CELL && temperature >= 220) ||
            (material == MAT_PLASMA_AMMO && temperature >= 180);
@@ -316,7 +317,7 @@ bool isImmovableMaterial(uint material) {
            material == MAT_PLANT_STEM || material == MAT_WOOD || material == MAT_PLASTIC ||
            material == MAT_ACID_RESISTANT_PLASTIC || material == MAT_ICE ||
            material == MAT_ALUMINUM || material == MAT_GLASS || material == MAT_BEESWAX ||
-           material == MAT_FLOWER || material == MAT_BEE_NEST ||
+           material == MAT_FLOWER || material == MAT_BEEHIVE ||
            material == MAT_QUEEN_BEE || material == MAT_IRON || material == MAT_COPPER ||
            material == MAT_MAGNET || material == MAT_INSULATOR ||
            material == MAT_MAGMA_VENT || material == MAT_URANIUM ||
@@ -339,7 +340,7 @@ bool isLooseSolid(Cell cell) {
 }
 
 bool isMagnetic(uint material) {
-    return material == MAT_IRON || material == MAT_IRON_SHAVINGS;
+    return material == MAT_IRON || material == MAT_IRON_ORE;
 }
 
 bool isConductive(uint material) {
@@ -444,7 +445,7 @@ bool movementAllows(Cell cell, uint randomValue) {
     if (cell.material == MAT_FERTILIZER) return (randomValue % 7u) == 0u;
     if (cell.material == MAT_FOOD) return (randomValue % 4u) == 0u;
     if (cell.material == MAT_WASTE) return (randomValue % 8u) == 0u;
-    if (cell.material == MAT_ALUMINUM_SHAVINGS || cell.material == MAT_IRON_SHAVINGS) return true;
+    if (cell.material == MAT_ALUMINUM_SHAVINGS || cell.material == MAT_IRON_ORE) return true;
     return true;
 }
 

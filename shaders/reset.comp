@@ -2,6 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 #include "materials.glsl"
 #include "bee_swarm.glsl"
+#include "beehive.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
@@ -140,22 +141,13 @@ bool brickStair(ivec2 p, ivec2 startBrick, int count, bool risingRight) {
 
 ivec2 sandboxQueen() { return brickCenter(ivec2(58, 24)); }
 
-// Exact approved suspended hive geometry from pre-PR19 FastFreddy.
-void applySuspendedHive(ivec2 p, ivec2 queen, inout uint material, bool includeFormation) {
-    ivec2 q = p - queen;
-    int q2 = q.x * q.x + q.y * q.y;
-    if (p.x > queen.x - 38 && p.x < queen.x + 30 &&
-        p.y > queen.y - 17 && p.y < queen.y - 12) material = MAT_WOOD;
-    if (q2 >= 25 && q2 < 92) material = MAT_BEE_NEST;
-    if (q2 == 0) material = MAT_QUEEN_BEE;
-    else if (q.x >= 1 && q.x <= 10 && abs(q.y) <= 1) material = MAT_EMPTY;
-    else if (q2 < 25) {
-        uint chamber = hash32(indexOf(p) ^ pc.seed ^ 0xb33u);
-        material = (chamber & 3u) == 0u ? MAT_EMPTY
-            : (((chamber >> 2u) & 1u) == 0u ? MAT_HONEY : MAT_POLLEN);
-    }
+// Canonical Fix28 compact Beehive shared by generated scenes and the tool.
+void applyBeehive(ivec2 p, ivec2 queen, inout uint material, bool includeFormation) {
+    ivec2 offset = p - queen;
+    uint prefab = beehivePrefabMaterial(offset, hash32(indexOf(p) ^ pc.seed ^ 0xb33u));
+    if (prefab != MATERIAL_COUNT) material = prefab;
     if (includeFormation) {
-        int slot = beeFormationSlotFromOffset(q);
+        int slot = beeFormationSlotFromOffset(offset);
         if (material == MAT_EMPTY && slot >= 0) material = MAT_BEE;
     }
 }
@@ -190,7 +182,7 @@ uint sandboxMaterial(ivec2 p) {
     ivec2 d = p - pileCenter;
     if (d.y >= 0 && d.y < 48 && abs(d.x) < 52 - d.y) material = MAT_SAND;
 
-    applySuspendedHive(p, sandboxQueen(), material, true);
+    applyBeehive(p, sandboxQueen(), material, true);
     return material;
 }
 
@@ -306,8 +298,8 @@ uint ecosystemMaterial(ivec2 p) {
         p.x > (farmMin.x + 2) * BRICK_SIZE && p.x < (farmMax.x - 2) * BRICK_SIZE && (p.x % 13) == 0)
         material = ((p.x / 13) & 1) == 0 ? MAT_ANT : MAT_BEETLE;
 
-    // Exact pre-PR19 suspended hive, shared with Sandbox and the buildable tool.
-    applySuspendedHive(p, ecosystemQueen(), material, true);
+    // Canonical Fix28 compact Beehive, shared with Sandbox and the buildable tool.
+    applyBeehive(p, ecosystemQueen(), material, true);
 
     for (int flower = 0; flower < 6; ++flower) {
         int x = (world.x - 31 + flower * 3) * BRICK_SIZE + 4;
@@ -341,7 +333,7 @@ uint engineeringMaterial(ivec2 p) {
         uint mix = hash32(indexOf(p) ^ pc.seed ^ 0x5f17u);
         if ((mix % 71u) == 0u) material = MAT_ALUMINUM_SHAVINGS;
         else if ((mix % 43u) == 0u) material = MAT_COPPER;
-        else if ((mix % 23u) == 0u) material = MAT_IRON_SHAVINGS;
+        else if ((mix % 23u) == 0u) material = MAT_IRON_ORE;
         else material = (mix & 3u) == 0u ? MAT_SILT : MAT_SAND;
     }
     int outlet = (hopperMin.x + hopperMax.x) / 2;
@@ -429,7 +421,7 @@ uint goldMineMaterial(ivec2 p) {
         uint mix = hash32(indexOf(p) ^ pc.seed ^ 0x91f3u);
         if ((mix % 97u) == 0u) material = MAT_ALUMINUM_SHAVINGS;
         else if ((mix % 41u) == 0u) material = MAT_COPPER;
-        else if ((mix % 29u) == 0u) material = MAT_IRON_SHAVINGS;
+        else if ((mix % 29u) == 0u) material = MAT_IRON_ORE;
         else if ((mix % 23u) == 0u) material = MAT_GOLD;
         else material = MAT_SAND;
     }
@@ -560,7 +552,7 @@ bool looseAuthoredCargo(uint scene, ivec2 p, uint material) {
     if (scene == SCENE_ENGINEERING || scene == SCENE_GOLD_MINE || scene == SCENE_FRONTIER_BASE) {
         if (material == MAT_IRON || material == MAT_COPPER || material == MAT_GOLD ||
             material == MAT_ALUMINUM || material == MAT_ALUMINUM_SHAVINGS ||
-            material == MAT_IRON_SHAVINGS || material == MAT_POWER_CELL ||
+            material == MAT_IRON_ORE || material == MAT_POWER_CELL ||
             material == MAT_PLASMA_AMMO) return true;
     }
     return false;

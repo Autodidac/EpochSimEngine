@@ -14,6 +14,8 @@ using sandhybrid::Scene;
 static_assert(static_cast<std::uint32_t>(Material::empty) == 0u);
 static_assert(static_cast<std::uint32_t>(Material::waste) == 63u);
 static_assert(static_cast<std::uint32_t>(Material::hydrogen) == 64u);
+static_assert(static_cast<std::uint32_t>(Material::beehive) == 31u);
+static_assert(static_cast<std::uint32_t>(Material::iron_ore) == 48u);
 static_assert(static_cast<std::uint32_t>(Material::atmosphere) == 66u);
 static_assert(sandhybrid::material_count == 67u);
 static_assert(sandhybrid::material_profiles.size() == sandhybrid::material_count);
@@ -31,7 +33,10 @@ static_assert(sandhybrid::scene_name(Scene::gold_mine) == "Platformer");
 static_assert(sandhybrid::grouped_material(MaterialGroup::ground, 0u) == Material::sand);
 static_assert(sandhybrid::grouped_material(MaterialGroup::industry, 3u) == Material::factory_core);
 static_assert(sandhybrid::grouped_material(MaterialGroup::engineering, 6u) == Material::hydrogen);
+static_assert(sandhybrid::material_names[31u] == "Beehive");
+static_assert(sandhybrid::material_names[48u] == "Iron ore");
 static_assert(sandhybrid::is_block_material(Material::stone));
+static_assert(sandhybrid::is_block_material(Material::iron_ore));
 static_assert(!sandhybrid::is_block_material(Material::mud));
 
 static_assert(sandhybrid::phase_at(Material::copper, 1300) == MaterialPhase::molten);
@@ -80,7 +85,7 @@ constexpr bool palette_materials_are_unique() {
         }
     }
     return counts[static_cast<std::uint32_t>(Material::aluminum_shavings)] == 1u &&
-           counts[static_cast<std::uint32_t>(Material::iron_shavings)] == 1u &&
+           counts[static_cast<std::uint32_t>(Material::iron_ore)] == 1u &&
            counts[static_cast<std::uint32_t>(Material::atmosphere)] == 0u;
 }
 static_assert(palette_materials_are_unique());

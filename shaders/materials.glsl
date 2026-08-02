@@ -121,7 +121,7 @@ Cell makeCellWithEntropy(uint material, uint seed, uint step) {
              material == MAT_FERTILIZER || material == MAT_FOOD || material == MAT_WASTE) aux |= 255u;
     else if (material == MAT_BEE) aux |= AUX_BEE_FED | 180u;
     else if (material == MAT_POLLEN) aux |= 16u;
-    else if (material == MAT_ALUMINUM_SHAVINGS || material == MAT_GOLD || material == MAT_IRON_SHAVINGS ||
+    else if (material == MAT_ALUMINUM_SHAVINGS || material == MAT_GOLD || material == MAT_IRON_ORE ||
              material == MAT_IRON || material == MAT_STEEL || material == MAT_POWER_CELL ||
              material == MAT_PLASMA_AMMO) aux |= 255u;
     else if (material == MAT_OXYGEN) aux |= 220u;
@@ -216,7 +216,7 @@ bool isPowder(uint material) {
            material == MAT_ASH || material == MAT_GUNPOWDER || material == MAT_SNOW ||
            material == MAT_SEED || material == MAT_POLLEN || material == MAT_SILT ||
            material == MAT_FERTILIZER || material == MAT_FOOD || material == MAT_WASTE ||
-           material == MAT_ALUMINUM_SHAVINGS || material == MAT_IRON_SHAVINGS;
+           material == MAT_ALUMINUM_SHAVINGS || material == MAT_IRON_ORE;
 }
 
 bool isPlant(uint material) {
@@ -240,7 +240,7 @@ bool isConductive(uint material) {
 }
 
 bool isMagnetic(uint material) {
-    return material == MAT_IRON || material == MAT_IRON_SHAVINGS;
+    return material == MAT_IRON || material == MAT_IRON_ORE;
 }
 
 bool isImmovable(uint material) {
@@ -248,7 +248,7 @@ bool isImmovable(uint material) {
            material == MAT_PLANT_STEM || material == MAT_WOOD ||
            material == MAT_PLASTIC || material == MAT_ACID_RESISTANT_PLASTIC ||
            material == MAT_ICE || material == MAT_ALUMINUM || material == MAT_GLASS ||
-           material == MAT_BEESWAX || material == MAT_FLOWER || material == MAT_BEE_NEST ||
+           material == MAT_BEESWAX || material == MAT_FLOWER || material == MAT_BEEHIVE ||
            material == MAT_QUEEN_BEE || material == MAT_IRON || material == MAT_COPPER ||
            material == MAT_MAGNET || material == MAT_INSULATOR || material == MAT_MAGMA_VENT ||
            material == MAT_URANIUM || material == MAT_STEEL || material == MAT_CONVEYOR || material == MAT_SMELTER ||
@@ -272,20 +272,20 @@ bool blocksSun(uint material) {
            material == MAT_PLASTIC || material == MAT_ACID_RESISTANT_PLASTIC ||
            material == MAT_GRASS || material == MAT_FLOWER || material == MAT_SAND ||
            material == MAT_GUNPOWDER || material == MAT_HONEY || material == MAT_BEESWAX ||
-           material == MAT_BEE_NEST || material == MAT_QUEEN_BEE || material == MAT_LAVA ||
+           material == MAT_BEEHIVE || material == MAT_QUEEN_BEE || material == MAT_LAVA ||
            material == MAT_MAGMA_VENT || material == MAT_URANIUM || material == MAT_STEEL || material == MAT_CONVEYOR ||
            material == MAT_SMELTER || material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||
            material == MAT_FACTORY_CORE || material == MAT_SLUICE_BOX ||
            material == MAT_SILT || material == MAT_FERTILIZER ||
            material == MAT_FOOD || material == MAT_WASTE ||
-           material == MAT_ALUMINUM_SHAVINGS || material == MAT_IRON_SHAVINGS;
+           material == MAT_ALUMINUM_SHAVINGS || material == MAT_IRON_ORE;
 }
 
 bool isFlammable(uint material) {
     return material == MAT_GRASS || material == MAT_PLANT_STEM ||
            material == MAT_FLOWER || material == MAT_OIL ||
            material == MAT_WOOD || material == MAT_PLASTIC || material == MAT_HONEY ||
-           material == MAT_BEESWAX || material == MAT_BEE_NEST || material == MAT_BEE ||
+           material == MAT_BEESWAX || material == MAT_BEEHIVE || material == MAT_BEE ||
            material == MAT_GUNPOWDER || material == MAT_SEED || material == MAT_POLLEN ||
            material == MAT_FERTILIZER || material == MAT_FOOD || material == MAT_WASTE ||
            material == MAT_POWER_CELL || material == MAT_PLASMA_AMMO;
@@ -297,7 +297,7 @@ uint flammability(uint material) {
     case MAT_OIL: return 150u;
     case MAT_POLLEN: return 112u;
     case MAT_BEESWAX: return 92u;
-    case MAT_BEE_NEST: return 82u;
+    case MAT_BEEHIVE: return 82u;
     case MAT_FLOWER: return 76u;
     case MAT_GRASS: return 64u;
     case MAT_SEED: return 48u;
@@ -330,7 +330,7 @@ uint acidResistance(uint material) {
     case MAT_MAGNET: return 240u;
     case MAT_PLASTIC: return 238u;
     case MAT_BEESWAX: return 230u;
-    case MAT_BEE_NEST: return 225u;
+    case MAT_BEEHIVE: return 225u;
     case MAT_WOOD: return 220u;
     case MAT_WATER: return 214u;
     case MAT_SALTWATER: return 212u;
@@ -352,7 +352,7 @@ uint acidResistance(uint material) {
     case MAT_MAGMA_VENT: return 255u;
     case MAT_ALUMINUM_SHAVINGS: return 250u;
     case MAT_GOLD: return 246u;
-    case MAT_IRON_SHAVINGS: return 242u;
+    case MAT_IRON_ORE: return 242u;
     case MAT_STEEL: return 252u;
     case MAT_CONVEYOR: return 250u;
     case MAT_SMELTER: return 252u;
@@ -370,6 +370,7 @@ bool isBlockCapable(uint material) {
     return material == MAT_STONE || material == MAT_CRYSTAL || material == MAT_WOOD ||
            material == MAT_PLASTIC || material == MAT_ACID_RESISTANT_PLASTIC ||
            material == MAT_ALUMINUM || material == MAT_GLASS || material == MAT_IRON ||
+           material == MAT_IRON_ORE ||
            material == MAT_COPPER || material == MAT_GOLD || material == MAT_MAGNET || material == MAT_INSULATOR ||
            material == MAT_URANIUM || material == MAT_STEEL || material == MAT_CONVEYOR || material == MAT_SMELTER ||
            material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||
@@ -500,7 +501,7 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
         float saltTone = float(aux & AUX_STATE_MASK) / 255.0;
         color = vec4(0.07 + saltTone * 0.05, 0.42 + variation, 0.72 + saltTone * 0.12, 0.9); break;
     }
-    case MAT_BEE_NEST: {
+    case MAT_BEEHIVE: {
         float pulse = 0.025 * sin(float(age) * 0.055 + float(position.x + position.y) * 0.45);
         bool comb = ((position.x + (position.y & 1)) % 4) == 0;
         color = vec4(0.62 + pulse, (comb ? 0.37 : 0.42) + pulse, 0.08, 1.0); break;
@@ -533,7 +534,7 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
     case MAT_ATMOSPHERE: color = vec4(0.34, 0.64 + variation * 0.18, 0.72, 0.16); break;
     case MAT_CARBON_DIOXIDE: color = vec4(0.015 + variation * 0.08, 0.020 + variation * 0.06, 0.030 + variation * 0.08, 0.62); break;
     case MAT_HYDROGEN: color = vec4(1.00, 0.32 + variation * 0.18, 0.68 + variation * 0.18, 0.42); break;
-    case MAT_IRON_SHAVINGS: {
+    case MAT_IRON_ORE: {
         bool fleck = (textureHash & 15u) < 5u;
         color = fleck ? vec4(0.58, 0.30, 0.19, 1.0) : vec4(0.24, 0.21, 0.20, 1.0); break;
     }

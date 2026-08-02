@@ -1452,8 +1452,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             state.selected_material.load(std::memory_order_relaxed) % material_count;
         const auto replacement = static_cast<Material>(replacement_id);
         if (replacement == Material::bee || replacement == Material::queen_bee ||
-            replacement == Material::bee_nest) {
-            startup_log("Fill ignored for colony agents/prefab; place Bee nest to build a live colony.");
+            replacement == Material::beehive) {
+            startup_log("Fill ignored for colony agents/prefab; place Beehive to build a live colony.");
             return;
         }
 
@@ -1766,7 +1766,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                     : state.selected_material.load(std::memory_order_relaxed);
         const bool tile_mode = state.placement_mode.load(std::memory_order_relaxed) != 0u;
         const auto radius = tile_mode ? 8u
-            : (material == static_cast<std::uint32_t>(Material::bee_nest) ? 64u : requested_radius);
+            : (material == static_cast<std::uint32_t>(Material::beehive) ? 64u : requested_radius);
         const auto shape = tile_mode ? 1u : state.brush_shape.load(std::memory_order_relaxed) % 4u;
         const auto packed_material = material | (shape << 16u) | (tile_mode ? (1u << 18u) : 0u);
         SimulationPush push{
@@ -2121,7 +2121,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .brush_radius = [&state]() {
                 const auto material_id = state.selected_material.load(std::memory_order_relaxed);
                 const auto material = static_cast<Material>(material_id < material_count ? material_id : 0u);
-                if (material == Material::bee_nest) return 12u;
+                if (material == Material::beehive) return 12u;
                 return is_block_material(material) ? 8u : state.brush_radius.load(std::memory_order_relaxed);
             }(),
             .status_height = static_cast<std::uint32_t>(layout.status.size.y),

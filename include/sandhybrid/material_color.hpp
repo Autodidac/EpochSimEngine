@@ -16,6 +16,7 @@ struct Rgb8 final {
 
     friend constexpr bool operator==(Rgb8, Rgb8) noexcept = default;
 };
+static_assert(sizeof(Rgb8) == 3u);
 
 // Stable, paint-editor-friendly representatives of the in-simulation material
 // colors. Dynamic texture variation, animation, wetness, charge, transparency,

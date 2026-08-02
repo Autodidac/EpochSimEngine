@@ -15,6 +15,6 @@ This keeps procedural scenes and loaded saved counterparts identical outside the
 
 Missing built-in scene images are generated automatically the first time the procedural fallback is reset.
 
-material_key.txt and material_key.ppm are generated beside the scenes. Use their exact colors for lossless material editing. Other colors are mapped to the nearest material.
+material_key.txt and material_key.ppm are generated beside the scenes. Their stable RGB swatches closely match the visible simulation cells, so the PPM can be edited by eye in ordinary Paint. Exact key colors are lossless; nearby colors map to the nearest material.
 
 Structural rule: a structural material needs at least 32 represented pixels of the same material in its aligned 8x8 region. Below 32 it becomes loose and crumbles. Regions from 32 through 51 remain structurally weak; 52 or more receive full structural durability.

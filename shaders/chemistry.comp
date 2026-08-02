@@ -353,7 +353,7 @@ ivec2 beeDepositTarget(ivec2 beePosition, Cell beeCell) {
         ivec2 preferred = beePosition + direction;
         uint preferredMaterial = at(preferred).material;
         if ((preferredMaterial == MAT_EMPTY || preferredMaterial == MAT_POLLEN) &&
-            (hasNeighbor(preferred, MAT_QUEEN_BEE) || hasNeighbor(preferred, MAT_BEE_NEST))) {
+            (hasNeighbor(preferred, MAT_QUEEN_BEE) || hasNeighbor(preferred, MAT_BEEHIVE))) {
             return preferred;
         }
     }
@@ -363,7 +363,7 @@ ivec2 beeDepositTarget(ivec2 beePosition, Cell beeCell) {
         ivec2 candidate = beePosition + neighborOffsets[(start + offset) & 7u];
         uint material = at(candidate).material;
         if ((material == MAT_EMPTY || material == MAT_POLLEN) &&
-            (hasNeighbor(candidate, MAT_QUEEN_BEE) || hasNeighbor(candidate, MAT_BEE_NEST))) {
+            (hasNeighbor(candidate, MAT_QUEEN_BEE) || hasNeighbor(candidate, MAT_BEEHIVE))) {
             return candidate;
         }
     }
@@ -376,7 +376,7 @@ bool pollenBeeTargets(ivec2 targetPosition) {
         Cell bee = at(beePosition);
         if (bee.material == MAT_BEE && (bee.aux & AUX_BEE_POLLEN) != 0u &&
             all(equal(beeDepositTarget(beePosition, bee), targetPosition)) &&
-            (hasNeighbor(beePosition, MAT_QUEEN_BEE) || hasNeighbor(beePosition, MAT_BEE_NEST))) {
+            (hasNeighbor(beePosition, MAT_QUEEN_BEE) || hasNeighbor(beePosition, MAT_BEEHIVE))) {
             return true;
         }
     }
@@ -414,7 +414,7 @@ void applyStructuralHazards(ivec2 position, Cell source, inout Cell result,
     }
     if ((nearLava || nearFire) && (randomValue & 31u) == 0u) {
         if (source.material == MAT_WOOD || source.material == MAT_PLASTIC ||
-            source.material == MAT_BEESWAX || source.material == MAT_BEE_NEST) damage += 12u;
+            source.material == MAT_BEESWAX || source.material == MAT_BEEHIVE) damage += 12u;
         else if (source.material == MAT_GLASS || source.material == MAT_CRYSTAL) damage += 3u;
         else damage += 1u;
     }
@@ -442,7 +442,7 @@ bool isMachine(uint material) {
 }
 
 bool isFactoryInputResource(uint material) {
-    return material == MAT_SAND || material == MAT_IRON || material == MAT_IRON_SHAVINGS ||
+    return material == MAT_SAND || material == MAT_IRON || material == MAT_IRON_ORE ||
            material == MAT_ALUMINUM || material == MAT_ALUMINUM_SHAVINGS ||
            material == MAT_GOLD || material == MAT_STEEL || material == MAT_COPPER ||
            material == MAT_POWER_CELL || material == MAT_PLASMA_AMMO;
@@ -458,7 +458,7 @@ int machineResourceSlot(uint machine, Cell resourceCell) {
         return (resourceMaterial == MAT_SAND || resourceMaterial == MAT_SILT) &&
                (resourceCell.aux & AUX_WET) != 0u ? 0 : -1;
     if (machine == MAT_SMELTER) {
-        if (resourceMaterial == MAT_IRON || resourceMaterial == MAT_IRON_SHAVINGS) return 0;
+        if (resourceMaterial == MAT_IRON || resourceMaterial == MAT_IRON_ORE) return 0;
         if (resourceMaterial == MAT_ALUMINUM || resourceMaterial == MAT_ALUMINUM_SHAVINGS) return 1;
         return -1;
     }
@@ -988,15 +988,15 @@ void main() {
         if (pollenBeeTargets(p)) {
             result = makeCell(MAT_POLLEN);
         } else {
-            bool nestFrontier = hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEE_NEST);
+            bool nestFrontier = hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEEHIVE);
             bool handledNest = false;
             if (nestFrontier) {
                 ivec2 queenOffset = nearestOffset(p, MAT_QUEEN_BEE, 5);
                 int queenDistanceSquared = queenOffset.x * queenOffset.x + queenOffset.y * queenOffset.y;
                 if (any(notEqual(queenOffset, ivec2(0))) && queenDistanceSquared >= 7 &&
-                    queenDistanceSquared <= 21 && countWithin(p, MAT_BEE_NEST, 5) < 36u &&
+                    queenDistanceSquared <= 21 && countWithin(p, MAT_BEEHIVE, 5) < 36u &&
                     (randomValue & 4095u) == 0u) {
-                    result = makeCell(MAT_BEE_NEST);
+                    result = makeCell(MAT_BEEHIVE);
                     handledNest = true;
                 } else if (any(notEqual(queenOffset, ivec2(0))) && queenDistanceSquared <= 6 &&
                             (hasNeighbor(p, MAT_HONEY) || hasNeighbor(p, MAT_POLLEN)) &&
@@ -1370,7 +1370,7 @@ void main() {
                                       countWithin(p, MAT_BEE, 8) >= 10u;
                 if (colonyArrived && timer >= 180u &&
                     !hasWithin(p, MAT_QUEEN_BEE, 12) &&
-                    !hasWithin(p, MAT_BEE_NEST, 10)) {
+                    !hasWithin(p, MAT_BEEHIVE, 10)) {
                     result = makeCell(MAT_QUEEN_BEE);
                     setStateValue(result, 0u);
                     result.age = 0u;
@@ -1444,7 +1444,7 @@ void main() {
                 }
 
                 if (carryingPollen &&
-                    (hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEE_NEST))) {
+                    (hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEEHIVE))) {
                     ivec2 depositTarget = beeDepositTarget(p, source);
                     uint depositMaterial = at(depositTarget).material;
                     if (depositMaterial == MAT_EMPTY || depositMaterial == MAT_POLLEN) {
@@ -1486,7 +1486,7 @@ void main() {
             }
         }
     } else if (source.material == MAT_POLLEN) {
-        if ((hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEE_NEST)) &&
+        if ((hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEEHIVE)) &&
             source.age > 90u && (randomValue & 63u) == 0u) {
             result = makeCell(MAT_HONEY);
             setStateValue(result, 255u);
@@ -1540,7 +1540,7 @@ void main() {
                 result = makeCell(MAT_WASTE);
             }
         }
-    } else if (source.material == MAT_BEE_NEST) {
+    } else if (source.material == MAT_BEEHIVE) {
         if (nearLava || result.temperature > 220) {
             result = makeCell(MAT_EMBER);
         } else if (!hasWithin(p, MAT_QUEEN_BEE, 7) && source.age > 120000u &&

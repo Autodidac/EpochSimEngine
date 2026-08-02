@@ -31,7 +31,7 @@ MATERIALS = [
     ('beeswax', 'Beeswax', 145, 115, 180, 230, 'STRONG: WATER SEAL', 'WEAK: HEAT / FIRE', 'TO: NEST / EMBER', 'ROLE: COLONY STRUCTURE', 'DANGER: FLAMMABLE'),
     ('flower', 'Flower', 76, 8, 80, 145, 'STRONG: POLLEN / FOOD', 'WEAK: DARK / SALT / FIRE', 'TO: FOOD / WASTE', 'ROLE: POLLINATOR FEED', 'DANGER: NONE'),
     ('saltwater', 'Saltwater', 50, 0, 102, 212, 'STRONG: HEAT CAPACITY', 'WEAK: EVAPORATION / ICE', 'TO: STEAM / SALT / WATER', 'ROLE: BRINE SOLVENT', 'DANGER: CORROSIVE FLOOD'),
-    ('bee_nest', 'Bee nest', 175, 130, 220, 225, 'STRONG: COLONY SHELTER', 'WEAK: FIRE / ACID', 'TO: WAX / HONEY / WASTE', 'ROLE: COLONY HOME', 'DANGER: DEFENSIVE SWARM'),
+    ('beehive', 'Beehive', 175, 130, 220, 225, 'STRONG: COLONY SHELTER', 'WEAK: FIRE / ACID', 'TO: WAX / HONEY / WASTE', 'ROLE: COLONY HOME', 'DANGER: DEFENSIVE SWARM'),
     ('dirty_steam', 'Dirty steam', 6, 0, 500, 255, 'STRONG: CARRIES CARBON', 'WEAK: COLD / FILTERS', 'TO: DIRTY WATER', 'ROLE: WASTE VAPOR', 'DANGER: TOXIC BURNS'),
     ('dirty_water', 'Dirty water', 46, 0, 100, 208, 'STRONG: NUTRIENT CARRIER', 'WEAK: SETTLING / FILTERS', 'TO: WATER + SILT', 'ROLE: WASTE STREAM', 'DANGER: CONTAMINATION'),
     ('pollen', 'Pollen', 12, 1, 70, 170, 'STRONG: COLONY FEED', 'WEAK: FIRE / WATER', 'TO: HONEY / FOOD', 'ROLE: BIOLOGIC INPUT', 'DANGER: RESPIRATORY'),
@@ -48,7 +48,7 @@ MATERIALS = [
     ('gold', 'Gold', 96, 90, 1064, 246, 'STRONG: CONDUCTION / ACID', 'WEAK: SOFTNESS', 'TO: CIRCUITS / SCRAP', 'ROLE: ADVANCED COMPONENT', 'DANGER: HEAVY FALL'),
     ('oxygen', 'Oxygen', 7, 0, 0, 255, 'STRONG: RESPIRATION', 'WEAK: FIRE CONSUMPTION', 'TO: CO2 / STEAM', 'ROLE: BREATHABLE GAS', 'DANGER: FIRE ACCELERATION'),
     ('carbon_dioxide', 'CO2', 11, 0, 0, 255, 'STRONG: FIRE SUPPRESSION', 'WEAK: PLANTS / WATER', 'TO: OXYGEN / FOOD', 'ROLE: CARBON RESERVOIR', 'DANGER: ASPHYXIATION'),
-    ('iron_shavings', 'Iron shavings', 86, 24, 1538, 220, 'STRONG: MAGNETIC SIFTING', 'WEAK: ACID / CORROSION', 'TO: IRON / STEEL', 'ROLE: DENSE MACHINING FEED', 'DANGER: SHARP PARTICLES'),
+    ('iron_ore', 'Iron ore', 86, 24, 1538, 220, 'STRONG: MAGNETIC SIFTING', 'WEAK: ACID / CORROSION', 'TO: IRON / STEEL', 'ROLE: DENSE MACHINING FEED', 'DANGER: SHARP PARTICLES'),
     ('steel', 'Steel', 245, 240, 1450, 252, 'STRONG: SUPPORT / TOUGHNESS', 'WEAK: EXTREME HEAT', 'TO: SCRAP / MACHINES', 'ROLE: PRIMARY STRUCTURE', 'DANGER: HEAVY COLLAPSE'),
     ('conveyor', 'Conveyor', 220, 215, 850, 250, 'STRONG: MATERIAL ROUTING', 'WEAK: POWER LOSS / DAMAGE', 'TO: SCRAP', 'ROLE: FACTORY TRANSPORT', 'DANGER: PINCH POINT'),
     ('smelter', 'Smelter', 240, 230, 1500, 252, 'STRONG: METAL PROCESSING', 'WEAK: COOLANT LOSS', 'TO: STEEL / SMOKE / SLAG', 'ROLE: THERMAL FACTORY', 'DANGER: HEAT / FIRE'),
@@ -80,7 +80,7 @@ GROUPS = [
 ]
 BLOCK_MATERIALS = (
     'stone', 'crystal', 'wood', 'plastic', 'acid_resistant_plastic',
-    'aluminum', 'glass', 'iron', 'copper', 'gold', 'magnet', 'insulator', 'uranium',
+    'aluminum', 'glass', 'iron', 'iron_ore', 'copper', 'gold', 'magnet', 'insulator', 'uranium',
     'steel', 'conveyor', 'smelter', 'assembler',
     'insect_habitat', 'factory_core', 'sluice_box',
 )
@@ -101,7 +101,7 @@ _BASE_GASES = {'smoke', 'steam', 'dirty_steam', 'oxygen', 'carbon_dioxide', 'rad
 _BASE_PLASMA = {'fire', 'lightning', 'plasma_bolt'}
 _BASE_POWDERS = {
     'sand', 'dirt', 'mud', 'salt', 'ash', 'gunpowder', 'snow', 'seed', 'pollen',
-    'silt', 'fertilizer', 'food', 'waste', 'ember', 'aluminum_shavings', 'iron_shavings'
+    'silt', 'fertilizer', 'food', 'waste', 'ember', 'aluminum_shavings', 'iron_ore'
 }
 
 # density, softening, melting, boiling, vaporization, ignition, conductivity
@@ -137,7 +137,7 @@ PHYSICS_OVERRIDES = {
     'beeswax': (145, 48, 63, 250, 300, 204, 18),
     'flower': (76, 65, NO_TEMPERATURE, NO_TEMPERATURE, 240, 180, 7),
     'saltwater': (50, NO_TEMPERATURE, -21, 102, 102, NO_TEMPERATURE, 135),
-    'bee_nest': (175, 75, 145, 300, 420, 230, 15),
+    'beehive': (175, 75, 145, 300, 420, 230, 15),
     'dirty_steam': (6, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, 10),
     'dirty_water': (46, NO_TEMPERATURE, -2, 100, 100, NO_TEMPERATURE, 125),
     'pollen': (12, 55, NO_TEMPERATURE, NO_TEMPERATURE, 210, 160, 6),
@@ -154,7 +154,7 @@ PHYSICS_OVERRIDES = {
     'gold': (210, 850, 1064, 2856, 2856, NO_TEMPERATURE, 250),
     'oxygen': (7, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, 4),
     'carbon_dioxide': (11, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, 4),
-    'iron_shavings': (225, 1200, 1538, 2862, 2862, NO_TEMPERATURE, 180),
+    'iron_ore': (225, 1200, 1538, 2862, 2862, NO_TEMPERATURE, 180),
     'steel': (245, 1250, 1450, 2900, 2900, NO_TEMPERATURE, 185),
     'conveyor': (220, 700, 1350, 2800, 2800, NO_TEMPERATURE, 190),
     'smelter': (240, 1000, 1500, 3000, 3000, NO_TEMPERATURE, 175),
