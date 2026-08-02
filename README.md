@@ -201,7 +201,7 @@ All scenes use the same canonical material and structural rules.
 - Mouse wheel over world: brush radius
 - Middle-mouse drag: pan camera
 - Move the mouse to a simulation-view edge: pan camera continuously
-- `0`: reset camera to the authored map at the bottom of the expanded world
+- `0`: reset camera to the crystal-marker authored map in the third resident row, beneath two full sky rows
 - Cell/Tile placement selector: place any selected material as fine cells or one aligned 8x8 tile
 - Escape: exit
 
@@ -237,7 +237,7 @@ The Windows package includes `run.bat` at its root. It locates `sandhybrid.exe` 
 - machine work restricted to valid controller/output locations
 - paused state performs no continuous simulation ticks
 
-The logical world is 5120x2880 cells, while the current bounded resident GPU window is 2560x1440 cells until deterministic far-section streaming is complete. Authored 640x360 scene content is centered at the bottom of the resident window. The active simulation gate uses map-footprint-sized 640x360 regions in a 17-position starburst around the camera; everything outside the active set is rejected by simulation shaders. Stable regions still exit before expensive chemistry, neighborhood, and movement work. Sparse far-region streaming remains an open mission in `missioncache.md`.
+The logical world is 5120x2880 cells, while the current bounded resident GPU window is 2560x1440 cells until deterministic far-section streaming is complete. Authored 640x360 scene content is horizontally centered in the third resident row at world Y=720, where the crystal camera marker sits; the two complete rows above are sky. The active simulation gate uses map-footprint-sized 640x360 regions in a 17-position starburst around the camera; everything outside the active set is rejected by simulation shaders. Stable regions still exit before expensive chemistry, neighborhood, and movement work. Sparse far-region streaming remains an open mission in `missioncache.md`.
 
 ## Windows build
 
@@ -331,6 +331,6 @@ Restores the approved suspended hive, caps autonomous colonies at 100 bees, slow
 
 ## Resident-width scene envelopes
 
-Every scene keeps its original authored objects at the same coordinates inside the bottom-centered 640x360 footprint. A sparse one-brick floor extends to both resident horizontal edges, with one-brick side walls around the playable bottom band. The expanded space is not tiled, repeated, or densely filled.
+Every scene keeps its original authored objects at the same local coordinates inside the crystal-row 640x360 footprint at world Y=720. The two complete camera rows above remain empty sky. A sparse one-brick floor extends to both resident horizontal edges at the authored-row bottom, with one-brick side walls beginning only at the authored row. The expanded space is not tiled, repeated, or densely filled.
 
 Engineering now presents controlled thermal, single-aperture gas diffusion, sediment separation, and paired compost control/treatment experiments. Gold Mine includes a visible water-fed conveyor and sluice line. Ember becomes ash only; fertilizer requires ash, organic waste, mineral soil/silt, dirty water, oxygen, and time.

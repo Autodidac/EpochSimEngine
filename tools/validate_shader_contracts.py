@@ -592,20 +592,26 @@ def main() -> int:
             errors.append(f"universal cell/tile placement contract missing {token!r}")
     for token in (
         "int x = max((int(pc.width) - AUTHORED_WORLD_CELLS.x) / 2, 0);",
-        "return ivec2(x, 0);",
+        "int skyHeight = int(pc.height) >= AUTHORED_WORLD_CELLS.y * 3",
+        "? AUTHORED_WORLD_CELLS.y * 2",
+        "return ivec2(x, skyHeight);",
+        "if (worldPosition.y < sceneTop) return MAT_EMPTY;",
         "residentWorldSubstrateMaterial",
         "int lavaThickness = min(lavaRoom, BRICK_SIZE * 2);",
         "residentSubstrateStructural",
         "bool substrateCell = substrateMaterial != MAT_EMPTY;",
     ):
         if token not in reset:
-            errors.append(f"upper-center scene/geology shader contract missing {token!r}")
+            errors.append(f"crystal-row scene/geology shader contract missing {token!r}")
     for token in (
         "subterranean_zone_count =",
         "resident_world_dimension_scale - 1u",
         "resident_world_lava_cells = 16u",
         "authored_scene_origin_y",
-        "return 0u;",
+        "authored_scene_sky_footprint_rows = 2u",
+        "sky_height = pre_expansion_world_height * authored_scene_sky_footprint_rows",
+        "return world_height >= sky_height + pre_expansion_world_height ? sky_height : 0u;",
+        "if (y < scene_top) return Material::empty;",
         "resident_substrate_material",
     ):
         if token not in world_layout:
@@ -711,7 +717,7 @@ def main() -> int:
         "resident_substrate_material(",
         "make_resident_substrate_cell(",
         "Material::atmosphere",
-        "Loaded upper-center 640x360 scene image with common subterranean geology",
+        "Loaded crystal-row 640x360 scene image with common lower geology",
     ):
         if token not in renderer_cpp:
             errors.append(f"loaded-scene geology parity contract missing {token!r}")

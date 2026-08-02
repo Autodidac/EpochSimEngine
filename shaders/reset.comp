@@ -22,7 +22,10 @@ const ivec2 AUTHORED_WORLD_CELLS = ivec2(640, 360);
 
 ivec2 authoredWorldOrigin() {
     int x = max((int(pc.width) - AUTHORED_WORLD_CELLS.x) / 2, 0);
-    return ivec2(x, 0);
+    int skyHeight = int(pc.height) >= AUTHORED_WORLD_CELLS.y * 3
+        ? AUTHORED_WORLD_CELLS.y * 2
+        : 0;
+    return ivec2(x, skyHeight);
 }
 
 ivec2 authoredLocalCoordinate(ivec2 worldPosition) {
@@ -53,19 +56,22 @@ uint sceneBoundaryMaterial(uint scene) {
     return MAT_STONE;
 }
 
-// Every scene occupies the upper-center 640x360 camera footprint. The three
-// resident footprints below it are real geology. A one-brick stone foundation
-// separates the scene from the geology; a two-brick lava band spans the bottom
-// and is enclosed by one-brick stone cap, bottom shell, and side walls.
+// Every scene occupies the crystal-marker camera footprint: the third
+// 640x360 resident row. The two complete rows above it remain empty sky. A
+// one-brick foundation separates the scene from the remaining lower geology;
+// a two-brick lava band spans the bottom inside stone cap, shell, and side walls.
 uint residentWorldSubstrateMaterial(ivec2 worldPosition) {
     int width = int(pc.width);
     int height = int(pc.height);
-    int sceneBottom = min(height, AUTHORED_WORLD_CELLS.y);
+    int sceneTop = authoredWorldOrigin().y;
+    int sceneBottom = min(height, sceneTop + AUTHORED_WORLD_CELLS.y);
     int horizontalShell = min(width, BRICK_SIZE);
     bool sideShell = worldPosition.x < horizontalShell ||
                      worldPosition.x >= width - horizontalShell;
 
-    int foundation = min(sceneBottom, BRICK_SIZE);
+    if (worldPosition.y < sceneTop) return MAT_EMPTY;
+
+    int foundation = min(sceneBottom - sceneTop, BRICK_SIZE);
     int foundationStart = sceneBottom - foundation;
     if (worldPosition.y < sceneBottom) {
         if (worldPosition.y >= foundationStart || sideShell) return MAT_STONE;

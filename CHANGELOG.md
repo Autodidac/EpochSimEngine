@@ -7,6 +7,7 @@
 - Completed MC-083 with a repository-wide SandHybrid branding contract while preserving proper external EpochGui and EpochEngine names.
 - Completed MC-117 by reconciling the handoff onto current `main` without dropping later mission-cache work.
 - Added both core-hygiene contracts to pull-request and Windows/Linux release validation.
+- Moved every generated and loaded authored scene to the crystal-marker camera row at world Y=720, leaving the two complete resident rows above as sky and moving the shared foundation/geology stack down with it.
 
 ## 2.5.2
 

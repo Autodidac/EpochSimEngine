@@ -12,11 +12,13 @@ inline constexpr std::uint32_t authored_scene_foundation_cells = 8u;
 inline constexpr std::uint32_t resident_world_shell_cells = 8u;
 inline constexpr std::uint32_t resident_world_lava_cells = 16u;
 inline constexpr std::uint32_t resident_world_geology_patch_cells = 64u;
+inline constexpr std::uint32_t authored_scene_sky_footprint_rows = 2u;
 inline constexpr std::uint32_t subterranean_zone_count =
     resident_world_dimension_scale - 1u;
 
 static_assert(subterranean_zone_count == 3u);
 static_assert(authored_scene_foundation_cells == 8u);
+static_assert(authored_scene_sky_footprint_rows == 2u);
 static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells);
 
 [[nodiscard]] constexpr std::uint32_t authored_scene_origin_x(
@@ -27,8 +29,9 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
 }
 
 [[nodiscard]] constexpr std::uint32_t authored_scene_origin_y(
-    const std::uint32_t) noexcept {
-    return 0u;
+    const std::uint32_t world_height) noexcept {
+    const auto sky_height = pre_expansion_world_height * authored_scene_sky_footprint_rows;
+    return world_height >= sky_height + pre_expansion_world_height ? sky_height : 0u;
 }
 
 [[nodiscard]] constexpr bool resident_substrate_is_structural(
@@ -45,11 +48,16 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
     if (x >= world_width || y >= world_height || world_width == 0u || world_height == 0u)
         return Material::empty;
 
-    const auto scene_bottom = (std::min)(world_height, pre_expansion_world_height);
+    const auto scene_top = authored_scene_origin_y(world_height);
+    const auto scene_bottom = (std::min)(
+        world_height, scene_top + pre_expansion_world_height);
     const auto horizontal_shell = (std::min)(world_width, resident_world_shell_cells);
     const bool side_shell = x < horizontal_shell || x >= world_width - horizontal_shell;
 
-    const auto foundation = (std::min)(scene_bottom, authored_scene_foundation_cells);
+    if (y < scene_top) return Material::empty;
+
+    const auto scene_height = scene_bottom - scene_top;
+    const auto foundation = (std::min)(scene_height, authored_scene_foundation_cells);
     const auto foundation_start = scene_bottom - foundation;
     if (y < scene_bottom) {
         if (y >= foundation_start || side_shell) return Material::stone;
