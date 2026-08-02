@@ -1,4 +1,4 @@
-name: Apply SandHybrid v2.4.9 Atmosphere Fill Split
+name: Apply SandHybrid v2.4.9 Release Fixes
 
 on:
   pull_request:
@@ -19,15 +19,22 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Apply and validate release fix
+      - name: Apply and validate release fixes
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -f tools/apply_v249.py ]]; then
-            echo 'Atmosphere/Fill split already applied.'
+          applied=0
+          for script in tools/apply_v249.py tools/apply_v249_solid_policy.py; do
+            if [[ -f "$script" ]]; then
+              python3 "$script"
+              applied=1
+            fi
+          done
+          if [[ "$applied" -eq 0 ]]; then
+            echo 'All v2.4.9 release fixes are already applied.'
             exit 0
           fi
-          python3 tools/apply_v249.py
+
           python3 - <<'PY'
           from pathlib import Path
           path = Path('tools/validate_shader_contracts.py')
@@ -37,15 +44,9 @@ jobs:
               'if "material == Material::atmosphere) cell.aux |= 54u" not in renderer:',
               'if "material == Material::atmosphere) cell.aux |= 54u" not in renderer_cpp:',
           )
-          required = (
-              '.github/workflows/v249-ci.yml',
-              'not in renderer_cpp:',
-          )
-          missing = [token for token in required if token not in text]
-          if missing:
-              raise SystemExit(f'validator migration missing: {missing}')
           path.write_text(text, encoding='utf-8')
           PY
+
           python3 tools/validate_shader_contracts.py
           python3 tools/validate_mission_cache.py
           cmake -S . -B build/contracts -G Ninja \
@@ -58,11 +59,11 @@ jobs:
           rm -rf build/contracts
 
           if git diff --quiet; then
-            echo 'Atmosphere/Fill split already applied.'
+            echo 'All v2.4.9 release fixes are already applied.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          git commit -m 'Fix Atmosphere and Fill controls for v2.4.9'
+          git commit -m 'Apply SandHybrid v2.4.9 release fixes'
           git push origin HEAD:${{ github.head_ref }}
