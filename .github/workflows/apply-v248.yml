@@ -23,11 +23,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -f .github/apply_v248.py ]]; then
+          changed=0
+          if [[ -f .github/apply_v248.py ]]; then
+            python3 .github/apply_v248.py
+            changed=1
+          fi
+          if [[ -f .github/apply_v248_sep.py ]]; then
+            python3 .github/apply_v248_sep.py
+            changed=1
+          fi
+          if [[ "$changed" == 0 ]]; then
             echo 'Patch already applied.'
             exit 0
           fi
-          python3 .github/apply_v248.py
           python3 tools/generate_ui_text.py
           python3 tools/validate_shader_contracts.py
           cmake -S . -B build/contracts -G Ninja \
@@ -42,5 +50,5 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
-          git commit -m 'Improve soil tools, debug cards, brush defaults, launcher, and wet variants'
+          git commit -m 'Improve soil tools, debug cards, separators, brush defaults, launcher, and wet variants'
           git push origin HEAD:${{ github.head_ref }}
