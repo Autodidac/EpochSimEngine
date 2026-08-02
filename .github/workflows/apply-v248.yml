@@ -27,6 +27,7 @@ jobs:
           chunks=(.github/v248_final_chunk_*)
           if (( ${#chunks[@]} == 0 )); then
             echo 'Final production patch already applied.'
+            rm -f .github/v248_sync_trigger
             exit 0
           fi
           test "${#chunks[@]}" -eq 3
@@ -35,7 +36,7 @@ jobs:
           echo '96ea272d5cefd712b2399629a56e890dad82676fa1da9f98f7b0cb981013d5cd  '"${RUNNER_TEMP}/v248.patch.xz" | sha256sum --check
           xz --decompress --stdout "${RUNNER_TEMP}/v248.patch.xz" > "${RUNNER_TEMP}/v248.patch"
           git apply --index "${RUNNER_TEMP}/v248.patch"
-          rm -f .github/v248_final_chunk_*
+          rm -f .github/v248_final_chunk_* .github/v248_sync_trigger
 
           python3 tools/generate_ui_text.py
           python3 tools/validate_shader_contracts.py
@@ -49,8 +50,6 @@ jobs:
           ctest --test-dir build/contracts --output-on-failure
           rm -rf build/contracts
 
-          # Workflow files are managed separately with the connector because
-          # the Actions token cannot create or modify workflow definitions.
           git checkout origin/main -- .github/workflows
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
