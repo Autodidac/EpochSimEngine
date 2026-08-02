@@ -14,8 +14,8 @@ concurrency:
 jobs:
   apply:
     if: github.head_ref == 'agent/durable-structural-ground-deposits-v254'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
@@ -23,10 +23,10 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Apply durable structural and geology changes
+      - name: Embedded structural and geology applicator source
+        if: ${{ false }}
         shell: bash
         run: |
-          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -128,22 +128,112 @@ jobs:
           Path('.github/workflows/apply-durable-structural-ground-deposits-v2.yml').unlink()
           PY
 
-          python3 tools/validate_no_simulation_coroutines.py
-          python3 tools/validate_project_branding.py
-          python3 tools/validate_mission_cache.py
-          python3 tools/validate_shader_contracts.py
+      - name: Apply v2.5.4 closeout and validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
 
-          cmake -S . -B build/durable-contract -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DSANDHYBRID_BUILD_APP=OFF \
-            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
-            -DBUILD_TESTING=ON \
-            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON
-          cmake --build build/durable-contract --parallel
-          ctest --test-dir build/durable-contract --output-on-failure
+          workflow = Path('.github/workflows/apply-v254-runtime-regressions.yml')
+          text = workflow.read_text(encoding='utf-8')
+          marker = '        run: |\n'
+          start = text.index(marker) + len(marker)
+          lines = text[start:].splitlines()
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+          validation_marker = 'python3 -m py_compile tools/validate_shader_contracts.py'
+          prefix, suffix = script.split(validation_marker, 1)
+          Path('/tmp/apply-v254-prefix.sh').write_text(prefix, encoding='utf-8')
+          Path('/tmp/apply-v254-suffix.sh').write_text(validation_marker + suffix, encoding='utf-8')
+          PY
+          rm -f .github/workflows/trigger-v254-runtime-regressions.yml
+          bash /tmp/apply-v254-prefix.sh
 
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
-          git commit -m 'Keep structural tiles durable and seed ground deposits'
-          git push origin HEAD:${{ github.head_ref }}
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('tools/validate_shader_contracts.py')
+          text = path.read_text(encoding='utf-8')
+
+          scene_block = '''    bee_swarm = (SHADERS / "bee_swarm.glsl").read_text(encoding="utf-8")
+    for token in (
+        "BEE_AUTHORED_WORLD_CELLS.y * 3",
+        "BEE_AUTHORED_WORLD_CELLS.y * 2",
+        "return beeUsesAuthoredHome(aux) ? home + beeAuthoredWorldOrigin",
+    ):
+        if token not in bee_swarm:
+            errors.append(f"authored bee-home origin contract missing {token!r}")
+    for token in (
+        "bee_authored_home_slot_bit",
+        "normalize_fix28_hives",
+        "fix28_beehive_material",
+        "beehive_shell_min_radius_squared = 28",
+        "beehive_shell_max_radius_squared = 108",
+    ):
+        if token not in scene_image_cpp:
+            errors.append(f"loaded Fix28 Beehive contract missing {token!r}")
+    for token in (
+        "wetGranularSinkMove",
+        "fullWaterSplitSupplied",
+        "gasExpansionAllows",
+        "emptyGasRise",
+        "emptyGasDiagonal",
+    ):
+        if token not in move:
+            errors.append(f"wet-sand/medium settling contract missing {token!r}")
+    for token in (
+        "boundaryFineMedium",
+        "settledFineMedium",
+        "!tileHas(previous, TILE_MEDIUM_BREAKUP)",
+        "settledMedium || settledFineMedium",
+    ):
+        if token not in tiles:
+            errors.append(f"one-shot medium-boundary settling contract missing {token!r}")
+'''
+          scene_pattern = re.compile(
+              r'\n\s*bee_swarm = \(SHADERS / "bee_swarm\.glsl"\).*?'
+              r'(?=\n\s*ui_text = \(SHADERS / "ui_text\.glsl"\))', re.S)
+          text, scene_count = scene_pattern.subn('\n' + scene_block, text, count=1)
+          if scene_count != 1:
+              raise SystemExit(f'scene validator repair count was {scene_count}')
+
+          deposit_block = '''    for token in (
+        "residentGroundHash",
+        "residentGroundDepositMaterial",
+        "roll < 24u) return MAT_IRON_ORE",
+        "roll < 32u) return MAT_COPPER",
+        "roll < 38u) return MAT_ALUMINUM",
+        "depth >= 160 && roll < 41u) return MAT_URANIUM",
+    ):
+        if token not in reset:
+            errors.append(f"resident ground deposit contract missing {token!r}")
+    for token in (
+        "resident_ground_hash",
+        "resident_ground_deposit_material",
+        "roll < 24u) return Material::iron_ore",
+        "roll < 32u) return Material::copper",
+        "roll < 38u) return Material::aluminum",
+        "depth >= 160u && roll < 41u) return Material::uranium",
+    ):
+        if token not in world_layout:
+            errors.append(f"CPU resident ground deposit contract missing {token!r}")
+    for token in (
+        "bool durableStructural = isStructural(source) && isBlockCapable(source.material);",
+        "isStructural(source) && !durableStructural && !minorityStructural",
+        "isStructural(source) && !durableStructural &&",
+    ):
+        if token not in chemistry:
+            errors.append(f"durable structural chemistry contract missing {token!r}")
+'''
+          deposit_pattern = re.compile(
+              r'\n\s*for token in \(\s*\n\s*"residentGroundHash".*?'
+              r'(?=\n\s*for token in \("authoredStructuralCell")', re.S)
+          text, deposit_count = deposit_pattern.subn('\n' + deposit_block, text, count=1)
+          if deposit_count != 1:
+              raise SystemExit(f'deposit validator repair count was {deposit_count}')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          bash /tmp/apply-v254-suffix.sh
