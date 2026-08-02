@@ -857,9 +857,18 @@ void main() {
         uint limitedHealth = max(64u, tileOccupancy(tile) * 255u / TILE_STABILITY_OCCUPANCY);
         setStateValue(result, min(health, limitedHealth));
     }
-    // TILE_STABLE and TILE_BULK_READY are metadata only. They may suppress
-    // unnecessary work, but they never reconstruct loose or damaged cells into
-    // structural cells. Dislodged stone therefore stays dislodged.
+    // Granular terrain may qualify for structural stability after settling,
+    // preserving the intended soil/sand/silt/salt/ice terrain behavior. Block-
+    // capable solids never regain structural state from tile metadata: dislodged
+    // stone, metals, glass, machines, and other blocks remain loose fine cells.
+    bool stableGranularTerrain = tileHas(tile, TILE_STABLE) && !isStructural(source) &&
+        source.material == tile.material && source.material != MAT_EMPTY &&
+        !isCellGas(source) && !isCellLiquid(source) &&
+        isReconstructableMaterial(source.material) && !isBlockCapable(source.material);
+    if (stableGranularTerrain) {
+        result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
+        result.aux &= ~AUX_MOVED;
+    }
     if (isStructural(source) && (cellPhase(result) == PHASE_MOLTEN ||
         cellPhase(result) == PHASE_VAPOR || cellPhase(result) == PHASE_SOFTENED)) {
         // Phase change releases the represented cell without changing material,

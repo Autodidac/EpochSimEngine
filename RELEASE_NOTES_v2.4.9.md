@@ -21,7 +21,8 @@ This release fixes the Atmosphere/Fill UI regression in v2.4.8 while preserving 
 
 - Stone and every block-capable solid are excluded from whole-tile movement.
 - A complete solid region may still report `BULK READY` for cohesion, support, sleeping, and debug visibility.
-- Stable tile metadata no longer reattaches damaged loose cells as structural cells.
+- Settled sand, soil, silt, salt, and ice retain granular terrain stability qualification.
+- Stable tile metadata never reattaches damaged block-capable cells as structural cells.
 - Released stone and other block-capable solids fall only as individual fine cells.
 - A tile crumbles when 31 of 64 cells are destroyed: 48.4375%, the first whole-cell count at or above 48%.
 - C++ policy, GLSL, and deterministic tests use the same 31-destroyed/33-remaining rule; the obsolete rewrite tool that restored the old behavior was removed.

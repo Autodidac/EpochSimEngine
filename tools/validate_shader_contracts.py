@@ -429,11 +429,15 @@ def main() -> int:
         if re.search(rf"\b{forbidden}\b", strip_comments(combined), re.I):
             errors.append(f"placement-source physics identifier remains: {forbidden}")
 
-    # Stable/bulk-ready tile state is metadata only. It must never contain the
-    # removed stable-region promotion branch. Explicit machine/habitat structural
-    # assignments elsewhere remain valid.
-    if "tileHas(tile, TILE_STABLE) && !isStructural(source)" in chemistry:
-        errors.append("stable tile metadata still reconstructs loose cells")
+    # Stability promotion is valid only for granular terrain. Block-capable
+    # solids must remain loose after damage or support loss.
+    for token in (
+        "bool stableGranularTerrain = tileHas(tile, TILE_STABLE)",
+        "isReconstructableMaterial(source.material) && !isBlockCapable(source.material)",
+        "result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;",
+    ):
+        if token not in chemistry:
+            errors.append(f"granular terrain stability contract missing {token!r}")
     for token in (
         "bool unsupportedStructural = structuralTile && !physicallySupported;",
         "dominantCount < TILE_MIN_COHESIVE_CELLS || unsupportedStructural",
@@ -690,8 +694,8 @@ def main() -> int:
     for token in ("bool looseSolid = isLooseSolid(moving);",
                   "(!looseSolid && isCellImmovable(moving))"):
         if token not in move_comp: errors.append(f"fine-cell solid crumble contract missing {token!r}")
-    if "tileHas(tile, TILE_STABLE) && !isStructural(source)" in chemistry_comp:
-        errors.append("stable tile metadata still reconstructs damaged cells")
+    if "isReconstructableMaterial(source.material) && !isBlockCapable(source.material)" not in chemistry_comp:
+        errors.append("granular terrain stability is missing or block-capable promotion is not excluded")
     if "TILE_BULK_READY) || tileHas(tile, TILE_MACRO_MOVABLE)" not in fullscreen:
         errors.append("bulk-ready debug state is not decoupled from macro movement")
     simulation_policy = (ROOT / "include/sandhybrid/simulation_policy.hpp").read_text(encoding="utf-8")
