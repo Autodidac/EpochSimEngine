@@ -34,6 +34,12 @@ SandHybrid v2.5.0 establishes the reusable library architecture and starts the p
 - At 31 destroyed cells of 64 (48.4375%), the remaining solid cells release individually.
 - Runtime-unverified water, half-water, packet ownership, atmosphere composition, machinery, ecology, and streaming missions remain active in `missioncache.md`.
 
+## Repository cleanup
+
+- Removed the obsolete v2.4.9 package workflow.
+- Removed temporary one-shot patch applicators and staging payloads.
+- The permanent v2.5.0 workflow is the sole release-package matrix for this version.
+
 ## Validation gate
 
-Publication requires shader/generated-source contracts, mission-cache validation, C++23 warnings-as-errors builds, all deterministic tests, downstream package installation/use, and complete Windows 2022 and Ubuntu 24.04 Vulkan Release package builds.
+Publication requires shader/generated-source contracts, mission-cache validation, C++23 warnings-as-errors builds, all deterministic tests, downstream package installation/use, and complete Windows 2022 and Ubuntu 24.04 Vulkan Release package builds from the exact final source head.
