@@ -52,8 +52,8 @@ jobs:
           rm -rf build/contracts
 
           set -x
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -u
           git diff --cached --name-status
           git commit -m 'Complete SandHybrid v2.4.8 broad release pass'
