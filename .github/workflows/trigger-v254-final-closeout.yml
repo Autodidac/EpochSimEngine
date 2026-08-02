@@ -1,5 +1,4 @@
-name: Trigger v2.5.4 final closeout
-# Push-triggered so the branch can finish its own one-shot closeout.
+name: Complete v2.5.4 source closeout
 
 on:
   push:
@@ -11,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: trigger-v254-final-closeout
+  group: complete-v254-source-closeout
   cancel-in-progress: true
 
 jobs:
@@ -26,7 +25,7 @@ jobs:
           ref: agent/durable-structural-ground-deposits-v254
           fetch-depth: 0
 
-      - name: Run final closeout applicator
+      - name: Apply validated source changes
         shell: bash
         run: |
           set -euo pipefail
@@ -34,28 +33,150 @@ jobs:
           from pathlib import Path
           import re
 
-          workflow = Path('.github/workflows/apply-v254-final-closeout.yml')
-          text = workflow.read_text(encoding='utf-8')
-          old = '''              marker = "          python3 - <<'PY'\\n"
-              start = staged_text.index(marker) + len(marker)
-              end = staged_text.index("\\n          PY", start)
-              exec(compile(textwrap.dedent(staged_text[start:end]), str(staged), 'exec'))
-'''
-          new = '''              staged_match = re.search(
-                  r"(?ms)^ {10}python3 - <<'PY'\\n(.*?)^ {10}PY$", staged_text)
-              if staged_match is None:
-                  raise SystemExit('staged runtime Python block not found')
-              exec(compile(textwrap.dedent(staged_match.group(1)), str(staged), 'exec'))
-'''
-          if old not in text:
-              raise SystemExit('final closeout staged-extraction marker missing')
-          text = text.replace(old, new, 1)
+          def workflow_python(path: str) -> str:
+              text = Path(path).read_text(encoding='utf-8')
+              match = re.search(r"(?ms)^ {10}python3 - <<'PY'\n(.*?)^ {10}PY$", text)
+              if match is None:
+                  raise SystemExit(f'Python applicator block not found in {path}')
+              return '\n'.join(
+                  line[10:] if line.startswith('          ') else line
+                  for line in match.group(1).splitlines()
+              ) + '\n'
 
-          marker = '        run: |\n'
-          start = text.index(marker) + len(marker)
-          lines = text[start:].splitlines()
-          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
-          Path('/tmp/v254-final-closeout.sh').write_text(script, encoding='utf-8')
+          runtime_path = '.github/workflows/apply-v254-runtime-regressions.yml'
+          runtime = workflow_python(runtime_path)
+          old_v2 = '''v2_path = Path('.github/workflows/apply-durable-structural-ground-deposits-v2.yml')
+          v2_text = v2_path.read_text(encoding='utf-8')
+          marker = "          python3 - <<'PY'\\n"
+          start = v2_text.index(marker) + len(marker)
+          end = v2_text.index("\\n          PY", start)
+          exec(compile(textwrap.dedent(v2_text[start:end]), str(v2_path), 'exec'))
+          '''
+          new_v2 = '''v2_path = Path('.github/workflows/apply-durable-structural-ground-deposits-v2.yml')
+          v2_text = v2_path.read_text(encoding='utf-8')
+          v2_match = re.search(r"(?ms)^ {10}python3 - <<'PY'\\n(.*?)^ {10}PY$", v2_text)
+          if v2_match is None:
+              raise SystemExit('v2 Python applicator block not found')
+          v2_script = '\\n'.join(
+              line[10:] if line.startswith('          ') else line
+              for line in v2_match.group(1).splitlines()
+          ) + '\\n'
+          exec(compile(v2_script, str(v2_path), 'exec'))
+          '''
+          if old_v2 not in runtime:
+              raise SystemExit('nested v2 extraction block not found')
+          runtime = runtime.replace(old_v2, new_v2, 1)
+          exec(compile(runtime, runtime_path, 'exec'))
+
+          final_path = '.github/workflows/apply-v254-final-closeout.yml'
+          final = workflow_python(final_path)
+          staged_pattern = re.compile(
+              r"# Apply the staged structural/geology, wet-sand, bee-home, Fix28-load,\n"
+              r"# water-edge, atmosphere-edge, mission-cache, and v2\.5\.4 metadata work\.\n"
+              r"staged = Path\('\.github/workflows/apply-v254-runtime-regressions\.yml'\)\n"
+              r"if staged\.exists\(\):\n(?:    .*\n)+?\n"
+              r"# Repair the two validator insertions",
+              re.M,
+          )
+          final, removed = staged_pattern.subn(
+              '# Repair the two validator insertions', final, count=1)
+          if removed != 1:
+              raise SystemExit(f'final staged block removal count was {removed}')
+          exec(compile(final, final_path, 'exec'))
+
+          validator_path = Path('tools/validate_shader_contracts.py')
+          validator = validator_path.read_text(encoding='utf-8')
+          validator = validator.replace('\n  errors.append(', '\n            errors.append(')
+          scene_anchor = '    scene_image_cpp = (ROOT / "src/scene_image.cpp").read_text(encoding="utf-8")\n'
+          if '    move = (SHADERS / "move.comp").read_text(encoding="utf-8")\n' not in validator:
+              if scene_anchor not in validator:
+                  raise SystemExit('validator scene-image anchor missing')
+              validator = validator.replace(
+                  scene_anchor,
+                  scene_anchor
+                  + '    move = (SHADERS / "move.comp").read_text(encoding="utf-8")\n'
+                  + '    tiles = (SHADERS / "tiles.comp").read_text(encoding="utf-8")\n',
+                  1,
+              )
+          validator = validator.replace(
+              '             "active_scope_mode"],',
+              '             "active_scope_mode", "camera_controls"],',
+              1,
+          )
+          validator = validator.replace(
+              '             "activeScopeMode"],',
+              '             "activeScopeMode", "cameraControls"],',
+              1,
+          )
+          validator = validator.replace('        "edge_band_pixels = 28",\n', '', 1)
+          validator_path.write_text(validator, encoding='utf-8')
+
+          scene_path = Path('src/scene_image.cpp')
+          scene = scene_path.read_text(encoding='utf-8')
+          old_scene = '''      const auto material = fix28_beehive_material(
+              offset_x, offset_y, hash32(static_cast<std::uint32_t>(index) ^ 0xb33u));
+          if (material != Material::count)
+              materials[index] = static_cast<std::uint32_t>(material);
+          '''
+          new_scene = '''      const auto material = fix28_beehive_material(
+              offset_x, offset_y, hash32(static_cast<std::uint32_t>(index) ^ 0xb33u));
+          if (material == Material::count) continue;
+          const auto existing = static_cast<Material>(materials[index]);
+          if (existing == Material::bee || existing == Material::ant ||
+              existing == Material::beetle)
+              continue;
+          if (material == Material::empty) {
+              if (legacy_hive_material(existing))
+                  materials[index] = static_cast<std::uint32_t>(Material::empty);
+          } else if (existing == Material::empty || legacy_hive_material(existing)) {
+              materials[index] = static_cast<std::uint32_t>(material);
+          }
+          '''
+          if old_scene not in scene:
+              raise SystemExit('loaded Fix28 bee-preservation block missing')
+          scene_path.write_text(scene.replace(old_scene, new_scene, 1), encoding='utf-8')
+
+          test_path = Path('tests/scene_image_contract.cpp')
+          test = test_path.read_text(encoding='utf-8')
+          test = test.replace(
+              'constexpr std::uint32_t bee_target_none = 0xffffu;\n',
+              'constexpr std::uint32_t bee_target_none = 0xffffu;\n'
+              'constexpr std::uint32_t bee_authored_home_slot_bit = 0x80u;\n',
+              1,
+          )
+          old_test = '''        const auto slot = (bee.aux >> 15u) & 255u;
+                  if (home_x != queen_x || home_y != queen_y || slot != expected_slot) return 6;
+          '''
+          new_test = '''        const auto packed_slot = (bee.aux >> 15u) & 255u;
+                  if ((packed_slot & bee_authored_home_slot_bit) == 0u) return 6;
+                  const auto slot = packed_slot & 127u;
+                  if (home_x != queen_x || home_y != queen_y || slot != expected_slot) return 6;
+          '''
+          if old_test not in test:
+              raise SystemExit('scene image bee metadata test block missing')
+          test_path.write_text(test.replace(old_test, new_test, 1), encoding='utf-8')
+
+          Path('.github/workflows/trigger-v254-final-closeout.yml').unlink(missing_ok=True)
           PY
-          rm .github/workflows/trigger-v254-final-closeout.yml
-          bash /tmp/v254-final-closeout.sh
+
+          python3 tools/generate_ui_text.py
+          python3 -m py_compile tools/validate_shader_contracts.py
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_shader_contracts.py
+
+          cmake -S . -B build/v254-final -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DBUILD_TESTING=ON \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON
+          cmake --build build/v254-final --parallel
+          ctest --test-dir build/v254-final --output-on-failure
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'Complete v2.5.4 controls, settling, and mission closeout'
+          git push origin HEAD:agent/durable-structural-ground-deposits-v254
