@@ -23,6 +23,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ ! -f tools/apply_v249.py ]]; then
+            echo 'Atmosphere/Fill split already applied.'
+            exit 0
+          fi
           python3 tools/apply_v249.py
           python3 tools/validate_shader_contracts.py
           python3 tools/validate_mission_cache.py
