@@ -1,7 +1,7 @@
 name: Apply SandHybrid v2.5.0 Rewrite Foundation
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened]
 
@@ -10,13 +10,15 @@ permissions:
 
 jobs:
   apply:
-    if: github.head_ref == 'agent/v250-section-grid-rewrite'
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/v250-section-grid-rewrite'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
       - name: Apply and validate rewrite foundation
@@ -52,5 +54,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          git commit -m 'Initiate sparse section-grid rewrite for v2.5.0'
-          git push origin HEAD:${{ github.head_ref }}
+          git commit -m 'Finalize v2.5.0 rewrite missions'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
