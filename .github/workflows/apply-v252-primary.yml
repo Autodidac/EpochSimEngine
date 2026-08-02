@@ -23,9 +23,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -f tools/apply_v252_primary.py ]]; then
-            python3 tools/apply_v252_primary.py
-          fi
+          shopt -s nullglob
+          scripts=(tools/apply_v252*.py)
+          for script in "${scripts[@]}"; do
+            python3 "$script"
+          done
           rm -f .github/workflows/apply-v252-primary.yml
 
       - name: Validate source contracts
