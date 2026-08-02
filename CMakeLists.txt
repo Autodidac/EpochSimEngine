@@ -2,22 +2,33 @@ cmake_minimum_required(VERSION 3.28)
 
 project(SandHybrid VERSION 2.4.8 LANGUAGES CXX)
 
+include(CTest)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-option(BUILD_TESTING "Build SandHybrid tests" OFF)
-include(CTest)
 
 set(SANDHYBRID_VALIDATION_DEFAULT OFF)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(SANDHYBRID_VALIDATION_DEFAULT ON)
 endif()
 
-option(SANDHYBRID_BUILD_APP "Build the SandHybrid Vulkan demo" ON)
+option(SANDHYBRID_BUILD_APP "Build the native SandHybrid Vulkan demo" ON)
+set(SANDHYBRID_RUNTIME_DEFAULT ${SANDHYBRID_BUILD_APP})
+option(SANDHYBRID_BUILD_VULKAN_RUNTIME
+       "Build the optional Vulkan simulation and presentation runtime"
+       ${SANDHYBRID_RUNTIME_DEFAULT})
 option(SANDHYBRID_ENABLE_VALIDATION "Enable Vulkan validation layers" ${SANDHYBRID_VALIDATION_DEFAULT})
 option(SANDHYBRID_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+
+if(SANDHYBRID_BUILD_APP AND NOT SANDHYBRID_BUILD_VULKAN_RUNTIME)
+    message(FATAL_ERROR
+        "SANDHYBRID_BUILD_APP requires SANDHYBRID_BUILD_VULKAN_RUNTIME. "
+        "Disable the app for a pure headless library build.")
+endif()
 
 function(sandhybrid_configure_warnings target_name)
     if(MSVC)
@@ -26,25 +37,35 @@ function(sandhybrid_configure_warnings target_name)
             target_compile_options(${target_name} PRIVATE /WX)
         endif()
     else()
-        target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Wno-missing-field-initializers)
+        target_compile_options(${target_name} PRIVATE
+            -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Wno-missing-field-initializers)
         if(SANDHYBRID_WARNINGS_AS_ERRORS)
             target_compile_options(${target_name} PRIVATE -Werror)
         endif()
     endif()
 endfunction()
 
-add_subdirectory(third_party/EpochGui EXCLUDE_FROM_ALL)
-
+# Reusable, platform-neutral library. Native startup, windowing, Vulkan, EpochGui,
+# and application event handling are intentionally absent from this target.
 add_library(SandHybrid STATIC
     src/scene_image.cpp
     src/section_scheduler.cpp
 )
+add_library(SandHybrid::SandHybrid ALIAS SandHybrid)
 add_library(Autodidac::SandHybrid ALIAS SandHybrid)
-target_include_directories(SandHybrid PUBLIC include)
+set_target_properties(SandHybrid PROPERTIES
+    EXPORT_NAME SandHybrid
+    POSITION_INDEPENDENT_CODE ON
+)
+target_include_directories(SandHybrid PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 target_compile_features(SandHybrid PUBLIC cxx_std_23)
 sandhybrid_configure_warnings(SandHybrid)
 
-if(SANDHYBRID_BUILD_APP)
+if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
+    add_subdirectory(third_party/EpochGui EXCLUDE_FROM_ALL)
     find_package(Vulkan REQUIRED)
     find_package(Threads REQUIRED)
 
@@ -78,12 +99,8 @@ if(SANDHYBRID_BUILD_APP)
             "alternatively install the Vulkan SDK and put glslc on PATH.")
     endif()
 
-    target_sources(SandHybrid PRIVATE src/vulkan_renderer.cpp)
-
     set(SANDHYBRID_VULKAN_LIBRARY Vulkan::Vulkan)
     if(UNIX AND NOT APPLE)
-        # vcpkg supplies headers/tools, while the distribution loader provides
-        # the host-window-system entry points needed for XCB presentation.
         find_library(SANDHYBRID_SYSTEM_VULKAN_LIBRARY
             NAMES vulkan
             PATHS /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib
@@ -95,10 +112,16 @@ if(SANDHYBRID_BUILD_APP)
         endif()
     endif()
 
-    target_include_directories(SandHybrid SYSTEM PRIVATE ${Vulkan_INCLUDE_DIRS})
-    target_link_libraries(SandHybrid PUBLIC
-        ${SANDHYBRID_VULKAN_LIBRARY} Threads::Threads Autodidac::EpochGui)
-    target_compile_definitions(SandHybrid PRIVATE
+    add_library(SandHybrid_VulkanRuntime STATIC src/vulkan_renderer.cpp)
+    add_library(SandHybrid::VulkanRuntime ALIAS SandHybrid_VulkanRuntime)
+    target_include_directories(SandHybrid_VulkanRuntime SYSTEM PRIVATE ${Vulkan_INCLUDE_DIRS})
+    target_link_libraries(SandHybrid_VulkanRuntime PUBLIC
+        SandHybrid
+        ${SANDHYBRID_VULKAN_LIBRARY}
+        Threads::Threads
+        Autodidac::EpochGui
+    )
+    target_compile_definitions(SandHybrid_VulkanRuntime PRIVATE
         $<$<PLATFORM_ID:Windows>:VK_USE_PLATFORM_WIN32_KHR>
         $<$<PLATFORM_ID:Windows>:WIN32_LEAN_AND_MEAN>
         $<$<PLATFORM_ID:Windows>:NOMINMAX>
@@ -108,35 +131,12 @@ if(SANDHYBRID_BUILD_APP)
         $<$<BOOL:${SANDHYBRID_ENABLE_VALIDATION}>:SANDHYBRID_ENABLE_VALIDATION=1>
         $<$<NOT:$<BOOL:${SANDHYBRID_ENABLE_VALIDATION}>>:SANDHYBRID_ENABLE_VALIDATION=0>
     )
+    sandhybrid_configure_warnings(SandHybrid_VulkanRuntime)
 
-    set(SANDHYBRID_DEMO_SOURCES src/main.cpp src/app.cpp)
-    if(WIN32)
-        list(APPEND SANDHYBRID_DEMO_SOURCES src/window_win32.cpp)
-    elseif(UNIX AND NOT APPLE)
-        list(APPEND SANDHYBRID_DEMO_SOURCES src/window_xcb.cpp)
-    else()
-        message(FATAL_ERROR "SandHybrid currently supports Windows and Linux/XCB only.")
-    endif()
-
-    add_executable(SandHybrid_Demo ${SANDHYBRID_DEMO_SOURCES})
-    add_executable(sandhybrid ALIAS SandHybrid_Demo)
-    set_target_properties(SandHybrid_Demo PROPERTIES OUTPUT_NAME sandhybrid)
-    target_include_directories(SandHybrid_Demo PRIVATE include)
-    target_link_libraries(SandHybrid_Demo PRIVATE SandHybrid)
-    target_compile_definitions(SandHybrid_Demo PRIVATE
-        $<$<PLATFORM_ID:Windows>:VK_USE_PLATFORM_WIN32_KHR>
-        $<$<PLATFORM_ID:Linux>:VK_USE_PLATFORM_XCB_KHR>
-    )
-    sandhybrid_configure_warnings(SandHybrid_Demo)
-
-    if(MSVC)
-        target_link_libraries(SandHybrid_Demo PRIVATE user32 gdi32)
-    else()
+    if(UNIX AND NOT APPLE)
         find_path(XCB_INCLUDE_DIR xcb/xcb.h REQUIRED)
         find_library(XCB_LIBRARY NAMES xcb REQUIRED)
-        target_include_directories(SandHybrid PRIVATE ${XCB_INCLUDE_DIR})
-        target_include_directories(SandHybrid_Demo PRIVATE ${XCB_INCLUDE_DIR})
-        target_link_libraries(SandHybrid_Demo PRIVATE ${XCB_LIBRARY} dl)
+        target_include_directories(SandHybrid_VulkanRuntime PRIVATE ${XCB_INCLUDE_DIR})
     endif()
 
     set(SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
@@ -161,17 +161,12 @@ if(SANDHYBRID_BUILD_APP)
     set(SANDHYBRID_SHADER_BINARIES)
     foreach(SHADER_FILE IN LISTS SANDHYBRID_SHADER_SOURCES)
         set(SHADER_INPUT "${SHADER_SOURCE_DIR}/${SHADER_FILE}")
-        set(SHADER_OUTPUT "${SHADER_BINARY_DIR}/generated/shaders/${SHADER_FILE}.spv")
         set(SHADER_OUTPUT "${SHADER_BINARY_DIR}/${SHADER_FILE}.spv")
-        # Optimize every shader offline. Leaving move.comp unoptimized shifts
-        # expensive legalization and dead-code removal into the Vulkan driver
-        # during vkCreateComputePipelines, which caused the startup hang.
-        set(SHADER_OPTIMIZATION -O)
         add_custom_command(
             OUTPUT "${SHADER_OUTPUT}"
             COMMAND "${Vulkan_GLSLC_EXECUTABLE}"
                     --target-env=vulkan1.2
-                    ${SHADER_OPTIMIZATION}
+                    -O
                     -I "${SHADER_SOURCE_DIR}"
                     "${SHADER_INPUT}"
                     -o "${SHADER_OUTPUT}"
@@ -183,7 +178,8 @@ if(SANDHYBRID_BUILD_APP)
                     "${SHADER_SOURCE_DIR}/chunks.glsl"
                     "${SHADER_SOURCE_DIR}/conservation.glsl"
                     "${SHADER_SOURCE_DIR}/debug_stats.glsl"
-                    "${SHADER_SOURCE_DIR}/actor.glsl" "${SHADER_SOURCE_DIR}/epochgui_font.glsl"
+                    "${SHADER_SOURCE_DIR}/actor.glsl"
+                    "${SHADER_SOURCE_DIR}/epochgui_font.glsl"
                     "${SHADER_SOURCE_DIR}/ui_text.glsl"
             VERBATIM
             COMMENT "Compiling ${SHADER_FILE}"
@@ -192,8 +188,37 @@ if(SANDHYBRID_BUILD_APP)
     endforeach()
 
     add_custom_target(sandhybrid_shaders ALL DEPENDS ${SANDHYBRID_SHADER_BINARIES})
-    add_dependencies(SandHybrid_Demo sandhybrid_shaders)
+    add_dependencies(SandHybrid_VulkanRuntime sandhybrid_shaders)
+endif()
 
+if(SANDHYBRID_BUILD_APP)
+    set(SANDHYBRID_DEMO_SOURCES src/main.cpp src/app.cpp)
+    if(WIN32)
+        list(APPEND SANDHYBRID_DEMO_SOURCES src/window_win32.cpp)
+    elseif(UNIX AND NOT APPLE)
+        list(APPEND SANDHYBRID_DEMO_SOURCES src/window_xcb.cpp)
+    else()
+        message(FATAL_ERROR "SandHybrid currently supports Windows and Linux/XCB only.")
+    endif()
+
+    add_executable(SandHybrid_Demo ${SANDHYBRID_DEMO_SOURCES})
+    add_executable(sandhybrid ALIAS SandHybrid_Demo)
+    set_target_properties(SandHybrid_Demo PROPERTIES OUTPUT_NAME sandhybrid)
+    target_link_libraries(SandHybrid_Demo PRIVATE SandHybrid_VulkanRuntime)
+    target_compile_definitions(SandHybrid_Demo PRIVATE
+        $<$<PLATFORM_ID:Windows>:VK_USE_PLATFORM_WIN32_KHR>
+        $<$<PLATFORM_ID:Linux>:VK_USE_PLATFORM_XCB_KHR>
+    )
+    sandhybrid_configure_warnings(SandHybrid_Demo)
+
+    if(MSVC)
+        target_link_libraries(SandHybrid_Demo PRIVATE user32 gdi32)
+    else()
+        target_include_directories(SandHybrid_Demo PRIVATE ${XCB_INCLUDE_DIR})
+        target_link_libraries(SandHybrid_Demo PRIVATE ${XCB_LIBRARY} dl)
+    endif()
+
+    add_dependencies(SandHybrid_Demo sandhybrid_shaders)
     add_custom_command(TARGET SandHybrid_Demo POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:SandHybrid_Demo>/shaders"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -205,18 +230,47 @@ if(SANDHYBRID_BUILD_APP)
                 "$<TARGET_FILE_DIR:SandHybrid_Demo>/scenes/README.txt"
     )
 
-    install(TARGETS SandHybrid_Demo RUNTIME DESTINATION bin)
-    install(FILES ${SANDHYBRID_SHADER_BINARIES} DESTINATION bin/shaders)
-    install(FILES scenes/README.txt DESTINATION bin/scenes)
+    install(TARGETS SandHybrid_Demo RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES ${SANDHYBRID_SHADER_BINARIES} DESTINATION ${CMAKE_INSTALL_BINDIR}/shaders)
+    install(FILES scenes/README.txt DESTINATION ${CMAKE_INSTALL_BINDIR}/scenes)
+    if(WIN32)
+        install(FILES run.bat DESTINATION .)
+    endif()
 endif()
 
 install(TARGETS SandHybrid
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib)
-install(DIRECTORY include/ DESTINATION include)
-if(WIN32)
-    install(FILES run.bat DESTINATION .)
-endif()
+    EXPORT SandHybridTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+# ui_layout.hpp is public and header-only; install the vendored backend-neutral
+# EpochGui headers so installed headers remain self-contained.
+install(DIRECTORY third_party/EpochGui/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+set(SANDHYBRID_CMAKE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/SandHybrid")
+configure_package_config_file(
+    cmake/SandHybridConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/SandHybridConfig.cmake"
+    INSTALL_DESTINATION "${SANDHYBRID_CMAKE_INSTALL_DIR}"
+)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/SandHybridConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+install(EXPORT SandHybridTargets
+    FILE SandHybridTargets.cmake
+    NAMESPACE SandHybrid::
+    DESTINATION "${SANDHYBRID_CMAKE_INSTALL_DIR}"
+)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/SandHybridConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/SandHybridConfigVersion.cmake"
+    DESTINATION "${SANDHYBRID_CMAKE_INSTALL_DIR}"
+)
 
 if(BUILD_TESTING)
     find_package(Python3 COMPONENTS Interpreter QUIET)
@@ -224,9 +278,9 @@ if(BUILD_TESTING)
         add_test(NAME sandhybrid_mission_cache_contract
                  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_mission_cache.py)
     endif()
+
     add_executable(sandhybrid_material_contract tests/material_contract.cpp)
     target_include_directories(sandhybrid_material_contract PRIVATE include)
-    target_link_libraries(sandhybrid_material_contract PRIVATE Autodidac::EpochGui)
     target_compile_features(sandhybrid_material_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_material_contract)
     add_test(NAME sandhybrid_material_contract COMMAND sandhybrid_material_contract)
@@ -248,4 +302,31 @@ if(BUILD_TESTING)
     target_compile_features(sandhybrid_section_scheduler_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_section_scheduler_contract)
     add_test(NAME sandhybrid_section_scheduler_contract COMMAND sandhybrid_section_scheduler_contract)
+
+    add_executable(sandhybrid_public_api_contract tests/public_api_contract.cpp)
+    target_link_libraries(sandhybrid_public_api_contract PRIVATE SandHybrid::SandHybrid)
+    target_compile_features(sandhybrid_public_api_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_public_api_contract)
+    add_test(NAME sandhybrid_public_api_contract COMMAND sandhybrid_public_api_contract)
+
+    if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
+        add_executable(sandhybrid_ui_layout_contract tests/ui_layout_contract.cpp)
+        target_link_libraries(sandhybrid_ui_layout_contract PRIVATE Autodidac::EpochGui)
+        target_include_directories(sandhybrid_ui_layout_contract PRIVATE include)
+        target_compile_features(sandhybrid_ui_layout_contract PRIVATE cxx_std_23)
+        sandhybrid_configure_warnings(sandhybrid_ui_layout_contract)
+        add_test(NAME sandhybrid_ui_layout_contract COMMAND sandhybrid_ui_layout_contract)
+    endif()
+
+    add_test(NAME sandhybrid_downstream_package_contract
+        COMMAND ${CMAKE_COMMAND}
+            "-DSANDHYBRID_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DSANDHYBRID_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+            "-DSANDHYBRID_GENERATOR=${CMAKE_GENERATOR}"
+            "-DSANDHYBRID_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+            "-DSANDHYBRID_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"
+            "-DSANDHYBRID_CONFIG=$<CONFIG>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run_downstream_smoke.cmake"
+    )
+    set_tests_properties(sandhybrid_downstream_package_contract PROPERTIES RUN_SERIAL TRUE)
 endif()
