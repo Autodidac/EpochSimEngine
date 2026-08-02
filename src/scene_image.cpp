@@ -31,6 +31,13 @@ constexpr std::uint32_t full_strength_cells = 52u;
 constexpr std::uint32_t bee_target_none = 0xffffu;
 constexpr std::uint32_t bee_formation_count = 100u;
 constexpr std::uint32_t bee_metadata_mask = 0x00ffffffu;
+constexpr std::uint32_t bee_authored_home_slot_bit = 0x80u;
+constexpr std::int32_t beehive_shell_min_radius_squared = 28;
+constexpr std::int32_t beehive_shell_max_radius_squared = 108;
+constexpr std::int32_t beehive_chamber_radius_squared = 28;
+constexpr std::int32_t beehive_exit_min_x = 1;
+constexpr std::int32_t beehive_exit_max_x = 12;
+constexpr std::int32_t beehive_exit_half_height = 1;
 
 
 constexpr std::uint32_t hash32(std::uint32_t value) noexcept {
@@ -50,8 +57,84 @@ std::uint32_t pack_bee_metadata(std::uint32_t aux, const std::uint32_t home_x,
                                 const std::uint32_t home_y, const std::uint32_t slot) noexcept {
     const auto packed_home_x = std::min(home_x / 4u, 255u);
     const auto packed_home_y = std::min(home_y / 4u, 127u);
-    const auto metadata = packed_home_x | (packed_home_y << 8u) | ((slot & 255u) << 15u);
+    const auto packed_slot = (slot & 127u) | bee_authored_home_slot_bit;
+    const auto metadata = packed_home_x | (packed_home_y << 8u) | (packed_slot << 15u);
     return (aux & ~bee_metadata_mask) | metadata;
+}
+
+Material fix28_beehive_material(const std::int32_t offset_x,
+                      const std::int32_t offset_y,
+                      const std::uint32_t entropy) noexcept {
+    const auto radius_squared = offset_x * offset_x + offset_y * offset_y;
+    if (radius_squared == 0) return Material::queen_bee;
+    if (offset_x >= beehive_exit_min_x && offset_x <= beehive_exit_max_x &&
+        std::abs(offset_y) <= beehive_exit_half_height)
+        return Material::empty;
+    if (radius_squared < beehive_chamber_radius_squared) {
+        if ((entropy & 3u) == 0u) return Material::empty;
+        return (entropy & 4u) == 0u ? Material::honey : Material::pollen;
+    }
+    if (radius_squared >= beehive_shell_min_radius_squared &&
+        radius_squared < beehive_shell_max_radius_squared)
+        return Material::beehive;
+    return Material::count;
+}
+
+bool legacy_hive_material(const Material material) noexcept {
+    return material == Material::beehive || material == Material::honey ||
+ material == Material::pollen || material == Material::queen_bee;
+}
+
+void normalize_fix28_hives(std::vector<std::uint32_t>& materials,
+                 const std::uint32_t width,
+                 const std::uint32_t height) {
+    std::vector<std::size_t> queens;
+    for (std::size_t index = 0; index < materials.size(); ++index) {
+        if (materials[index] == static_cast<std::uint32_t>(Material::queen_bee))
+  queens.push_back(index);
+    }
+    for (const auto queen_index : queens) {
+        const auto queen_x = static_cast<std::int32_t>(queen_index % width);
+        const auto queen_y = static_cast<std::int32_t>(queen_index / width);
+        for (std::int32_t offset_y = -16; offset_y <= 16; ++offset_y) {
+  for (std::int32_t offset_x = -16; offset_x <= 16; ++offset_x) {
+      const auto x = queen_x + offset_x;
+      const auto y = queen_y + offset_y;
+      if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
+          y >= static_cast<std::int32_t>(height))
+          continue;
+      const auto index = static_cast<std::size_t>(y) * width +
+                         static_cast<std::size_t>(x);
+      const auto existing = static_cast<Material>(materials[index]);
+      if (legacy_hive_material(existing))
+          materials[index] = static_cast<std::uint32_t>(Material::empty);
+  }
+        }
+        for (std::int32_t offset_y = -11; offset_y <= 11; ++offset_y) {
+  for (std::int32_t offset_x = -11; offset_x <= 12; ++offset_x) {
+      const auto x = queen_x + offset_x;
+      const auto y = queen_y + offset_y;
+      if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
+          y >= static_cast<std::int32_t>(height))
+          continue;
+      const auto index = static_cast<std::size_t>(y) * width +
+                         static_cast<std::size_t>(x);
+      const auto material = fix28_beehive_material(
+          offset_x, offset_y, hash32(static_cast<std::uint32_t>(index) ^ 0xb33u));
+      if (material == Material::count) continue;
+      const auto existing = static_cast<Material>(materials[index]);
+      if (existing == Material::bee || existing == Material::ant ||
+          existing == Material::beetle)
+          continue;
+      if (material == Material::empty) {
+          if (legacy_hive_material(existing))
+              materials[index] = static_cast<std::uint32_t>(Material::empty);
+      } else if (existing == Material::empty || legacy_hive_material(existing)) {
+          materials[index] = static_cast<std::uint32_t>(material);
+      }
+  }
+        }
+    }
 }
 
 bool structural_candidate(const Material material) noexcept {
@@ -236,6 +319,20 @@ bool load_scene_ppm(const std::filesystem::path& path,
                 const auto tile = static_cast<std::size_t>(y / tile_size) * tile_columns + x / tile_size;
                 ++counts[tile * material_count + material];
             }
+        }
+    }
+
+    normalize_fix28_hives(materials, width, height);
+    std::fill(counts.begin(), counts.end(), 0u);
+    for (std::uint32_t y = 0u; y < height; ++y) {
+        for (std::uint32_t x = 0u; x < width; ++x) {
+  const auto index = static_cast<std::size_t>(y) * width + x;
+  const auto material = materials[index];
+  const auto typed = static_cast<Material>(material);
+  if (material != 0u && structural_candidate(typed)) {
+      const auto tile = static_cast<std::size_t>(y / tile_size) * tile_columns + x / tile_size;
+      ++counts[tile * material_count + material];
+  }
         }
     }
 

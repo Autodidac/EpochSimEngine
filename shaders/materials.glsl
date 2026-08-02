@@ -17,6 +17,7 @@ const uint AUX_STATE_MASK = 0x000000ffu;
 const uint AUX_RANDOM_MASK = 0x007fff00u;
 const uint STRUCTURAL_BLOCK_SIZE = 8u;
 const uint STRUCTURAL_FULL_CELLS = STRUCTURAL_BLOCK_SIZE * STRUCTURAL_BLOCK_SIZE;
+// Granular terrain threshold only; block-capable structural tiles are exempt.
 const uint STRUCTURAL_DESTROYED_CELLS_TO_CRUMBLE = 31u;
 const uint STRUCTURAL_COLLAPSE_CELLS =
     STRUCTURAL_FULL_CELLS - STRUCTURAL_DESTROYED_CELLS_TO_CRUMBLE + 1u;

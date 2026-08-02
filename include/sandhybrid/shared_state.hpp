@@ -30,6 +30,7 @@ struct SharedState final {
     std::atomic_bool secondary_down{false};
     std::atomic_bool inspect_material{false};
     std::atomic_bool debug_visualization{false};
+    std::atomic_bool camera_controls{false};
 
     std::atomic_uint32_t selected_material{static_cast<std::uint32_t>(Material::sand)};
     std::atomic_uint32_t selected_group{static_cast<std::uint32_t>(MaterialGroup::ground)};

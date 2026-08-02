@@ -274,7 +274,8 @@ bool isBlockCapable(uint material) {
            material == MAT_PLASTIC || material == MAT_ACID_RESISTANT_PLASTIC ||
            material == MAT_ALUMINUM || material == MAT_GLASS || material == MAT_IRON ||
            material == MAT_IRON_ORE ||
-           material == MAT_COPPER || material == MAT_MAGNET || material == MAT_INSULATOR ||
+           material == MAT_COPPER || material == MAT_GOLD || material == MAT_MAGNET ||
+           material == MAT_INSULATOR ||
            material == MAT_URANIUM || material == MAT_STEEL || material == MAT_CONVEYOR || material == MAT_SMELTER ||
            material == MAT_ASSEMBLER || material == MAT_INSECT_HABITAT ||
            material == MAT_FACTORY_CORE || material == MAT_SLUICE_BOX;
@@ -466,6 +467,14 @@ bool canCellFallInto(Cell moving, Cell target) {
     return false;
 }
 
+bool wetGranularSinkMove(Cell moving, Cell target) {
+    bool wetGranular = (moving.aux & AUX_WET) != 0u &&
+        (moving.material == MAT_SAND || moving.material == MAT_DIRT ||
+         moving.material == MAT_SILT);
+    return wetGranular && !isStructural(moving) && isCellLiquid(target) &&
+           effectiveDensity(moving) > effectiveDensity(target);
+}
+
 bool supportedAt(ivec2 position, Cell cell) {
     return !canCellFallInto(cell, moveAt(position + ivec2(0, 1)));
 }
@@ -520,6 +529,11 @@ bool solidLedgePrecedesDrop(ivec2 position, int direction) {
     ivec2 beyond = position + ivec2(direction, 0);
     return moveInside(beyond) && isOpenGas(sampleAt(beyond)) &&
            isOpenGas(sampleAt(beyond + ivec2(0, 1)));
+}
+
+bool fullWaterSplitSupplied(ivec2 sourcePosition, int direction) {
+    Cell trailing = sampleAt(sourcePosition - ivec2(direction, 0));
+    return trailing.material == MAT_WATER && !isHalfWaterCell(trailing);
 }
 
 bool isMovementHazard(uint material) {
@@ -672,9 +686,18 @@ bool lightningMoveAllowed(ivec2 sourcePosition, ivec2 targetPosition, uint rando
     return targetTarget != sourceTarget ? targetTarget : ((randomValue & 1u) == 0u);
 }
 
+bool gasExpansionAllows(Cell cell) {
+    if (cell.material == MAT_ATMOSPHERE || cell.material == MAT_OXYGEN)
+        return cell.age < 24u;
+    if (cell.material == MAT_CARBON_DIOXIDE || cell.material == MAT_STEAM ||
+        cell.material == MAT_DIRTY_STEAM || cell.material == MAT_SMOKE)
+        return cell.age < 96u;
+    return true;
+}
+
 bool gasHorizontalAllows(Cell cell, uint randomValue) {
     // Gas can spread while newly emitted or disturbed, then comes to rest.
-    if (cell.age >= 48u) return false;
+    if (!gasExpansionAllows(cell) || cell.age >= 48u) return false;
     uint material = cell.material;
     if (material == MAT_HYDROGEN) return true;
     if (material == MAT_OXYGEN || material == MAT_ATMOSPHERE) return (randomValue & 1u) == 0u;
@@ -827,7 +850,7 @@ void processVertical(ivec2 top, ivec2 bottom) {
 
 
     if ((isCellPowder(a) || isCellLiquid(a) || isLooseSolid(a)) && canCellFallInto(a, b) &&
-        movementAllows(a, randomValue)) {
+        (wetGranularSinkMove(a, b) || movementAllows(a, randomValue))) {
         swapCells(top, bottom);
         return;
     }
@@ -842,8 +865,10 @@ void processVertical(ivec2 top, ivec2 bottom) {
         return;
     }
 
-    if (isCellGas(b) && (a.material == MAT_EMPTY ||
-        (isCellGas(a) && densityOf(b.material) < densityOf(a.material)))) {
+    bool emptyGasRise = a.material == MAT_EMPTY && gasExpansionAllows(b);
+    bool densityGasRise = isCellGas(a) &&
+        densityOf(b.material) < densityOf(a.material);
+    if (isCellGas(b) && (emptyGasRise || densityGasRise)) {
         if (b.material != MAT_LIGHTNING || lightningMoveAllowed(bottom, top, randomValue)) {
             swapCells(top, bottom);
             return;
@@ -911,7 +936,7 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
     if (!upward && !cohesiveMud &&
         (isCellPowder(source) || isCellLiquid(source) || isLooseSolid(source)) &&
         supportedAt(sourcePosition, source) && canCellFallInto(source, target) &&
-        movementAllows(source, randomValue)) {
+        (wetGranularSinkMove(source, target) || movementAllows(source, randomValue))) {
         swapCells(sourcePosition, targetPosition);
         return;
     }
@@ -929,9 +954,11 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
         return;
     }
 
+    bool emptyGasDiagonal = target.material == MAT_EMPTY && gasExpansionAllows(source);
+    bool densityGasDiagonal = isCellGas(target) &&
+        effectiveDensity(source) < effectiveDensity(target);
     if (upward && isCellGas(source) &&
-        (target.material == MAT_EMPTY ||
-         (isCellGas(target) && effectiveDensity(source) < effectiveDensity(target)))) {
+        (emptyGasDiagonal || densityGasDiagonal)) {
         if (source.material != MAT_LIGHTNING ||
             lightningMoveAllowed(sourcePosition, targetPosition, randomValue)) {
             swapCells(sourcePosition, targetPosition);
@@ -1003,7 +1030,10 @@ void processHorizontal(ivec2 left, ivec2 right) {
     }
 
     if (isHalfWaterCell(a) && isHalfWaterCell(b)) {
-        bool keepLeft = (randomValue & 1u) == 0u;
+        bool leftSupported = solidSupportsWaterAt(left);
+        bool rightSupported = solidSupportsWaterAt(right);
+        bool keepLeft = leftSupported != rightSupported
+            ? leftSupported : (randomValue & 1u) == 0u;
         if (mergeHalfWaterPair(keepLeft ? left : right, keepLeft ? right : left,
                                keepLeft ? a : b, keepLeft ? b : a)) return;
     }
@@ -1015,13 +1045,19 @@ void processHorizontal(ivec2 left, ivec2 right) {
 
     if (isCellLiquid(a) && isOpenGas(b) && liquidCanSpread(left, right, a, randomValue)) {
         if (a.material == MAT_WATER && !isHalfWaterCell(a) &&
-            solidLedgePrecedesDrop(right, 1)) splitFullWaterPair(left, right, a, b);
-        else swapCells(left, right);
+            solidLedgePrecedesDrop(right, 1)) {
+            if (fullWaterSplitSupplied(left, 1)) splitFullWaterPair(left, right, a, b);
+        } else {
+            swapCells(left, right);
+        }
     } else if (isCellLiquid(b) && isOpenGas(a) &&
                liquidCanSpread(right, left, b, randomValue >> 1u)) {
         if (b.material == MAT_WATER && !isHalfWaterCell(b) &&
-            solidLedgePrecedesDrop(left, -1)) splitFullWaterPair(right, left, b, a);
-        else swapCells(left, right);
+            solidLedgePrecedesDrop(left, -1)) {
+            if (fullWaterSplitSupplied(right, -1)) splitFullWaterPair(right, left, b, a);
+        } else {
+            swapCells(left, right);
+        }
     } else if (isCellGas(a) && b.material == MAT_EMPTY && gasHorizontalAllows(a, randomValue) &&
                (a.material != MAT_LIGHTNING || lightningMoveAllowed(left, right, randomValue))) {
         swapCells(left, right);

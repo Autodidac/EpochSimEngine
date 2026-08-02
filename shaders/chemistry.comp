@@ -849,7 +849,9 @@ void main() {
     result.aux &= ~AUX_MOVED;
     TileState tile = tiles[tileIndex(p, pc.width)];
     bool minorityStructural = isStructural(source) && tile.material != source.material;
-    if (isStructural(source) && !minorityStructural && tileHas(tile, TILE_DAMAGED) &&
+    bool durableStructural = isStructural(source) && isBlockCapable(source.material);
+    if (isStructural(source) && !durableStructural && !minorityStructural &&
+        tileHas(tile, TILE_DAMAGED) &&
         tileOccupancy(tile) >= TILE_MIN_COHESIVE_CELLS &&
         tileOccupancy(tile) < TILE_STABILITY_OCCUPANCY) {
         uint health = stateValue(result);
@@ -876,7 +878,8 @@ void main() {
         result.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
         result.aux |= AUX_MOVED;
         result.age = 0u;
-    } else if (isStructural(source) && (minorityStructural || tileHas(tile, TILE_COLLAPSING))) {
+    } else if (isStructural(source) && !durableStructural &&
+               (minorityStructural || tileHas(tile, TILE_COLLAPSING))) {
         result.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
         result.aux |= AUX_MOVED;
         result.age = 0u;
@@ -1043,7 +1046,11 @@ void main() {
     if (source.material == MAT_SAND || source.material == MAT_SILT) {
         // Wet granular feed retains its represented wash water. Only the
         // shallow surface band can absorb new water; drying may not delete it.
-        if (shallowSandContact) result.aux |= AUX_WET;
+        if (shallowSandContact) {
+            result.aux |= AUX_WET | AUX_MOVED;
+            result.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
+            result.age = 0u;
+        }
     } else if (source.material == MAT_DIRT) {
         if (freshContact) result.aux |= AUX_WET;
         bool saturatedSurface = (result.aux & AUX_WET) != 0u && stableSoil && neighborCount(p, MAT_MUD) <= 2u;

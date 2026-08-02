@@ -307,8 +307,9 @@ struct RenderPush final {
     std::int32_t active_area_x{};
     std::int32_t active_area_y{};
     std::uint32_t active_scope_mode{};
+    std::uint32_t camera_controls{};
 };
-static_assert(sizeof(RenderPush) == 164);
+static_assert(sizeof(RenderPush) == 168);
 
 bool contains_extension(const std::vector<VkExtensionProperties>& extensions, const char* name) {
     return std::ranges::any_of(extensions, [name](const VkExtensionProperties& extension) {
@@ -2160,6 +2161,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .active_area_y = state.camera_center_y.load(std::memory_order_relaxed) /
                              active_region_height_cells,
             .active_scope_mode = state.active_scope_mode.load(std::memory_order_relaxed),
+            .camera_controls = state.camera_controls.load(std::memory_order_relaxed) ? 1u : 0u,
         };
         vkCmdPushConstants(command_buffer, graphics_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                            0, sizeof(push), &push);

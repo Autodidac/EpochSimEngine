@@ -178,12 +178,85 @@ def main() -> int:
             errors.append(f"Fix28 Beehive contract missing {token!r}")
 
     scene_image_cpp = (ROOT / "src/scene_image.cpp").read_text(encoding="utf-8")
+    move = (SHADERS / "move.comp").read_text(encoding="utf-8")
+    tiles = (SHADERS / "tiles.comp").read_text(encoding="utf-8")
     for token in ("material_color.hpp", "material_editor_color", "material_from_editor_color"):
         if token not in scene_image_cpp:
             errors.append(f"paint-editable scene palette contract missing {token!r}")
     if "% 224u" in scene_image_cpp or "scene_color(" in scene_image_cpp:
         errors.append("obsolete hashed scene palette remains")
+    bee_swarm = (SHADERS / "bee_swarm.glsl").read_text(encoding="utf-8")
+    for token in (
+        "BEE_AUTHORED_WORLD_CELLS.y * 3",
+        "BEE_AUTHORED_WORLD_CELLS.y * 2",
+        "return beeUsesAuthoredHome(aux) ? home + beeAuthoredWorldOrigin",
+    ):
+        if token not in bee_swarm:
+            errors.append(f"authored bee-home origin contract missing {token!r}")
+    for token in (
+        "bee_authored_home_slot_bit",
+        "normalize_fix28_hives",
+        "fix28_beehive_material",
+        "beehive_shell_min_radius_squared = 28",
+        "beehive_shell_max_radius_squared = 108",
+    ):
+        if token not in scene_image_cpp:
+            errors.append(f"loaded Fix28 Beehive contract missing {token!r}")
+    for token in (
+        "wetGranularSinkMove",
+        "fullWaterSplitSupplied",
+        "gasExpansionAllows",
+        "emptyGasRise",
+        "emptyGasDiagonal",
+    ):
+        if token not in move:
+            errors.append(f"wet-sand/medium settling contract missing {token!r}")
+    for token in (
+        "boundaryFineMedium",
+        "settledFineMedium",
+        "!tileHas(previous, TILE_MEDIUM_BREAKUP)",
+        "settledMedium || settledFineMedium",
+    ):
+        if token not in tiles:
+            errors.append(f"one-shot medium-boundary settling contract missing {token!r}")
 
+
+    app_cpp = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
+    ui_layout_hpp = (ROOT / "include/sandhybrid/ui_layout.hpp").read_text(encoding="utf-8")
+    shared_state_hpp = (ROOT / "include/sandhybrid/shared_state.hpp").read_text(encoding="utf-8")
+    renderer_cpp = (ROOT / "src/vulkan_renderer.cpp").read_text(encoding="utf-8")
+    generator_py = (ROOT / "tools/generate_ui_text.py").read_text(encoding="utf-8")
+    for token in (
+        "bool startupDynamic = cell.age < 8u &&",
+        "cell.material != MAT_ATMOSPHERE",
+        "cell.material != MAT_OXYGEN",
+        "bool balancedAtmosphereTile = fullGas && gasEnclosed && !moving",
+        "balancedAtmosphereTile;",
+    ):
+        if token not in tiles:
+            errors.append(f"filled-atmosphere startup sleep contract missing {token!r}")
+    for token in (
+        "layout.pause_toggle",
+        "layout.camera_controls_toggle",
+        "const bool pan_button_down = input.middle_down",
+        "camera_mode && input.secondary_down",
+        "const auto shift_x = pan_remainder_x / viewport_width",
+        "input.secondary_down && paint_active && !camera_mode",
+    ):
+        if token not in app_cpp:
+            errors.append(f"camera/pause input contract missing {token!r}")
+    if "edge_band_pixels" in app_cpp:
+        errors.append("mouse-edge camera movement remains in app.cpp")
+    for token in ("pause_toggle", "camera_controls_toggle", "top_control_width"):
+        if token not in ui_layout_hpp:
+            errors.append(f"camera/pause layout contract missing {token!r}")
+    if "std::atomic_bool camera_controls{false};" not in shared_state_hpp:
+        errors.append("shared camera-control mode state is missing")
+    if "camera_controls = state.camera_controls.load" not in renderer_cpp:
+        errors.append("camera-control mode is not forwarded to rendering")
+    for token in ("MMB/RMB PAN", "PLAYER WASD"):
+        if token not in generator_py:
+            errors.append(f"generated control label contract missing {token!r}")
     ui_text = (SHADERS / "ui_text.glsl").read_text(encoding="utf-8")
     try:
         ui_storage = parse_generated_storage()
@@ -469,12 +542,15 @@ def main() -> int:
         if token not in chemistry:
             errors.append(f"granular terrain stability contract missing {token!r}")
     for token in (
-        "bool unsupportedStructural = structuralTile && !physicallySupported;",
-        "dominantCount < TILE_MIN_COHESIVE_CELLS || unsupportedStructural",
-        "bool supported = terrainStable && physicallySupported;",
+        "bool durableStructuralTile = structuralTile &&",
+        "isBlockCapable(dominant) || isBlockCapable(previous.material)",
+        "bool unsupportedStructural = structuralTile && !durableStructuralTile",
+        "bool collapsing = structuralTile && !durableStructuralTile",
+        "bool supported = terrainStable &&",
+        "physicallySupported || durableStructuralTile",
     ):
         if token not in tiles:
-            errors.append(f"settled-terrain release contract missing {token!r}")
+            errors.append(f"durable structural retention contract missing {token!r}")
 
     # CPU and GLSL push constants must remain byte-for-byte field compatible.
     push_contracts = {
@@ -513,7 +589,7 @@ def main() -> int:
              "tile_rows", "viewport_left", "viewport_top", "viewport_width", "viewport_height",
              "view_origin_x", "view_origin_y", "view_width", "view_height", "brush_shape",
              "placement_mode", "active_area_count", "active_area_x", "active_area_y",
-             "active_scope_mode"],
+             "active_scope_mode", "camera_controls"],
             ["gridWidth", "gridHeight", "windowWidth", "windowHeight", "selectedMaterial",
              "materialCount", "cursorX", "cursorY", "brushRadius", "statusHeight", "paletteHeight",
              "groupTabsHeight", "materialSlots", "framesPerSecond", "paused", "stepsPerFrame",
@@ -521,7 +597,7 @@ def main() -> int:
              "sceneCount", "miningMode", "inspectMode", "debugMode", "tileColumns", "tileRows", "viewportLeft", "viewportTop", "viewportWidth", "viewportHeight",
              "viewOriginX", "viewOriginY", "viewWidth", "viewHeight", "brushShape",
              "placementMode", "activeAreaCount", "activeAreaX", "activeAreaY",
-             "activeScopeMode"],
+             "activeScopeMode", "cameraControls"],
             renderer,
             "renderPc",
         ),
@@ -617,7 +693,6 @@ def main() -> int:
         if token not in world_layout:
             errors.append(f"shared resident world-layout contract missing {token!r}")
     for token in (
-        "edge_band_pixels = 28",
         "route_directional_input(",
         "camera_direction_x = directional_input.camera_x",
         "camera_direction_y = directional_input.camera_y",
@@ -659,6 +734,35 @@ def main() -> int:
             errors.append(f"latched player action contract missing {token!r}")
     if "segmentDistance" not in renderer or "actor.hitX" not in renderer or "actor.hitY" not in renderer:
         errors.append("tool beam/impact feedback is missing from the renderer")
+    for token in (
+        "residentGroundHash",
+        "residentGroundDepositMaterial",
+        "roll < 24u) return MAT_IRON_ORE",
+        "roll < 32u) return MAT_COPPER",
+        "roll < 38u) return MAT_ALUMINUM",
+        "depth >= 160 && roll < 41u) return MAT_URANIUM",
+    ):
+        if token not in reset:
+            errors.append(f"resident ground deposit contract missing {token!r}")
+    for token in (
+        "resident_ground_hash",
+        "resident_ground_deposit_material",
+        "roll < 24u) return Material::iron_ore",
+        "roll < 32u) return Material::copper",
+        "roll < 38u) return Material::aluminum",
+        "depth >= 160u && roll < 41u) return Material::uranium",
+    ):
+        if token not in world_layout:
+            errors.append(f"CPU resident ground deposit contract missing {token!r}")
+    for token in (
+        "bool durableStructural = isStructural(source) && isBlockCapable(source.material);",
+        "isStructural(source) && !durableStructural && !minorityStructural",
+        "isStructural(source) && !durableStructural &&",
+    ):
+        if token not in chemistry:
+            errors.append(f"durable structural chemistry contract missing {token!r}")
+
+
     for token in ("authoredStructuralCell", "looseAuthoredCargo", "Large upper reservoir", "real sediment sifter"):
         if token not in reset:
             errors.append(f"authored scene contract missing {token!r}")
@@ -673,10 +777,11 @@ def main() -> int:
     if "MAT_GOLD_ORE" in reset or "MAT_GOLD_ORE" in actor:
         errors.append("retired Gold Ore blocks remain in authored scenes or player mining")
     for token in ("previouslyDense", "tileOccupancy(previous) >= TILE_STABILITY_OCCUPANCY",
-                  "dominantCount < TILE_MIN_COHESIVE_CELLS",
-                   "structuralTile ? dominantCount"):
+                  "durableStructuralTile ? structural : dominantCount",
+                  "!durableStructuralTile &&",
+                  "!structuralTile && !isBlockCapable(dominant)"):
         if token not in tiles:
-            errors.append(f"bounded structural collapse contract missing {token!r}")
+            errors.append(f"durable structural tile contract missing {token!r}")
     if "sameNeighbors" not in renderer or "sameNeighbors == 0u" not in renderer:
         errors.append("gas renderer no longer suppresses isolated particle halos")
 

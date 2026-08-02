@@ -37,6 +37,12 @@ static_assert(sandhybrid::material_names[31u] == "Beehive");
 static_assert(sandhybrid::material_names[48u] == "Iron ore");
 static_assert(sandhybrid::is_block_material(Material::stone));
 static_assert(sandhybrid::is_block_material(Material::iron_ore));
+static_assert(sandhybrid::is_block_material(Material::aluminum));
+static_assert(sandhybrid::is_block_material(Material::iron));
+static_assert(sandhybrid::is_block_material(Material::copper));
+static_assert(sandhybrid::is_block_material(Material::gold));
+static_assert(sandhybrid::is_block_material(Material::uranium));
+static_assert(sandhybrid::is_block_material(Material::steel));
 static_assert(!sandhybrid::is_block_material(Material::mud));
 
 static_assert(sandhybrid::phase_at(Material::copper, 1300) == MaterialPhase::molten);
@@ -65,6 +71,7 @@ static_assert(!sandhybrid::policy::stability_ready(51u, 120u, true, true, false,
 static_assert(sandhybrid::policy::laser_hits_to_dislodge == 2u);
 static_assert(!sandhybrid::policy::should_collapse(34u));
 static_assert(sandhybrid::policy::should_collapse(33u));
+static_assert(!sandhybrid::policy::should_collapse(1u, true));
 static_assert(sandhybrid::policy::update_vent_pressure(100u, true, false) == 105u);
 static_assert(sandhybrid::policy::update_vent_pressure(100u, false, true) == 96u);
 static_assert(sandhybrid::policy::bulk_region_eligible(64u, true, false, false, false));

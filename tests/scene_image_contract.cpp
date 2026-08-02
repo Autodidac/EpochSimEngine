@@ -15,6 +15,7 @@ constexpr std::uint32_t aux_supported = 0x02000000u;
 constexpr std::uint32_t aux_moved = 0x01000000u;
 constexpr std::uint32_t aux_state_mask = 0x000000ffu;
 constexpr std::uint32_t bee_target_none = 0xffffu;
+constexpr std::uint32_t bee_authored_home_slot_bit = 0x80u;
 }
 
 int main() {
@@ -66,7 +67,9 @@ int main() {
         if ((bee.aux & (aux_bee_fed | aux_bee_swarm)) != (aux_bee_fed | aux_bee_swarm)) return 5;
         const auto home_x = (bee.aux & 255u) * 4u;
         const auto home_y = ((bee.aux >> 8u) & 127u) * 4u;
-        const auto slot = (bee.aux >> 15u) & 255u;
+        const auto packed_slot = (bee.aux >> 15u) & 255u;
+        if ((packed_slot & bee_authored_home_slot_bit) == 0u) return 6;
+        const auto slot = packed_slot & 127u;
         if (home_x != queen_x || home_y != queen_y || slot != expected_slot) return 6;
         if ((bee.age >> 16u) != bee_target_none) return 7;
         ++expected_slot;

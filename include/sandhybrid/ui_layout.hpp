@@ -21,7 +21,8 @@ inline constexpr float gap = 3.0f;
 struct Layout final {
     epochengine::gui_lib::Rect status{}, simulation{}, group_tabs{}, palette{};
     epochengine::gui_lib::Rect previous_scene{}, next_scene{}, reset_scene{}, save_scene{}, load_scene{};
-    epochengine::gui_lib::Rect mode_toggle{}, debug_toggle{}, atmosphere{}, fill{}, eraser{}, keymap{}, cursor_editor{}, material_card{};
+    epochengine::gui_lib::Rect mode_toggle{}, pause_toggle{}, camera_controls_toggle{}, debug_toggle{};
+    epochengine::gui_lib::Rect atmosphere{}, fill{}, eraser{}, keymap{}, cursor_editor{}, material_card{};
     epochengine::gui_lib::Rect placement_cells{}, placement_tiles{};
     epochengine::gui_lib::Rect cursor_circle{}, cursor_square{}, cursor_horizontal{}, cursor_vertical{};
     epochengine::gui_lib::Rect brush_smaller{}, brush_larger{}, zoom_out{}, zoom_in{};
@@ -73,9 +74,17 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
     layout.save_scene = {{scene_left + (scene_width + scene_gap) * 3.0f, 70.0f}, {scene_width, 26.0f}};
     layout.load_scene = {{scene_left + (scene_width + scene_gap) * 4.0f, 70.0f}, {scene_width, 26.0f}};
 
-    layout.mode_toggle = {{left + 8.0f, 100.0f}, {(std::max)(112.0f, side * 0.46f), 22.0f}};
-    layout.debug_toggle = {{layout.mode_toggle.position.x + layout.mode_toggle.size.x + 4.0f, 100.0f},
-                           {(std::max)(1.0f, side - layout.mode_toggle.size.x - 24.0f), 22.0f}};
+    const float top_control_gap = 3.0f;
+    const float top_control_width = (std::max)(
+        1.0f, (side - 16.0f - top_control_gap * 3.0f) / 4.0f);
+    layout.mode_toggle = {{left + 8.0f, 100.0f}, {top_control_width, 22.0f}};
+    layout.pause_toggle = {{layout.mode_toggle.position.x + top_control_width + top_control_gap, 100.0f},
+                           {top_control_width, 22.0f}};
+    layout.camera_controls_toggle = {{layout.pause_toggle.position.x + top_control_width + top_control_gap, 100.0f},
+                                    {top_control_width, 22.0f}};
+    layout.debug_toggle = {{layout.camera_controls_toggle.position.x + top_control_width + top_control_gap, 100.0f},
+                           {(std::max)(1.0f, left + side - 8.0f -
+                               (layout.camera_controls_toggle.position.x + top_control_width + top_control_gap)), 22.0f}};
 
     const float content_left = left + margin;
     const float content_width = (std::max)(1.0f, side - margin * 2.0f);
