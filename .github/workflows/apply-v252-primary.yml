@@ -24,6 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/apply_v252_primary.py
+          python3 tools/apply_v252_post.py
           python3 - <<'PY'
           from pathlib import Path
 
