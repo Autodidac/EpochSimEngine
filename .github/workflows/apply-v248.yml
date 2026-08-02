@@ -35,9 +35,9 @@ jobs:
           echo '96ea272d5cefd712b2399629a56e890dad82676fa1da9f98f7b0cb981013d5cd  '"${RUNNER_TEMP}/v248.patch.xz" | sha256sum --check
           xz --decompress --stdout "${RUNNER_TEMP}/v248.patch.xz" > "${RUNNER_TEMP}/v248.patch"
           git apply --index "${RUNNER_TEMP}/v248.patch"
+          python3 .github/apply_v248_sep.py
           rm -f .github/v248_exact_* .github/v248_final_chunk_* \
-            .github/v248_sync_trigger .release/v248-run-request.txt \
-            .github/apply_v248_sep.py
+            .github/v248_sync_trigger .release/v248-run-request.txt
 
           python3 tools/generate_ui_text.py
           python3 tools/validate_shader_contracts.py
