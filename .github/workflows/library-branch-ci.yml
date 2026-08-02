@@ -1,0 +1,177 @@
+name: SandHybrid library branch CI
+
+on:
+  push:
+    branches: [agent/complete-sandhybrid-library]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sandhybrid-library-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  headless-library:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate source contracts
+        run: |
+          python tools/validate_shader_contracts.py
+          python tools/validate_mission_cache.py
+
+      - name: Configure Windows headless library
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake -S . -B build/library -G 'Visual Studio 17 2022' -A x64 `
+            -DSANDHYBRID_BUILD_APP=OFF `
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF `
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON `
+            -DBUILD_TESTING=ON
+
+      - name: Configure Linux headless library
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cmake -S . -B build/library -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+
+      - name: Build Windows headless library
+        if: runner.os == 'Windows'
+        run: cmake --build build/library --config Release --parallel
+
+      - name: Build Linux headless library
+        if: runner.os == 'Linux'
+        run: cmake --build build/library --parallel
+
+      - name: Test Windows headless library
+        if: runner.os == 'Windows'
+        run: ctest --test-dir build/library -C Release --output-on-failure
+
+      - name: Test Linux headless library
+        if: runner.os == 'Linux'
+        run: ctest --test-dir build/library --output-on-failure
+
+  full-runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            triplet: x64-windows
+          - os: ubuntu-24.04
+            triplet: x64-linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux host packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libxcb1-dev
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="${RUNNER_TEMP}/vcpkg"
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git "$root"
+          git -C "$root" checkout 04a735608afac5844e86fc91d6ba2112cac613c1
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            "$root/bootstrap-vcpkg.bat" -disableMetrics
+          else
+            "$root/bootstrap-vcpkg.sh" -disableMetrics
+          fi
+          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
+
+      - name: Configure Windows runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake -S . -B build/runtime -G 'Visual Studio 17 2022' -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} `
+            -DVCPKG_HOST_TRIPLET=${{ matrix.triplet }} `
+            -DSANDHYBRID_BUILD_APP=ON `
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=ON `
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON `
+            -DSANDHYBRID_ENABLE_VALIDATION=OFF `
+            -DBUILD_TESTING=ON
+
+      - name: Configure Linux runtime
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cmake -S . -B build/runtime -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
+            -DVCPKG_HOST_TRIPLET=${{ matrix.triplet }} \
+            -DSANDHYBRID_BUILD_APP=ON \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=ON \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DSANDHYBRID_ENABLE_VALIDATION=OFF \
+            -DBUILD_TESTING=ON
+
+      - name: Build Windows runtime
+        if: runner.os == 'Windows'
+        run: cmake --build build/runtime --config Release --parallel
+
+      - name: Build Linux runtime
+        if: runner.os == 'Linux'
+        run: cmake --build build/runtime --parallel
+
+      - name: Test Windows runtime
+        if: runner.os == 'Windows'
+        run: ctest --test-dir build/runtime -C Release --output-on-failure
+
+      - name: Test Linux runtime
+        if: runner.os == 'Linux'
+        run: ctest --test-dir build/runtime --output-on-failure
+
+  record-completion:
+    needs: [headless-library, full-runtime]
+    runs-on: ubuntu-24.04
+    if: ${{ success() && github.ref == 'refs/heads/agent/complete-sandhybrid-library' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/complete-sandhybrid-library
+
+      - name: Record accepted mission evidence
+        run: |
+          python tools/record_library_completion.py \
+            --source-sha '${{ github.sha }}' \
+            --run-id '${{ github.run_id }}' \
+            --repository '${{ github.repository }}'
+          python tools/validate_mission_cache.py
+
+      - name: Commit mission cache evidence
+        shell: bash
+        run: |
+          if git diff --quiet -- missioncache.md; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add missioncache.md
+          git commit -m 'Record validated library architecture completion'
+          git push origin HEAD:agent/complete-sandhybrid-library
