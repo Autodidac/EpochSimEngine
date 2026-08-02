@@ -1,0 +1,550 @@
+name: Apply v2.5.4 runtime regression closeout
+
+on:
+  push:
+    branches: [agent/durable-structural-ground-deposits-v254]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-v254-runtime-regressions
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Apply v2.5.4 runtime regression closeout'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/durable-structural-ground-deposits-v254
+          fetch-depth: 0
+
+      - name: Apply structural, geology, bee, wet-sand, and medium settling fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import textwrap
+
+          # Reuse the already-reviewed structural/geology applicator, including
+          # its robust world-layout replacement, but stop before its broken
+          # validator is executed by the outer workflow.
+          v2_path = Path('.github/workflows/apply-durable-structural-ground-deposits-v2.yml')
+          v2_text = v2_path.read_text(encoding='utf-8')
+          marker = "          python3 - <<'PY'\n"
+          start = v2_text.index(marker) + len(marker)
+          end = v2_text.index("\n          PY", start)
+          exec(compile(textwrap.dedent(v2_text[start:end]), str(v2_path), 'exec'))
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'missing replacement marker in {path}: {old[:160]!r}')
+              file.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          def replace_mission(mission_id: str, row: str) -> None:
+              file = Path('missioncache.md')
+              text = file.read_text(encoding='utf-8')
+              pattern = re.compile(rf'^\| {re.escape(mission_id)} \|.*$', re.M)
+              text, count = pattern.subn(row, text, count=1)
+              if count != 1:
+                  raise SystemExit(f'mission row {mission_id} replacement count was {count}')
+              file.write_text(text, encoding='utf-8')
+
+          # Gold remains authored/special and is not part of random geology.
+          replace_once(
+              'include/sandhybrid/world_layout.hpp',
+              '    if (roll < 38u) return Material::aluminum;\n'
+              '    if (roll < 41u) return Material::gold;\n'
+              '    if (depth >= 160u && roll == 41u) return Material::uranium;\n',
+              '    if (roll < 38u) return Material::aluminum;\n'
+              '    if (depth >= 160u && roll < 41u) return Material::uranium;\n')
+          replace_once(
+              'shaders/reset.comp',
+              '    if (roll < 38u) return MAT_ALUMINUM;\n'
+              '    if (roll < 41u) return MAT_GOLD;\n'
+              '    if (depth >= 160 && roll == 41u) return MAT_URANIUM;\n',
+              '    if (roll < 38u) return MAT_ALUMINUM;\n'
+              '    if (depth >= 160 && roll < 41u) return MAT_URANIUM;\n')
+
+          # Scene-local bee metadata must decode at the same Y=720 authored
+          # origin used by reset, camera home, and scene-image upload.
+          replace_once(
+              'shaders/bee_swarm.glsl',
+              'ivec2 beeAuthoredWorldOrigin(uint width, uint height) {\n'
+              '    return ivec2(max((int(width) - BEE_AUTHORED_WORLD_CELLS.x) / 2, 0),\n'
+              '                 max(int(height) - BEE_AUTHORED_WORLD_CELLS.y, 0));\n'
+              '}\n',
+              'ivec2 beeAuthoredWorldOrigin(uint width, uint height) {\n'
+              '    int skyHeight = int(height) >= BEE_AUTHORED_WORLD_CELLS.y * 3\n'
+              '        ? BEE_AUTHORED_WORLD_CELLS.y * 2\n'
+              '        : 0;\n'
+              '    return ivec2(max((int(width) - BEE_AUTHORED_WORLD_CELLS.x) / 2, 0),\n'
+              '                 skyHeight);\n'
+              '}\n')
+
+          scene_path = Path('src/scene_image.cpp')
+          scene = scene_path.read_text(encoding='utf-8')
+          scene = scene.replace(
+              'constexpr std::uint32_t bee_metadata_mask = 0x00ffffffu;\n',
+              'constexpr std::uint32_t bee_metadata_mask = 0x00ffffffu;\n'
+              'constexpr std::uint32_t bee_authored_home_slot_bit = 0x80u;\n'
+              'constexpr std::int32_t beehive_shell_min_radius_squared = 28;\n'
+              'constexpr std::int32_t beehive_shell_max_radius_squared = 108;\n'
+              'constexpr std::int32_t beehive_chamber_radius_squared = 28;\n'
+              'constexpr std::int32_t beehive_exit_min_x = 1;\n'
+              'constexpr std::int32_t beehive_exit_max_x = 12;\n'
+              'constexpr std::int32_t beehive_exit_half_height = 1;\n',
+              1)
+          scene = scene.replace(
+              '    const auto metadata = packed_home_x | (packed_home_y << 8u) | ((slot & 255u) << 15u);\n',
+              '    const auto packed_slot = (slot & 127u) | bee_authored_home_slot_bit;\n'
+              '    const auto metadata = packed_home_x | (packed_home_y << 8u) | (packed_slot << 15u);\n',
+              1)
+          helper_marker = 'bool structural_candidate(const Material material) noexcept {\n'
+          if helper_marker not in scene:
+              raise SystemExit('scene image helper insertion marker missing')
+          scene_helpers = r'''Material fix28_beehive_material(const std::int32_t offset_x,
+                                const std::int32_t offset_y,
+                                const std::uint32_t entropy) noexcept {
+    const auto radius_squared = offset_x * offset_x + offset_y * offset_y;
+    if (radius_squared == 0) return Material::queen_bee;
+    if (offset_x >= beehive_exit_min_x && offset_x <= beehive_exit_max_x &&
+        std::abs(offset_y) <= beehive_exit_half_height)
+        return Material::empty;
+    if (radius_squared < beehive_chamber_radius_squared) {
+        if ((entropy & 3u) == 0u) return Material::empty;
+        return (entropy & 4u) == 0u ? Material::honey : Material::pollen;
+    }
+    if (radius_squared >= beehive_shell_min_radius_squared &&
+        radius_squared < beehive_shell_max_radius_squared)
+        return Material::beehive;
+    return Material::count;
+}
+
+bool legacy_hive_material(const Material material) noexcept {
+    return material == Material::beehive || material == Material::honey ||
+           material == Material::pollen || material == Material::queen_bee;
+}
+
+void normalize_fix28_hives(std::vector<std::uint32_t>& materials,
+                           const std::uint32_t width,
+                           const std::uint32_t height) {
+    std::vector<std::size_t> queens;
+    for (std::size_t index = 0; index < materials.size(); ++index) {
+        if (materials[index] == static_cast<std::uint32_t>(Material::queen_bee))
+            queens.push_back(index);
+    }
+    for (const auto queen_index : queens) {
+        const auto queen_x = static_cast<std::int32_t>(queen_index % width);
+        const auto queen_y = static_cast<std::int32_t>(queen_index / width);
+        for (std::int32_t offset_y = -16; offset_y <= 16; ++offset_y) {
+            for (std::int32_t offset_x = -16; offset_x <= 16; ++offset_x) {
+                const auto x = queen_x + offset_x;
+                const auto y = queen_y + offset_y;
+                if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
+                    y >= static_cast<std::int32_t>(height))
+                    continue;
+                const auto index = static_cast<std::size_t>(y) * width +
+                                   static_cast<std::size_t>(x);
+                const auto existing = static_cast<Material>(materials[index]);
+                if (legacy_hive_material(existing))
+                    materials[index] = static_cast<std::uint32_t>(Material::empty);
+            }
+        }
+        for (std::int32_t offset_y = -11; offset_y <= 11; ++offset_y) {
+            for (std::int32_t offset_x = -11; offset_x <= 12; ++offset_x) {
+                const auto x = queen_x + offset_x;
+                const auto y = queen_y + offset_y;
+                if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
+                    y >= static_cast<std::int32_t>(height))
+                    continue;
+                const auto index = static_cast<std::size_t>(y) * width +
+                                   static_cast<std::size_t>(x);
+                const auto material = fix28_beehive_material(
+                    offset_x, offset_y, hash32(static_cast<std::uint32_t>(index) ^ 0xb33u));
+                if (material != Material::count)
+                    materials[index] = static_cast<std::uint32_t>(material);
+            }
+        }
+    }
+}
+
+'''
+          scene = scene.replace(helper_marker, scene_helpers + helper_marker, 1)
+          counts_anchor = '    for (std::uint32_t y = 0u; y < height; ++y) {\n'
+          counts_start = scene.index(counts_anchor, scene.index('std::vector<std::uint16_t> counts'))
+          second_loop = scene.index(counts_anchor, counts_start + len(counts_anchor))
+          recount = r'''    normalize_fix28_hives(materials, width, height);
+    std::fill(counts.begin(), counts.end(), 0u);
+    for (std::uint32_t y = 0u; y < height; ++y) {
+        for (std::uint32_t x = 0u; x < width; ++x) {
+            const auto index = static_cast<std::size_t>(y) * width + x;
+            const auto material = materials[index];
+            const auto typed = static_cast<Material>(material);
+            if (material != 0u && structural_candidate(typed)) {
+                const auto tile = static_cast<std::size_t>(y / tile_size) * tile_columns + x / tile_size;
+                ++counts[tile * material_count + material];
+            }
+        }
+    }
+
+'''
+          scene = scene[:second_loop] + recount + scene[second_loop:]
+          scene_path.write_text(scene, encoding='utf-8')
+
+          # Wet granular cells release stale structural state when wetted and
+          # can sink through liquids even during the macro-only wet-material pass.
+          replace_once(
+              'shaders/chemistry.comp',
+              '        if (shallowSandContact) result.aux |= AUX_WET;\n',
+              '        if (shallowSandContact) {\n'
+              '            result.aux |= AUX_WET | AUX_MOVED;\n'
+              '            result.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);\n'
+              '            result.age = 0u;\n'
+              '        }\n')
+          replace_once(
+              'shaders/move.comp',
+              'bool supportedAt(ivec2 position, Cell cell) {\n',
+              'bool wetGranularSinkMove(Cell moving, Cell target) {\n'
+              '    bool wetGranular = (moving.aux & AUX_WET) != 0u &&\n'
+              '        (moving.material == MAT_SAND || moving.material == MAT_DIRT ||\n'
+              '         moving.material == MAT_SILT);\n'
+              '    return wetGranular && !isStructural(moving) && isCellLiquid(target) &&\n'
+              '           effectiveDensity(moving) > effectiveDensity(target);\n'
+              '}\n\n'
+              'bool supportedAt(ivec2 position, Cell cell) {\n')
+          replace_once(
+              'shaders/move.comp',
+              '    if ((isCellPowder(a) || isCellLiquid(a) || isLooseSolid(a)) && canCellFallInto(a, b) &&\n'
+              '        movementAllows(a, randomValue)) {\n',
+              '    if ((isCellPowder(a) || isCellLiquid(a) || isLooseSolid(a)) && canCellFallInto(a, b) &&\n'
+              '        (wetGranularSinkMove(a, b) || movementAllows(a, randomValue))) {\n')
+          replace_once(
+              'shaders/move.comp',
+              '        supportedAt(sourcePosition, source) && canCellFallInto(source, target) &&\n'
+              '        movementAllows(source, randomValue)) {\n',
+              '        supportedAt(sourcePosition, source) && canCellFallInto(source, target) &&\n'
+              '        (wetGranularSinkMove(source, target) || movementAllows(source, randomValue))) {\n')
+
+          # A lone surface cell no longer creates a half-water edge oscillation.
+          replace_once(
+              'shaders/move.comp',
+              'bool isMovementHazard(uint material) {\n',
+              'bool fullWaterSplitSupplied(ivec2 sourcePosition, int direction) {\n'
+              '    Cell trailing = sampleAt(sourcePosition - ivec2(direction, 0));\n'
+              '    return trailing.material == MAT_WATER && !isHalfWaterCell(trailing);\n'
+              '}\n\n'
+              'bool isMovementHazard(uint material) {\n')
+          replace_once(
+              'shaders/move.comp',
+              '        bool keepLeft = (randomValue & 1u) == 0u;\n',
+              '        bool leftSupported = solidSupportsWaterAt(left);\n'
+              '        bool rightSupported = solidSupportsWaterAt(right);\n'
+              '        bool keepLeft = leftSupported != rightSupported\n'
+              '            ? leftSupported : (randomValue & 1u) == 0u;\n')
+          replace_once(
+              'shaders/move.comp',
+              '        if (a.material == MAT_WATER && !isHalfWaterCell(a) &&\n'
+              '            solidLedgePrecedesDrop(right, 1)) splitFullWaterPair(left, right, a, b);\n'
+              '        else swapCells(left, right);\n',
+              '        if (a.material == MAT_WATER && !isHalfWaterCell(a) &&\n'
+              '            solidLedgePrecedesDrop(right, 1)) {\n'
+              '            if (fullWaterSplitSupplied(left, 1)) splitFullWaterPair(left, right, a, b);\n'
+              '        } else {\n'
+              '            swapCells(left, right);\n'
+              '        }\n')
+          replace_once(
+              'shaders/move.comp',
+              '        if (b.material == MAT_WATER && !isHalfWaterCell(b) &&\n'
+              '            solidLedgePrecedesDrop(left, -1)) splitFullWaterPair(right, left, b, a);\n'
+              '        else swapCells(left, right);\n',
+              '        if (b.material == MAT_WATER && !isHalfWaterCell(b) &&\n'
+              '            solidLedgePrecedesDrop(left, -1)) {\n'
+              '            if (fullWaterSplitSupplied(right, -1)) splitFullWaterPair(right, left, b, a);\n'
+              '        } else {\n'
+              '            swapCells(left, right);\n'
+              '        }\n')
+
+          # Balanced Atmosphere/Oxygen expansion is bounded. Density sorting
+          # against another gas remains active, but vacuum-edge motion ages out.
+          replace_once(
+              'shaders/move.comp',
+              'bool gasHorizontalAllows(Cell cell, uint randomValue) {\n',
+              'bool gasExpansionAllows(Cell cell) {\n'
+              '    if (cell.material == MAT_ATMOSPHERE || cell.material == MAT_OXYGEN)\n'
+              '        return cell.age < 24u;\n'
+              '    if (cell.material == MAT_CARBON_DIOXIDE || cell.material == MAT_STEAM ||\n'
+              '        cell.material == MAT_DIRTY_STEAM || cell.material == MAT_SMOKE)\n'
+              '        return cell.age < 96u;\n'
+              '    return true;\n'
+              '}\n\n'
+              'bool gasHorizontalAllows(Cell cell, uint randomValue) {\n')
+          replace_once(
+              'shaders/move.comp',
+              '    if (cell.age >= 48u) return false;\n',
+              '    if (!gasExpansionAllows(cell) || cell.age >= 48u) return false;\n')
+          replace_once(
+              'shaders/move.comp',
+              '    if (isCellGas(b) && (a.material == MAT_EMPTY ||\n'
+              '        (isCellGas(a) && densityOf(b.material) < densityOf(a.material)))) {\n',
+              '    bool emptyGasRise = a.material == MAT_EMPTY && gasExpansionAllows(b);\n'
+              '    bool densityGasRise = isCellGas(a) &&\n'
+              '        densityOf(b.material) < densityOf(a.material);\n'
+              '    if (isCellGas(b) && (emptyGasRise || densityGasRise)) {\n')
+          replace_once(
+              'shaders/move.comp',
+              '    if (upward && isCellGas(source) &&\n'
+              '        (target.material == MAT_EMPTY ||\n'
+              '         (isCellGas(target) && effectiveDensity(source) < effectiveDensity(target)))) {\n',
+              '    bool emptyGasDiagonal = target.material == MAT_EMPTY && gasExpansionAllows(source);\n'
+              '    bool densityGasDiagonal = isCellGas(target) &&\n'
+              '        effectiveDensity(source) < effectiveDensity(target);\n'
+              '    if (upward && isCellGas(source) &&\n'
+              '        (emptyGasDiagonal || densityGasDiagonal)) {\n')
+
+          # Boundary packets transition to fine ownership once, then sleep when
+          # unchanged instead of re-entering breakup/active state every frame.
+          replace_once(
+              'shaders/tiles.comp',
+              '    bool liquidBreakup = fullLiquid && !moving && !liquidEnclosed;\n'
+              '    bool gasBreakup = fullGas && !moving && !gasEnclosed;\n'
+              '    bool mediumBreakup = liquidBreakup || gasBreakup;\n',
+              '    bool liquidBoundaryFine = fullLiquid && !moving && !liquidEnclosed;\n'
+              '    bool gasBoundaryFine = fullGas && !moving && !gasEnclosed;\n'
+              '    bool boundaryFineMedium = liquidBoundaryFine || gasBoundaryFine;\n'
+              '    bool liquidBreakup = liquidBoundaryFine &&\n'
+              '        !tileHas(previous, TILE_MEDIUM_BREAKUP);\n'
+              '    bool gasBreakup = gasBoundaryFine &&\n'
+              '        !tileHas(previous, TILE_MEDIUM_BREAKUP);\n'
+              '    bool mediumBreakup = liquidBreakup || gasBreakup;\n')
+          replace_once(
+              'shaders/tiles.comp',
+              '    bool settledMedium = ((macroLiquid && liquidEnclosed) || (macroGas && gasEnclosed)) &&\n'
+              '                         !moving && minimumAge >= 30u;\n',
+              '    bool settledMedium = ((macroLiquid && liquidEnclosed) || (macroGas && gasEnclosed)) &&\n'
+              '                         !moving && minimumAge >= 30u;\n'
+              '    bool settledFineMedium = boundaryFineMedium && minimumAge >= 48u;\n')
+          replace_once(
+              'shaders/tiles.comp',
+              '    if (mediumBreakup) flags |= TILE_MEDIUM_BREAKUP;\n',
+              '    if (boundaryFineMedium) flags |= TILE_MEDIUM_BREAKUP;\n')
+          replace_once(
+              'shaders/tiles.comp',
+              '    bool sleeping = sleepingTerrain || sleepingAtmosphere || settledMedium;\n',
+              '    bool sleeping = sleepingTerrain || sleepingAtmosphere ||\n'
+              '                    settledMedium || settledFineMedium;\n')
+
+          # Repair the malformed validator block produced by the superseded
+          # wrapper, remove random-Gold expectations, and lock the regressions.
+          validator_path = Path('tools/validate_shader_contracts.py')
+          validator = validator_path.read_text(encoding='utf-8')
+          block_pattern = re.compile(
+              r'\n\s*for token in \(\s*\n\s*"residentGroundHash".*?'
+              r'(?=\n\s*for token in \("authoredStructuralCell")', re.S)
+          corrected_block = r'''
+    for token in (
+        "residentGroundHash",
+        "residentGroundDepositMaterial",
+        "roll < 24u) return MAT_IRON_ORE",
+        "roll < 32u) return MAT_COPPER",
+        "roll < 38u) return MAT_ALUMINUM",
+        "depth >= 160 && roll < 41u) return MAT_URANIUM",
+    ):
+        if token not in reset:
+            errors.append(f"resident ground deposit contract missing {token!r}")
+    for token in (
+        "resident_ground_hash",
+        "resident_ground_deposit_material",
+        "roll < 24u) return Material::iron_ore",
+        "roll < 32u) return Material::copper",
+        "roll < 38u) return Material::aluminum",
+        "depth >= 160u && roll < 41u) return Material::uranium",
+    ):
+        if token not in world_layout:
+            errors.append(f"CPU resident ground deposit contract missing {token!r}")
+    for token in (
+        "bool durableStructural = isStructural(source) && isBlockCapable(source.material);",
+        "isStructural(source) && !durableStructural && !minorityStructural",
+        "isStructural(source) && !durableStructural &&",
+    ):
+        if token not in chemistry:
+            errors.append(f"durable structural chemistry contract missing {token!r}")
+'''
+          validator, count = block_pattern.subn(corrected_block, validator, count=1)
+          if count != 1:
+              raise SystemExit(f'validator malformed block replacement count was {count}')
+          scene_validation_anchor = (
+              '    if "% 224u" in scene_image_cpp or "scene_color(" in scene_image_cpp:\n'
+              '        errors.append("obsolete hashed scene palette remains")\n'
+          )
+          regression_checks = r'''
+    bee_swarm = (SHADERS / "bee_swarm.glsl").read_text(encoding="utf-8")
+    for token in (
+        "BEE_AUTHORED_WORLD_CELLS.y * 3",
+        "BEE_AUTHORED_WORLD_CELLS.y * 2",
+        "return beeUsesAuthoredHome(aux) ? home + beeAuthoredWorldOrigin",
+    ):
+        if token not in bee_swarm:
+            errors.append(f"authored bee-home origin contract missing {token!r}")
+    for token in (
+        "bee_authored_home_slot_bit",
+        "normalize_fix28_hives",
+        "fix28_beehive_material",
+        "beehive_shell_min_radius_squared = 28",
+        "beehive_shell_max_radius_squared = 108",
+    ):
+        if token not in scene_image_cpp:
+            errors.append(f"loaded Fix28 Beehive contract missing {token!r}")
+    for token in (
+        "wetGranularSinkMove",
+        "fullWaterSplitSupplied",
+        "gasExpansionAllows",
+        "emptyGasRise",
+        "emptyGasDiagonal",
+    ):
+        if token not in move:
+            errors.append(f"wet-sand/medium settling contract missing {token!r}")
+    for token in (
+        "boundaryFineMedium",
+        "settledFineMedium",
+        "!tileHas(previous, TILE_MEDIUM_BREAKUP)",
+        "settledMedium || settledFineMedium",
+    ):
+        if token not in tiles:
+            errors.append(f"one-shot medium-boundary settling contract missing {token!r}")
+'''
+          if scene_validation_anchor not in validator:
+              raise SystemExit('scene validator insertion anchor missing')
+          validator = validator.replace(
+              scene_validation_anchor,
+              scene_validation_anchor + regression_checks,
+              1)
+          validator_path.write_text(validator, encoding='utf-8')
+
+          # Deterministic CPU layout test: Iron Ore, Copper, Aluminum, and
+          # Uranium occur in geology; Gold does not.
+          Path('tests/world_layout_contract.cpp').write_text(r'''#include "sandhybrid/world_layout.hpp"
+
+#include <array>
+#include <cstddef>
+
+using namespace sandhybrid;
+
+static_assert(authored_scene_origin_x(resident_world_width) == 960u);
+static_assert(authored_scene_origin_y(resident_world_height) == 720u);
+static_assert(authored_scene_origin_y(pre_expansion_world_height) == 0u);
+static_assert(authored_scene_sky_footprint_rows == 2u);
+static_assert(subterranean_zone_count == 3u);
+static_assert(authored_scene_foundation_cells == 8u);
+static_assert(resident_world_lava_cells == 16u);
+
+static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 0u) == Material::empty);
+static_assert(resident_substrate_material(resident_world_width, resident_world_height, 0u, 719u) == Material::empty);
+static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 720u) == Material::empty);
+static_assert(resident_substrate_material(resident_world_width, resident_world_height, 0u, 900u) == Material::stone);
+static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1072u) == Material::stone);
+static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1408u) == Material::stone);
+static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1416u) == Material::lava);
+static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1432u) == Material::stone);
+
+int main() {
+    std::array<std::size_t, 4> deposits{};
+    std::size_t gold = 0u;
+    constexpr auto scene_bottom = 1080u;
+    constexpr auto geology_end = 1408u;
+    for (std::uint32_t y = scene_bottom; y < geology_end; ++y) {
+        for (std::uint32_t x = resident_world_shell_cells;
+             x < resident_world_width - resident_world_shell_cells; ++x) {
+            switch (resident_substrate_material(resident_world_width, resident_world_height, x, y)) {
+            case Material::iron_ore: ++deposits[0]; break;
+            case Material::copper: ++deposits[1]; break;
+            case Material::aluminum: ++deposits[2]; break;
+            case Material::uranium: ++deposits[3]; break;
+            case Material::gold: ++gold; break;
+            default: break;
+            }
+        }
+    }
+    for (const auto count : deposits) {
+        if (count == 0u) return 1;
+    }
+    if (gold != 0u) return 2;
+    if (deposits[0] <= deposits[1] || deposits[1] <= deposits[2] ||
+        deposits[2] <= deposits[3]) return 3;
+    return 0;
+}
+''', encoding='utf-8')
+
+          # Keep all runtime-visible items active while recording the exact fixes.
+          replace_once(
+              'missioncache.md',
+              '- **P0 / primary release gate:** MC-038, MC-068, MC-074, MC-105, MC-112, MC-114, MC-115, MC-116, and MC-118. These are the current release blockers and must pass deterministic contracts plus Windows/Linux Release packaging before publication.\n',
+              '- **P0 / primary release gate:** MC-012, MC-013, MC-017, MC-032, MC-038, MC-068, MC-074, MC-084, MC-105, MC-112, MC-114, MC-115, MC-116, and MC-118. These are the current release blockers and must pass deterministic contracts plus Windows/Linux Release packaging before publication.\n')
+          replace_mission(
+              'MC-012',
+              '| MC-012 | REGRESSION | 8x8 bulk-element movement | Full aligned liquids, gases, powders, mud, and wet granular materials use the same gravity, diagonal, lateral, density, erosion, and displacement rules as fine cells. Wet Sand/Silt clears stale structural state when wetted and can sink through liquids even during macro-only wet-material scheduling. Block-capable solids never translate as whole tiles. Static contracts pass; packaged wet-sand and non-zero bulk-move observation remains required. |')
+          replace_mission(
+              'MC-013',
+              '| MC-013 | REGRESSION | True liquid settling | Water levels quickly, reaches zero motion, and wakes only from support, pressure, volume, heat, reaction, actor, or tool disturbance. Exposed full liquid packets perform one fine-ownership breakup, then unchanged surface/edge cells sleep instead of re-entering active breakup every frame. A lone surface cell cannot create a repeating half-water ledge split. Packaged observation remains required. |')
+          replace_mission(
+              'MC-017',
+              '| MC-017 | REGRESSION | Prevent premature stabilization without edge chatter | Liquid, mud, and wet material sleep only after unchanged volume, support, impulse, boundary height, and erosion state for a bounded confirmation window. Balanced Atmosphere/Oxygen vacuum-edge expansion ages out while gas-to-gas density sorting and newly disturbed/emitted gas remain active. Exposed fine-owned medium boundaries sleep and wake deterministically. Packaged observation remains required. |')
+          replace_mission(
+              'MC-032',
+              '| MC-032 | PARTIAL | Complete bee lifecycle | Forage, pollen, Beehive return, deposit, honey feeding, queen/Beehive aging, migration, hazards, respiration, replacement, and the 100-bee autonomous cap pass multi-cycle runtime testing. Generated and loaded authored bees now encode/decode home positions through the shared crystal-row Y=720 origin instead of targeting the retired bottom-row origin. Multi-cycle packaged observation remains required. |')
+          replace_mission(
+              'MC-038',
+              '| MC-038 | PARTIAL | Canonical Fix28 Beehive prefab | Material save ID 31 is `Beehive`. Generated scenes and the build tool use the exact Fix28 shell `28 <= radius² < 108`, chamber `radius² < 28`, queen center, and right exit `x=1..12`, `|y|<=1`. PPM load now removes legacy hive body cells around each queen and rebuilds the same Fix28 prefab before structural classification; authored bee homes retain the scene-local metadata bit. Packaged reset/place/load/save observation remains required. |')
+          replace_mission(
+              'MC-084',
+              '| MC-084 | REGRESSION | Half-water solid-ledge behavior and card identity | Inspected fractional fresh water is titled `HALF WATER`. Fractional water exists only as a supplied pre-fall solid-ledge state: a lone surface cell cannot split, supported-side merging is deterministic, and exposed water edges do not hop or chatter. Packaged observation remains required. |')
+          replace_mission(
+              'MC-118',
+              '| MC-118 | PARTIAL | Deterministic natural metal and ore deposits | Shared generated and loaded geology contains sparse deterministic loose pixels of Iron Ore, Copper, Aluminum, and deeper Uranium throughout sand, soil, silt, mud, and stone. Gold is explicitly excluded from random ground distribution and remains authored/special. Deposits never replace sky, authored scenes, foundations, shells, lava, or the lava cap. CPU and GLSL layouts use identical hashing/rates; packaged visual and recovery acceptance remain required. |')
+
+          replace_once(
+              'README.md',
+              'Shared geology contains sparse deterministic loose pixels of Iron Ore, Copper, Aluminum, Uranium, and rare Gold mixed through sand, soil, silt, mud, and stone.',
+              'Shared geology contains sparse deterministic loose pixels of Iron Ore, Copper, Aluminum, and deeper Uranium mixed through sand, soil, silt, mud, and stone. Gold remains authored/special and is not randomly distributed.')
+          replace_once(
+              'CHANGELOG.md',
+              '- Added deterministic loose Iron Ore, Copper, Aluminum, Uranium, and rare Gold deposits to shared generated/loaded geology while preserving sky, scene, shell, and lava bands.\n',
+              '- Added deterministic loose Iron Ore, Copper, Aluminum, and deeper Uranium deposits to shared generated/loaded geology while preserving sky, scene, shell, and lava bands; Gold remains authored/special.\n'
+              '- Corrected authored bee-home metadata to the crystal-row Y=720 origin and canonicalized legacy loaded hives to the exact Fix28 prefab.\n'
+              '- Made wetted Sand/Silt release stale structural state and sink through liquids.\n'
+              '- Added one-shot fine-boundary ownership and bounded gas expansion so water surfaces and Atmosphere edges can reach stable sleep.\n')
+
+          # Remove all staging payloads and one-shot workflows from the source commit.
+          for path in Path('.github/patches').glob('v254.part*'):
+              path.unlink(missing_ok=True)
+          Path('.github/workflows/apply-v254-runtime-regressions.yml').unlink(missing_ok=True)
+          PY
+
+          python3 -m py_compile tools/validate_shader_contracts.py
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_shader_contracts.py
+
+          cmake -S . -B build/v254-contract -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DBUILD_TESTING=ON \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON
+          cmake --build build/v254-contract --parallel
+          ctest --test-dir build/v254-contract --output-on-failure
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'Fix wet sand, bee home, hive load, and medium edges'
+          git push origin HEAD:agent/durable-structural-ground-deposits-v254
