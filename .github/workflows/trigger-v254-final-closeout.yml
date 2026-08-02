@@ -113,28 +113,33 @@ jobs:
 
           scene_path = Path('src/scene_image.cpp')
           scene = scene_path.read_text(encoding='utf-8')
-          old_scene = '''      const auto material = fix28_beehive_material(
-              offset_x, offset_y, hash32(static_cast<std::uint32_t>(index) ^ 0xb33u));
-          if (material != Material::count)
-              materials[index] = static_cast<std::uint32_t>(material);
-          '''
-          new_scene = '''      const auto material = fix28_beehive_material(
-              offset_x, offset_y, hash32(static_cast<std::uint32_t>(index) ^ 0xb33u));
-          if (material == Material::count) continue;
-          const auto existing = static_cast<Material>(materials[index]);
-          if (existing == Material::bee || existing == Material::ant ||
-              existing == Material::beetle)
-              continue;
-          if (material == Material::empty) {
-              if (legacy_hive_material(existing))
-                  materials[index] = static_cast<std::uint32_t>(Material::empty);
-          } else if (existing == Material::empty || legacy_hive_material(existing)) {
-              materials[index] = static_cast<std::uint32_t>(material);
-          }
-          '''
-          if old_scene not in scene:
-              raise SystemExit('loaded Fix28 bee-preservation block missing')
-          scene_path.write_text(scene.replace(old_scene, new_scene, 1), encoding='utf-8')
+          scene_pattern = re.compile(
+              r'(?ms)^(?P<i>\s*)const auto material = fix28_beehive_material\(\n'
+              r'\s*offset_x, offset_y, hash32\(static_cast<std::uint32_t>\(index\) \^ 0xb33u\)\);\n'
+              r'\s*if \(material != Material::count\)\n'
+              r'\s*materials\[index\] = static_cast<std::uint32_t>\(material\);'
+          )
+          def preserve_bees(match: re.Match[str]) -> str:
+              i = match.group('i')
+              return (
+                  f'{i}const auto material = fix28_beehive_material(\n'
+                  f'{i}    offset_x, offset_y, hash32(static_cast<std::uint32_t>(index) ^ 0xb33u));\n'
+                  f'{i}if (material == Material::count) continue;\n'
+                  f'{i}const auto existing = static_cast<Material>(materials[index]);\n'
+                  f'{i}if (existing == Material::bee || existing == Material::ant ||\n'
+                  f'{i}    existing == Material::beetle)\n'
+                  f'{i}    continue;\n'
+                  f'{i}if (material == Material::empty) {{\n'
+                  f'{i}    if (legacy_hive_material(existing))\n'
+                  f'{i}        materials[index] = static_cast<std::uint32_t>(Material::empty);\n'
+                  f'{i}}} else if (existing == Material::empty || legacy_hive_material(existing)) {{\n'
+                  f'{i}    materials[index] = static_cast<std::uint32_t>(material);\n'
+                  f'{i}}}'
+              )
+          scene, scene_count = scene_pattern.subn(preserve_bees, scene, count=1)
+          if scene_count != 1:
+              raise SystemExit(f'loaded Fix28 bee-preservation replacement count was {scene_count}')
+          scene_path.write_text(scene, encoding='utf-8')
 
           test_path = Path('tests/scene_image_contract.cpp')
           test = test_path.read_text(encoding='utf-8')
@@ -144,17 +149,22 @@ jobs:
               'constexpr std::uint32_t bee_authored_home_slot_bit = 0x80u;\n',
               1,
           )
-          old_test = '''        const auto slot = (bee.aux >> 15u) & 255u;
-                  if (home_x != queen_x || home_y != queen_y || slot != expected_slot) return 6;
-          '''
-          new_test = '''        const auto packed_slot = (bee.aux >> 15u) & 255u;
-                  if ((packed_slot & bee_authored_home_slot_bit) == 0u) return 6;
-                  const auto slot = packed_slot & 127u;
-                  if (home_x != queen_x || home_y != queen_y || slot != expected_slot) return 6;
-          '''
-          if old_test not in test:
-              raise SystemExit('scene image bee metadata test block missing')
-          test_path.write_text(test.replace(old_test, new_test, 1), encoding='utf-8')
+          test_pattern = re.compile(
+              r'(?m)^(?P<i>\s*)const auto slot = \(bee\.aux >> 15u\) & 255u;\n'
+              r'\s*if \(home_x != queen_x \|\| home_y != queen_y \|\| slot != expected_slot\) return 6;'
+          )
+          def test_replacement(match: re.Match[str]) -> str:
+              i = match.group('i')
+              return (
+                  f'{i}const auto packed_slot = (bee.aux >> 15u) & 255u;\n'
+                  f'{i}if ((packed_slot & bee_authored_home_slot_bit) == 0u) return 6;\n'
+                  f'{i}const auto slot = packed_slot & 127u;\n'
+                  f'{i}if (home_x != queen_x || home_y != queen_y || slot != expected_slot) return 6;'
+              )
+          test, test_count = test_pattern.subn(test_replacement, test, count=1)
+          if test_count != 1:
+              raise SystemExit(f'scene-image bee metadata test replacement count was {test_count}')
+          test_path.write_text(test, encoding='utf-8')
 
           Path('.github/workflows/trigger-v254-final-closeout.yml').unlink(missing_ok=True)
           PY
