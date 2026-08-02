@@ -256,3 +256,17 @@ fffb95619af76d49ca202b260d8d8b41997021ade4bfc31fe03153c351322948  windows/SandHy
 ```
 
 Active cache count at publication: 72 missions — 29 PARTIAL, 27 OPEN, 15 REGRESSION, and 1 DEFERRED. Runtime-observed missions remain active until accepted in the packaged Windows Vulkan build.
+
+## SandHybrid v2.4.8 release evidence
+
+- Release tag: `v2.4.8` (`SandHybrid v2.4.8`)
+- Release target: `22b572b3489fd0bc68915d638b63013fa6b5f957`
+- Accepted Windows/Linux CI: run `30730378799`, source head `6bd22e032c6d13d29a3916a0f0adc4a97b876545`
+- Packages: `SandHybrid-Windows-x64-v2.4.8.zip`, `SandHybrid-Linux-x64-v2.4.8.tar.gz`, and `SHA256SUMS.txt`
+
+```text
+f869360a1f24a24c1d2214a4aa6562b6d868b0f8e166eeac57484905e112292c  windows/SandHybrid-Windows-x64-v2.4.8.zip
+eadf8d3e5f8ff8bf3b71dac2bea2341316cc0dcb80bd3f9667c9c41a38ad75fe  linux/SandHybrid-Linux-x64-v2.4.8.tar.gz
+```
+
+Active cache count at publication: 79 missions — 48 PARTIAL, 15 OPEN, 15 REGRESSION, and 1 DEFERRED. Every active mission was reviewed and attempted in the broad pass; runtime-observed and architectural missions remain active until their acceptance criteria pass.
