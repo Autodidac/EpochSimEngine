@@ -1,12 +1,14 @@
-name: SandHybrid v2.5.0 CI
+name: SandHybrid v2.5.0 CI and Release
 
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: sandhybrid-v250-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -134,3 +136,54 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}.tar.gz
           if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Publish v2.5.0 release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find dist -type f \( -name '*.zip' -o -name '*.tar.gz' \) -print | sort)
+          if [[ "${#assets[@]}" -ne 2 ]]; then
+            printf 'Expected two package assets, found %s\n' "${#assets[@]}" >&2
+            printf '%s\n' "${assets[@]}" >&2
+            exit 1
+          fi
+          if gh release view v2.5.0 >/dev/null 2>&1; then
+            gh release upload v2.5.0 "${assets[@]}" --clobber
+            gh release edit v2.5.0 \
+              --title 'SandHybrid v2.5.0' \
+              --notes-file RELEASE_NOTES_v2.5.0.md \
+              --latest
+          else
+            gh release create v2.5.0 "${assets[@]}" \
+              --target "$GITHUB_SHA" \
+              --title 'SandHybrid v2.5.0' \
+              --notes-file RELEASE_NOTES_v2.5.0.md \
+              --latest
+          fi
+
+      - name: Remove completed agent branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          for branch in \
+            agent/complete-sandhybrid-library \
+            agent/atmosphere-fill-split-v249 \
+            agent/v250-section-grid-rewrite; do
+            git push origin --delete "$branch" || true
+          done
