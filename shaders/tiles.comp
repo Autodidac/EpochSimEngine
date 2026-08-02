@@ -159,8 +159,10 @@ void main() {
     bool macroLiquid = fullLiquid && (moving || liquidEnclosed);
     bool macroGas = fullGas && (moving || gasEnclosed);
     bool macroPowder = fullRegion && isPowder(dominant);
-    bool macroSolid = fullRegion && isBlockCapable(dominant) && !structuralTile;
-    bool macroMovable = (macroLiquid || macroGas || macroPowder || macroSolid) &&
+    // Block-capable solids may use tile metadata for cohesion, support, sleep,
+    // and debug state, but they never become whole-tile movement packets.
+    bool bulkReadySolid = fullRegion && isBlockCapable(dominant) && !hot && !reacting;
+    bool macroMovable = (macroLiquid || macroGas || macroPowder) &&
                         !activeAgent && !hot && !reacting;
 
     uint supportSamples = 0u;
@@ -228,7 +230,7 @@ void main() {
     if (fineActive) flags |= TILE_FINE_ACTIVE;
     if (settledMedium) flags |= TILE_SETTLED_MEDIUM;
     if (wetContent) flags |= TILE_WET_CONTENT;
-    if (macroSolid) flags |= TILE_MACRO_SOLID;
+    if (bulkReadySolid) flags |= TILE_MACRO_SOLID | TILE_BULK_READY;
     if (macroPowder) flags |= TILE_MACRO_POWDER;
     if (macroLiquid) flags |= TILE_MACRO_LIQUID;
     if (macroGas) flags |= TILE_MACRO_GAS;

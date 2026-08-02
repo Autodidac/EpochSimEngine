@@ -17,6 +17,14 @@ This release fixes the Atmosphere/Fill UI regression in v2.4.8 while preserving 
 - CPU-driven region fill initializes Atmosphere with its 54/255 breathable oxygen fraction, matching shader-created Atmosphere cells.
 - Pure `OXYGEN` remains independently selectable.
 
+## Solid tile correction
+
+- Stone and every block-capable solid are excluded from whole-tile movement.
+- A complete solid region may still report `BULK READY` for cohesion, support, sleeping, and debug visibility.
+- Stable tile metadata no longer reattaches damaged loose cells as structural cells.
+- Released stone and other block-capable solids fall only as individual fine cells.
+- A tile crumbles when 31 of 64 cells are destroyed: 48.4375%, the first whole-cell count at or above 48%.
+
 ## Regression coverage
 
 - Static contracts reject any Atmosphere handler that raises `fill_region`.

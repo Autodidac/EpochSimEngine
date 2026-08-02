@@ -429,13 +429,11 @@ def main() -> int:
         if re.search(rf"\b{forbidden}\b", strip_comments(combined), re.I):
             errors.append(f"placement-source physics identifier remains: {forbidden}")
 
-    stable_transition = chemistry.split("if (tileHas(tile, TILE_STABLE)", 1)[1].split(
-        "if (isStructural(source)", 1
-    )[0]
-    if "result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;" not in stable_transition:
-        errors.append("settled terrain is supported but never promoted to structural state")
-    if "setStateValue(result, 255u)" in stable_transition:
-        errors.append("stability qualification resets represented damage instead of preserving it")
+    # Stable/bulk-ready tile state is metadata only. It must never contain the
+    # removed stable-region promotion branch. Explicit machine/habitat structural
+    # assignments elsewhere remain valid.
+    if "tileHas(tile, TILE_STABLE) && !isStructural(source)" in chemistry:
+        errors.append("stable tile metadata still reconstructs loose cells")
     for token in (
         "bool unsupportedStructural = structuralTile && !physicallySupported;",
         "dominantCount < TILE_MIN_COHESIVE_CELLS || unsupportedStructural",
@@ -668,6 +666,34 @@ def main() -> int:
         if token not in movement: errors.append(f"wet-material density contract missing {token!r}")
     if "WET" not in labels:
         errors.append("derived wet material card label is missing")
+    tile_defs = (SHADERS / "tiles.glsl").read_text(encoding="utf-8")
+    macro_move_comp = (SHADERS / "macro_move.comp").read_text(encoding="utf-8")
+    for token in (
+        "TILE_DESTROYED_CELLS_TO_CRUMBLE = 31u",
+        "TILE_MIN_COHESIVE_CELLS =\n    TILE_CELL_COUNT - TILE_DESTROYED_CELLS_TO_CRUMBLE + 1u",
+        "TILE_BULK_READY = 0x08000000u",
+    ):
+        if token not in tile_defs: errors.append(f"48-percent solid-collapse contract missing {token!r}")
+    for token in (
+        "bool bulkReadySolid = fullRegion && isBlockCapable(dominant)",
+        "bool macroMovable = (macroLiquid || macroGas || macroPowder)",
+        "if (bulkReadySolid) flags |= TILE_MACRO_SOLID | TILE_BULK_READY;",
+    ):
+        if token not in tiles_comp: errors.append(f"solid tile classification contract missing {token!r}")
+    for token in (
+        "tileHas(state, TILE_MACRO_SOLID) || tileHas(state, TILE_BULK_READY)",
+        "if (isCellPowder(source))",
+    ):
+        if token not in macro_move_comp: errors.append(f"solid macro-movement rejection contract missing {token!r}")
+    if "isCellPowder(source) || isBlockCapable(source.material)" in macro_move_comp:
+        errors.append("block-capable solids can still displace as whole macro tiles")
+    for token in ("bool looseSolid = isLooseSolid(moving);",
+                  "(!looseSolid && isCellImmovable(moving))"):
+        if token not in move_comp: errors.append(f"fine-cell solid crumble contract missing {token!r}")
+    if "tileHas(tile, TILE_STABLE) && !isStructural(source)" in chemistry_comp:
+        errors.append("stable tile metadata still reconstructs damaged cells")
+    if "TILE_BULK_READY) || tileHas(tile, TILE_MACRO_MOVABLE)" not in fullscreen:
+        errors.append("bulk-ready debug state is not decoupled from macro movement")
     project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/v249-ci.yml"]
     forbidden_branding = ("Epoch" + "SimEngine", "Epoch" + "Sand", "epoch" + "_sand", "namespace epoch" + "::sand", "include/epoch" + "/sand")
     for project_file in project_owned_files:

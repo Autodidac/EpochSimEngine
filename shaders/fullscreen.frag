@@ -797,7 +797,7 @@ void main() {
             overlay = debugKeyColor(1u); alpha = 0.50;
         } else if (tileHas(tile, TILE_SETTLED_MEDIUM)) {
             overlay = debugKeyColor(5u); alpha = 0.46;
-        } else if (tileHas(tile, TILE_MACRO_MOVABLE)) {
+        } else if (tileHas(tile, TILE_BULK_READY) || tileHas(tile, TILE_MACRO_MOVABLE)) {
             overlay = debugKeyColor(4u); alpha = 0.44;
         } else if (tileHas(tile, TILE_MEDIUM_ENCLOSED)) {
             overlay = debugKeyColor(8u); alpha = 0.40;

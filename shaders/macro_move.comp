@@ -55,6 +55,8 @@ bool pairCoordinates(out ivec2 sourceTile, out ivec2 targetTile) {
 }
 
 bool macroSourceAllows(TileState state, Cell representative, uint randomValue) {
+    // Solid bulk readiness is a storage/sleep classification, never movement authority.
+    if (tileHas(state, TILE_MACRO_SOLID) || tileHas(state, TILE_BULK_READY)) return false;
     if (!tileHas(state, TILE_MACRO_MOVABLE) || tileHas(state, TILE_MACRO_MOVED)) return false;
     if (state.material != representative.material || tileOccupancy(state) != TILE_CELL_COUNT) return false;
     if ((representative.aux & AUX_MOVED) != 0u || isStructural(representative)) return false;
@@ -68,7 +70,7 @@ bool materialCanDisplace(Cell source, Cell target) {
     if (isStructural(target)) return false;
     if (isCellGas(source)) return isCellGas(target) && materialDensity(source.material) < materialDensity(target.material);
     if (isCellGas(target)) return true;
-    if (isCellPowder(source) || isBlockCapable(source.material))
+    if (isCellPowder(source))
         return isCellLiquid(target) && materialDensity(source.material) > materialDensity(target.material);
     if (isCellLiquid(source))
         return isCellLiquid(target) && materialDensity(source.material) > materialDensity(target.material);

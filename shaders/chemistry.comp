@@ -857,15 +857,9 @@ void main() {
         uint limitedHealth = max(64u, tileOccupancy(tile) * 255u / TILE_STABILITY_OCCUPANCY);
         setStateValue(result, min(health, limitedHealth));
     }
-    if (tileHas(tile, TILE_STABLE) && !isStructural(source) &&
-        source.material == tile.material && source.material != MAT_EMPTY &&
-        !isCellGas(source) && !isCellLiquid(source)) {
-        // Stability qualification never creates, replaces, fills, or snaps cells.
-        // It marks only the already represented pixels coherent and supported.
-        // Material, temperature, age, random variation, and damage are preserved.
-        result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
-        result.aux &= ~AUX_MOVED;
-    }
+    // TILE_STABLE and TILE_BULK_READY are metadata only. They may suppress
+    // unnecessary work, but they never reconstruct loose or damaged cells into
+    // structural cells. Dislodged stone therefore stays dislodged.
     if (isStructural(source) && (cellPhase(result) == PHASE_MOLTEN ||
         cellPhase(result) == PHASE_VAPOR || cellPhase(result) == PHASE_SOFTENED)) {
         // Phase change releases the represented cell without changing material,
