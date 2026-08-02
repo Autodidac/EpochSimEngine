@@ -80,7 +80,7 @@ bool isRespiringLife(uint material) {
 }
 
 uint representedOxygenVolume(Cell cell) {
-    if (cell.material != MAT_OXYGEN) return 0u;
+    if (cell.material != MAT_OXYGEN && cell.material != MAT_ATMOSPHERE) return 0u;
     uint volume = stateValue(cell);
     return volume == 0u ? 1u : volume;
 }
@@ -97,7 +97,7 @@ uint oxygenVolumeWithin(ivec2 p, int radius) {
 }
 
 bool nonBreathableMedium(uint material) {
-    return isLiquid(material) || (isGas(material) && material != MAT_OXYGEN);
+    return isLiquid(material) || (isGas(material) && material != MAT_OXYGEN && material != MAT_ATMOSPHERE);
 }
 
 bool fullyChokedByMedium(ivec2 p) {
@@ -632,7 +632,7 @@ bool compostIngredientsPresent(ivec2 p) {
     bool ash = hasWithin(p, MAT_ASH, 2);
     bool organic = hasWithin(p, MAT_WASTE, 2) || hasWithin(p, MAT_FOOD, 2);
     bool mineral = hasWithin(p, MAT_SILT, 2) || hasWithin(p, MAT_DIRT, 2) || hasWithin(p, MAT_MUD, 2);
-    bool oxygen = hasWithin(p, MAT_OXYGEN, 2);
+    bool oxygen = (hasWithin(p, MAT_OXYGEN, 2) || hasWithin(p, MAT_ATMOSPHERE, 2));
     return ash && organic && mineral && oxygen;
 }
 
@@ -898,7 +898,7 @@ void main() {
     // decomposition produces configured byproducts.
     if ((source.material == MAT_PLASTIC || source.material == MAT_ACID_RESISTANT_PLASTIC) &&
         result.temperature >= materialIgnitionPoint(source.material) &&
-        (nearFire || nearLava || hasNeighbor(p, MAT_OXYGEN))) {
+        (nearFire || nearLava || hasNeighbor(p, MAT_OXYGEN) || hasNeighbor(p, MAT_ATMOSPHERE))) {
         uint route = randomValue & 3u;
         if (route == 0u) result = makeCell(MAT_SMOKE);
         else if (route == 1u) result = makeCell(MAT_OIL);
@@ -1051,7 +1051,7 @@ void main() {
 
     // Atmosphere is a conserved local volume. Respiration exchanges one oxygen
     // volume for one CO2 volume; photosynthesis performs the inverse exchange.
-    if (source.material == MAT_OXYGEN) {
+    if (source.material == MAT_OXYGEN || source.material == MAT_ATMOSPHERE) {
         uint volume = representedOxygenVolume(source);
         uvec2 demand = respiringNeighborDemand(p);
         uint beeRoll = hash32(randomValue ^ 0xb33a71u) & 0x0003ffffu;
@@ -1062,8 +1062,13 @@ void main() {
         bool emberRespiration = hasNeighbor(p, MAT_EMBER) &&
                                 (hash32(randomValue ^ 0xe6be2u) & 2047u) == 0u;
         if (beeRespiration || otherRespiration || fireRespiration || emberRespiration) {
-            result = makeCell(MAT_CARBON_DIOXIDE);
-            setStateValue(result, volume);
+            if (source.material == MAT_ATMOSPHERE && volume > 1u) {
+                result = source;
+                setStateValue(result, volume - 1u);
+            } else {
+                result = makeCell(MAT_CARBON_DIOXIDE);
+                setStateValue(result, source.material == MAT_ATMOSPHERE ? 220u : volume);
+            }
         }
     } else if (source.material == MAT_CARBON_DIOXIDE) {
         if (hasNeighbor(p, MAT_GRASS) && light[index] > 130u && (randomValue & 127u) == 0u) {
@@ -1074,7 +1079,7 @@ void main() {
     } else if (source.material == MAT_HYDROGEN) {
         bool ignition = nearFire || hasNeighbor(p, MAT_EMBER) || hasNeighbor(p, MAT_LIGHTNING) ||
                         result.temperature >= materialIgnitionPoint(MAT_HYDROGEN);
-        if (ignition && hasNeighbor(p, MAT_OXYGEN)) {
+        if (ignition && (hasNeighbor(p, MAT_OXYGEN) || hasNeighbor(p, MAT_ATMOSPHERE))) {
             result = makeCell((randomValue & 3u) == 0u ? MAT_FIRE : MAT_STEAM);
             result.temperature = max(result.temperature, 760);
         }
@@ -1220,7 +1225,8 @@ void main() {
             result = makeCell(MAT_DIRTY_WATER);
         }
     } else if (source.material == MAT_SMOKE && source.age > 2400u &&
-               hasNeighbor(p, MAT_OXYGEN) && (randomValue & 255u) == 0u) {
+               (hasNeighbor(p, MAT_OXYGEN) || hasNeighbor(p, MAT_ATMOSPHERE)) &&
+               (randomValue & 255u) == 0u) {
         result = makeCell(MAT_CARBON_DIOXIDE);
     }
 

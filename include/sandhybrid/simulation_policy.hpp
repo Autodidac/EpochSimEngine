@@ -37,6 +37,12 @@ inline constexpr std::uint32_t water_half_horizontal_passes = 8u;
 inline constexpr std::uint32_t sunlight_update_interval = 4u;
 inline constexpr std::uint32_t vent_eruption_pressure = 220u;
 inline constexpr std::uint32_t vent_gas_release_pressure = 72u;
+inline constexpr std::uint32_t wet_density_bonus = 32u;
+
+[[nodiscard]] constexpr std::uint32_t effective_wet_density(
+    const std::uint32_t dry_density, const bool wet) noexcept {
+    return dry_density + (wet ? wet_density_bonus : 0u);
+}
 
 [[nodiscard]] constexpr bool water_ledge_can_release(
     const std::uint32_t edge_units,

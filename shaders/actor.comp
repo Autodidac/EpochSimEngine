@@ -312,7 +312,7 @@ void updateBreathing(inout ActorState state) {
         for (int x = -4; x <= 4; ++x) {
             ivec2 p = center + ivec2(x, y);
             Cell medium = actorAt(p);
-            if (medium.material == MAT_OXYGEN) {
+            if (medium.material == MAT_OXYGEN || medium.material == MAT_ATMOSPHERE) {
                 if (oxygenVolume == 0u) oxygenCell = p;
                 oxygenVolume += max(stateValue(medium), 1u);
             } else if (isGas(medium.material) || isLiquid(medium.material)) {
@@ -326,7 +326,7 @@ void updateBreathing(inout ActorState state) {
         ivec2(1, 0), ivec2(-1, 0), ivec2(0, 1), ivec2(0, -1));
     for (uint i = 0u; i < 4u; ++i) {
         uint material = actorAt(center + breathOffsets[i]).material;
-        if (isLiquid(material) || (isGas(material) && material != MAT_OXYGEN)) ++sealedContacts;
+        if (isLiquid(material) || (isGas(material) && material != MAT_OXYGEN && material != MAT_ATMOSPHERE)) ++sealedContacts;
     }
 
     bool fullyChoked = sealedContacts == 4u;
@@ -339,10 +339,15 @@ void updateBreathing(inout ActorState state) {
             uint oxygenIndex = actorIndex(oxygenCell);
             Cell oxygen = cells[oxygenIndex];
             uint volume = max(stateValue(oxygen), 1u);
-            Cell carbonDioxide = makeCellWithEntropy(MAT_CARBON_DIOXIDE, actorPc.seed, actorPc.step);
-            setStateValue(carbonDioxide, volume);
-            recordConservation(oxygen, carbonDioxide);
-            cells[oxygenIndex] = carbonDioxide;
+            if (oxygen.material == MAT_ATMOSPHERE && volume > 1u) {
+                setStateValue(oxygen, volume - 1u);
+                cells[oxygenIndex] = oxygen;
+            } else {
+                Cell carbonDioxide = makeCellWithEntropy(MAT_CARBON_DIOXIDE, actorPc.seed, actorPc.step);
+                setStateValue(carbonDioxide, oxygen.material == MAT_ATMOSPHERE ? 220u : volume);
+                recordConservation(oxygen, carbonDioxide);
+                cells[oxygenIndex] = carbonDioxide;
+            }
             markActorChunkDirty(oxygenCell);
         }
     } else {

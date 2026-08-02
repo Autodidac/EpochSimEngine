@@ -21,7 +21,7 @@ inline constexpr float gap = 3.0f;
 struct Layout final {
     epochengine::gui_lib::Rect status{}, simulation{}, group_tabs{}, palette{};
     epochengine::gui_lib::Rect previous_scene{}, next_scene{}, reset_scene{}, save_scene{}, load_scene{};
-    epochengine::gui_lib::Rect mode_toggle{}, debug_toggle{}, eraser{}, keymap{}, cursor_editor{}, material_card{};
+    epochengine::gui_lib::Rect mode_toggle{}, debug_toggle{}, atmosphere{}, eraser{}, keymap{}, cursor_editor{}, material_card{};
     epochengine::gui_lib::Rect placement_cells{}, placement_tiles{};
     epochengine::gui_lib::Rect cursor_circle{}, cursor_square{}, cursor_horizontal{}, cursor_vertical{};
     epochengine::gui_lib::Rect brush_smaller{}, brush_larger{}, zoom_out{}, zoom_in{};
@@ -80,7 +80,11 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
     const float content_left = left + margin;
     const float content_width = (std::max)(1.0f, side - margin * 2.0f);
     const float eraser_top = layout.palette.position.y + layout.palette.size.y + gap;
-    layout.eraser = {{content_left, eraser_top}, {content_width, float(eraser_height)}};
+    const float utility_gap = 4.0f;
+    const float utility_width = (content_width - utility_gap) / 2.0f;
+    layout.atmosphere = {{content_left, eraser_top}, {utility_width, float(eraser_height)}};
+    layout.eraser = {{content_left + utility_width + utility_gap, eraser_top},
+                     {content_width - utility_width - utility_gap, float(eraser_height)}};
     const float keymap_top = eraser_top + float(eraser_height) + gap;
     layout.keymap = {{content_left, keymap_top}, {content_width, float(keymap_height)}};
     const float cursor_top = keymap_top + float(keymap_height) + gap;

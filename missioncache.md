@@ -37,8 +37,8 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 
 | ID | Status | Mission | Acceptance |
 |---|---|---|---|
-| MC-020 | REGRESSION | Composite Atmosphere | Replace standalone normal-air pixels with one conserved state carrying volume, pressure, temperature, and N2/O2/Ar/CO2/H2/He/vapor/contaminants. Fire, lightning, and radiation remain effects. |
-| MC-021 | OPEN | Earth-air baseline | Authored air and the Atmosphere tool use approximately 78% N2, 21% O2, 0.9% Ar, trace CO2, and remaining trace gases; packed units sum exactly. |
+| MC-020 | REGRESSION | Composite Atmosphere | An append-only `Atmosphere` material now represents normal authored air and carries a breathable oxygen fraction without aliasing pure Oxygen. Full conserved volume, pressure, temperature, N2/O2/Ar/CO2/H2/He/vapor/contaminant packing and exchange remain required. Fire, lightning, and radiation remain effects. |
+| MC-021 | PARTIAL | Earth-air baseline | Authored air and the Atmosphere action now use a distinct Atmosphere state with 54/255 (~21.2%) breathable oxygen rather than pure Oxygen. Exact packed N2/O2/Ar/CO2/trace composition, pressure totals, and conservation tests remain required. |
 | MC-022 | OPEN | Absorb all true gases into air | Gas painting and emissions modify local Atmosphere composition and pressure instead of replacing it. |
 | MC-023 | OPEN | Visible excess-gas settling | No nested mini-simulation. Excess denser than air visibly moves down then sideways until stable; lighter excess visibly moves up then sideways. It cannot cross solids, liquids, sealed barriers, paused sections, or unloaded boundaries. Solids block crossing but do not create tangential gas friction: gas slides freely along valid open boundary paths at its density/pressure-defined rate. |
 | MC-024 | OPEN | Reabsorb excess, hide only later | Stable excess reabsorbs when compatible air has capacity. Transit remains visible until Adam accepts it; debug always exposes transport afterward. |
@@ -46,7 +46,7 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 | MC-026 | OPEN | Closed-box conservation tests | Track total Atmosphere and each component, pressure transfer, separated excess, reabsorption, and conservation error. Include wall-following tests proving that gas contact blocks penetration without slowing valid lateral/upward/downward transport. |
 | MC-027 | OPEN | Composition rendering | Balanced air renders smoothly; validation builds show excess transport clearly; accepted builds may later hide normal transit. |
 | MC-028 | OPEN | Validate corner pressure structures | Preserve corner patterns only when conserved pressure/composition produces them. Reject structures created by gas-wall friction, sticky corners, or solid-adjacency sleep. |
-| MC-029 | OPEN | Atmosphere inspection/tools | Cursor/card show pressure and gas percentages. Gas tools add components; the large Atmosphere tool restores balanced air. |
+| MC-029 | PARTIAL | Atmosphere inspection/tools | The large Atmosphere action writes the distinct append-only Atmosphere state, Oxygen remains independently selectable, Eraser writes vacuum, and cards distinguish those identities. Pressure and per-component gas percentages still require implementation and runtime acceptance. |
 | MC-079 | PARTIAL | Uniform atmosphere edge equilibrium | A completely atmosphere-filled resident map reaches zero gas-edge activity, including outer world boundaries. Finite world edges are sealed boundaries, not permanent exposed-gas breakup edges. Real excess gas remains active until pressure/density equilibrium. |
 
 ## Life, ecology, and player interaction
@@ -60,7 +60,7 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 | MC-034 | OPEN | Real ant behavior | Colonies, pheromone trails, forage/carry/home behavior, hazards, flooding, and permitted digging replace generic particle wandering. |
 | MC-035 | OPEN | Real beetle behavior | Beetles crawl surfaces/walls, seek food/shelter, respond to light/hazards, and turn at obstacles without flying/jittering as particles. |
 | MC-036 | OPEN | Define or remove insect habitat | Give it explicit species, capacity, inputs, lifecycle, and outputs, or remove it; no generic silent spawning. |
-| MC-037 | OPEN | Life debug counters | Separate actor moves, species counts, respiration, suffocation, births, deaths, nest returns, and medium displacement. |
+| MC-037 | PARTIAL | Life debug counters | Debug reports actor moves and species counts for bees, queens, nests, ants, beetles, habitats, flowers, pollen, and honey. Respiration, suffocation, births, deaths, nest returns, and medium displacement still require separate counters and runtime acceptance. |
 | MC-038 | REGRESSION | Exact pre-PR19 suspended hives | Use FastFreddy commit `c8197b4526b74d66e2f04a6e858dd979c63c4eff`, `tools/fix36_hive_swarm.py`. Sandbox, Ecosystem, and buildable Bee Nest share the exact perch, shell, entrance, chamber, queen, and metadata. |
 | MC-039 | OPEN | Player-medium impulses | Player collisions minimally disturb every gas/liquid through bounded conserved directional impulse, wake touched sections, and then settle through MC-019 only after the injected impulse and resulting productive movement are exhausted. |
 
@@ -68,25 +68,32 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
 
 | ID | Status | Mission | Acceptance |
 |---|---|---|---|
-| MC-040 | OPEN | One Atmosphere tool | Rename the large `ERASER` button to `ATMOSPHERE`; it writes balanced air, not void or pure oxygen. |
-| MC-041 | OPEN | Remove duplicate terrain eraser | Keep only the single Atmosphere control. |
+| MC-040 | PARTIAL | Balanced Atmosphere action | The large always-visible `ATMOSPHERE` action fills the distinct Atmosphere state with ~21% breathable oxygen. It is not vacuum, pure Oxygen, or an alias. Packaged runtime acceptance and full component packing remain required. |
+| MC-041 | PARTIAL | Distinct terrain eraser | Keep an adjacent always-visible `ERASER` that selects vacuum/empty deletion. It remains visibly and mechanically distinct from `ATMOSPHERE` and the selectable `OXYGEN` material. Packaged runtime acceptance remains required. |
 | MC-042 | PARTIAL | Clarify movement counters | Use `FINE SWAPS`, `BULK MOVES`, `BULK CELLS`, `FINE REPAIR`, `ACTOR MOVES`, `GAS EXCESS`, `PLAYER IMP`, `GAS TILES`, `LIQUID TILES`, `ENCLOSED TILES`, and `BREAKUP TILES`. Runtime values must correspond to actual work and ownership transitions. |
 | MC-043 | PARTIAL | Preserve lower GPU use | Timestamp overlay, grid, text, stats, bulk, fine, Atmosphere excess, actors, collision impulses, and presentation independently. |
-| MC-044 | OPEN | Remove grid-edge coupling | Debug grid is presentation-only and never influences movement/rest. |
+| MC-044 | PARTIAL | Remove grid-edge coupling | Debug grid and relational state colors are presentation-only fragment-shader overlays and are not read by simulation shaders. Deterministic runtime comparison with debug enabled/disabled remains required. |
 | MC-045 | PARTIAL | High-contrast readable debug UI | Preserve the accepted current text size. Categories use distinct high-contrast colors, tile/chunk and active-region boundaries remain readable, and the color key exactly matches damaged, stable, bulk-moved, fine-active, bulk-ready, settled, sleeping, active, enclosed, and breakup overlays. |
 | MC-046 | REGRESSION | Debug never blocks the world | On ordinary layouts the complete debug panel occupies the existing sidebar instead of covering the simulation viewport. The world remains visible and interactive; no full-screen stats rectangle is permitted. Very small windows may hide or page nonessential counters, but may not cover the simulation. |
 | MC-085 | REGRESSION | Pair-test and skipped-work debug samples | `PAIR TESTS` and `SKIPPED` preserve the last completed simulation sample. Render-only frames never clear them to zero. Pair tests reflect actual fine/macro pair dispatch scope and skipped work reflects real tile/chunk rejection. |
 | MC-080 | PARTIAL | Resource-first activity debug | Keep the accepted UI layout and text size. Sort resource-critical metrics first: FPS, resident cells, active map areas, tested pairs, skipped work, active/sleeping hierarchy. Follow with meaningful activity by cause: fine/bulk motion, gas/liquid transport, structural failures, conveyors, machine input/output, volcano lava/gas, chemistry, actors, and ecology. `FINE ACTIVE` is vivid/hot while `SLEEPING` is dark/cool and their legend order shows active -> settling -> sleeping. Runtime readability remains required. |
-| MC-047 | OPEN | Universal cell-or-tile placement | Every selectable material can be painted as ordinary fine cells or as one aligned 8x8 tile packet through an explicit `CELLS` / `TILES` selector. Placement preserves canonical material behavior, conservation, machine metadata, actor rules, cursor mapping, and dirty-region wakeup. Block-capable material is not forced into tile mode. |
+| MC-092 | PARTIAL | Soil-facing terminology | Player-facing cards, palette labels, documentation, and UI call material ID 3 `SOIL`; internal IDs remain stable for saves and shader compatibility. Static contracts pass; packaged runtime inspection acceptance remains required. |
+| MC-093 | PARTIAL | Distinct Atmosphere, Oxygen, and Eraser controls | `ATMOSPHERE` writes the distinct balanced-air state, `OXYGEN` remains a selectable pure-gas material, and adjacent `ERASER` writes vacuum/empty deletion. Their labels, colors, hit regions, and actions are never aliases. Packaged runtime UI acceptance remains required. |
+| MC-094 | PARTIAL | Debug state cards and distinct ready/steady colors | The bottom of debug info contains readable cards with a large actual color block plus state name. `BULK READY` is vivid violet and `SETTLED` is vivid green; all relational states remain distinguishable in hue and brightness. Packaged screenshot acceptance remains required. |
+| MC-095 | PARTIAL | Default square size-two brush | Fresh startup defaults to square brush shape and size 2 through named shared-state defaults without changing later user selection semantics. Packaged startup acceptance remains required. |
+| MC-096 | PARTIAL | Restore Windows launcher | Root `run.bat` searches packaged and common Release build locations, launches `sandhybrid.exe`, forwards arguments, reports failures, and is installed into the Windows package root. Packaged Windows acceptance remains required. |
+| MC-098 | PARTIAL | Restrained GUI group separation | Thin dividers separate scene navigation, editing controls, resource metrics, activity metrics, event counters, and debug state cards. Separation clarifies hierarchy without dense boxed clutter or reduced text size. Packaged visual acceptance remains required. |
+| MC-047 | PARTIAL | Universal cell-or-tile placement | Every selectable material routes through the explicit `CELLS` / `TILES` selector and aligned tile painting path while retaining canonical material IDs and wakeup. Machine metadata, actor exclusions, and runtime parity still require broader acceptance. |
 
 ## Chemistry and materials
 
 | ID | Status | Mission | Acceptance |
 |---|---|---|---|
 | MC-050 | PARTIAL | Correct fertilizer chemistry | Ember becomes only fire or ash, never fertilizer. A mutually paired compost reaction requires visible ash, organic waste/food, silt/dirt/mud, dirty water, oxygen, and time; one feed cell becomes fertilizer while one dirty-water cell becomes clean water. Runtime conservation and rate acceptance remain required. |
-| MC-086 | REGRESSION | Tile-mode terrain placement and dirt stability | `TILES` mode paints aligned structural 8x8 packets for sand, dirt, silt, salt, ice, and all block-capable materials. Dirt tiles remain stable while supported and release only through damage, lost support, phase change, or the established collapse threshold. |
+| MC-086 | REGRESSION | Tile-mode terrain placement and soil stability | `TILES` mode paints aligned structural 8x8 packets for sand, soil (internal material ID 3), silt, salt, ice, and all block-capable materials. Soil tiles remain stable while supported and release only through damage, lost support, phase change, or the established collapse threshold. |
 | MC-087 | REGRESSION | Conserved shallow wet sand | Sand/silt absorb water only in a bounded shallow surface band. Once wet, the water remains represented in the wet granular cell and cannot disappear through a timer-based dry flag. |
 | MC-088 | REGRESSION | Wet-feed sluice output | Wet sand or wet silt dropped onto a water-supplied sluice is accepted deterministically and outputs retained wash water plus trace gold. Dry feed is rejected; input/output counters and conservation remain visible. |
+| MC-097 | PARTIAL | Derived wet material variants | Moisture-retaining solids and powders expose derived `WET <MATERIAL>` card identity and darker/cooler wet color treatment without separate palette tools. Wet states arise only through physical mixing, absorption, reaction, or loaded state. Sand remains slightly hydrophobic; wet sand gains explicit density and sinks through ordinary liquids. Static contracts pass; packaged mixing/sinking acceptance remains required. |
 | MC-051 | PARTIAL | Wet-material, mud-erosion, and sluicing proof | Wet sand/dirt/silt and mud prove full-speed gravity-driven bulk descent and erosion through unsupported material. Wet granular water remains represented until an explicit conserved evaporation/transfer path moves it; timer-based flag deletion is forbidden. A water-supplied Sluice Box conserves eight wet feed cells as seven process-water outputs plus one trace-gold output without fine-only fallback or damping-induced stalls. |
 | MC-081 | PARTIAL | Local conserved volcano output | A magma vent uses only its own bounded pressure state. Blockage builds pressure; an open outlet releases it. Deterministic pressure events may emit lava, smoke, or steam only immediately at that vent and deduct represented pressure. Ordinary gas activity elsewhere never creates lava. Runtime Volcano proof remains required. |
 | MC-082 | PARTIAL | Functional industrial machinery | Powered conveyors visibly transport loose cargo. Smelters consume iron/aluminum feed and output steel/aluminum. Assemblers consume steel/copper/gold/power cells and output plasma ammunition. Sluice boxes consume only wet sand/silt with nearby vertical water flow and conserve eight feed cells as seven retained process-water outputs plus one gold output. Habitat controllers process explicit inputs. Machines stay simulation-active, never consume without matching output, and debug reports conveyor moves plus machine input/output. |
@@ -106,12 +113,12 @@ If runtime profiling proves the map-sized starburst too expensive, the only perm
 
 | ID | Status | Mission | Acceptance |
 |---|---|---|---|
-| MC-060 | OPEN | Camera-visible state availability | Every section visible at supported zoom is loaded and renderable. Paused sections may show their frozen state but never missing or uninitialized data. |
+| MC-060 | PARTIAL | Camera-visible state availability | The complete bounded resident 4x4 map-footprint window is allocated and renderable at supported zoom levels, including paused state. Far logical regions beyond the resident window remain blocked on MC-063 streaming and runtime visibility acceptance. |
 | MC-061 | PARTIAL | Camera-centered 17 map-area starburst | Animate exactly the center 640x360 map-footprint region plus the eight map-sized direction regions at distance 1 and distance 2, clipped only by world bounds. Code and debug must never treat 64x64 chunks or 8x8 tiles as these active regions. Runtime profiling must prove the scope; an explicit camera-visible fallback is allowed only when shown in the HUD. |
 | MC-062 | PARTIAL | Hard pause outside active map areas | Outside MC-061: no movement, chemistry, ecology, actors, Atmosphere transport, pressure propagation, or simulation-debug work. Wake deterministically upon entry. Frozen regions remain renderable and cannot corrupt authored maps. |
 | MC-063 | OPEN | Far-section disk streaming | Serialize clean distant paused sections, keep only a bounded resident GPU window, free buffers where appropriate, and reload deterministically with versioned corruption-safe saves. This is required before the full logical 8x8 world may be resident without MC-077 risk. |
 | MC-064 | PARTIAL | Automatic active-region worker scheduler | Reserve the main thread completely for windowing, input, rendering coordination, and everything non-region-related; simulation jobs never run there. Determine hardware concurrency automatically. Use up to 17 simulation workers, one per active 640x360 map-area region when at least 18 hardware threads exist including the reserved main thread. With fewer than 18, pair additional regions onto workers from the furthest outer spokes first. Never oversubscribe, never schedule paused regions, and preserve deterministic boundary results. Current scheduler assignment exists; actual independent region execution remains runtime-unverified. |
-| MC-065 | OPEN | Coroutine review | Use C++23 coroutines only for asynchronous streaming/I/O where useful, never Vulkan submission or per-cell hot paths. |
+| MC-065 | PARTIAL | Coroutine review | The current simulation has no hidden coroutine execution path; section scheduling is explicit and deterministic. Coroutines remain reserved for bounded asynchronous streaming or I/O after MC-063 defines ownership and cancellation. |
 | MC-066 | OPEN | Safe pause/wake/boundary transfer | Resolve pending transfers, actors, impulses, pressure, and dependencies before pause. Crossing the starburst edge conserves all state without allowing the paused side to animate. |
 | MC-067 | PARTIAL | Expand logical world 8x8 dimensions | The logical address space is 8 times the old width and height. Until MC-063 streams distant regions, only a bounded 4x4-map-footprint resident window may occupy GPU memory. Update generation, buffers, indexing, saves, limits, overflow checks, paging, and profiling without restoring a fully resident 64x cell allocation. |
 | MC-068 | PARTIAL | Camera home/reset | Every scene starts centered on its authored 640x360 footprint at the absolute bottom center. Reset returns to exactly that center and one-map scale without touching simulation state. The resident-window reduction must not halve or offset the start view. Runtime verification remains required. |
@@ -127,11 +134,21 @@ If runtime profiling proves the map-sized starburst too expensive, the only perm
 
 | ID | Status | Mission | Acceptance |
 |---|---|---|---|
-| MC-070 | OPEN | `SandHybrid` static library | C++23 static library with ownership-safe public headers; windowing, UI host, and `main` remain outside. |
-| MC-071 | OPEN | Thin `SandHybrid_Demo` | Small executable links the library and owns native startup/events. |
-| MC-072 | OPEN | Optional subsystems | Concurrency, streaming, debug, UI, actors, ecology, and factories disable cleanly without forking the core. |
+| MC-070 | PARTIAL | `SandHybrid` static library | CMake builds a C++23 `SandHybrid` static library with public headers under `include/sandhybrid`; native startup and `main` remain outside. Broader ownership/API review and downstream reuse acceptance remain required. |
+| MC-071 | PARTIAL | Thin `SandHybrid_Demo` | `SandHybrid_Demo` is a separate executable linking the static library and owning native startup/events. Full thinning of renderer/UI host responsibilities and downstream embedding acceptance remain required. |
+| MC-072 | PARTIAL | Optional subsystems | `SANDHYBRID_BUILD_APP=OFF` cleanly builds/tests the core library without Vulkan/windowing. Independent switches for streaming, debug, UI, actors, ecology, and factories remain open. |
 | MC-083 | PARTIAL | SandHybrid-only project branding | Remove this project's legacy project-owned names from UI, logs, namespaces, include paths, CMake targets, binaries, packages, workflows, docs, and tests. Preserve proper external names such as `EpochGui`, `EpochEngine`, and the external `epochengine::gui_lib` namespace. Repository-host rename is separate if GitHub settings cannot be changed through available tooling. |
 | MC-073 | DEFERRED | EpochEngine integration | Later migrate/rewrite using canonical `epochengine::` APIs while preserving reusable `SandHybrid` boundaries. |
+
+## v2.4.8 broad-pass audit
+
+Every active mission was reviewed once during this release pass. The ledger validator now fails CI when a mission row is duplicated, malformed, placed outside the active section, or when recent requirements MC-092 through MC-098 are missing.
+
+- Active missions reviewed: **79** (47 PARTIAL, 16 OPEN, 15 REGRESSION, 1 DEFERRED).
+- Direct v2.4.8 implementation focus: MC-029, MC-037, MC-040, MC-041, MC-044, MC-045, MC-046, MC-080, MC-085, MC-092, MC-093, MC-094, MC-095, MC-096, MC-097, and MC-098.
+- Static/library progress reviewed and recorded: MC-047, MC-060, MC-065, MC-070, MC-071, MC-072, and MC-083.
+- Large simulation, Atmosphere, ecology, streaming, and runtime-observed missions remain active rather than being falsely closed from compilation.
+- Reviewed IDs: MC-011, MC-012, MC-013, MC-084, MC-014, MC-015, MC-016, MC-017, MC-018, MC-019, MC-078, MC-053, MC-020, MC-021, MC-022, MC-023, MC-024, MC-025, MC-026, MC-027, MC-028, MC-029, MC-079, MC-030, MC-031, MC-032, MC-033, MC-034, MC-035, MC-036, MC-037, MC-038, MC-039, MC-040, MC-041, MC-042, MC-043, MC-044, MC-045, MC-046, MC-085, MC-080, MC-092, MC-093, MC-094, MC-095, MC-096, MC-098, MC-047, MC-050, MC-086, MC-087, MC-088, MC-097, MC-051, MC-081, MC-082, MC-052, MC-060, MC-061, MC-062, MC-063, MC-064, MC-065, MC-066, MC-067, MC-068, MC-069, MC-074, MC-075, MC-089, MC-090, MC-091, MC-077, MC-070, MC-071, MC-072, MC-083, MC-073.
 
 # Permanent invariants
 
@@ -158,6 +175,8 @@ If runtime profiling proves the map-sized starburst too expensive, the only perm
 - Industrial machines are active simulation participants, and every consumed represented input has a matching inventory/output transition.
 - Project-owned branding is `SandHybrid`; Legacy branding remains only when it is part of a proper external dependency or integration name.
 - Failed, missed, deferred, and regressed missions remain active until accepted.
+
+
 
 # Archived release history
 

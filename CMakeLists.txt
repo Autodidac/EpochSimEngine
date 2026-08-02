@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SandHybrid VERSION 2.4.7 LANGUAGES CXX)
+project(SandHybrid VERSION 2.4.8 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -214,8 +214,16 @@ install(TARGETS SandHybrid
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include)
+if(WIN32)
+    install(FILES run.bat DESTINATION .)
+endif()
 
 if(BUILD_TESTING)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME sandhybrid_mission_cache_contract
+                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_mission_cache.py)
+    endif()
     add_executable(sandhybrid_material_contract tests/material_contract.cpp)
     target_include_directories(sandhybrid_material_contract PRIVATE include)
     target_link_libraries(sandhybrid_material_contract PRIVATE Autodidac::EpochGui)

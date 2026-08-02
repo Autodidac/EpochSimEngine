@@ -637,7 +637,23 @@ def main() -> int:
         if token not in labels: errors.append(f"activity debug label missing {token!r}")
     for token in ("vec3(1.00, 0.10, 0.72)", "vec3(0.035, 0.10, 0.30)", "debugStats[STAT_STRUCTURAL_COLLAPSES]", "debugStats[STAT_CONVEYOR_MOVES]", "debugStats[STAT_MACHINE_INPUTS]", "debugStats[STAT_MACHINE_OUTPUTS]", "debugStats[STAT_VOLCANO_LAVA_OUTPUTS]", "debugStats[STAT_VOLCANO_GAS_OUTPUTS]"):
         if token not in renderer: errors.append(f"resource-first debug contract missing {token!r}")
-    project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/v247-ci.yml"]
+    for token in ("vec3(0.58, 0.20, 1.00)", "vec3(0.08, 0.96, 0.28)",
+                  "value = min(value, 99999999u)", "separatorYs", "keyColorMap"):
+        if token not in renderer: errors.append(f"v2.4.8 debug readability contract missing {token!r}")
+    for token in ("layout.atmosphere", "layout.eraser", "Material::empty"):
+        if token not in app_cpp: errors.append(f"distinct atmosphere/eraser input contract missing {token!r}")
+    material_header = (ROOT / 'include/sandhybrid/material.hpp').read_text(encoding='utf-8')
+    if '"Soil"' not in material_header:
+        errors.append("player-facing Soil material name is missing")
+    run_bat = (ROOT / "run.bat").read_text(encoding="utf-8")
+    for token in ("bin\\sandhybrid.exe", "%*", "pause"):
+        if token not in run_bat: errors.append(f"Windows launcher contract missing {token!r}")
+    for token in ("(cell.aux & AUX_WET) != 0u", "return base + 32u",
+                  "effectiveDensity(moving) > effectiveDensity(target)"):
+        if token not in movement: errors.append(f"wet-material density contract missing {token!r}")
+    if "WET" not in labels:
+        errors.append("derived wet material card label is missing")
+    project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/v248-ci.yml"]
     forbidden_branding = ("Epoch" + "SimEngine", "Epoch" + "Sand", "epoch" + "_sand", "namespace epoch" + "::sand", "include/epoch" + "/sand")
     for project_file in project_owned_files:
         source_text = project_file.read_text(encoding="utf-8")

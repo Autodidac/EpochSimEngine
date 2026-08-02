@@ -123,6 +123,7 @@ Cell makeCellWithEntropy(uint material, uint seed, uint step) {
              material == MAT_IRON || material == MAT_STEEL || material == MAT_POWER_CELL ||
              material == MAT_PLASMA_AMMO) aux |= 255u;
     else if (material == MAT_OXYGEN) aux |= 220u;
+    else if (material == MAT_ATMOSPHERE) aux |= 54u;
     else if (material == MAT_CARBON_DIOXIDE) aux |= 180u;
     else if (material == MAT_HYDROGEN) aux |= 210u;
     else if (material == MAT_ANT || material == MAT_BEETLE)
@@ -191,7 +192,7 @@ bool isThermallyMobile(Cell cell) {
 bool isGas(uint material) {
     return material == MAT_SMOKE || material == MAT_STEAM || material == MAT_DIRTY_STEAM ||
            material == MAT_FIRE || material == MAT_LIGHTNING || material == MAT_RADIATION ||
-           material == MAT_OXYGEN || material == MAT_CARBON_DIOXIDE ||
+           material == MAT_OXYGEN || material == MAT_ATMOSPHERE || material == MAT_CARBON_DIOXIDE ||
            material == MAT_HYDROGEN;
 }
 
@@ -527,6 +528,7 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
     }
     case MAT_GOLD: color = vec4(0.98, 0.76 + variation, 0.10, 1.0); break;
     case MAT_OXYGEN: color = vec4(0.30, 0.76 + variation * 0.25, 1.00, 0.34); break;
+    case MAT_ATMOSPHERE: color = vec4(0.34, 0.64 + variation * 0.18, 0.72, 0.16); break;
     case MAT_CARBON_DIOXIDE: color = vec4(0.015 + variation * 0.08, 0.020 + variation * 0.06, 0.030 + variation * 0.08, 0.62); break;
     case MAT_HYDROGEN: color = vec4(1.00, 0.32 + variation * 0.18, 0.68 + variation * 0.18, 0.42); break;
     case MAT_IRON_SHAVINGS: {

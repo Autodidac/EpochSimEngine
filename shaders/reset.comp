@@ -332,14 +332,14 @@ uint engineeringMaterial(ivec2 p) {
         if (b.y >= controlMax.y - 3) material = MAT_SILT;
         else if (b.y == controlMax.y - 4) material = MAT_ASH;
         else if (b.y == controlMax.y - 5) material = MAT_WATER;
-        else material = MAT_OXYGEN;
+        else material = MAT_ATMOSPHERE;
     }
     if (brickFrame(p, treatmentMin, treatmentMax, 1)) material = MAT_GLASS;
     else if (brickRect(p, treatmentMin + ivec2(1), treatmentMax - ivec2(1))) {
         if (b.y >= treatmentMax.y - 3) material = MAT_SILT;
         else if (b.y == treatmentMax.y - 4) material = (b.x & 1) == 0 ? MAT_ASH : MAT_WASTE;
         else if (b.y == treatmentMax.y - 5) material = MAT_DIRTY_WATER;
-        else material = MAT_OXYGEN;
+        else material = MAT_ATMOSPHERE;
     }
     return material;
 }
@@ -481,7 +481,7 @@ uint frontierBaseMaterial(ivec2 p) {
     if (brickRect(p, ivec2(enemyMin.x + 8, 25), ivec2(enemyMin.x + 10, 28))) material = MAT_PLASMA_AMMO;
 
     if (material == MAT_EMPTY && brickRect(p, baseMin + ivec2(1), baseMax - ivec2(1)) && ((p.x + p.y) & 1) == 0)
-        material = MAT_OXYGEN;
+        material = MAT_ATMOSPHERE;
     if (p.y == surface * BRICK_SIZE - 1 && p.x > 150 && p.x < 250 && (p.x % 31) == 0) material = MAT_ANT;
     if (p.y == surface * BRICK_SIZE - 1 && p.x > AUTHORED_WORLD_CELLS.x - 220 && p.x < AUTHORED_WORLD_CELLS.x - 80 && (p.x % 17) == 0)
         material = MAT_BEETLE;
@@ -542,7 +542,7 @@ void main() {
     uint envelopeMaterial = residentSceneEnvelopeMaterial(scene, p);
     bool envelopeCell = material == MAT_EMPTY && envelopeMaterial != MAT_EMPTY;
     if (envelopeCell) material = envelopeMaterial;
-    if (material == MAT_EMPTY) material = MAT_OXYGEN;
+    if (material == MAT_EMPTY) material = MAT_ATMOSPHERE;
     bool structural = envelopeCell || (authored && authoredStructuralCell(scene, local, material));
     bool anchored = envelopeCell || (authored && brickCoordinate(local).y >= worldBrickSize().y - 2);
     Cell cell = structural ? makeStructuralCell(material, true) : makeCell(material);

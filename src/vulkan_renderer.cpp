@@ -2251,8 +2251,20 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             record_actor(frame.command_buffer, state, reset_actor, actor_simulation);
 
         if (collect_debug_stats) {
-            const auto movement_pair_tests = config.grid_width * config.grid_height * 13u / 2u;
-            record_debug_stats(frame.command_buffer, state, movement_pair_tests);
+            const auto active_area_count = std::max(
+                state.active_section_count.load(std::memory_order_relaxed), 1u);
+            const auto resident_cells = static_cast<std::uint64_t>(config.grid_width) *
+                                        static_cast<std::uint64_t>(config.grid_height);
+            const auto active_cells = std::min(
+                resident_cells,
+                static_cast<std::uint64_t>(active_area_count) *
+                    static_cast<std::uint64_t>(active_region_width_cells) *
+                    static_cast<std::uint64_t>(active_region_height_cells));
+            const auto tested_pairs = std::min(
+                active_cells * 13u / 2u,
+                static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max()));
+            record_debug_stats(frame.command_buffer, state,
+                               static_cast<std::uint32_t>(tested_pairs));
         }
         record_render(frame.command_buffer, image_index, state);
         check_vk(vkEndCommandBuffer(frame.command_buffer), "vkEndCommandBuffer");

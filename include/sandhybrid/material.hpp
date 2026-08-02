@@ -76,6 +76,7 @@ enum class Material : std::uint32_t {
     waste = 63,
     hydrogen = 64,
     sluice_box = 65,
+    atmosphere = 66,
     count
 };
 
@@ -110,7 +111,7 @@ inline constexpr std::array<std::string_view, material_count> material_names{
     "Vacuum",
     "Sand",
     "Water",
-    "Dirt",
+    "Soil",
     "Stone",
     "Crystal",
     "Mud",
@@ -153,7 +154,7 @@ inline constexpr std::array<std::string_view, material_count> material_names{
     "Radiation",
     "Al shavings",
     "Gold",
-    "Atmosphere",
+    "Oxygen",
     "CO2",
     "Iron shavings",
     "Steel",
@@ -173,6 +174,7 @@ inline constexpr std::array<std::string_view, material_count> material_names{
     "Waste",
     "Hydrogen",
     "Sluice box",
+    "Atmosphere",
 };
 
 inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
@@ -182,7 +184,7 @@ inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
     {80u, 48u, 80u, 190u, 320, 32767, 32767, 32767, 1200, 450, 28u, MaterialPhase::powder, "Terrain", "STRONG: FARM SUPPORT", "WEAK: SATURATION / ACID", "TO: MUD / GRASS / SILT", "ROLE: SOIL RESERVOIR", "DANGER: CAVE IN"},
     {235u, 230u, 235u, 252u, 1350, 1200, 1500, 32767, 3200, 32767, 72u, MaterialPhase::solid, "Terrain", "STRONG: SUPPORT / HEAT", "WEAK: FRACTURE / ACID", "TO: RUBBLE / LAVA ROCK", "ROLE: STRUCTURAL MASS", "DANGER: FALLING BLOCK"},
     {205u, 180u, 205u, 255u, 900, 760, 900, 32767, 2400, 32767, 85u, MaterialPhase::solid, "Terrain", "STRONG: ACID / OPTICS", "WEAK: IMPACT / THERMAL SHOCK", "TO: SHARDS / GLASS", "ROLE: TECH MATERIAL", "DANGER: SHARP FRAGMENTS"},
-    {68u, 22u, 68u, 185u, 180, 32767, 32767, 100, 100, 32767, 60u, MaterialPhase::powder, "Terrain", "STRONG: WATER STORAGE", "WEAK: DRYING / LOAD", "TO: DIRT / SILT", "ROLE: WET SOIL LAYER", "DANGER: ENTOMBMENT"},
+    {68u, 22u, 68u, 185u, 180, 32767, 32767, 100, 100, 32767, 60u, MaterialPhase::powder, "Terrain", "STRONG: WATER STORAGE", "WEAK: DRYING / LOAD", "TO: SOIL / SILT", "ROLE: WET SOIL LAYER", "DANGER: ENTOMBMENT"},
     {48u, 0u, 48u, 255u, 110, 32767, -20, 110, 110, 32767, 95u, MaterialPhase::liquid, "Heat", "STRONG: CORROSION", "WEAK: DILUTION / GLASS", "TO: DIRTY WATER / SALT", "ROLE: CHEMICAL REAGENT", "DANGER: TOXIC CORROSIVE"},
     {64u, 18u, 64u, 165u, 120, 80, 32767, 32767, 350, 220, 14u, MaterialPhase::solid, "Life", "STRONG: CO2 CAPTURE", "WEAK: SALT / FIRE / DARK", "TO: FOOD / WASTE / ASH", "ROLE: PRIMARY PRODUCER", "DANGER: FIRE SPREAD"},
     {4u, 0u, 4u, 255u, 500, 32767, 32767, 32767, 32767, 32767, 8u, MaterialPhase::gas, "Heat", "STRONG: HEAT CARRIER", "WEAK: STEAM / PLANTS", "TO: DIRTY STEAM / CO2", "ROLE: CARBON TRANSPORT", "DANGER: SUFFOCATION"},
@@ -236,12 +238,13 @@ inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
     {18u, 2u, 18u, 145u, 90, 70, 32767, 32767, 160, 32767, 3u, MaterialPhase::solid, "Colony", "STRONG: DEAD MATTER BREAKDOWN", "WEAK: FIRE / ACID / COLD", "TO: FERTILIZER / WASTE", "ROLE: DECOMPOSER", "DANGER: CROP DAMAGE"},
     {70u, 12u, 70u, 140u, 90, 60, 32767, 32767, 240, 180, 7u, MaterialPhase::solid, "Life", "STRONG: FLOWER SUPPORT", "WEAK: DARK / FIRE / SALT", "TO: FLOWER / WASTE", "ROLE: VASCULAR PLANT GROWTH", "DANGER: NONE"},
     {254u, 250u, 254u, 254u, 1200, 950, 1450, 2900, 2900, 32767, 220u, MaterialPhase::solid, "Industry", "STRONG: FACTORY CONTROL", "WEAK: POWER LOSS / DAMAGE", "TO: SCRAP / SHUTDOWN", "ROLE: PRODUCTION CONTROL", "DANGER: SYSTEM FAILURE"},
-    {60u, 18u, 60u, 178u, 250, 32767, 32767, 100, 600, 32767, 25u, MaterialPhase::powder, "Terrain", "STRONG: NUTRIENT STORAGE", "WEAK: FAST WATER / DRYING", "TO: FERTILIZER / DIRT", "ROLE: SETTLED SEDIMENT", "DANGER: CLOGGING"},
+    {60u, 18u, 60u, 178u, 250, 32767, 32767, 100, 600, 32767, 25u, MaterialPhase::powder, "Terrain", "STRONG: NUTRIENT STORAGE", "WEAK: FAST WATER / DRYING", "TO: FERTILIZER / SOIL", "ROLE: SETTLED SEDIMENT", "DANGER: CLOGGING"},
     {55u, 8u, 55u, 160u, 160, 85, 32767, 32767, 350, 190, 14u, MaterialPhase::powder, "Life", "STRONG: CROP GROWTH", "WEAK: WATER LOSS / FIRE", "TO: FOOD / DIRT / SMOKE", "ROLE: ASH+WASTE+SILT COMPOST", "DANGER: RUNOFF"},
     {42u, 4u, 42u, 145u, 100, 70, 32767, 32767, 260, 180, 11u, MaterialPhase::powder, "Life", "STRONG: LIFE SUPPORT", "WEAK: AGE / FIRE", "TO: WASTE / SMOKE", "ROLE: STORED BIOMASS", "DANGER: SPOILAGE"},
-    {58u, 10u, 58u, 150u, 180, 85, 32767, 32767, 400, 210, 12u, MaterialPhase::powder, "Industry", "STRONG: RECOVERABLE CARBON", "WEAK: HEAT / WATER", "TO: DIRT / DIRTY WATER / SMOKE", "ROLE: RECYCLE FEED", "DANGER: BIOHAZARD"},
+    {58u, 10u, 58u, 150u, 180, 85, 32767, 32767, 400, 210, 12u, MaterialPhase::powder, "Industry", "STRONG: RECOVERABLE CARBON", "WEAK: HEAT / WATER", "TO: SOIL / DIRTY WATER / SMOKE", "ROLE: RECYCLE FEED", "DANGER: BIOHAZARD"},
     {1u, 0u, 1u, 255u, 0, 32767, 32767, 32767, 32767, 560, 180u, MaterialPhase::gas, "Engineering", "STRONG: LIGHT FUEL GAS", "WEAK: IGNITION / CONTAINMENT", "TO: STEAM / FIRE", "ROLE: ENERGY CARRIER", "DANGER: EXPLOSIVE GAS"},
     {210u, 196u, 210u, 248u, 900, 760, 1420, 2850, 2850, 32767, 165u, MaterialPhase::solid, "Industry", "STRONG: WET SAND SEPARATION", "WEAK: DRY FEED / DAMAGE", "TO: GOLD + WATER", "ROLE: GRAVITY MINERAL PROCESSOR", "DANGER: PINCH / FLOOD"},
+    {2u, 0u, 2u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 4u, MaterialPhase::gas, "Unknown", "STRONG: BALANCED BREATHABLE AIR", "WEAK: PRESSURE / CONTAMINATION", "TO: CO2 / VAPOR / EXCESS GAS", "ROLE: N2/O2/AR BASELINE", "DANGER: LOW OXYGEN WHEN DEPLETED"},
 }};
 
 [[nodiscard]] constexpr const MaterialProfile& material_profile(const Material material) noexcept {

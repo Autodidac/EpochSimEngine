@@ -123,11 +123,11 @@ SandHybrid targets a near-zero-loss material cycle. Reactions convert represente
 Examples:
 
 - dirty water settles into clean water and silt
-- silt becomes fertilizer near moist crops or dries into dirt
+- silt becomes fertilizer near moist crops or dries into soil
 - crops consume fresh water and fertilizer to create food and return soil
 - food becomes waste
-- waste returns to dirt, dirty water, smoke, or carbon dioxide
-- ash plus water returns minerals to fertilizer
+- waste returns to soil, dirty water, smoke, or carbon dioxide
+- compost combines ash, organic waste or food, silt/soil/mud, dirty water, oxygen, and time to produce fertilizer while cleaning the paired water cell
 - smoke plus steam becomes dirty steam
 - dirty steam condenses into dirty water
 - oxygen and carbon dioxide cycle through respiration, fire, water aeration, and plants
@@ -152,6 +152,8 @@ The interface was rebuilt as a pixel-aligned EpochGui layout. The native title b
 - eight consistent material groups and slots
 - larger title, FPS, controls, palette labels, and character HUD
 - readable hover, selection, pause, brush, and character status
+- separate always-visible `ATMOSPHERE` and `ERASER` actions; `OXYGEN` remains an independent material
+- bottom-anchored debug state cards with real swatches and thin section dividers
 - inspection card separated from ordinary controls
 - `F3` debug controls visually separated from normal gameplay UI
 - compact layouts hide nonessential scene buttons rather than overlapping them
@@ -180,6 +182,10 @@ All scenes use the same canonical material and structural rules.
 
 ### General
 
+- Default brush: square, size 2
+- `ATMOSPHERE`: fill balanced breathable air
+- `ERASER`: select vacuum/empty deletion
+- `OXYGEN`: selectable material in the Engineering group
 - `[` / `]`: previous or next scene
 - `R`: reset scene
 - Space: pause or resume
@@ -206,6 +212,13 @@ All scenes use the same canonical material and structural rules.
 - Mine mode, right mouse: deposit carried resource
 - Build mode, left mouse: place selected material
 - Build mode, right mouse: erase
+
+
+Balanced authored air and the large Atmosphere action use an append-only `Atmosphere` material/state with an approximately 21% breathable oxygen fraction. Pure Oxygen remains independently selectable.
+
+## Windows launcher
+
+The Windows package includes `run.bat` at its root. It locates `sandhybrid.exe` in the packaged `bin` directory or common local Release build directories, forwards command-line arguments, and keeps failures visible instead of closing silently.
 
 ## GPU scheduling
 
