@@ -7,6 +7,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: finalize-v253-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   finalize:
     if: github.head_ref == 'agent/finalize-missioncache-release-v253'
@@ -64,49 +68,6 @@ jobs:
               )
               changelog = changelog.replace('# Changelog\n\n', '# Changelog\n\n' + section, 1)
           changelog_path.write_text(changelog, encoding='utf-8')
-
-          workflow_path = Path('.github/workflows/ci-release.yml')
-          workflow = workflow_path.read_text(encoding='utf-8')
-          workflow = workflow.replace('sandhybrid-v252-', 'sandhybrid-v253-')
-          workflow = workflow.replace('SandHybrid-Windows-x64-v2.5.2', 'SandHybrid-Windows-x64-v2.5.3')
-          workflow = workflow.replace('SandHybrid-Linux-x64-v2.5.2', 'SandHybrid-Linux-x64-v2.5.3')
-          workflow = workflow.replace('Publish v2.5.2 release', 'Publish v2.5.3 release')
-          workflow = workflow.replace('gh release view v2.5.2', 'gh release view v2.5.3')
-          workflow = workflow.replace('gh release upload v2.5.2', 'gh release upload v2.5.3')
-          workflow = workflow.replace('gh release edit v2.5.2', 'gh release edit v2.5.3')
-          workflow = workflow.replace('gh release create v2.5.2', 'gh release create v2.5.3')
-          workflow = workflow.replace("--title 'SandHybrid v2.5.2'", "--title 'SandHybrid v2.5.3'")
-
-          mission_step = '      - name: Validate canonical mission cache\n        run: python tools/validate_mission_cache.py\n'
-          validator_steps = (
-              mission_step
-              + '\n      - name: Reject simulation coroutines\n'
-              + '        run: python tools/validate_no_simulation_coroutines.py\n'
-              + '\n      - name: Enforce SandHybrid branding\n'
-              + '        run: python tools/validate_project_branding.py\n'
-          )
-          if 'Reject simulation coroutines' not in workflow:
-              if mission_step not in workflow:
-                  raise SystemExit('mission validation step missing')
-              workflow = workflow.replace(mission_step, validator_steps, 1)
-
-          cleanup_anchor = '          git push origin --delete agent/scene-geology-stack-v251 || true\n'
-          cleanup = (
-              cleanup_anchor
-              + '          git push origin --delete agent/integrate-core-hygiene-release-v253 || true\n'
-              + '          git push origin --delete agent/finalize-missioncache-release-v253 || true\n'
-              + '          git push origin --delete agent/external-handoff-priority-note || true\n'
-              + '          git push origin --delete agent/tmp-noop || true\n'
-              + '          # Preserve agent/nonoverlap-core-hygiene per Adam\'s explicit instruction.\n'
-          )
-          if 'agent/finalize-missioncache-release-v253' not in workflow:
-              if cleanup_anchor not in workflow:
-                  raise SystemExit('release branch cleanup anchor missing')
-              workflow = workflow.replace(cleanup_anchor, cleanup, 1)
-          workflow_path.write_text(workflow, encoding='utf-8')
-
-          Path('.github/workflows/apply-v253-integration.yml').unlink(missing_ok=True)
-          Path('.github/workflows/finalize-v253.yml').unlink(missing_ok=True)
           PY
 
           python3 tools/validate_no_simulation_coroutines.py
@@ -116,6 +77,10 @@ jobs:
 
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
+          git add missioncache.md CMakeLists.txt CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo 'Mission integration already applied.'
+            exit 0
+          fi
           git commit -m 'Finalize mission integration and prepare v2.5.3'
           git push origin HEAD:${{ github.head_ref }}
