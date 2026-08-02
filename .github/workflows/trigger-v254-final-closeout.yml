@@ -1,5 +1,5 @@
 name: Trigger v2.5.4 final closeout
-# Armed after the applicator workflow was added to the open PR.
+# Retry with anchored extraction of the staged Python heredoc.
 
 on:
   pull_request:
@@ -30,9 +30,25 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           workflow = Path('.github/workflows/apply-v254-final-closeout.yml')
           text = workflow.read_text(encoding='utf-8')
+          old = '''              marker = "          python3 - <<'PY'\\n"
+              start = staged_text.index(marker) + len(marker)
+              end = staged_text.index("\\n          PY", start)
+              exec(compile(textwrap.dedent(staged_text[start:end]), str(staged), 'exec'))
+'''
+          new = '''              staged_match = re.search(
+                  r"(?ms)^ {10}python3 - <<'PY'\\n(.*?)^ {10}PY$", staged_text)
+              if staged_match is None:
+                  raise SystemExit('staged runtime Python block not found')
+              exec(compile(textwrap.dedent(staged_match.group(1)), str(staged), 'exec'))
+'''
+          if old not in text:
+              raise SystemExit('final closeout staged-extraction marker missing')
+          text = text.replace(old, new, 1)
+
           marker = '        run: |\n'
           start = text.index(marker) + len(marker)
           lines = text[start:].splitlines()
