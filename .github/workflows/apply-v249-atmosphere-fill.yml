@@ -32,12 +32,19 @@ jobs:
           from pathlib import Path
           path = Path('tools/validate_shader_contracts.py')
           text = path.read_text(encoding='utf-8')
-          old = '.github/workflows/v248-ci.yml'
-          new = '.github/workflows/v249-ci.yml'
-          if old in text:
-              path.write_text(text.replace(old, new), encoding='utf-8')
-          elif new not in text:
-              raise SystemExit('release CI path contract was not found')
+          text = text.replace('.github/workflows/v248-ci.yml', '.github/workflows/v249-ci.yml')
+          text = text.replace(
+              'if "material == Material::atmosphere) cell.aux |= 54u" not in renderer:',
+              'if "material == Material::atmosphere) cell.aux |= 54u" not in renderer_cpp:',
+          )
+          required = (
+              '.github/workflows/v249-ci.yml',
+              'not in renderer_cpp:',
+          )
+          missing = [token for token in required if token not in text]
+          if missing:
+              raise SystemExit(f'validator migration missing: {missing}')
+          path.write_text(text, encoding='utf-8')
           PY
           python3 tools/validate_shader_contracts.py
           python3 tools/validate_mission_cache.py
