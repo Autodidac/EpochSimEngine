@@ -2,10 +2,11 @@ name: Apply v2.5.3 integration
 
 on:
   push:
-    branches: [agent/integrate-core-hygiene-release-v253]
+    branches: [main]
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   apply:
@@ -13,8 +14,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/integrate-core-hygiene-release-v253
+          ref: main
           fetch-depth: 0
+      - name: Cancel superseded v2.5.2 main release run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          while read -r run_id; do
+            [[ -z "$run_id" ]] || gh run cancel "$run_id" || true
+          done < <(gh run list --commit "$GITHUB_SHA" --json databaseId,name,status --jq '.[] | select(.name == "SandHybrid CI and Release" and .status != "completed") | .databaseId')
       - name: Apply integration and release metadata
         shell: bash
         run: |
@@ -62,4 +72,9 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
           git commit -m 'Integrate core hygiene missions and prepare v2.5.3'
-          git push origin HEAD:agent/integrate-core-hygiene-release-v253
+          git push origin HEAD:main
+      - name: Dispatch v2.5.3 release validation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci-release.yml --ref main
