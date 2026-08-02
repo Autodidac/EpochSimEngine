@@ -1,0 +1,42 @@
+name: Trigger v2.5.4 final closeout
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: trigger-v254-final-closeout-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/durable-structural-ground-deposits-v254'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Run final closeout applicator
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/apply-v254-final-closeout.yml')
+          text = workflow.read_text(encoding='utf-8')
+          marker = '        run: |\n'
+          start = text.index(marker) + len(marker)
+          lines = text[start:].splitlines()
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+          Path('/tmp/v254-final-closeout.sh').write_text(script, encoding='utf-8')
+          PY
+          rm .github/workflows/trigger-v254-final-closeout.yml
+          bash /tmp/v254-final-closeout.sh
