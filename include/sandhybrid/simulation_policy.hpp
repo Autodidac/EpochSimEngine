@@ -22,6 +22,8 @@ inline constexpr std::uint32_t chunk_tile_count =
 inline constexpr std::uint32_t chunk_sleep_ticks = 30u;
 
 inline constexpr std::uint32_t stability_occupancy = 52u;
+// Granular stabilized terrain may release below this occupancy.
+// Block-capable structural tile placements are explicitly exempt.
 inline constexpr std::uint32_t destroyed_cells_to_crumble = 31u;
 inline constexpr std::uint32_t collapse_occupancy =
     tile_cells - destroyed_cells_to_crumble + 1u;
@@ -109,8 +111,10 @@ inline constexpr std::uint32_t wet_density_bonus = 32u;
  compatible && stable_phase && !moving && !reacting && cooldown == 0u;
 }
 
-[[nodiscard]] constexpr bool should_collapse(const std::uint32_t represented_cells) noexcept {
-    return represented_cells < collapse_occupancy;
+[[nodiscard]] constexpr bool should_collapse(
+    const std::uint32_t represented_cells,
+    const bool durable_structural = false) noexcept {
+    return !durable_structural && represented_cells < collapse_occupancy;
 }
 
 enum class VentEmission : std::uint8_t { none, gas, lava };

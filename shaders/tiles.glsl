@@ -4,8 +4,8 @@
 const uint TILE_SIZE = 8u;
 const uint TILE_CELL_COUNT = 64u;
 const uint TILE_STABILITY_OCCUPANCY = 52u;
-// 31 destroyed cells is 48.4375% of an 8x8 tile: the first representable
-// whole-cell count at or above the requested 48% destruction threshold.
+// This occupancy threshold applies only to stabilized granular terrain.
+// Block-capable structural tile placements never auto-crumble from occupancy.
 const uint TILE_DESTROYED_CELLS_TO_CRUMBLE = 31u;
 const uint TILE_MIN_COHESIVE_CELLS =
     TILE_CELL_COUNT - TILE_DESTROYED_CELLS_TO_CRUMBLE + 1u;

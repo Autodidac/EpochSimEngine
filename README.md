@@ -42,7 +42,7 @@ Every material has generated canonical physical data shared by C++ contracts, GL
 - acid resistance
 - strengths, weaknesses, conversions, ecological role, and dangers
 
-Copper, gold, iron, generic metal, and steel retain separate thresholds. Copper and gold melt before steel. Ordinary 1300 C lava softens steel but does not melt or vaporize it; hotter material can cross the configured steel melting point. Remaining metal mass is preserved during damage, collapse, fragmentation, and phase changes.
+Copper, gold, iron, aluminum, uranium, and steel retain separate thresholds. Copper and gold melt before steel. Ordinary 1300 C lava softens steel but does not melt or vaporize it; hotter material can cross the configured steel melting point. Remaining metal mass is preserved during damage and phase changes. Structural metal and ore cells placed through `TILES` never auto-crumble because neighboring cells are missing.
 
 Plastic is no longer inert. Standard and acid-resistant plastics can soften, melt, ignite, decompose, and interact with lava. Configured products include oil-like melt, smoke, waste/char, soot/ash, and gas-cycle products. Acid-resistant plastic has its own higher thermal and corrosion limits.
 
@@ -87,7 +87,7 @@ The world uses 8x8 aligned terrain regions made from ordinary cells. Regions nev
 
 Qualification changes only the coherence/support state of cells that already exist, allowing the region to stop falling. Empty positions remain empty. Material, temperature, represented mass, and existing damage are preserved.
 
-Each stable terrain pixel has 255 integrity and an ordinary laser hit applies 144 damage, so every pixel requires exactly two hits to dislodge. The region remains coherent with 32 pixels left. Once fewer than 32 remain—more than half dislodged—all remaining pixels release and drop in the same simulation pass.
+Each stabilized granular-terrain pixel has 255 integrity and an ordinary laser hit applies 144 damage, so every pixel requires exactly two hits to dislodge. Granular terrain may release below its cohesion threshold. Block-capable material placed through `TILES` is different: each surviving stone, metal, ore, glass, wood, plastic, or machine cell remains structural regardless of regional occupancy or support heuristics, and changes only through direct damage or a real material phase/reaction.
 
 ## Terrain rendering and debug view
 
@@ -164,7 +164,7 @@ The interface was rebuilt as a pixel-aligned EpochGui layout. The native title b
 
 ## Resource pixels and sifting
 
-SandHybrid has no authored ore blocks. Gold, iron, copper, and generic metal exist as independent material pixels mixed sparsely through sand or silt. Gravity, filters, conveyors, and magnets separate those pixels without changing them into nuclear fuel or radiation particles. Structural steel, iron, or copper is never collected merely because the player walks nearby.
+Shared geology contains sparse deterministic loose pixels of Iron Ore, Copper, Aluminum, and deeper Uranium mixed through sand, soil, silt, mud, and stone. Gold remains authored/special and is not randomly distributed. The generated reset path and loaded-scene substrate use the same distribution. Gravity, filters, conveyors, sluices, and magnets separate those pixels without changing identity. The same materials become durable structural cells only when deliberately placed through `TILES`; walking nearby never collects structural construction.
 
 ## Default scenes
 
@@ -193,22 +193,24 @@ All scenes use the same canonical material and structural rules.
 - `OXYGEN`: selectable pure-gas material in the Engineering group
 - `[` / `]`: previous or next scene
 - `R`: reset scene
-- Space: pause or resume
+- `P` or the `RUNNING`/`PAUSED` button: pause or resume
 - `N`: one simulation step while paused
 - `M`: Mine/Build mode in sandbox scenes; character scenes always keep player tools active
 - `F3`: structural/debug overlay
 - Hold `Alt`: inspect exact cell
 - Mouse wheel over world: brush radius
-- Middle-mouse drag: pan camera
-- Move the mouse to a simulation-view edge: pan camera continuously
+- Middle-mouse drag: direct responsive camera pan in every scene
+- Right-mouse drag: camera pan while `WASD PAN` mode is enabled
 - `0`: reset camera to the crystal-marker authored map in the third resident row, beneath two full sky rows
 - Cell/Tile placement selector: place any selected material as fine cells or one aligned 8x8 tile
 - Escape: exit
 
 ### Camera navigation
 
-- `W` / `A` / `S` / `D`: pan the camera only in scenes without a player
-- Mouse-edge scrolling and middle-mouse drag remain available in every scene
+- `PLAYER WASD` / `WASD PAN` button: choose whether character-scene WASD controls the player or camera
+- `W` / `A` / `S` / `D`: pan the camera in non-player scenes and whenever `WASD PAN` is enabled
+- Middle-mouse drag always pans; right-mouse drag pans in `WASD PAN` mode
+- Mouse-edge camera movement is removed
 
 ### Character scenes
 

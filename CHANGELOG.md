@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.5.4
+
+- Prevented freshly reset enclosed Atmosphere/Oxygen tiles from blanket activation; `ACTIVE TILES` now excludes clean enclosed air.
+- Removed mouse-edge camera movement, made middle drag four times more responsive, and retained native mouse capture outside the viewport.
+- Added live pause and `PLAYER WASD`/`WASD PAN` GUI controls; camera mode also enables right-drag panning without triggering erase/deposit.
+- Made every block-capable `TILES` placement durable: surviving structural stone, metals, ores, glass, wood, plastics, and machines no longer auto-crumble from occupancy, minority-material, or support heuristics.
+- Prevented powder-phase block-capable materials such as Iron Ore from entering whole-tile macro movement.
+- Added deterministic loose Iron Ore, Copper, Aluminum, and deeper Uranium deposits to shared generated/loaded geology while preserving sky, scene, shell, and lava bands; Gold remains authored/special.
+- Corrected authored bee-home metadata to the crystal-row Y=720 origin and canonicalized legacy loaded hives to the exact Fix28 prefab.
+- Made wetted Sand/Silt release stale structural state and sink through liquids.
+- Added one-shot fine-boundary ownership and bounded gas expansion so water surfaces and Atmosphere edges can reach stable sleep.
+
 ## 2.5.3
 
 - Integrated the protected `agent/nonoverlap-core-hygiene` handoff while preserving its source branch.

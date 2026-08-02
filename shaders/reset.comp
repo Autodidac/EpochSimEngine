@@ -56,6 +56,33 @@ uint sceneBoundaryMaterial(uint scene) {
     return MAT_STONE;
 }
 
+uint residentGroundHash(ivec2 position) {
+    uint value = uint(position.x) * 0x9e3779b9u ^
+       uint(position.y) * 0x85ebca6bu ^ 0xc2b2ae35u;
+    value ^= value >> 16u;
+    value *= 0x7feb352du;
+    value ^= value >> 15u;
+    value *= 0x846ca68bu;
+    value ^= value >> 16u;
+    return value;
+}
+
+bool residentGroundHostMaterial(uint material) {
+    return material == MAT_SAND || material == MAT_DIRT ||
+ material == MAT_SILT || material == MAT_MUD ||
+ material == MAT_STONE;
+}
+
+uint residentGroundDepositMaterial(uint baseMaterial, ivec2 position, int depth) {
+    if (!residentGroundHostMaterial(baseMaterial)) return baseMaterial;
+    uint roll = residentGroundHash(position) & 4095u;
+    if (roll < 24u) return MAT_IRON_ORE;
+    if (roll < 32u) return MAT_COPPER;
+    if (roll < 38u) return MAT_ALUMINUM;
+    if (depth >= 160 && roll < 41u) return MAT_URANIUM;
+    return baseMaterial;
+}
+
 // Every scene occupies the crystal-marker camera footprint: the third
 // 640x360 resident row. The two complete rows above it remain empty sky. A
 // one-brick foundation separates the scene from the remaining lower geology;
@@ -99,25 +126,29 @@ uint residentWorldSubstrateMaterial(ivec2 worldPosition) {
     int localY = depth % AUTHORED_WORLD_CELLS.y;
     ivec2 geologyPatch = worldPosition / 64;
 
+    uint geology = MAT_STONE;
     if (zone == 0) {
-        if (localY < 96) return MAT_SAND;
-        if (localY < 232) return MAT_DIRT;
-        if (((geologyPatch.x + geologyPatch.y * 3) % 11) == 0) return MAT_MUD;
-        return MAT_SILT;
-    }
-    if (zone == 1) {
-        if (localY < 104) return MAT_DIRT;
-        if (localY < 248) {
-            if (((geologyPatch.x * 5 + geologyPatch.y) % 13) == 0) return MAT_MUD;
-            return MAT_SILT;
-        }
-        return ((geologyPatch.x + geologyPatch.y) % 7) == 0 ? MAT_STONE : MAT_SAND;
-    }
-    if (localY < 80)
-        return ((geologyPatch.x * 3 + geologyPatch.y) % 9) == 0 ? MAT_MUD : MAT_SILT;
-    if (localY < 176) return MAT_DIRT;
-    if (localY < 224 && ((geologyPatch.x + geologyPatch.y * 2) % 5) == 0) return MAT_SAND;
-    return MAT_STONE;
+    if (localY < 96) geology = MAT_SAND;
+    else if (localY < 232) geology = MAT_DIRT;
+    else if (((geologyPatch.x + geologyPatch.y * 3) % 11) == 0) geology = MAT_MUD;
+    else geology = MAT_SILT;
+} else if (zone == 1) {
+    if (localY < 104) geology = MAT_DIRT;
+    else if (localY < 248)
+        geology = ((geologyPatch.x * 5 + geologyPatch.y) % 13) == 0
+            ? MAT_MUD : MAT_SILT;
+    else
+        geology = ((geologyPatch.x + geologyPatch.y) % 7) == 0
+            ? MAT_STONE : MAT_SAND;
+} else if (localY < 80) {
+    geology = ((geologyPatch.x * 3 + geologyPatch.y) % 9) == 0
+        ? MAT_MUD : MAT_SILT;
+} else if (localY < 176) {
+    geology = MAT_DIRT;
+} else if (localY < 224 && ((geologyPatch.x + geologyPatch.y * 2) % 5) == 0) {
+    geology = MAT_SAND;
+}
+    return residentGroundDepositMaterial(geology, worldPosition, depth);
 }
 
 bool residentSubstrateStructural(uint material) {

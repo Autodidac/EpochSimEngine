@@ -58,6 +58,7 @@ layout(push_constant) uniform RenderPush {
     int activeAreaX;
     int activeAreaY;
     uint activeScopeMode;
+    uint cameraControls;
 } renderPc;
 
 uint glyphRow(uint code, uint row) {
@@ -469,21 +470,43 @@ void main() {
             }
         }
 
-        uint modeWidth = max(112u, sidebarWidth * 46u / 100u);
-        uint modeLeft = sidebarLeft + 8u;
-        uint debugLeft = modeLeft + modeWidth + 4u;
-        uint debugWidth = max(1u, sidebarWidth - modeWidth - 24u);
-        if (x >= modeLeft && x < modeLeft + modeWidth && y >= 100u && y < 122u) {
-            color = vec3(0.075, 0.105, 0.145);
-            if (borderPixel(x, y, modeLeft, 100u, modeLeft + modeWidth, 122u)) color *= 0.55;
+        uint controlGap = 3u;
+        uint controlLeft = sidebarLeft + 8u;
+        uint controlWidth = max(1u, (sidebarWidth - 16u - controlGap * 3u) / 4u);
+        uint controlLefts[4] = uint[4](
+  controlLeft,
+  controlLeft + controlWidth + controlGap,
+  controlLeft + (controlWidth + controlGap) * 2u,
+  controlLeft + (controlWidth + controlGap) * 3u);
+        bool playerScene = renderPc.selectedScene == 6u ||
+                 renderPc.selectedScene == 7u ||
+                 renderPc.selectedScene == 8u;
+        uint controlIds[4] = uint[4](
+  renderPc.miningMode != 0u ? 8u : 7u,
+  renderPc.paused != 0u ? 3u : 2u,
+  playerScene && renderPc.cameraControls == 0u ? 141u : 140u,
+  9u);
+        for (uint control = 0u; control < 4u; ++control) {
+  uint left = controlLefts[control];
+  uint right = control == 3u ? renderPc.windowWidth - 8u : left + controlWidth;
+  if (x >= left && x < right && y >= 100u && y < 122u) {
+      bool enabled = (control == 1u && renderPc.paused != 0u) ||
+                     (control == 2u && renderPc.cameraControls != 0u) ||
+                     (control == 3u && renderPc.debugMode != 0u);
+      color = enabled ? vec3(0.20, 0.38, 0.20) : vec3(0.075, 0.105, 0.145);
+      if (borderPixel(x, y, left, 100u, right, 122u)) color *= 0.55;
+  }
+  uint length = fixedTextLength(controlIds[control]);
+  int labelScale = int(right - left) >= int(length * 12u + 6u) ? 2 : 1;
+  int labelWidth = int(length) * 6 * labelScale - labelScale;
+  if (fixedPixel(pixel,
+      ivec2(int(left + right) / 2 - labelWidth / 2,
+            111 - (7 * labelScale) / 2),
+      labelScale, controlIds[control])) {
+      text = true;
+      color = vec3(0.95);
+  }
         }
-        if (x >= debugLeft && x < debugLeft + debugWidth && y >= 100u && y < 122u) {
-            color = renderPc.debugMode != 0u ? vec3(0.20, 0.38, 0.20) : vec3(0.075, 0.105, 0.145);
-            if (borderPixel(x, y, debugLeft, 100u, debugLeft + debugWidth, 122u)) color *= 0.55;
-        }
-        text = text || fixedPixel(pixel, ivec2(int(modeLeft + 14u), 106), 1,
-                                  renderPc.miningMode != 0u ? 8u : 7u) ||
-               fixedPixel(pixel, ivec2(int(debugLeft + 10u), 106), 1, 9u);
 
         uint contentLeft = sidebarLeft + 5u;
         uint contentWidth = max(sidebarWidth - 10u, 1u);

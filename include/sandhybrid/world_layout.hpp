@@ -40,6 +40,38 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
            material == Material::sand || material == Material::silt;
 }
 
+[[nodiscard]] constexpr std::uint32_t resident_ground_hash(
+    const std::uint32_t x, const std::uint32_t y) noexcept {
+    auto value = x * 0x9e3779b9u ^ y * 0x85ebca6bu ^ 0xc2b2ae35u;
+    value ^= value >> 16u;
+    value *= 0x7feb352du;
+    value ^= value >> 15u;
+    value *= 0x846ca68bu;
+    value ^= value >> 16u;
+    return value;
+}
+
+[[nodiscard]] constexpr bool resident_ground_host_material(
+    const Material material) noexcept {
+    return material == Material::sand || material == Material::dirt ||
+           material == Material::silt || material == Material::mud ||
+           material == Material::stone;
+}
+
+[[nodiscard]] constexpr Material resident_ground_deposit_material(
+    const Material base_material,
+    const std::uint32_t x,
+    const std::uint32_t y,
+    const std::uint32_t depth) noexcept {
+    if (!resident_ground_host_material(base_material)) return base_material;
+    const auto roll = resident_ground_hash(x, y) & 4095u;
+    if (roll < 24u) return Material::iron_ore;
+    if (roll < 32u) return Material::copper;
+    if (roll < 38u) return Material::aluminum;
+    if (depth >= 160u && roll < 41u) return Material::uranium;
+    return base_material;
+}
+
 [[nodiscard]] constexpr Material resident_substrate_material(
     const std::uint32_t world_width,
     const std::uint32_t world_height,
@@ -89,29 +121,30 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
     const auto patch_x = x / resident_world_geology_patch_cells;
     const auto patch_y = y / resident_world_geology_patch_cells;
 
+    Material geology = Material::stone;
     if (zone == 0u) {
-        if (local_y < 96u) return Material::sand;
-        if (local_y < 232u) return Material::dirt;
-        if (((patch_x + patch_y * 3u) % 11u) == 0u) return Material::mud;
-        return Material::silt;
+    if (local_y < 96u) geology = Material::sand;
+    else if (local_y < 232u) geology = Material::dirt;
+    else if (((patch_x + patch_y * 3u) % 11u) == 0u) geology = Material::mud;
+    else geology = Material::silt;
+} else if (zone == 1u) {
+    if (local_y < 104u) geology = Material::dirt;
+    else if (local_y < 248u) {
+        geology = ((patch_x * 5u + patch_y) % 13u) == 0u
+            ? Material::mud : Material::silt;
+    } else {
+        geology = ((patch_x + patch_y) % 7u) == 0u
+            ? Material::stone : Material::sand;
     }
-
-    if (zone == 1u) {
-        if (local_y < 104u) return Material::dirt;
-        if (local_y < 248u) {
-            if (((patch_x * 5u + patch_y) % 13u) == 0u) return Material::mud;
-            return Material::silt;
-        }
-        return ((patch_x + patch_y) % 7u) == 0u ? Material::stone : Material::sand;
-    }
-
-    if (local_y < 80u) {
-        return ((patch_x * 3u + patch_y) % 9u) == 0u ? Material::mud : Material::silt;
-    }
-    if (local_y < 176u) return Material::dirt;
-    if (local_y < 224u && ((patch_x + patch_y * 2u) % 5u) == 0u)
-        return Material::sand;
-    return Material::stone;
+} else if (local_y < 80u) {
+    geology = ((patch_x * 3u + patch_y) % 9u) == 0u
+        ? Material::mud : Material::silt;
+} else if (local_y < 176u) {
+    geology = Material::dirt;
+} else if (local_y < 224u && ((patch_x + patch_y * 2u) % 5u) == 0u) {
+    geology = Material::sand;
+}
+    return resident_ground_deposit_material(geology, x, y, depth);
 }
 
 } // namespace sandhybrid

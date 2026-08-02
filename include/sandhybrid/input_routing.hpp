@@ -14,6 +14,16 @@ struct DirectionalInputRouting final {
                                      const DirectionalInputRouting&) = default;
 };
 
+[[nodiscard]] constexpr bool player_wasd_enabled(
+    const bool player_present, const bool camera_controls) noexcept {
+    return player_present && !camera_controls;
+}
+
+[[nodiscard]] constexpr bool camera_wasd_enabled(
+    const bool player_present, const bool camera_controls) noexcept {
+    return !player_present || camera_controls;
+}
+
 [[nodiscard]] constexpr DirectionalInputRouting route_directional_input(
     const bool player_present,
     const bool move_left,

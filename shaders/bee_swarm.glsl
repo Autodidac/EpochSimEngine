@@ -68,8 +68,11 @@ bool beeUsesAuthoredHome(uint aux) {
 }
 
 ivec2 beeAuthoredWorldOrigin(uint width, uint height) {
+    int skyHeight = int(height) >= BEE_AUTHORED_WORLD_CELLS.y * 3
+        ? BEE_AUTHORED_WORLD_CELLS.y * 2
+        : 0;
     return ivec2(max((int(width) - BEE_AUTHORED_WORLD_CELLS.x) / 2, 0),
-                 max(int(height) - BEE_AUTHORED_WORLD_CELLS.y, 0));
+                 skyHeight);
 }
 
 ivec2 beeHomeCenterFromAux(uint aux, uint width, uint height) {

@@ -251,49 +251,57 @@ int run_application() {
             zoom_at_pointer(shared_state, simulation_config, simulation_viewport,
                             input.mouse_x, input.mouse_y, input.wheel_delta);
 
+        const bool scene_player_present = scene_has_character(scene);
+        const bool camera_controls_enabled =
+  shared_state.camera_controls.load(std::memory_order_relaxed);
+        const bool player_controls =
+  player_wasd_enabled(scene_player_present, camera_controls_enabled);
+        const bool camera_mode =
+  camera_wasd_enabled(scene_player_present, camera_controls_enabled);
         const auto zoom = shared_state.camera_zoom.load(std::memory_order_relaxed);
-        if (zoom >= camera_zoom_min && input.middle_down && (over_simulation || pan_dragging)) {
-            if (!pan_dragging) {
-                pan_dragging = true;
-                pan_last_x = input.mouse_x;
-                pan_last_y = input.mouse_y;
-                pan_remainder_x = 0;
-                pan_remainder_y = 0;
-            } else {
-                const auto view = camera_view(shared_state, simulation_config, zoom);
-                const auto viewport_width = (std::max)(
-                    static_cast<std::int64_t>(simulation_viewport.rect.size.x), std::int64_t{1});
-                const auto viewport_height = (std::max)(
-                    static_cast<std::int64_t>(simulation_viewport.rect.size.y), std::int64_t{1});
-                const auto dx = input.mouse_x - pan_last_x;
-                const auto dy = input.mouse_y - pan_last_y;
-                pan_last_x = input.mouse_x;
-                pan_last_y = input.mouse_y;
+        const bool pan_button_down = input.middle_down ||
+                           (camera_mode && input.secondary_down);
+        if (zoom >= camera_zoom_min && pan_button_down &&
+  (over_simulation || pan_dragging)) {
+  if (!pan_dragging) {
+      pan_dragging = true;
+      pan_last_x = input.mouse_x;
+      pan_last_y = input.mouse_y;
+      pan_remainder_x = 0;
+      pan_remainder_y = 0;
+  } else {
+      const auto view = camera_view(shared_state, simulation_config, zoom);
+      const auto viewport_width = (std::max)(
+          static_cast<std::int64_t>(simulation_viewport.rect.size.x), std::int64_t{1});
+      const auto viewport_height = (std::max)(
+          static_cast<std::int64_t>(simulation_viewport.rect.size.y), std::int64_t{1});
+      const auto dx = input.mouse_x - pan_last_x;
+      const auto dy = input.mouse_y - pan_last_y;
+      pan_last_x = input.mouse_x;
+      pan_last_y = input.mouse_y;
 
-                // Four-to-one damping keeps zoomed panning deliberate instead of jumpy.
-                pan_remainder_x += -static_cast<std::int64_t>(dx) * view.width;
-                pan_remainder_y += -static_cast<std::int64_t>(dy) * view.height;
-                const auto denominator_x = viewport_width * 4;
-                const auto denominator_y = viewport_height * 4;
-                const auto shift_x = pan_remainder_x / denominator_x;
-                const auto shift_y = pan_remainder_y / denominator_y;
-                pan_remainder_x %= denominator_x;
-                pan_remainder_y %= denominator_y;
+      // Direct view-to-pixel scaling is four times more responsive
+      // than the old damped drag while preserving sub-cell remainders.
+      pan_remainder_x += -static_cast<std::int64_t>(dx) * view.width;
+      pan_remainder_y += -static_cast<std::int64_t>(dy) * view.height;
+      const auto shift_x = pan_remainder_x / viewport_width;
+      const auto shift_y = pan_remainder_y / viewport_height;
+      pan_remainder_x %= viewport_width;
+      pan_remainder_y %= viewport_height;
 
-                pan_camera_cells(shared_state, simulation_config,
-                                 static_cast<int>(shift_x), static_cast<int>(shift_y));
-            }
+      pan_camera_cells(shared_state, simulation_config,
+                       static_cast<int>(shift_x), static_cast<int>(shift_y));
+  }
         } else {
-            pan_dragging = false;
-            pan_remainder_x = 0;
-            pan_remainder_y = 0;
+  pan_dragging = false;
+  pan_remainder_x = 0;
+  pan_remainder_y = 0;
         }
 
         const auto camera_now = std::chrono::steady_clock::now();
         const auto camera_seconds = std::clamp(
             std::chrono::duration<double>(camera_now - last_camera_update).count(), 0.0, 0.05);
         last_camera_update = camera_now;
-        const bool player_controls = scene_has_character(scene);
         const auto directional_input = route_directional_input(
             player_controls,
             input.move_left,
@@ -302,19 +310,6 @@ int run_application() {
             input.move_down);
         int camera_direction_x = directional_input.camera_x;
         int camera_direction_y = directional_input.camera_y;
-        if (over_simulation && !pan_dragging) {
-            constexpr int edge_band_pixels = 28;
-            const int local_x = input.mouse_x - static_cast<int>(simulation_viewport.rect.position.x);
-            const int local_y = input.mouse_y - static_cast<int>(simulation_viewport.rect.position.y);
-            const int viewport_width = static_cast<int>(simulation_viewport.rect.size.x);
-            const int viewport_height = static_cast<int>(simulation_viewport.rect.size.y);
-            if (local_x >= 0 && local_x < edge_band_pixels) --camera_direction_x;
-            else if (local_x < viewport_width &&
-                     local_x >= viewport_width - edge_band_pixels) ++camera_direction_x;
-            if (local_y >= 0 && local_y < edge_band_pixels) --camera_direction_y;
-            else if (local_y < viewport_height &&
-                     local_y >= viewport_height - edge_band_pixels) ++camera_direction_y;
-        }
         camera_direction_x = std::clamp(camera_direction_x, -1, 1);
         camera_direction_y = std::clamp(camera_direction_y, -1, 1);
         if (camera_direction_x != 0 || camera_direction_y != 0) {
@@ -395,6 +390,14 @@ int run_application() {
             } else if (epochengine::gui_lib::contains(layout.mode_toggle, pointer)) {
                 const bool mining = shared_state.mining_mode.load(std::memory_order_relaxed);
                 shared_state.mining_mode.store(!mining, std::memory_order_release);
+            } else if (epochengine::gui_lib::contains(layout.pause_toggle, pointer)) {
+                const bool paused = shared_state.paused.load(std::memory_order_relaxed);
+                shared_state.paused.store(!paused, std::memory_order_release);
+            } else if (epochengine::gui_lib::contains(layout.camera_controls_toggle, pointer)) {
+                const bool camera_controls =
+                    shared_state.camera_controls.load(std::memory_order_relaxed);
+                shared_state.camera_controls.store(!camera_controls,
+                                                   std::memory_order_release);
             } else if (epochengine::gui_lib::contains(layout.debug_toggle, pointer)) {
                 const bool debug = shared_state.debug_visualization.load(std::memory_order_relaxed);
                 shared_state.debug_visualization.store(!debug, std::memory_order_release);
@@ -443,16 +446,19 @@ int run_application() {
         const bool paint_active = over_simulation && !mining && !inspecting;
         shared_state.primary_down.store(input.primary_down && paint_active,
                                          std::memory_order_relaxed);
-        shared_state.secondary_down.store(input.secondary_down && paint_active,
-                                           std::memory_order_relaxed);
+        shared_state.secondary_down.store(
+            input.secondary_down && paint_active && !camera_mode,
+            std::memory_order_relaxed);
         // MINE uses the player tool; BUILD paints or erases the selected material.
         // Character movement remains active in either mode.
         const bool tool_active = over_simulation && mining && !inspecting;
         shared_state.fire_tool.store(input.primary_down && tool_active, std::memory_order_relaxed);
-        shared_state.deposit_resource.store(input.secondary_down && tool_active, std::memory_order_relaxed);
+        shared_state.deposit_resource.store(
+            input.secondary_down && tool_active && !camera_mode,
+            std::memory_order_relaxed);
         if (primary_pressed && tool_active)
             shared_state.fire_tool_pressed.store(true, std::memory_order_release);
-        if (secondary_pressed && tool_active)
+        if (secondary_pressed && tool_active && !camera_mode)
             shared_state.deposit_resource_pressed.store(true, std::memory_order_release);
         shared_state.move_x.store(directional_input.player_x, std::memory_order_relaxed);
         shared_state.move_y.store(directional_input.player_y, std::memory_order_relaxed);
