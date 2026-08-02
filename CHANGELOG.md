@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.5.3
+
+- Integrated the protected `agent/nonoverlap-core-hygiene` handoff while preserving its source branch.
+- Completed MC-065 with a deterministic CI contract rejecting coroutine machinery from simulation code.
+- Completed MC-083 with a repository-wide SandHybrid branding contract while preserving proper external EpochGui and EpochEngine names.
+- Completed MC-117 by reconciling the handoff onto current `main` without dropping later mission-cache work.
+- Added both core-hygiene contracts to pull-request and Windows/Linux release validation.
+
 ## 2.5.2
 
 - Restored the compact SandHybrid Fix28 Beehive model as the single generated/buildable prefab and renamed material ID 31 to Beehive without aliases.
