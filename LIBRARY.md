@@ -2,7 +2,7 @@
 
 `SandHybrid` is the reusable C++23 static library. It owns platform-neutral scene image I/O, active-region scheduling, material and simulation policy headers, and the stable public entry point `sandhybrid/library.hpp`.
 
-Native startup, window creation, event polling, Vulkan presentation, shader packaging, and the demo executable are outside the core target.
+Native startup, window creation, event polling, Vulkan presentation, shader packaging, and the demo executable are outside the core target and outside the installed core header set.
 
 ## Target graph
 
@@ -24,7 +24,7 @@ ctest --test-dir build/library --output-on-failure
 cmake --install build/library --prefix build/library-package
 ```
 
-This path does not configure EpochGui, find Vulkan, compile shaders, include native window sources, or link window-system libraries.
+This path does not configure EpochGui, find Vulkan, compile shaders, include native window sources, or link window-system libraries. Its installed include tree contains only platform-neutral SandHybrid headers; runtime-only Vulkan, window, application, shared-state, UI, and EpochGui headers are deliberately excluded.
 
 ## Downstream use
 
@@ -39,7 +39,7 @@ target_compile_features(my_simulation PRIVATE cxx_std_23)
 #include <sandhybrid/library.hpp>
 ```
 
-The installed package exports `SandHybridTargets.cmake`, `SandHybridConfig.cmake`, and a same-major-version compatibility file. The downstream package contract installs the library into a clean prefix, configures an external consumer with `find_package`, and links that consumer without repository-private include paths.
+The installed package exports `SandHybridTargets.cmake`, `SandHybridConfig.cmake`, and a same-major-version compatibility file. The downstream package contract installs the library into a clean prefix, rejects runtime-header leakage, configures an external consumer with `find_package`, and links that consumer without repository-private include paths.
 
 ## Native demo build
 
