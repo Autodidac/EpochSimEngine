@@ -6,6 +6,7 @@ This release fixes the Atmosphere/Fill UI regression in v2.4.8 while preserving 
 
 - `ATMOSPHERE` now selects balanced breathable air for ordinary painting.
 - `F FILL` is a separate action that fills the active region with the currently selected material.
+- The keyboard `F` command and visible Fill button use the same region-fill command.
 - `ERASER` remains a separate vacuum/empty selection.
 - Atmosphere, Fill, and Eraser have independent hit regions, colors, labels, and actions.
 - Selecting Atmosphere no longer temporarily changes the selection, raises the Fill command, or restores a previous material behind the user's back.
