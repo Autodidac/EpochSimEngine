@@ -21,8 +21,7 @@ const ivec2 AUTHORED_WORLD_CELLS = ivec2(640, 360);
 
 ivec2 authoredWorldOrigin() {
     int x = max((int(pc.width) - AUTHORED_WORLD_CELLS.x) / 2, 0);
-    int y = max(int(pc.height) - AUTHORED_WORLD_CELLS.y, 0);
-    return ivec2(x, y);
+    return ivec2(x, 0);
 }
 
 ivec2 authoredLocalCoordinate(ivec2 worldPosition) {
@@ -53,15 +52,70 @@ uint sceneBoundaryMaterial(uint scene) {
     return MAT_STONE;
 }
 
-// Keep every authored object at its original bottom-centered 640x360 coordinate.
-// Only a sparse one-brick floor and one-brick side walls extend to the resident
-// horizontal bounds, upgrading old scenes without stretching or duplicating them.
-uint residentSceneEnvelopeMaterial(uint scene, ivec2 worldPosition) {
-    int sceneTop = max(int(pc.height) - AUTHORED_WORLD_CELLS.y, 0);
-    bool floor = worldPosition.y >= int(pc.height) - BRICK_SIZE;
-    bool sideWall = worldPosition.y >= sceneTop &&
-        (worldPosition.x < BRICK_SIZE || worldPosition.x >= int(pc.width) - BRICK_SIZE);
-    return floor || sideWall ? sceneBoundaryMaterial(scene) : MAT_EMPTY;
+// Every scene occupies the upper-center 640x360 camera footprint. The three
+// resident footprints below it are real geology. A one-brick stone foundation
+// separates the scene from the geology; a two-brick lava band spans the bottom
+// and is enclosed by one-brick stone cap, bottom shell, and side walls.
+uint residentWorldSubstrateMaterial(ivec2 worldPosition) {
+    int width = int(pc.width);
+    int height = int(pc.height);
+    int sceneBottom = min(height, AUTHORED_WORLD_CELLS.y);
+    int horizontalShell = min(width, BRICK_SIZE);
+    bool sideShell = worldPosition.x < horizontalShell ||
+                     worldPosition.x >= width - horizontalShell;
+
+    int foundation = min(sceneBottom, BRICK_SIZE);
+    int foundationStart = sceneBottom - foundation;
+    if (worldPosition.y < sceneBottom) {
+        if (worldPosition.y >= foundationStart || sideShell) return MAT_STONE;
+        return MAT_EMPTY;
+    }
+
+    if (sideShell) return MAT_STONE;
+
+    int bottomShell = min(height, BRICK_SIZE);
+    int bottomShellStart = height - bottomShell;
+    if (worldPosition.y >= bottomShellStart) return MAT_STONE;
+
+    int lavaRoom = max(bottomShellStart - sceneBottom, 0);
+    int lavaThickness = min(lavaRoom, BRICK_SIZE * 2);
+    int lavaStart = bottomShellStart - lavaThickness;
+    if (worldPosition.y >= lavaStart) return MAT_LAVA;
+
+    int capRoom = max(lavaStart - sceneBottom, 0);
+    int capThickness = min(capRoom, BRICK_SIZE);
+    int lavaCapStart = lavaStart - capThickness;
+    if (worldPosition.y >= lavaCapStart) return MAT_STONE;
+
+    int depth = worldPosition.y - sceneBottom;
+    int zone = min(depth / AUTHORED_WORLD_CELLS.y, 2);
+    int localY = depth % AUTHORED_WORLD_CELLS.y;
+    ivec2 patch = worldPosition / 64;
+
+    if (zone == 0) {
+        if (localY < 96) return MAT_SAND;
+        if (localY < 232) return MAT_DIRT;
+        if (((patch.x + patch.y * 3) % 11) == 0) return MAT_MUD;
+        return MAT_SILT;
+    }
+    if (zone == 1) {
+        if (localY < 104) return MAT_DIRT;
+        if (localY < 248) {
+            if (((patch.x * 5 + patch.y) % 13) == 0) return MAT_MUD;
+            return MAT_SILT;
+        }
+        return ((patch.x + patch.y) % 7) == 0 ? MAT_STONE : MAT_SAND;
+    }
+    if (localY < 80)
+        return ((patch.x * 3 + patch.y) % 9) == 0 ? MAT_MUD : MAT_SILT;
+    if (localY < 176) return MAT_DIRT;
+    if (localY < 224 && ((patch.x + patch.y * 2) % 5) == 0) return MAT_SAND;
+    return MAT_STONE;
+}
+
+bool residentSubstrateStructural(uint material) {
+    return material == MAT_STONE || material == MAT_DIRT ||
+           material == MAT_SAND || material == MAT_SILT;
 }
 
 bool brickRect(ivec2 p, ivec2 minimumBrick, ivec2 maximumBrick) {
@@ -539,12 +593,13 @@ void main() {
     bool authored = insideAuthoredWorld(p);
     ivec2 local = authoredLocalCoordinate(p);
     uint material = authored ? materialForScene(scene, local) : MAT_EMPTY;
-    uint envelopeMaterial = residentSceneEnvelopeMaterial(scene, p);
-    bool envelopeCell = material == MAT_EMPTY && envelopeMaterial != MAT_EMPTY;
-    if (envelopeCell) material = envelopeMaterial;
+    uint substrateMaterial = residentWorldSubstrateMaterial(p);
+    bool substrateCell = substrateMaterial != MAT_EMPTY;
+    if (substrateCell) material = substrateMaterial;
     if (material == MAT_EMPTY) material = MAT_ATMOSPHERE;
-    bool structural = envelopeCell || (authored && authoredStructuralCell(scene, local, material));
-    bool anchored = envelopeCell || (authored && brickCoordinate(local).y >= worldBrickSize().y - 2);
+    bool structural = substrateCell
+        ? residentSubstrateStructural(material)
+        : (authored && authoredStructuralCell(scene, local, material));
     Cell cell = structural ? makeStructuralCell(material, true) : makeCell(material);
     bool machineController = authored &&
         (material == MAT_SMELTER || material == MAT_ASSEMBLER ||

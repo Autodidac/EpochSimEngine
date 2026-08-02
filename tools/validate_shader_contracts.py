@@ -524,6 +524,7 @@ def main() -> int:
     app_cpp = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
     section_header = (ROOT / "include/sandhybrid/section_scheduler.hpp").read_text(encoding="utf-8")
     camera_policy = (ROOT / "include/sandhybrid/camera_policy.hpp").read_text(encoding="utf-8")
+    world_layout = (ROOT / "include/sandhybrid/world_layout.hpp").read_text(encoding="utf-8")
     debug_stats_contract = (SHADERS / "debug_stats.glsl").read_text(encoding="utf-8")
 
     for token in (
@@ -561,10 +562,24 @@ def main() -> int:
             errors.append(f"universal cell/tile placement contract missing {token!r}")
     for token in (
         "int x = max((int(pc.width) - AUTHORED_WORLD_CELLS.x) / 2, 0);",
-        "int y = max(int(pc.height) - AUTHORED_WORLD_CELLS.y, 0);",
+        "return ivec2(x, 0);",
+        "residentWorldSubstrateMaterial",
+        "int lavaThickness = min(lavaRoom, BRICK_SIZE * 2);",
+        "residentSubstrateStructural",
+        "bool substrateCell = substrateMaterial != MAT_EMPTY;",
     ):
         if token not in reset:
-            errors.append(f"bottom-centered authored map contract missing {token!r}")
+            errors.append(f"upper-center scene/geology shader contract missing {token!r}")
+    for token in (
+        "subterranean_zone_count =",
+        "resident_world_dimension_scale - 1u",
+        "resident_world_lava_cells = 16u",
+        "authored_scene_origin_y",
+        "return 0u;",
+        "resident_substrate_material",
+    ):
+        if token not in world_layout:
+            errors.append(f"shared resident world-layout contract missing {token!r}")
     for token in (
         "edge_band_pixels = 28",
         "route_directional_input(",
@@ -574,6 +589,8 @@ def main() -> int:
         "shared_state.move_y.store(directional_input.player_y",
         "layout.placement_cells",
         "layout.placement_tiles",
+        "authored_scene_origin_x(config.grid_width)",
+        "authored_scene_origin_y(config.grid_height)",
     ):
         if token not in app_cpp:
             errors.append(f"camera/placement input contract missing {token!r}")
@@ -609,7 +626,7 @@ def main() -> int:
     for token in ("authoredStructuralCell", "looseAuthoredCargo", "Large upper reservoir", "real sediment sifter"):
         if token not in reset:
             errors.append(f"authored scene contract missing {token!r}")
-    for token in ("residentSceneEnvelopeMaterial", "sceneBoundaryMaterial", "Paired compost experiment", "aperture so diffusion", "Scientific wet-separation station"):
+    for token in ("residentWorldSubstrateMaterial", "residentSubstrateStructural", "Paired compost experiment", "aperture so diffusion", "Scientific wet-separation station"):
         if token not in reset:
             errors.append(f"resident/scientific scene contract missing {token!r}")
     for token in ("compostFeedReady", "compostWaterReady", "compostPairEvent", "compostIngredientsPresent", "MAT_DIRTY_WATER", "result = makeCell(MAT_FERTILIZER)", "result = makeCell(MAT_WATER)"):
@@ -659,6 +676,15 @@ def main() -> int:
             errors.append("Fill control does not trigger the region-fill command")
     if "material == Material::atmosphere) cell.aux |= 54u" not in renderer_cpp:
         errors.append("CPU Fill path does not preserve Atmosphere oxygen composition")
+    for token in (
+        "authored_scene_origin_y(config.grid_height)",
+        "resident_substrate_material(",
+        "make_resident_substrate_cell(",
+        "Material::atmosphere",
+        "Loaded upper-center 640x360 scene image with common subterranean geology",
+    ):
+        if token not in renderer_cpp:
+            errors.append(f"loaded-scene geology parity contract missing {token!r}")
     material_header = (ROOT / 'include/sandhybrid/material.hpp').read_text(encoding='utf-8')
     if '"Soil"' not in material_header:
         errors.append("player-facing Soil material name is missing")
