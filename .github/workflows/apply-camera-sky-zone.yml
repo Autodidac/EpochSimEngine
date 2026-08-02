@@ -1,0 +1,142 @@
+name: Apply camera sky-zone correction
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: camera-sky-zone-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/finalize-missioncache-release-v253'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Move authored scene to crystal-marker row
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'missing replacement marker in {path}: {old[:100]!r}')
+              file.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'include/sandhybrid/world_layout.hpp',
+              'inline constexpr std::uint32_t resident_world_geology_patch_cells = 64u;\ninline constexpr std::uint32_t subterranean_zone_count =\n',
+              'inline constexpr std::uint32_t resident_world_geology_patch_cells = 64u;\ninline constexpr std::uint32_t authored_scene_sky_footprint_rows = 2u;\ninline constexpr std::uint32_t subterranean_zone_count =\n')
+          replace_once(
+              'include/sandhybrid/world_layout.hpp',
+              'static_assert(authored_scene_foundation_cells == 8u);\nstatic_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells);\n',
+              'static_assert(authored_scene_foundation_cells == 8u);\nstatic_assert(authored_scene_sky_footprint_rows == 2u);\nstatic_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells);\n')
+          replace_once(
+              'include/sandhybrid/world_layout.hpp',
+              '[[nodiscard]] constexpr std::uint32_t authored_scene_origin_y(\n    const std::uint32_t) noexcept {\n    return 0u;\n}\n',
+              '[[nodiscard]] constexpr std::uint32_t authored_scene_origin_y(\n    const std::uint32_t world_height) noexcept {\n    const auto sky_height = pre_expansion_world_height * authored_scene_sky_footprint_rows;\n    return world_height >= sky_height + pre_expansion_world_height ? sky_height : 0u;\n}\n')
+          replace_once(
+              'include/sandhybrid/world_layout.hpp',
+              '    const auto scene_bottom = (std::min)(world_height, pre_expansion_world_height);\n    const auto horizontal_shell = (std::min)(world_width, resident_world_shell_cells);\n',
+              '    const auto scene_top = authored_scene_origin_y(world_height);\n    const auto scene_bottom = (std::min)(\n        world_height, scene_top + pre_expansion_world_height);\n    const auto horizontal_shell = (std::min)(world_width, resident_world_shell_cells);\n')
+          replace_once(
+              'include/sandhybrid/world_layout.hpp',
+              '    const auto foundation = (std::min)(scene_bottom, authored_scene_foundation_cells);\n    const auto foundation_start = scene_bottom - foundation;\n    if (y < scene_bottom) {\n',
+              '    if (y < scene_top) return Material::empty;\n\n    const auto scene_height = scene_bottom - scene_top;\n    const auto foundation = (std::min)(scene_height, authored_scene_foundation_cells);\n    const auto foundation_start = scene_bottom - foundation;\n    if (y < scene_bottom) {\n')
+
+          replace_once(
+              'shaders/reset.comp',
+              'ivec2 authoredWorldOrigin() {\n    int x = max((int(pc.width) - AUTHORED_WORLD_CELLS.x) / 2, 0);\n    return ivec2(x, 0);\n}\n',
+              'ivec2 authoredWorldOrigin() {\n    int x = max((int(pc.width) - AUTHORED_WORLD_CELLS.x) / 2, 0);\n    int skyHeight = int(pc.height) >= AUTHORED_WORLD_CELLS.y * 3\n        ? AUTHORED_WORLD_CELLS.y * 2\n        : 0;\n    return ivec2(x, skyHeight);\n}\n')
+          replace_once(
+              'shaders/reset.comp',
+              '// Every scene occupies the upper-center 640x360 camera footprint. The three\n// resident footprints below it are real geology. A one-brick stone foundation\n// separates the scene from the geology; a two-brick lava band spans the bottom\n// and is enclosed by one-brick stone cap, bottom shell, and side walls.\n',
+              '// Every scene occupies the crystal-marker camera footprint: the third\n// 640x360 resident row. The two complete rows above it remain empty sky. A\n// one-brick foundation separates the scene from the remaining lower geology;\n// a two-brick lava band spans the bottom inside stone cap, shell, and side walls.\n')
+          replace_once(
+              'shaders/reset.comp',
+              '    int sceneBottom = min(height, AUTHORED_WORLD_CELLS.y);\n    int horizontalShell = min(width, BRICK_SIZE);\n',
+              '    int sceneTop = authoredWorldOrigin().y;\n    int sceneBottom = min(height, sceneTop + AUTHORED_WORLD_CELLS.y);\n    int horizontalShell = min(width, BRICK_SIZE);\n')
+          replace_once(
+              'shaders/reset.comp',
+              '    int foundation = min(sceneBottom, BRICK_SIZE);\n    int foundationStart = sceneBottom - foundation;\n    if (worldPosition.y < sceneBottom) {\n',
+              '    if (worldPosition.y < sceneTop) return MAT_EMPTY;\n\n    int foundation = min(sceneBottom - sceneTop, BRICK_SIZE);\n    int foundationStart = sceneBottom - foundation;\n    if (worldPosition.y < sceneBottom) {\n')
+
+          Path('tests/world_layout_contract.cpp').write_text('''#include "sandhybrid/world_layout.hpp"\n\nusing namespace sandhybrid;\n\nstatic_assert(authored_scene_origin_x(resident_world_width) == 960u);\nstatic_assert(authored_scene_origin_y(resident_world_height) == 720u);\nstatic_assert(authored_scene_origin_y(pre_expansion_world_height) == 0u);\nstatic_assert(authored_scene_sky_footprint_rows == 2u);\nstatic_assert(subterranean_zone_count == 3u);\nstatic_assert(authored_scene_foundation_cells == 8u);\nstatic_assert(resident_world_lava_cells == 16u);\n\n// The complete two-row sky volume remains empty, including resident side edges.\nstatic_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 0u) == Material::empty);\nstatic_assert(resident_substrate_material(resident_world_width, resident_world_height, 0u, 719u) == Material::empty);\n\n// The authored scene occupies Y=720..1079 and retains its shared floor/shell.\nstatic_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 720u) == Material::empty);\nstatic_assert(resident_substrate_material(resident_world_width, resident_world_height, 0u, 900u) == Material::stone);\nstatic_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1072u) == Material::stone);\n\n// The remaining resident row begins below the authored scene.\nstatic_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1080u) == Material::sand);\nstatic_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1200u) == Material::dirt);\nstatic_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1330u) == Material::silt);\n\nstatic_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1408u) == Material::stone);\nstatic_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1416u) == Material::lava);\nstatic_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1432u) == Material::stone);\n\nstatic_assert(resident_substrate_is_structural(Material::stone));\nstatic_assert(resident_substrate_is_structural(Material::dirt));\nstatic_assert(resident_substrate_is_structural(Material::sand));\nstatic_assert(resident_substrate_is_structural(Material::silt));\nstatic_assert(!resident_substrate_is_structural(Material::mud));\nstatic_assert(!resident_substrate_is_structural(Material::lava));\n\nint main() {\n    return 0;\n}\n''', encoding='utf-8')
+
+          replace_once(
+              'missioncache.md',
+              '- **P0 / primary release gate:** MC-038, MC-112, MC-115, and MC-116. These are the current release blockers and must pass deterministic contracts plus Windows/Linux Release packaging before publication.\n',
+              '- **P0 / primary release gate:** MC-038, MC-068, MC-074, MC-112, MC-114, MC-115, and MC-116. These are the current release blockers and must pass deterministic contracts plus Windows/Linux Release packaging before publication.\n')
+          replace_once(
+              'missioncache.md',
+              '| MC-068 | PARTIAL | Camera home/reset | Every scene starts centered on its authored upper-center 640x360 footprint at world Y=0. Reset returns to exactly that footprint and one-map scale without touching simulation state. The three resident map footprints below remain available for geology and exploration. Runtime verification remains required. |\n',
+              '| MC-068 | PARTIAL | Camera home/reset | Every scene starts in the crystal-marker footprint: the horizontally centered third 640x360 resident row at world Y=720. Reset returns to exactly that footprint and one-map scale without touching simulation state. The two complete resident rows above remain empty sky. Runtime verification remains required. |\n')
+          replace_once(
+              'missioncache.md',
+              '| MC-074 | PARTIAL | Upper-center authored objects with common world stack | Every authored object retains its exact local coordinate inside the original 640x360 footprint, horizontally centered at resident-world Y=0. Scenes never repeat or stretch. A common one-brick stone foundation spans the footprint bottom, and three filled subterranean footprints continue below. Actors, hives, machines, metadata, generated scenes, saved PPM loads, reset, and camera home use the same offset. Runtime scene cycling/load acceptance remains required. |\n',
+              '| MC-074 | PARTIAL | Crystal-row authored objects with common world stack | Every authored object retains its exact local coordinate inside the original 640x360 footprint, horizontally centered at resident-world Y=720. Scenes never repeat or stretch. Resident Y=0..719 is entirely sky with no side shell, foundation, or geology. A common one-brick stone foundation spans the authored footprint bottom; generated scenes, saved PPM loads, actors, hives, machines, metadata, reset, and camera home use the same offset. Runtime scene cycling/load acceptance remains required. |\n')
+          replace_once(
+              'missioncache.md',
+              '| MC-089 | PARTIAL | Upgrade every scene to the shared resident geology stack | Sandbox, Blank, Volcano, Waterworks, Ecosystem, Engineering, Gold Mine, Demolition, and Frontier Base use the same resident-width stone foundation, side shell, three sand/soil/silt/mud/stone subterranean zones, stone lava cap, two-brick lava band, and stone bottom shell without moving authored objects. Generated scenes and loaded saved counterparts are identical outside the authored footprint. Runtime acceptance remains required. |\n',
+              '| MC-089 | PARTIAL | Upgrade every scene to the shared resident geology stack | Sandbox, Blank, Volcano, Waterworks, Ecosystem, Engineering, Gold Mine, Demolition, and Frontier Base use the same two-row sky volume, crystal-row authored footprint, resident-width stone foundation, lower sand/soil/silt/mud/stone geology, stone lava cap, two-brick lava band, and stone bottom shell without changing authored local coordinates. Generated scenes and loaded saved counterparts are identical outside the authored footprint. Runtime acceptance remains required. |\n')
+          replace_once(
+              'missioncache.md',
+              '| MC-114 | PARTIAL | Common four-footprint vertical world layout | The authored scene and default camera occupy the upper-center 640x360 footprint. Exactly three 640x360 resident footprints below are filled with deterministic layered sand, soil, silt, mud, and stone. A one-brick stone separator sits under the scene; the world bottom contains a continuous two-brick lava band enclosed by one-brick stone cap, bottom, and side shells. Reset and Load produce the same substrate. Static contracts pass; packaged visual and save/load acceptance remain required. |\n',
+              '| MC-114 | PARTIAL | Common four-footprint vertical world layout | The first two 640x360 resident rows are entirely empty sky. The authored scene and default camera occupy the horizontally centered third-row footprint at world Y=720. A one-brick stone separator sits under the scene; the remaining lower resident row contains deterministic sand, soil, silt, mud, and stone above a continuous two-brick lava band enclosed by one-brick stone cap, bottom, and side shells. Reset and Load produce the same substrate. Static contracts pass; packaged visual and save/load acceptance remain required. |\n')
+          replace_once(
+              'missioncache.md',
+              '- Every generated scene and every loaded saved counterpart uses the same upper-center authored footprint, three-zone subterranean geology stack, and stone-wrapped two-brick bottom lava band.\n',
+              '- Every generated scene and loaded saved counterpart uses the same crystal-marker authored footprint at world Y=720, two complete sky rows above it, and stone-wrapped lower geology/lava stack below it.\n')
+
+          replace_once(
+              'README.md',
+              '- `0`: reset camera to the authored map at the bottom of the expanded world\n',
+              '- `0`: reset camera to the crystal-marker authored map in the third resident row, beneath two full sky rows\n')
+          replace_once(
+              'README.md',
+              'The logical world is 5120x2880 cells, while the current bounded resident GPU window is 2560x1440 cells until deterministic far-section streaming is complete. Authored 640x360 scene content is centered at the bottom of the resident window. The active simulation gate uses map-footprint-sized 640x360 regions in a 17-position starburst around the camera; everything outside the active set is rejected by simulation shaders. Stable regions still exit before expensive chemistry, neighborhood, and movement work. Sparse far-region streaming remains an open mission in `missioncache.md`.\n',
+              'The logical world is 5120x2880 cells, while the current bounded resident GPU window is 2560x1440 cells until deterministic far-section streaming is complete. Authored 640x360 scene content is horizontally centered in the third resident row at world Y=720, where the crystal camera marker sits; the two complete rows above are sky. The active simulation gate uses map-footprint-sized 640x360 regions in a 17-position starburst around the camera; everything outside the active set is rejected by simulation shaders. Stable regions still exit before expensive chemistry, neighborhood, and movement work. Sparse far-region streaming remains an open mission in `missioncache.md`.\n')
+          replace_once(
+              'README.md',
+              'Every scene keeps its original authored objects at the same coordinates inside the bottom-centered 640x360 footprint. A sparse one-brick floor extends to both resident horizontal edges, with one-brick side walls around the playable bottom band. The expanded space is not tiled, repeated, or densely filled.\n',
+              'Every scene keeps its original authored objects at the same local coordinates inside the crystal-row 640x360 footprint at world Y=720. The two complete camera rows above remain empty sky. A sparse one-brick floor extends to both resident horizontal edges at the authored-row bottom, with one-brick side walls beginning only at the authored row. The expanded space is not tiled, repeated, or densely filled.\n')
+
+          replace_once(
+              'scenes/README.txt',
+              'The authored footprint is horizontally centered at the top of the resident world, and the default camera starts there.\n\nF5 or the SAVE button writes only the current authored footprint. F9 or LOAD reads the selected scene image, places it at the same upper-center origin, and rebuilds the shared world outside it:\n\n- one 8-cell Stone foundation at the authored-zone bottom;\n- three 640x360 subterranean zones containing Sand, Soil, Silt, Mud, and Stone;\n',
+              'The authored footprint is horizontally centered in the third resident camera row at world Y=720, where the crystal marker sits, and the default camera starts there. The two complete 640x360 rows above remain empty sky.\n\nF5 or the SAVE button writes only the current authored footprint. F9 or LOAD reads the selected scene image, places it at the same crystal-row origin, and rebuilds the shared world outside it:\n\n- two complete resident rows of empty sky above the scene;\n- one 8-cell Stone foundation at the authored-zone bottom;\n- one lower resident footprint containing Sand, Soil, Silt, Mud, and Stone;\n')
+
+          replace_once(
+              'CHANGELOG.md',
+              '- Added both core-hygiene contracts to pull-request and Windows/Linux release validation.\n',
+              '- Added both core-hygiene contracts to pull-request and Windows/Linux release validation.\n- Moved every generated and loaded authored scene to the crystal-marker camera row at world Y=720, leaving the two complete resident rows above as sky and moving the shared foundation/geology stack down with it.\n')
+          PY
+
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_shader_contracts.py
+
+          cmake -S . -B build/camera-contract -DSANDHYBRID_BUILD_APP=OFF -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF -DBUILD_TESTING=ON -DSANDHYBRID_WARNINGS_AS_ERRORS=ON
+          cmake --build build/camera-contract --parallel
+          ctest --test-dir build/camera-contract --output-on-failure
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add include/sandhybrid/world_layout.hpp shaders/reset.comp tests/world_layout_contract.cpp missioncache.md README.md scenes/README.txt CHANGELOG.md
+          git commit -m 'Move authored scenes to crystal-marker camera row'
+          git push origin HEAD:${{ github.head_ref }}
