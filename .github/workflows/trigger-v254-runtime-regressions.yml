@@ -29,13 +29,14 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import textwrap
 
           workflow = Path('.github/workflows/apply-v254-runtime-regressions.yml')
           text = workflow.read_text(encoding='utf-8')
           marker = '        run: |\n'
           start = text.index(marker) + len(marker)
-          Path('/tmp/apply-v254.sh').write_text(textwrap.dedent(text[start:]), encoding='utf-8')
+          lines = text[start:].splitlines()
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+          Path('/tmp/apply-v254.sh').write_text(script, encoding='utf-8')
           PY
           rm .github/workflows/trigger-v254-runtime-regressions.yml
           bash /tmp/apply-v254.sh
