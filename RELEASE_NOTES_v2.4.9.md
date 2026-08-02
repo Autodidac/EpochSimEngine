@@ -21,7 +21,7 @@ This release fixes the Atmosphere/Fill UI regression in v2.4.8 while preserving 
 
 - Static contracts reject any Atmosphere handler that raises `fill_region`.
 - Static contracts require the independent Fill handler and Atmosphere composition initialization.
-- The canonical mission cache carries the remaining runtime and architecture work forward instead of falsely closing it.
+- The canonical mission cache carries 80 active missions forward: 49 partial, 15 open, 15 regressions, and 1 deferred.
 
 ## Validation gate
 
