@@ -246,10 +246,18 @@ install(TARGETS SandHybrid
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-# ui_layout.hpp is public and header-only; install the vendored backend-neutral
-# EpochGui headers so installed headers remain self-contained.
-install(DIRECTORY third_party/EpochGui/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+set(SANDHYBRID_CORE_PUBLIC_HEADERS
+    include/sandhybrid/camera_policy.hpp
+    include/sandhybrid/input_routing.hpp
+    include/sandhybrid/library.hpp
+    include/sandhybrid/material.hpp
+    include/sandhybrid/scene.hpp
+    include/sandhybrid/scene_image.hpp
+    include/sandhybrid/section_scheduler.hpp
+    include/sandhybrid/simulation_policy.hpp
+)
+install(FILES ${SANDHYBRID_CORE_PUBLIC_HEADERS}
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sandhybrid)
 
 set(SANDHYBRID_CMAKE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/SandHybrid")
 configure_package_config_file(
