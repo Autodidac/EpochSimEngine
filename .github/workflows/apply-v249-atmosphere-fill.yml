@@ -1,0 +1,56 @@
+name: Apply SandHybrid v2.5.0 Rewrite Foundation
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/v250-section-grid-rewrite'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply and validate rewrite foundation
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          scripts=(tools/apply_v250*.py)
+          if [[ "${#scripts[@]}" -eq 0 ]]; then
+            echo 'The v2.5.0 rewrite foundation is already applied.'
+            exit 0
+          fi
+          for script in "${scripts[@]}"; do
+            python3 "$script"
+          done
+
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          cmake -S . -B build/contracts -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build/contracts --parallel
+          ctest --test-dir build/contracts --output-on-failure
+          rm -rf build/contracts
+
+          if git diff --quiet; then
+            echo 'The v2.5.0 rewrite foundation is already applied.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Initiate sparse section-grid rewrite for v2.5.0'
+          git push origin HEAD:${{ github.head_ref }}
