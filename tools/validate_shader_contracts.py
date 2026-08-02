@@ -154,6 +154,36 @@ def main() -> int:
     if not count_match or int(count_match.group(1)) != material_count:
         errors.append("MATERIAL_COUNT does not match Material::count")
 
+    if cpp_ids.get("beehive") != 31:
+        errors.append("canonical Beehive material must retain save ID 31")
+    if cpp_ids.get("iron_ore") != 48:
+        errors.append("canonical Iron Ore material must retain save ID 48")
+
+    legacy_tokens = ("MAT_BEE_" + "NEST", "bee_" + "nest", "Bee " + "nest", "MAT_IRON_" + "SHAVINGS", "iron_" + "shavings", "Iron " + "shavings")
+    legacy_roots = (ROOT / "include", ROOT / "src", ROOT / "shaders", ROOT / "tests", ROOT / "tools")
+    for legacy_root in legacy_roots:
+        for source_path in legacy_root.rglob("*"):
+            if not source_path.is_file() or source_path.suffix.lower() not in {".cpp", ".hpp", ".glsl", ".comp", ".frag", ".vert", ".py"}:
+                continue
+            if source_path.resolve() == Path(__file__).resolve():
+                continue
+            source_text = source_path.read_text(encoding="utf-8")
+            for token in legacy_tokens:
+                if token in source_text:
+                    errors.append(f"legacy alias/token remains in {source_path.relative_to(ROOT)}: {token}")
+
+    beehive_glsl = (SHADERS / "beehive.glsl").read_text(encoding="utf-8")
+    for token in ("BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 28", "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 108", "BEEHIVE_EXIT_MAX_X = 12", "beehivePrefabMaterial"):
+        if token not in beehive_glsl:
+            errors.append(f"Fix28 Beehive contract missing {token!r}")
+
+    scene_image_cpp = (ROOT / "src/scene_image.cpp").read_text(encoding="utf-8")
+    for token in ("material_color.hpp", "material_editor_color", "material_from_editor_color"):
+        if token not in scene_image_cpp:
+            errors.append(f"paint-editable scene palette contract missing {token!r}")
+    if "% 224u" in scene_image_cpp or "scene_color(" in scene_image_cpp:
+        errors.append("obsolete hashed scene palette remains")
+
     ui_text = (SHADERS / "ui_text.glsl").read_text(encoding="utf-8")
     try:
         ui_storage = parse_generated_storage()
@@ -188,7 +218,7 @@ def main() -> int:
         errors.append("generated group map contains an invalid material ID")
     if len(group_values) != len(set(group_values)):
         errors.append("generated group map contains duplicate material IDs")
-    for forbidden in ("gold_ore", "iron_ore", "metal", "ally_bot", "enemy_bot", "bot_fabricator"):
+    for forbidden in ("gold_ore", "iron_shavings", "bee_nest", "metal", "ally_bot", "enemy_bot", "bot_fabricator"):
         if forbidden in cpp_ids:
             errors.append(f"retired material identifier remains: {forbidden}")
 
@@ -302,7 +332,7 @@ def main() -> int:
             errors.append(f"high-contrast debug contract missing {token!r}")
     if "COLOR KEY" not in (ROOT / "tools/generate_ui_text.py").read_text(encoding="utf-8"):
         errors.append("debug color-key text is missing")
-    for retired in ("MAT_METAL", "MAT_GOLD_ORE", "MAT_IRON_ORE", "MAT_ALLY_BOT", "MAT_ENEMY_BOT", "MAT_BOT_FABRICATOR"):
+    for retired in ("MAT_METAL", "MAT_GOLD_ORE", "MAT_ALLY_BOT", "MAT_ENEMY_BOT", "MAT_BOT_FABRICATOR"):
         for shader_name in ENTRY_SHADERS:
             if retired in (SHADERS / shader_name).read_text(encoding="utf-8"):
                 errors.append(f"{shader_name}: retired identifier remains: {retired}")
@@ -634,8 +664,8 @@ def main() -> int:
             errors.append(f"paired compost contract missing {token!r}")
     if "source.material == MAT_ASH && hasAnyWater" in chemistry:
         errors.append("ash still converts directly to fertilizer from arbitrary water contact")
-    if "MAT_GOLD_ORE" in reset or "MAT_IRON_ORE" in reset or "MAT_GOLD_ORE" in actor or "MAT_IRON_ORE" in actor:
-        errors.append("ore blocks remain in authored scenes or player mining")
+    if "MAT_GOLD_ORE" in reset or "MAT_GOLD_ORE" in actor:
+        errors.append("retired Gold Ore blocks remain in authored scenes or player mining")
     for token in ("previouslyDense", "tileOccupancy(previous) >= TILE_STABILITY_OCCUPANCY",
                   "dominantCount < TILE_MIN_COHESIVE_CELLS",
                    "structuralTile ? dominantCount"):
@@ -735,7 +765,7 @@ def main() -> int:
             errors.append(f"C++ solid tile policy contract missing {token!r}")
     if (ROOT / "tools/apply_terrain_stability_fix.py").exists():
         errors.append("obsolete terrain rewrite tool can restore pre-v2.4.9 tile behavior")
-    project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/v250-ci.yml"]
+    project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/ci-release.yml"]
     forbidden_branding = ("Epoch" + "SimEngine", "Epoch" + "Sand", "epoch" + "_sand", "namespace epoch" + "::sand", "include/epoch" + "/sand")
     for project_file in project_owned_files:
         source_text = project_file.read_text(encoding="utf-8")

@@ -352,13 +352,13 @@ vec4 worldColor(Cell cell, ivec2 grid) {
     bool metalSurface = cell.material == MAT_ALUMINUM || cell.material == MAT_IRON ||
                         cell.material == MAT_COPPER || cell.material == MAT_GOLD ||
                         cell.material == MAT_STEEL || cell.material == MAT_ALUMINUM_SHAVINGS ||
-                        cell.material == MAT_IRON_SHAVINGS;
+                        cell.material == MAT_IRON_ORE;
     if (metalSurface) {
         uint grainHash = hash32(uint(grid.x) * 73856093u ^ uint(grid.y) * 19349663u ^ cell.aux);
         float grain = float((grainHash >> 8u) & 31u) / 31.0 - 0.5;
         float brushed = ((grid.x + int(cell.age >> 4u)) & 7) == 0 ? 0.10 : 0.0;
         base.rgb = clamp(base.rgb * (0.88 + grain * 0.20) + vec3(brushed), 0.0, 1.0);
-        if (cell.material == MAT_IRON || cell.material == MAT_IRON_SHAVINGS)
+        if (cell.material == MAT_IRON || cell.material == MAT_IRON_ORE)
             base.rgb = mix(base.rgb, vec3(0.34, 0.20, 0.13), float((grainHash >> 16u) & 7u) / 42.0);
         if (cell.material == MAT_COPPER)
             base.rgb = mix(base.rgb, vec3(0.08, 0.42, 0.32), float((grainHash >> 20u) & 3u) / 24.0);

@@ -63,7 +63,7 @@ bool blocksActor(Cell cell) {
     bool loosePickup = !isStructural(cell) &&
         (cell.material == MAT_GOLD || cell.material == MAT_IRON ||
          cell.material == MAT_COPPER || cell.material == MAT_ALUMINUM ||
-         cell.material == MAT_ALUMINUM_SHAVINGS || cell.material == MAT_IRON_SHAVINGS ||
+         cell.material == MAT_ALUMINUM_SHAVINGS || cell.material == MAT_IRON_ORE ||
          cell.material == MAT_POWER_CELL || cell.material == MAT_PLASMA_AMMO);
     return !loosePickup;
 }
@@ -153,7 +153,7 @@ void collectResources(inout ActorState state) {
                 cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
                 markActorChunkDirty(p);
                 state.gold = min(state.gold + 1u, 9999u);
-            } else if (material == MAT_IRON || material == MAT_IRON_SHAVINGS || material == MAT_STEEL) {
+            } else if (material == MAT_IRON || material == MAT_IRON_ORE || material == MAT_STEEL) {
                 atomicAdd(conservation[CONS_CONVERTED], 1u);
                 cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
                 markActorChunkDirty(p);

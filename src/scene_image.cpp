@@ -1,6 +1,7 @@
 #include "sandhybrid/scene_image.hpp"
 
 #include "sandhybrid/material.hpp"
+#include "sandhybrid/material_color.hpp"
 
 #include <algorithm>
 #include <array>
@@ -31,22 +32,6 @@ constexpr std::uint32_t bee_target_none = 0xffffu;
 constexpr std::uint32_t bee_formation_count = 100u;
 constexpr std::uint32_t bee_metadata_mask = 0x00ffffffu;
 
-struct Rgb final {
-    std::uint8_t r{};
-    std::uint8_t g{};
-    std::uint8_t b{};
-};
-
-constexpr Rgb scene_color(const std::uint32_t material) noexcept {
-    if (material == 0u) return {};
-    // The red component is a permutation modulo 224, so every material ID in
-    // the current catalog has a unique, stable, lossless editor color.
-    return {
-        static_cast<std::uint8_t>(32u + (material * 73u) % 224u),
-        static_cast<std::uint8_t>(32u + (material * 151u) % 224u),
-        static_cast<std::uint8_t>(32u + (material * 199u) % 224u),
-    };
-}
 
 constexpr std::uint32_t hash32(std::uint32_t value) noexcept {
     value ^= value >> 16u;
@@ -102,7 +87,7 @@ std::uint32_t default_aux(const Material material, const std::uint32_t entropy) 
     case Material::waste:
     case Material::aluminum_shavings:
     case Material::gold:
-    case Material::iron_shavings:
+    case Material::iron_ore:
     case Material::iron:
     case Material::steel:
     case Material::power_cell:
@@ -170,22 +155,8 @@ bool read_token(std::istream& stream, std::string& token) {
     return static_cast<bool>(stream >> token);
 }
 
-std::uint32_t material_from_color(const Rgb color) noexcept {
-    std::uint32_t best = 0u;
-    std::uint32_t best_distance = std::numeric_limits<std::uint32_t>::max();
-    for (std::uint32_t material = 0u; material < material_count; ++material) {
-        const auto candidate = scene_color(material);
-        if (candidate.r == color.r && candidate.g == color.g && candidate.b == color.b) return material;
-        const auto dr = static_cast<int>(candidate.r) - static_cast<int>(color.r);
-        const auto dg = static_cast<int>(candidate.g) - static_cast<int>(color.g);
-        const auto db = static_cast<int>(candidate.b) - static_cast<int>(color.b);
-        const auto distance = static_cast<std::uint32_t>(dr * dr + dg * dg + db * db);
-        if (distance < best_distance) {
-            best_distance = distance;
-            best = material;
-        }
-    }
-    return best;
+std::uint32_t material_from_color(const Rgb8 color) noexcept {
+    return material_from_editor_color(color);
 }
 
 } // namespace
@@ -242,8 +213,8 @@ bool load_scene_ppm(const std::filesystem::path& path,
         return false;
     }
 
-    std::vector<Rgb> pixels(cells.size());
-    stream.read(reinterpret_cast<char*>(pixels.data()), static_cast<std::streamsize>(pixels.size() * sizeof(Rgb)));
+    std::vector<Rgb8> pixels(cells.size());
+    stream.read(reinterpret_cast<char*>(pixels.data()), static_cast<std::streamsize>(pixels.size() * sizeof(Rgb8)));
     if (!stream) {
         error = "scene image pixel data is truncated";
         return false;
@@ -371,7 +342,7 @@ bool save_scene_ppm(const std::filesystem::path& path,
     }
     stream << "P6\n" << width << ' ' << height << "\n255\n";
     for (const auto& cell : cells) {
-        const auto color = scene_color(cell.material < material_count ? cell.material : 0u);
+        const auto color = material_editor_color(cell.material < material_count ? cell.material : 0u);
         stream.write(reinterpret_cast<const char*>(&color), sizeof(color));
     }
     if (!stream) {
@@ -396,11 +367,11 @@ bool write_scene_material_key(const std::filesystem::path& directory, std::strin
         return false;
     }
     text << "SandHybrid PPM scene material key\n"
-            "Use exact colors for lossless editing. Non-key colors load as the nearest material.\n"
+            "Colors are stable representatives of the visible cell palette for ordinary Paint editing. Exact key colors are lossless; nearby colors load as the nearest material.\n"
             "Any structural material with fewer than 32 represented pixels in its aligned 8x8 region crumbles.\n\n";
     constexpr char hex[] = "0123456789ABCDEF";
     for (std::uint32_t material = 0u; material < material_count; ++material) {
-        const auto color = scene_color(material);
+        const auto color = material_editor_color(material);
         const std::array channels{color.r, color.g, color.b};
         text << material << "  #";
         for (const auto channel : channels) {
@@ -423,7 +394,7 @@ bool write_scene_material_key(const std::filesystem::path& directory, std::strin
     for (std::uint32_t y = 0u; y < height; ++y) {
         for (std::uint32_t x = 0u; x < width; ++x) {
             const auto material = (y / swatch) * columns + x / swatch;
-            const auto color = scene_color(material < material_count ? material : 0u);
+            const auto color = material_editor_color(material < material_count ? material : 0u);
             image.write(reinterpret_cast<const char*>(&color), sizeof(color));
         }
     }

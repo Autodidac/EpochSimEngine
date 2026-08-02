@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SandHybrid VERSION 2.5.1 LANGUAGES CXX)
+project(SandHybrid VERSION 2.5.2 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -174,6 +174,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
                     -o "${SHADER_OUTPUT}"
             DEPENDS "${SHADER_INPUT}" "${SHADER_SOURCE_DIR}/materials.glsl"
                     "${SHADER_SOURCE_DIR}/bee_swarm.glsl"
+                    "${SHADER_SOURCE_DIR}/beehive.glsl"
                     "${SHADER_SOURCE_DIR}/material_ids.glsl"
                     "${SHADER_SOURCE_DIR}/material_physics.glsl"
                     "${SHADER_SOURCE_DIR}/tiles.glsl"
@@ -252,6 +253,7 @@ set(SANDHYBRID_CORE_PUBLIC_HEADERS
     include/sandhybrid/input_routing.hpp
     include/sandhybrid/library.hpp
     include/sandhybrid/material.hpp
+    include/sandhybrid/material_color.hpp
     include/sandhybrid/scene.hpp
     include/sandhybrid/scene_image.hpp
     include/sandhybrid/section_grid.hpp
@@ -296,6 +298,12 @@ if(BUILD_TESTING)
     target_compile_features(sandhybrid_material_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_material_contract)
     add_test(NAME sandhybrid_material_contract COMMAND sandhybrid_material_contract)
+
+    add_executable(sandhybrid_material_color_contract tests/material_color_contract.cpp)
+    target_link_libraries(sandhybrid_material_color_contract PRIVATE SandHybrid::SandHybrid)
+    target_compile_features(sandhybrid_material_color_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_material_color_contract)
+    add_test(NAME sandhybrid_material_color_contract COMMAND sandhybrid_material_color_contract)
 
     add_executable(sandhybrid_behavior_contract tests/behavior_contract.cpp)
     target_include_directories(sandhybrid_behavior_contract PRIVATE include)

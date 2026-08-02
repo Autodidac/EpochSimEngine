@@ -95,7 +95,7 @@ void main() {
             halfWater = halfWater || isHalfWater(cell);
             ivec2 local = ivec2(x, y);
             if (cell.material == MAT_QUEEN_BEE) { if (!hasQueen) queenLocal = local; hasQueen = true; }
-            if (cell.material == MAT_BEE_NEST) hasHive = true;
+            if (cell.material == MAT_BEEHIVE) hasHive = true;
             if (cell.material == MAT_FLOWER) { if (!hasFlower) flowerLocal = local; hasFlower = true; }
             if (cell.material == MAT_HONEY) { if (!hasHoney) honeyLocal = local; hasHoney = true; }
             if (cell.material == MAT_BEE) {
@@ -103,7 +103,7 @@ void main() {
                 if ((cell.aux & AUX_CHARGED) != 0u) { if (!hasMigratingQueen) queenLocal = local; hasMigratingQueen = true; }
             }
             bool agent = cell.material == MAT_BEE || cell.material == MAT_QUEEN_BEE ||
-                         cell.material == MAT_BEE_NEST || cell.material == MAT_ANT ||
+                         cell.material == MAT_BEEHIVE || cell.material == MAT_ANT ||
                          cell.material == MAT_BEETLE || cell.material == MAT_SEED ||
                          cell.material == MAT_POLLEN;
             activeAgent = activeAgent || agent;

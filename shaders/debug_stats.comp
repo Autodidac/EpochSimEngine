@@ -34,7 +34,7 @@ void main() {
 
             if (cell.material == MAT_BEE) atomicAdd(debugStats[STAT_BEE_COUNT], 1u);
             else if (cell.material == MAT_QUEEN_BEE) atomicAdd(debugStats[STAT_QUEEN_COUNT], 1u);
-            else if (cell.material == MAT_BEE_NEST) atomicAdd(debugStats[STAT_NEST_COUNT], 1u);
+            else if (cell.material == MAT_BEEHIVE) atomicAdd(debugStats[STAT_NEST_COUNT], 1u);
             else if (cell.material == MAT_FLOWER) atomicAdd(debugStats[STAT_FLOWER_COUNT], 1u);
             else if (cell.material == MAT_POLLEN) atomicAdd(debugStats[STAT_POLLEN_COUNT], 1u);
             else if (cell.material == MAT_HONEY) atomicAdd(debugStats[STAT_HONEY_COUNT], 1u);

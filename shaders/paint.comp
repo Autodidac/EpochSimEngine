@@ -5,6 +5,7 @@
 #include "tiles.glsl"
 #include "chunks.glsl"
 #include "bee_swarm.glsl"
+#include "beehive.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
@@ -114,22 +115,10 @@ void main() {
 
     Cell cell;
     int colonySlot = -1;
-    if (material == MAT_BEE_NEST) {
-        // Exact pre-PR19 suspended hive used by the authored ecosystem scene.
-        bool supportBeam = p.x > center.x - 38 && p.x < center.x + 30 &&
-                           p.y > center.y - 17 && p.y < center.y - 12;
-        if (distanceSquared >= 25 && distanceSquared < 92) {
-            cell = makeCell(MAT_BEE_NEST);
-        } else if (all(equal(p, center))) {
-            cell = makeCell(MAT_QUEEN_BEE);
-        } else if (delta.x >= 1 && delta.x <= 10 && abs(delta.y) <= 1) {
-            cell = makeCell(MAT_EMPTY);
-        } else if (distanceSquared < 25) {
-            uint chamber = cellHash(p, 0xb33u);
-            cell = makeCell((chamber & 3u) == 0u ? MAT_EMPTY :
-                            (((chamber >> 2u) & 1u) == 0u ? MAT_HONEY : MAT_POLLEN));
-        } else if (supportBeam) {
-            cell = makeCell(MAT_WOOD);
+    if (material == MAT_BEEHIVE) {
+        uint prefab = beehivePrefabMaterial(delta, cellHash(p, 0xb33u));
+        if (prefab != MATERIAL_COUNT) {
+            cell = makeCell(prefab);
         } else {
             colonySlot = beeFormationSlotFromOffset(delta);
             if (colonySlot < 0) return;
