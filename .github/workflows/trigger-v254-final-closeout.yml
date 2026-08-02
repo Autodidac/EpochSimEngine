@@ -1,4 +1,5 @@
 name: Trigger v2.5.4 final closeout
+# Armed after the applicator workflow was added to the open PR.
 
 on:
   pull_request:
