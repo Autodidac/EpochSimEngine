@@ -158,6 +158,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         fullscreen.frag
     )
 
+    set(SHADER_OPTIMIZATION -O)
     set(SANDHYBRID_SHADER_BINARIES)
     foreach(SHADER_FILE IN LISTS SANDHYBRID_SHADER_SOURCES)
         set(SHADER_INPUT "${SHADER_SOURCE_DIR}/${SHADER_FILE}")
@@ -166,7 +167,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
             OUTPUT "${SHADER_OUTPUT}"
             COMMAND "${Vulkan_GLSLC_EXECUTABLE}"
                     --target-env=vulkan1.2
-                    -O
+                    ${SHADER_OPTIMIZATION}
                     -I "${SHADER_SOURCE_DIR}"
                     "${SHADER_INPUT}"
                     -o "${SHADER_OUTPUT}"
