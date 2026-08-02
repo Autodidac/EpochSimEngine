@@ -1,12 +1,13 @@
 SandHybrid scene images
 
 Each scene is stored as a binary PPM (P6) image for the editable 640x360 authored footprint.
-The authored footprint is horizontally centered at the top of the resident world, and the default camera starts there.
+The authored footprint is horizontally centered in the third resident camera row at world Y=720, where the crystal marker sits, and the default camera starts there. The two complete 640x360 rows above remain empty sky.
 
-F5 or the SAVE button writes only the current authored footprint. F9 or LOAD reads the selected scene image, places it at the same upper-center origin, and rebuilds the shared world outside it:
+F5 or the SAVE button writes only the current authored footprint. F9 or LOAD reads the selected scene image, places it at the same crystal-row origin, and rebuilds the shared world outside it:
 
+- two complete resident rows of empty sky above the scene;
 - one 8-cell Stone foundation at the authored-zone bottom;
-- three 640x360 subterranean zones containing Sand, Soil, Silt, Mud, and Stone;
+- one lower resident footprint containing Sand, Soil, Silt, Mud, and Stone;
 - one 8-cell Stone cap above the world-bottom Lava;
 - one 16-cell/two-brick Lava band;
 - one 8-cell Stone bottom shell and 8-cell Stone side shells.

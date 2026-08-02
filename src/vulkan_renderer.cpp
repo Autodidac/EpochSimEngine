@@ -1638,7 +1638,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         std::string key_error;
         if (!write_scene_material_key(scene_directory(), key_error))
             startup_log("Scene material-key warning: " + key_error);
-        startup_log("Loaded upper-center 640x360 scene image with common subterranean geology: " + path.string());
+        startup_log("Loaded crystal-row 640x360 scene image with common lower geology: " + path.string());
         return true;
     }
 
@@ -1664,7 +1664,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             throw std::runtime_error("Unable to save scene image: " + error);
         if (!write_scene_material_key(scene_directory(), error))
             throw std::runtime_error("Unable to save scene material key: " + error);
-        startup_log("Saved upper-center 640x360 authored scene image: " + path.string());
+        startup_log("Saved crystal-row 640x360 authored scene image: " + path.string());
     }
 
     void record_reset(const VkCommandBuffer command_buffer, const std::uint32_t scene_index) {
