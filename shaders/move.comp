@@ -449,12 +449,13 @@ bool movementAllows(Cell cell, uint randomValue) {
 }
 
 bool canCellFallInto(Cell moving, Cell target) {
-    if (isStructural(moving) || isCellImmovable(moving)) return false;
+    bool looseSolid = isLooseSolid(moving);
+    if (isStructural(moving) || (!looseSolid && isCellImmovable(moving))) return false;
     if (isOpenGas(target)) return true;
     if (isCellImmovable(target)) return false;
     if (moving.material == MAT_BEE || moving.material == MAT_QUEEN_BEE) return false;
     if (isCellGas(target) && !isCellGas(moving)) return true;
-    if (isCellPowder(moving) || isLooseSolid(moving)) {
+    if (isCellPowder(moving) || looseSolid) {
         return isCellLiquid(target) && effectiveDensity(moving) > effectiveDensity(target);
     }
     if (isCellLiquid(moving)) {

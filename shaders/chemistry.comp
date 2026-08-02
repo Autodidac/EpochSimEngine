@@ -857,12 +857,15 @@ void main() {
         uint limitedHealth = max(64u, tileOccupancy(tile) * 255u / TILE_STABILITY_OCCUPANCY);
         setStateValue(result, min(health, limitedHealth));
     }
-    if (tileHas(tile, TILE_STABLE) && !isStructural(source) &&
+    // Granular terrain may qualify for structural stability after settling,
+    // preserving the intended soil/sand/silt/salt/ice terrain behavior. Block-
+    // capable solids never regain structural state from tile metadata: dislodged
+    // stone, metals, glass, machines, and other blocks remain loose fine cells.
+    bool stableGranularTerrain = tileHas(tile, TILE_STABLE) && !isStructural(source) &&
         source.material == tile.material && source.material != MAT_EMPTY &&
-        !isCellGas(source) && !isCellLiquid(source)) {
-        // Stability qualification never creates, replaces, fills, or snaps cells.
-        // It marks only the already represented pixels coherent and supported.
-        // Material, temperature, age, random variation, and damage are preserved.
+        !isCellGas(source) && !isCellLiquid(source) &&
+        isReconstructableMaterial(source.material) && !isBlockCapable(source.material);
+    if (stableGranularTerrain) {
         result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
         result.aux &= ~AUX_MOVED;
     }

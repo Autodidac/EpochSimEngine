@@ -4,7 +4,11 @@
 const uint TILE_SIZE = 8u;
 const uint TILE_CELL_COUNT = 64u;
 const uint TILE_STABILITY_OCCUPANCY = 52u;
-const uint TILE_MIN_COHESIVE_CELLS = 32u;
+// 31 destroyed cells is 48.4375% of an 8x8 tile: the first representable
+// whole-cell count at or above the requested 48% destruction threshold.
+const uint TILE_DESTROYED_CELLS_TO_CRUMBLE = 31u;
+const uint TILE_MIN_COHESIVE_CELLS =
+    TILE_CELL_COUNT - TILE_DESTROYED_CELLS_TO_CRUMBLE + 1u;
 const uint TILE_COLLAPSE_OCCUPANCY = TILE_MIN_COHESIVE_CELLS;
 const uint TILE_STABILIZE_TICKS = 120u;
 const uint TILE_RESTABILIZE_COOLDOWN = 240u;
@@ -36,6 +40,9 @@ const uint TILE_MACRO_GAS = 0x00800000u;
 const uint TILE_MACRO_MOVED = 0x01000000u;
 const uint TILE_MEDIUM_ENCLOSED = 0x02000000u;
 const uint TILE_MEDIUM_BREAKUP = 0x04000000u;
+// Cohesive solid metadata for sleeping/debug only. This is never permission
+// to translate the represented 8x8 solid as one movement packet.
+const uint TILE_BULK_READY = 0x08000000u;
 
 struct TileState {
     uint material;

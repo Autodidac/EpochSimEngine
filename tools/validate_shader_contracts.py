@@ -429,13 +429,15 @@ def main() -> int:
         if re.search(rf"\b{forbidden}\b", strip_comments(combined), re.I):
             errors.append(f"placement-source physics identifier remains: {forbidden}")
 
-    stable_transition = chemistry.split("if (tileHas(tile, TILE_STABLE)", 1)[1].split(
-        "if (isStructural(source)", 1
-    )[0]
-    if "result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;" not in stable_transition:
-        errors.append("settled terrain is supported but never promoted to structural state")
-    if "setStateValue(result, 255u)" in stable_transition:
-        errors.append("stability qualification resets represented damage instead of preserving it")
+    # Stability promotion is valid only for granular terrain. Block-capable
+    # solids must remain loose after damage or support loss.
+    for token in (
+        "bool stableGranularTerrain = tileHas(tile, TILE_STABLE)",
+        "isReconstructableMaterial(source.material) && !isBlockCapable(source.material)",
+        "result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;",
+    ):
+        if token not in chemistry:
+            errors.append(f"granular terrain stability contract missing {token!r}")
     for token in (
         "bool unsupportedStructural = structuralTile && !physicallySupported;",
         "dominantCount < TILE_MIN_COHESIVE_CELLS || unsupportedStructural",
@@ -640,8 +642,23 @@ def main() -> int:
     for token in ("vec3(0.58, 0.20, 1.00)", "vec3(0.08, 0.96, 0.28)",
                   "value = min(value, 99999999u)", "separatorYs", "keyColorMap"):
         if token not in renderer: errors.append(f"v2.4.8 debug readability contract missing {token!r}")
-    for token in ("layout.atmosphere", "layout.eraser", "Material::empty"):
-        if token not in app_cpp: errors.append(f"distinct atmosphere/eraser input contract missing {token!r}")
+    for token in ("layout.atmosphere", "layout.fill", "layout.eraser",
+                  "Material::atmosphere", "Material::empty"):
+        if token not in app_cpp: errors.append(f"distinct atmosphere/fill/eraser input contract missing {token!r}")
+    if "contains(layout.atmosphere" in app_cpp and "contains(layout.fill" in app_cpp:
+        atmosphere_handler = app_cpp.split("contains(layout.atmosphere", 1)[1].split(
+            "contains(layout.fill", 1)[0]
+        if "fill_region" in atmosphere_handler:
+            errors.append("Atmosphere control must select balanced air without triggering Fill")
+    else:
+        errors.append("Atmosphere and Fill handlers are not both present")
+    if "contains(layout.fill" in app_cpp and "contains(layout.eraser" in app_cpp:
+        fill_handler = app_cpp.split("contains(layout.fill", 1)[1].split(
+            "contains(layout.eraser", 1)[0]
+        if "fill_region.store(true" not in fill_handler:
+            errors.append("Fill control does not trigger the region-fill command")
+    if "material == Material::atmosphere) cell.aux |= 54u" not in renderer_cpp:
+        errors.append("CPU Fill path does not preserve Atmosphere oxygen composition")
     material_header = (ROOT / 'include/sandhybrid/material.hpp').read_text(encoding='utf-8')
     if '"Soil"' not in material_header:
         errors.append("player-facing Soil material name is missing")
@@ -653,7 +670,46 @@ def main() -> int:
         if token not in movement: errors.append(f"wet-material density contract missing {token!r}")
     if "WET" not in labels:
         errors.append("derived wet material card label is missing")
-    project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/v248-ci.yml"]
+    tile_defs = (SHADERS / "tiles.glsl").read_text(encoding="utf-8")
+    macro_move_comp = (SHADERS / "macro_move.comp").read_text(encoding="utf-8")
+    for token in (
+        "TILE_DESTROYED_CELLS_TO_CRUMBLE = 31u",
+        "TILE_MIN_COHESIVE_CELLS =\n    TILE_CELL_COUNT - TILE_DESTROYED_CELLS_TO_CRUMBLE + 1u",
+        "TILE_BULK_READY = 0x08000000u",
+    ):
+        if token not in tile_defs: errors.append(f"48-percent solid-collapse contract missing {token!r}")
+    for token in (
+        "bool bulkReadySolid = fullRegion && isBlockCapable(dominant)",
+        "bool macroMovable = (macroLiquid || macroGas || macroPowder)",
+        "if (bulkReadySolid) flags |= TILE_MACRO_SOLID | TILE_BULK_READY;",
+    ):
+        if token not in tiles_comp: errors.append(f"solid tile classification contract missing {token!r}")
+    for token in (
+        "tileHas(state, TILE_MACRO_SOLID) || tileHas(state, TILE_BULK_READY)",
+        "if (isCellPowder(source))",
+    ):
+        if token not in macro_move_comp: errors.append(f"solid macro-movement rejection contract missing {token!r}")
+    if "isCellPowder(source) || isBlockCapable(source.material)" in macro_move_comp:
+        errors.append("block-capable solids can still displace as whole macro tiles")
+    for token in ("bool looseSolid = isLooseSolid(moving);",
+                  "(!looseSolid && isCellImmovable(moving))"):
+        if token not in move_comp: errors.append(f"fine-cell solid crumble contract missing {token!r}")
+    if "isReconstructableMaterial(source.material) && !isBlockCapable(source.material)" not in chemistry_comp:
+        errors.append("granular terrain stability is missing or block-capable promotion is not excluded")
+    if "TILE_BULK_READY) || tileHas(tile, TILE_MACRO_MOVABLE)" not in fullscreen:
+        errors.append("bulk-ready debug state is not decoupled from macro movement")
+    simulation_policy = (ROOT / "include/sandhybrid/simulation_policy.hpp").read_text(encoding="utf-8")
+    for token in (
+        "destroyed_cells_to_crumble = 31u",
+        "tile_cells - destroyed_cells_to_crumble + 1u",
+        "const bool block_capable = false",
+        "!structural && !reacting && !block_capable",
+    ):
+        if token not in simulation_policy:
+            errors.append(f"C++ solid tile policy contract missing {token!r}")
+    if (ROOT / "tools/apply_terrain_stability_fix.py").exists():
+        errors.append("obsolete terrain rewrite tool can restore pre-v2.4.9 tile behavior")
+    project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/v249-ci.yml"]
     forbidden_branding = ("Epoch" + "SimEngine", "Epoch" + "Sand", "epoch" + "_sand", "namespace epoch" + "::sand", "include/epoch" + "/sand")
     for project_file in project_owned_files:
         source_text = project_file.read_text(encoding="utf-8")

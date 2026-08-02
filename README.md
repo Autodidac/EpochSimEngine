@@ -152,7 +152,7 @@ The interface was rebuilt as a pixel-aligned EpochGui layout. The native title b
 - eight consistent material groups and slots
 - larger title, FPS, controls, palette labels, and character HUD
 - readable hover, selection, pause, brush, and character status
-- separate always-visible `ATMOSPHERE` and `ERASER` actions; `OXYGEN` remains an independent material
+- separate always-visible `ATMOSPHERE`, `F FILL`, and `ERASER` controls; `OXYGEN` remains an independent material
 - bottom-anchored debug state cards with real swatches and thin section dividers
 - inspection card separated from ordinary controls
 - `F3` debug controls visually separated from normal gameplay UI
@@ -183,9 +183,10 @@ All scenes use the same canonical material and structural rules.
 ### General
 
 - Default brush: square, size 2
-- `ATMOSPHERE`: fill balanced breathable air
+- `ATMOSPHERE`: select balanced breathable air for painting
+- `F FILL`: fill the active region with the currently selected material
 - `ERASER`: select vacuum/empty deletion
-- `OXYGEN`: selectable material in the Engineering group
+- `OXYGEN`: selectable pure-gas material in the Engineering group
 - `[` / `]`: previous or next scene
 - `R`: reset scene
 - Space: pause or resume
@@ -214,7 +215,7 @@ All scenes use the same canonical material and structural rules.
 - Build mode, right mouse: erase
 
 
-Balanced authored air and the large Atmosphere action use an append-only `Atmosphere` material/state with an approximately 21% breathable oxygen fraction. Pure Oxygen remains independently selectable.
+Balanced authored air and the Atmosphere tool use an append-only `Atmosphere` material/state with an approximately 21% breathable oxygen fraction. The separate Fill action fills with whichever material is currently selected. Pure Oxygen remains independently selectable.
 
 ## Windows launcher
 

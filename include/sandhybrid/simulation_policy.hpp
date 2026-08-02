@@ -22,7 +22,9 @@ inline constexpr std::uint32_t chunk_tile_count =
 inline constexpr std::uint32_t chunk_sleep_ticks = 30u;
 
 inline constexpr std::uint32_t stability_occupancy = 52u;
-inline constexpr std::uint32_t collapse_occupancy = tile_cells / 2u;
+inline constexpr std::uint32_t destroyed_cells_to_crumble = 31u;
+inline constexpr std::uint32_t collapse_occupancy =
+    tile_cells - destroyed_cells_to_crumble + 1u;
 inline constexpr std::uint32_t stability_ticks = 120u;
 inline constexpr std::uint32_t restabilization_cooldown_ticks = 240u;
 inline constexpr std::uint32_t terrain_cell_integrity = 255u;
@@ -55,9 +57,10 @@ inline constexpr std::uint32_t wet_density_bonus = 32u;
     const std::uint32_t represented_cells,
     const bool uniform_material,
     const bool structural,
-    const bool reacting) noexcept {
+    const bool reacting,
+    const bool block_capable = false) noexcept {
     return represented_cells == macro_tile_cells && uniform_material &&
- !structural && !reacting;
+           !structural && !reacting && !block_capable;
 }
 
 

@@ -549,21 +549,43 @@ void main() {
         uint eraserTop = paletteTop + palettePanelHeight + 3u;
         uint eraserBottom = eraserTop + 24u;
         uint utilityGap = 4u;
-        uint atmosphereRight = contentLeft + (contentWidth - utilityGap) / 2u;
-        uint eraserLeft = atmosphereRight + utilityGap;
+        uint utilityWidth = max((contentWidth - utilityGap * 2u) / 3u, 1u);
+        uint utilityLefts[3] = uint[3](
+            contentLeft,
+            contentLeft + utilityWidth + utilityGap,
+            contentLeft + (utilityWidth + utilityGap) * 2u);
+        uint utilityRights[3] = uint[3](
+            contentLeft + utilityWidth,
+            contentLeft + utilityWidth * 2u + utilityGap,
+            contentLeft + contentWidth);
+        uint utilityLabels[3] = uint[3](67u, 108u, 159u);
         if (y >= eraserTop && y < eraserBottom && x >= contentLeft && x < contentLeft + contentWidth) {
-            bool atmosphereButton = x < atmosphereRight;
-            uint left = atmosphereButton ? contentLeft : eraserLeft;
-            uint right = atmosphereButton ? atmosphereRight : contentLeft + contentWidth;
-            color = atmosphereButton ? vec3(0.08, 0.30, 0.46) :
-                    (renderPc.selectedMaterial == MAT_EMPTY ? vec3(0.62, 0.12, 0.16) : vec3(0.22, 0.055, 0.07));
-            if (borderPixel(x, y, left, eraserTop, right, eraserBottom)) color *= 0.55;
-            uint label = atmosphereButton ? 67u : 159u;
-            uint length = fixedTextLength(label);
-            int width = int(length) * 12 - 2;
-            if (fixedPixel(pixel, ivec2(int(left + (right - left) / 2u) - width / 2,
-                                        int(eraserTop + 5u)), 2, label)) color = vec3(1.0, 0.94, 0.94);
-            outColor = vec4(color, 1.0);
+            for (uint button = 0u; button < 3u; ++button) {
+                uint left = utilityLefts[button];
+                uint right = utilityRights[button];
+                if (x < left || x >= right) continue;
+                if (button == 0u) {
+                    color = renderPc.selectedMaterial == MAT_ATMOSPHERE
+                        ? vec3(0.10, 0.46, 0.68) : vec3(0.08, 0.30, 0.46);
+                } else if (button == 1u) {
+                    color = vec3(0.10, 0.38, 0.20);
+                } else {
+                    color = renderPc.selectedMaterial == MAT_EMPTY
+                        ? vec3(0.62, 0.12, 0.16) : vec3(0.22, 0.055, 0.07);
+                }
+                if (borderPixel(x, y, left, eraserTop, right, eraserBottom)) color *= 0.55;
+                uint label = utilityLabels[button];
+                uint length = fixedTextLength(label);
+                int scale = int(right - left) >= int(length) * 12 + 4 ? 2 : 1;
+                int width = int(length) * 6 * scale - scale;
+                if (fixedPixel(pixel, ivec2(int(left + (right - left) / 2u) - width / 2,
+                                            int(eraserTop + (24u - uint(7 * scale)) / 2u)),
+                               scale, label))
+                    color = vec3(1.0, 0.94, 0.94);
+                outColor = vec4(color, 1.0);
+                return;
+            }
+            outColor = vec4(vec3(0.015, 0.022, 0.032), 1.0);
             return;
         }
 
@@ -775,7 +797,7 @@ void main() {
             overlay = debugKeyColor(1u); alpha = 0.50;
         } else if (tileHas(tile, TILE_SETTLED_MEDIUM)) {
             overlay = debugKeyColor(5u); alpha = 0.46;
-        } else if (tileHas(tile, TILE_MACRO_MOVABLE)) {
+        } else if (tileHas(tile, TILE_BULK_READY) || tileHas(tile, TILE_MACRO_MOVABLE)) {
             overlay = debugKeyColor(4u); alpha = 0.44;
         } else if (tileHas(tile, TILE_MEDIUM_ENCLOSED)) {
             overlay = debugKeyColor(8u); alpha = 0.40;

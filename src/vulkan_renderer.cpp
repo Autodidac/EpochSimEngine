@@ -93,6 +93,7 @@ SceneCell make_fill_cell(const std::uint32_t material_id, const std::uint32_t in
              material == Material::silt || material == Material::fertilizer ||
              material == Material::food || material == Material::waste) cell.aux |= 255u;
     else if (material == Material::oxygen) cell.aux |= 220u;
+    else if (material == Material::atmosphere) cell.aux |= 54u;
     else if (material == Material::carbon_dioxide) cell.aux |= 180u;
     else if (material == Material::hydrogen) cell.aux |= 210u;
 
