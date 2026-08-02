@@ -1,0 +1,149 @@
+name: Apply durable structural ground deposits v2
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: durable-structural-deposits-v2-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/durable-structural-ground-deposits-v254'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply durable structural and geology changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import textwrap
+
+          source_workflow = Path('.github/workflows/apply-durable-structural-ground-deposits.yml')
+          text = source_workflow.read_text(encoding='utf-8')
+          marker = "          python3 - <<'PY'\n"
+          start = text.index(marker) + len(marker)
+          end = text.index("\n          PY", start)
+          script = textwrap.dedent(text[start:end])
+
+          world_start = script.index("old_world_tail = '''")
+          world_end_marker = "replace_once('include/sandhybrid/world_layout.hpp', old_world_tail, new_world_tail)"
+          world_end = script.index(world_end_marker, world_start) + len(world_end_marker)
+          world_patch = r'''
+          world_path = Path('include/sandhybrid/world_layout.hpp')
+          world_text = world_path.read_text(encoding='utf-8')
+          world_pattern = re.compile(
+              r"    if \(zone == 0u\) \{.*?    return Material::stone;\n\}",
+              re.S,
+          )
+          new_world_tail = """    Material geology = Material::stone;
+              if (zone == 0u) {
+              if (local_y < 96u) geology = Material::sand;
+              else if (local_y < 232u) geology = Material::dirt;
+              else if (((patch_x + patch_y * 3u) % 11u) == 0u) geology = Material::mud;
+              else geology = Material::silt;
+          } else if (zone == 1u) {
+              if (local_y < 104u) geology = Material::dirt;
+              else if (local_y < 248u) {
+                  geology = ((patch_x * 5u + patch_y) % 13u) == 0u
+                      ? Material::mud : Material::silt;
+              } else {
+                  geology = ((patch_x + patch_y) % 7u) == 0u
+                      ? Material::stone : Material::sand;
+              }
+          } else if (local_y < 80u) {
+              geology = ((patch_x * 3u + patch_y) % 9u) == 0u
+                  ? Material::mud : Material::silt;
+          } else if (local_y < 176u) {
+              geology = Material::dirt;
+          } else if (local_y < 224u && ((patch_x + patch_y * 2u) % 5u) == 0u) {
+              geology = Material::sand;
+          }
+              return resident_ground_deposit_material(geology, x, y, depth);
+          }"""
+          world_text, world_count = world_pattern.subn(new_world_tail, world_text, count=1)
+          if world_count != 1:
+              raise SystemExit(f'world geology replacement count was {world_count}')
+          world_path.write_text(world_text, encoding='utf-8')
+          '''
+          world_patch = textwrap.dedent(world_patch)
+          script = script[:world_start] + world_patch + script[world_end:]
+
+          glsl_start = script.index("old_glsl_tail = '''")
+          glsl_end_marker = "replace_once('shaders/reset.comp', old_glsl_tail, new_glsl_tail)"
+          glsl_end = script.index(glsl_end_marker, glsl_start) + len(glsl_end_marker)
+          glsl_patch = r'''
+          reset_path = Path('shaders/reset.comp')
+          reset_text = reset_path.read_text(encoding='utf-8')
+          reset_pattern = re.compile(
+              r"    if \(zone == 0\) \{.*?    return MAT_STONE;\n\}",
+              re.S,
+          )
+          new_glsl_tail = """    uint geology = MAT_STONE;
+              if (zone == 0) {
+              if (localY < 96) geology = MAT_SAND;
+              else if (localY < 232) geology = MAT_DIRT;
+              else if (((geologyPatch.x + geologyPatch.y * 3) % 11) == 0) geology = MAT_MUD;
+              else geology = MAT_SILT;
+          } else if (zone == 1) {
+              if (localY < 104) geology = MAT_DIRT;
+              else if (localY < 248)
+                  geology = ((geologyPatch.x * 5 + geologyPatch.y) % 13) == 0
+                      ? MAT_MUD : MAT_SILT;
+              else
+                  geology = ((geologyPatch.x + geologyPatch.y) % 7) == 0
+                      ? MAT_STONE : MAT_SAND;
+          } else if (localY < 80) {
+              geology = ((geologyPatch.x * 3 + geologyPatch.y) % 9) == 0
+                  ? MAT_MUD : MAT_SILT;
+          } else if (localY < 176) {
+              geology = MAT_DIRT;
+          } else if (localY < 224 && ((geologyPatch.x + geologyPatch.y * 2) % 5) == 0) {
+              geology = MAT_SAND;
+          }
+              return residentGroundDepositMaterial(geology, worldPosition, depth);
+          }"""
+          reset_text, reset_count = reset_pattern.subn(new_glsl_tail, reset_text, count=1)
+          if reset_count != 1:
+              raise SystemExit(f'GLSL geology replacement count was {reset_count}')
+          reset_path.write_text(reset_text, encoding='utf-8')
+          '''
+          glsl_patch = textwrap.dedent(glsl_patch)
+          script = script[:glsl_start] + glsl_patch + script[glsl_end:]
+
+          exec(compile(script, str(source_workflow), 'exec'))
+          Path('.github/workflows/apply-durable-structural-ground-deposits-v2.yml').unlink()
+          PY
+
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_shader_contracts.py
+
+          cmake -S . -B build/durable-contract -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DBUILD_TESTING=ON \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON
+          cmake --build build/durable-contract --parallel
+          ctest --test-dir build/durable-contract --output-on-failure
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'Keep structural tiles durable and seed ground deposits'
+          git push origin HEAD:${{ github.head_ref }}
