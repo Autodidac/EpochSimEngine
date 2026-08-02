@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sandhybrid-v252-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: sandhybrid-v253-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -22,10 +22,10 @@ jobs:
         include:
           - os: windows-2022
             triplet: x64-windows
-            artifact: SandHybrid-Windows-x64-v2.5.2
+            artifact: SandHybrid-Windows-x64-v2.5.3
           - os: ubuntu-24.04
             triplet: x64-linux
-            artifact: SandHybrid-Linux-x64-v2.5.2
+            artifact: SandHybrid-Linux-x64-v2.5.3
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
 
@@ -37,6 +37,12 @@ jobs:
 
       - name: Validate canonical mission cache
         run: python tools/validate_mission_cache.py
+
+      - name: Reject simulation coroutines
+        run: python tools/validate_no_simulation_coroutines.py
+
+      - name: Enforce SandHybrid branding
+        run: python tools/validate_project_branding.py
 
       - name: Install Linux host packages
         if: runner.os == 'Linux'
@@ -151,7 +157,7 @@ jobs:
         with:
           path: dist
 
-      - name: Publish v2.5.2 release
+      - name: Publish v2.5.3 release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -163,16 +169,16 @@ jobs:
             printf '%s\n' "${assets[@]}" >&2
             exit 1
           fi
-          if gh release view v2.5.2 >/dev/null 2>&1; then
-            gh release upload v2.5.2 "${assets[@]}" --clobber
-            gh release edit v2.5.2 \
-              --title 'SandHybrid v2.5.2' \
+          if gh release view v2.5.3 >/dev/null 2>&1; then
+            gh release upload v2.5.3 "${assets[@]}" --clobber
+            gh release edit v2.5.3 \
+              --title 'SandHybrid v2.5.3' \
               --notes-file CHANGELOG.md \
               --latest
           else
-            gh release create v2.5.2 "${assets[@]}" \
+            gh release create v2.5.3 "${assets[@]}" \
               --target "$GITHUB_SHA" \
-              --title 'SandHybrid v2.5.2' \
+              --title 'SandHybrid v2.5.3' \
               --notes-file CHANGELOG.md \
               --latest
           fi
@@ -182,3 +188,8 @@ jobs:
         run: |
           git push origin --delete agent/beehive-primary-cache-release-v252 || true
           git push origin --delete agent/scene-geology-stack-v251 || true
+          git push origin --delete agent/integrate-core-hygiene-release-v253 || true
+          git push origin --delete agent/finalize-missioncache-release-v253 || true
+          git push origin --delete agent/external-handoff-priority-note || true
+          git push origin --delete agent/tmp-noop || true
+          # Preserve agent/nonoverlap-core-hygiene per Adam's explicit instruction.
