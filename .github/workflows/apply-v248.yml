@@ -19,21 +19,22 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Apply and validate reviewed production payload
+      - name: Apply and validate reviewed production patch
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
           chunks=(.github/v248_final_chunk_*)
           if (( ${#chunks[@]} == 0 )); then
-            echo 'Final production payload already applied.'
+            echo 'Final production patch already applied.'
             exit 0
           fi
-          test "${#chunks[@]}" -eq 6
+          test "${#chunks[@]}" -eq 3
           cat "${chunks[@]}" > "${RUNNER_TEMP}/v248.b64"
-          base64 --decode "${RUNNER_TEMP}/v248.b64" > "${RUNNER_TEMP}/v248.tar.xz"
-          echo 'cc96cfdb8f1a3376cd6c64a83346308d34220a43c255d57e6247b0dd8a43d423  '"${RUNNER_TEMP}/v248.tar.xz" | sha256sum --check
-          tar --extract --xz --file "${RUNNER_TEMP}/v248.tar.xz" --directory .
+          base64 --decode "${RUNNER_TEMP}/v248.b64" > "${RUNNER_TEMP}/v248.patch.xz"
+          echo '96ea272d5cefd712b2399629a56e890dad82676fa1da9f98f7b0cb981013d5cd  '"${RUNNER_TEMP}/v248.patch.xz" | sha256sum --check
+          xz --decompress --stdout "${RUNNER_TEMP}/v248.patch.xz" > "${RUNNER_TEMP}/v248.patch"
+          git apply --index "${RUNNER_TEMP}/v248.patch"
           rm -f .github/v248_final_chunk_*
 
           python3 tools/generate_ui_text.py
