@@ -1,4 +1,4 @@
-name: Apply SandHybrid v2.4.9 Release Fixes
+name: Apply SandHybrid v2.5.0 Rewrite Foundation
 
 on:
   pull_request:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.head_ref == 'agent/atmosphere-fill-split-v249'
+    if: github.head_ref == 'agent/v250-section-grid-rewrite'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -19,37 +19,26 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Apply and validate release fixes
+      - name: Apply and validate rewrite foundation
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
-          scripts=(tools/apply_v249*.py)
+          scripts=(tools/apply_v250*.py)
           if [[ "${#scripts[@]}" -eq 0 ]]; then
-            echo 'All v2.4.9 release fixes are already applied.'
+            echo 'The v2.5.0 rewrite foundation is already applied.'
             exit 0
           fi
           for script in "${scripts[@]}"; do
             python3 "$script"
           done
 
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('tools/validate_shader_contracts.py')
-          text = path.read_text(encoding='utf-8')
-          text = text.replace('.github/workflows/v248-ci.yml', '.github/workflows/v249-ci.yml')
-          text = text.replace(
-              'if "material == Material::atmosphere) cell.aux |= 54u" not in renderer:',
-              'if "material == Material::atmosphere) cell.aux |= 54u" not in renderer_cpp:',
-          )
-          path.write_text(text, encoding='utf-8')
-          PY
-
           python3 tools/validate_shader_contracts.py
           python3 tools/validate_mission_cache.py
           cmake -S . -B build/contracts -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
             -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
             -DBUILD_TESTING=ON
           cmake --build build/contracts --parallel
@@ -57,11 +46,11 @@ jobs:
           rm -rf build/contracts
 
           if git diff --quiet; then
-            echo 'All v2.4.9 release fixes are already applied.'
+            echo 'The v2.5.0 rewrite foundation is already applied.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          git commit -m 'Apply SandHybrid v2.4.9 release fixes'
+          git commit -m 'Initiate sparse section-grid rewrite for v2.5.0'
           git push origin HEAD:${{ github.head_ref }}
