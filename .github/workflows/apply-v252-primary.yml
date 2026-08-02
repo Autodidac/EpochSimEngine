@@ -61,6 +61,14 @@ jobs:
               'ROOT / ".github/workflows/ci-release.yml"',
           )
           path.write_text(text, encoding="utf-8")
+
+          cache_validator = Path("tools/validate_mission_cache.py")
+          cache_text = cache_validator.read_text(encoding="utf-8")
+          cache_text = cache_text.replace(
+              'archive_start = text.index("# Archived release history")',
+              'archive_start = text.index("# Accepted foundations")',
+          )
+          cache_validator.write_text(cache_text, encoding="utf-8")
           PY
           rm -f tools/apply_v252*.py .github/workflows/apply-v252-primary.yml
 
