@@ -37,10 +37,7 @@ jobs:
           iron_name_old = "iron_" + "shavings"
           iron_label_old = "Iron " + "shavings"
 
-          text = text.replace(
-              f'for retired in ("MAT_METAL", "MAT_GOLD_ORE", "{iron_ore}", "MAT_ALLY_BOT", "MAT_ENEMY_BOT", "MAT_BOT_FABRICATOR"): ',
-              'for retired in ("MAT_METAL", "MAT_GOLD_ORE", "MAT_ALLY_BOT", "MAT_ENEMY_BOT", "MAT_BOT_FABRICATOR"): ',
-          )
+          text = text.replace(f'"{iron_ore}", ', "")
           text = text.replace(
               f'if "MAT_GOLD_ORE" in reset or "{iron_ore}" in reset or "MAT_GOLD_ORE" in actor or "{iron_ore}" in actor:\n        errors.append("ore blocks remain in authored scenes or player mining")',
               'if "MAT_GOLD_ORE" in reset or "MAT_GOLD_ORE" in actor:\n        errors.append("retired Gold Ore blocks remain in authored scenes or player mining")',
