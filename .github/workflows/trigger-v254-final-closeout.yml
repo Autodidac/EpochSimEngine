@@ -1,7 +1,9 @@
 name: Trigger v2.5.4 final closeout
-# Retry with anchored extraction of the staged Python heredoc.
+# Push-triggered so the branch can finish its own one-shot closeout.
 
 on:
+  push:
+    branches: [agent/durable-structural-ground-deposits-v254]
   pull_request:
     branches: [main]
 
@@ -9,19 +11,19 @@ permissions:
   contents: write
 
 concurrency:
-  group: trigger-v254-final-closeout-${{ github.event.pull_request.number }}
+  group: trigger-v254-final-closeout
   cancel-in-progress: true
 
 jobs:
   apply:
-    if: github.head_ref == 'agent/durable-structural-ground-deposits-v254'
+    if: github.ref == 'refs/heads/agent/durable-structural-ground-deposits-v254' || github.head_ref == 'agent/durable-structural-ground-deposits-v254'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: agent/durable-structural-ground-deposits-v254
           fetch-depth: 0
 
       - name: Run final closeout applicator
