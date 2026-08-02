@@ -323,16 +323,16 @@ bool load_scene_ppm(const std::filesystem::path& path,
     }
 
     normalize_fix28_hives(materials, width, height);
-    std::fill(counts.begin(), counts.end(), 0u);
+    std::fill(counts.begin(), counts.end(), std::uint16_t{0});
     for (std::uint32_t y = 0u; y < height; ++y) {
         for (std::uint32_t x = 0u; x < width; ++x) {
-  const auto index = static_cast<std::size_t>(y) * width + x;
-  const auto material = materials[index];
-  const auto typed = static_cast<Material>(material);
-  if (material != 0u && structural_candidate(typed)) {
-      const auto tile = static_cast<std::size_t>(y / tile_size) * tile_columns + x / tile_size;
-      ++counts[tile * material_count + material];
-  }
+            const auto index = static_cast<std::size_t>(y) * width + x;
+            const auto material = materials[index];
+            const auto typed = static_cast<Material>(material);
+            if (material != 0u && structural_candidate(typed)) {
+                const auto tile = static_cast<std::size_t>(y / tile_size) * tile_columns + x / tile_size;
+                ++counts[tile * material_count + material];
+            }
         }
     }
 
