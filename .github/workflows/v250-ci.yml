@@ -1,4 +1,4 @@
-name: SandHybrid v2.5.0 CI and Release
+name: SandHybrid v2.5.1 CI and Release
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sandhybrid-v250-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: sandhybrid-v251-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -22,10 +22,10 @@ jobs:
         include:
           - os: windows-2022
             triplet: x64-windows
-            artifact: SandHybrid-Windows-x64-v2.5.0
+            artifact: SandHybrid-Windows-x64-v2.5.1
           - os: ubuntu-24.04
             triplet: x64-linux
-            artifact: SandHybrid-Linux-x64-v2.5.0
+            artifact: SandHybrid-Linux-x64-v2.5.1
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
 
@@ -110,7 +110,7 @@ jobs:
 
       - name: Add package documentation
         shell: bash
-        run: cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md RELEASE_NOTES_v2.5.0.md "dist/${{ matrix.artifact }}/"
+        run: cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md RELEASE_NOTES_v2.5.1.md "dist/${{ matrix.artifact }}/"
 
       - name: Archive Windows package
         if: runner.os == 'Windows'
@@ -151,7 +151,7 @@ jobs:
         with:
           path: dist
 
-      - name: Publish v2.5.0 release
+      - name: Publish v2.5.1 release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -163,27 +163,20 @@ jobs:
             printf '%s\n' "${assets[@]}" >&2
             exit 1
           fi
-          if gh release view v2.5.0 >/dev/null 2>&1; then
-            gh release upload v2.5.0 "${assets[@]}" --clobber
-            gh release edit v2.5.0 \
-              --title 'SandHybrid v2.5.0' \
-              --notes-file RELEASE_NOTES_v2.5.0.md \
+          if gh release view v2.5.1 >/dev/null 2>&1; then
+            gh release upload v2.5.1 "${assets[@]}" --clobber
+            gh release edit v2.5.1 \
+              --title 'SandHybrid v2.5.1' \
+              --notes-file RELEASE_NOTES_v2.5.1.md \
               --latest
           else
-            gh release create v2.5.0 "${assets[@]}" \
+            gh release create v2.5.1 "${assets[@]}" \
               --target "$GITHUB_SHA" \
-              --title 'SandHybrid v2.5.0' \
-              --notes-file RELEASE_NOTES_v2.5.0.md \
+              --title 'SandHybrid v2.5.1' \
+              --notes-file RELEASE_NOTES_v2.5.1.md \
               --latest
           fi
 
-      - name: Remove completed agent branches
+      - name: Remove completed agent branch
         shell: bash
-        run: |
-          set -euo pipefail
-          for branch in \
-            agent/complete-sandhybrid-library \
-            agent/atmosphere-fill-split-v249 \
-            agent/v250-section-grid-rewrite; do
-            git push origin --delete "$branch" || true
-          done
+        run: git push origin --delete agent/scene-geology-stack-v251 || true
