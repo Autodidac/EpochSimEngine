@@ -51,9 +51,14 @@ jobs:
           ctest --test-dir build/contracts --output-on-failure
           rm -rf build/contracts
 
-          git checkout origin/main -- .github/workflows
+          git restore --source=origin/main --staged --worktree .github/workflows
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
+          git status --short
+          if git diff --cached --quiet; then
+            echo 'No production changes remained after validation.' >&2
+            exit 1
+          fi
           git commit -m 'Complete SandHybrid v2.4.8 broad release pass'
           git push origin HEAD:${{ github.head_ref }}
