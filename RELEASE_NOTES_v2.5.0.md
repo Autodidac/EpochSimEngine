@@ -42,4 +42,4 @@ SandHybrid v2.5.0 establishes the reusable library architecture and starts the p
 
 ## Validation gate
 
-Publication requires shader/generated-source contracts, mission-cache validation, C++23 warnings-as-errors builds, all deterministic tests, downstream package installation/use, and complete Windows 2022 and Ubuntu 24.04 Vulkan Release package builds from the exact final source head.
+Publication requires shader/generated-source contracts, mission-cache validation, C++23 warnings-as-errors builds, all deterministic tests, downstream package installation/use, and complete Windows 2022 and Ubuntu 24.04 Vulkan Release package builds from the exact final PR source head.
