@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.head_ref == 'agent/v248-final'
+    if: github.head_ref == 'agent/soil-debug-wet-ui-v248'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -27,7 +27,6 @@ jobs:
           chunks=(.github/v248_final_chunk_*)
           if (( ${#chunks[@]} == 0 )); then
             echo 'Final production patch already applied.'
-            rm -f .github/v248_sync_trigger
             exit 0
           fi
           test "${#chunks[@]}" -eq 3
