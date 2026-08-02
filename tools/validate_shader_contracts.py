@@ -709,7 +709,7 @@ def main() -> int:
             errors.append(f"C++ solid tile policy contract missing {token!r}")
     if (ROOT / "tools/apply_terrain_stability_fix.py").exists():
         errors.append("obsolete terrain rewrite tool can restore pre-v2.4.9 tile behavior")
-    project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/v249-ci.yml"]
+    project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/v250-ci.yml"]
     forbidden_branding = ("Epoch" + "SimEngine", "Epoch" + "Sand", "epoch" + "_sand", "namespace epoch" + "::sand", "include/epoch" + "/sand")
     for project_file in project_owned_files:
         source_text = project_file.read_text(encoding="utf-8")

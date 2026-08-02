@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sandhybrid/scene_image.hpp"
+#include "sandhybrid/section_grid.hpp"
 #include "sandhybrid/section_scheduler.hpp"
 
 #include <cstdint>
@@ -8,7 +9,7 @@
 
 namespace sandhybrid {
 
-inline constexpr std::uint32_t library_api_version = 1u;
+inline constexpr std::uint32_t library_api_version = 2u;
 inline constexpr std::string_view library_name = "SandHybrid";
 
 struct LibraryCapabilities final {

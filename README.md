@@ -11,6 +11,10 @@ SandHybrid is currently a standalone C++23 Vulkan material, terrain, ecology, fa
 - CMake 3.28+ with a pinned vcpkg manifest
 - No SDL, GLFW, ImGui, Boost, or proprietary runtime framework
 
+## Production rewrite
+
+The reusable library now contains the first production rewrite primitive: a sparse 64x64 section grid with dirty rectangles, safe non-touching phases, halo wakeups, sleeping, and 512x512 streaming-page coordinates. See `REWRITE_PLAN.md`. The existing Vulkan runtime remains available during staged parity migration.
+
 ## Canonical material state
 
 Material behavior is determined by the material ID, current temperature, phase, packed physical state, and local environment. Placement provenance is not part of the physics contract.
