@@ -1,0 +1,78 @@
+name: Fix v2.5.4 MSVC narrowing
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-v254-msvc-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    if: github.head_ref == 'agent/durable-structural-ground-deposits-v254'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Fix uint16 fill and validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/scene_image.cpp')
+          text = path.read_text(encoding='utf-8')
+          old = '    std::fill(counts.begin(), counts.end(), 0u);\n'
+          new = '    std::fill(counts.begin(), counts.end(), std::uint16_t{0});\n'
+          if old not in text:
+              raise SystemExit('scene-image count reset marker missing')
+          text = text.replace(old, new, 1)
+          text = text.replace(
+              '        for (std::uint32_t x = 0u; x < width; ++x) {\n'
+              '  const auto index = static_cast<std::size_t>(y) * width + x;\n'
+              '  const auto material = materials[index];\n'
+              '  const auto typed = static_cast<Material>(material);\n'
+              '  if (material != 0u && structural_candidate(typed)) {\n'
+              '      const auto tile = static_cast<std::size_t>(y / tile_size) * tile_columns + x / tile_size;\n'
+              '      ++counts[tile * material_count + material];\n'
+              '  }\n'
+              '        }\n',
+              '        for (std::uint32_t x = 0u; x < width; ++x) {\n'
+              '            const auto index = static_cast<std::size_t>(y) * width + x;\n'
+              '            const auto material = materials[index];\n'
+              '            const auto typed = static_cast<Material>(material);\n'
+              '            if (material != 0u && structural_candidate(typed)) {\n'
+              '                const auto tile = static_cast<std::size_t>(y / tile_size) * tile_columns + x / tile_size;\n'
+              '                ++counts[tile * material_count + material];\n'
+              '            }\n'
+              '        }\n',
+              1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          cmake -S . -B build/msvc-fix -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DBUILD_TESTING=ON \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON
+          cmake --build build/msvc-fix --parallel
+          ctest --test-dir build/msvc-fix --output-on-failure
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/scene_image.cpp
+          git commit -m 'Fix MSVC scene-image count reset narrowing'
+          git push origin HEAD:${{ github.head_ref }}
