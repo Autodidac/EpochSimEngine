@@ -31,9 +31,9 @@ jobs:
             exit 0
           fi
           cat "${chunks[@]}" > "${RUNNER_TEMP}/v248.b64"
-          base64 --decode "${RUNNER_TEMP}/v248.b64" > "${RUNNER_TEMP}/v248.tar.gz"
-          echo 'c81a824a66a0274403be5f020ba90da3fef869fd9582626ecc3df0b1e172499a  '"${RUNNER_TEMP}/v248.tar.gz" | sha256sum --check
-          tar --extract --gzip --file "${RUNNER_TEMP}/v248.tar.gz" --directory .
+          base64 --decode "${RUNNER_TEMP}/v248.b64" > "${RUNNER_TEMP}/v248.tar.xz"
+          echo 'c86d5691a4e81b0e0c4ce7687925ee772a60d081d2ed3bc4aa1270c41437bd24  '"${RUNNER_TEMP}/v248.tar.xz" | sha256sum --check
+          tar --extract --xz --file "${RUNNER_TEMP}/v248.tar.xz" --directory .
           rm -f .github/v248_chunk_*
 
           python3 tools/generate_ui_text.py
