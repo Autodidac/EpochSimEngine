@@ -1,0 +1,67 @@
+name: Fix SandHybrid v2.4.8 Atmosphere Density
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'agent/soil-debug-wet-ui-v248'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Add Atmosphere density and validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('shaders/move.comp')
+          text = path.read_text(encoding='utf-8')
+          old = '      1u, 210u\n);'
+          new = '      1u, 210u,   2u\n);'
+          if old in text:
+              text = text.replace(old, new, 1)
+              path.write_text(text, encoding='utf-8')
+          elif new not in text:
+              raise SystemExit('Expected density-table tail was not found')
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path('shaders/move.comp').read_text(encoding='utf-8')
+          body = text.split('const uint MATERIAL_DENSITY[MATERIAL_COUNT] = uint[](', 1)[1].split(');', 1)[0]
+          values = re.findall(r'\b\d+u\b', body)
+          if len(values) != 67:
+              raise SystemExit(f'Expected 67 material densities, found {len(values)}')
+          print('Validated 67 material density entries.')
+          PY
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          cmake -S . -B build/contracts -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build/contracts --parallel
+          ctest --test-dir build/contracts --output-on-failure
+          rm -rf build/contracts
+
+          if git diff --quiet; then
+            echo 'Atmosphere density fix already applied.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add shaders/move.comp
+          git commit -m 'Add Atmosphere density to movement table'
+          git push origin HEAD:${{ github.head_ref }}
