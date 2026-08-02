@@ -23,17 +23,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          applied=0
-          for script in tools/apply_v249.py tools/apply_v249_solid_policy.py; do
-            if [[ -f "$script" ]]; then
-              python3 "$script"
-              applied=1
-            fi
-          done
-          if [[ "$applied" -eq 0 ]]; then
+          shopt -s nullglob
+          scripts=(tools/apply_v249*.py)
+          if [[ "${#scripts[@]}" -eq 0 ]]; then
             echo 'All v2.4.9 release fixes are already applied.'
             exit 0
           fi
+          for script in "${scripts[@]}"; do
+            python3 "$script"
+          done
 
           python3 - <<'PY'
           from pathlib import Path
