@@ -1,0 +1,59 @@
+name: Finalize v2.5.6 water and atmosphere fix
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-v256-water-air-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.head_ref == 'agent/debug-map-inventory-v256'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/debug-map-inventory-v256
+          fetch-depth: 0
+
+      - name: Apply water and atmosphere patch
+        run: python3 tools/apply_v256_water_air.py
+
+      - name: Validate source and headless contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/validate_shader_contracts.py
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+          cmake -S . -B build/water-air -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build/water-air --parallel
+          ctest --test-dir build/water-air --output-on-failure
+
+      - name: Commit permanent source and remove applicators
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm -f \
+            .github/workflows/apply-v256-water-air-pr.yml \
+            .github/workflows/apply-v256-water-air-fix.yml \
+            tools/apply_v256_water_air.py
+          git add shaders/move.comp shaders/tiles.comp shaders/fullscreen.frag \
+            tools/validate_shader_contracts.py missioncache.md CHANGELOG.md
+          git commit -m 'Fix v2.5.6 Water and Atmosphere regressions'
+          git push origin HEAD:agent/debug-map-inventory-v256
