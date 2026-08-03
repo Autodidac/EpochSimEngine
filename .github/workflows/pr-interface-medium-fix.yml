@@ -22,7 +22,9 @@ jobs:
           ref: agent/debug-map-inventory-v256
 
       - name: Apply interface and medium correction
-        run: python3 tools/v256_interface_medium_fix.py
+        run: |
+          python3 tools/v256_interface_medium_fix.py
+          python3 tools/v256_validator_dimensions_fix.py
 
       - name: Validate source contracts
         run: |
@@ -41,7 +43,7 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git rm -f tools/v256_interface_medium_fix.py
+          git rm -f tools/v256_interface_medium_fix.py tools/v256_validator_dimensions_fix.py
           git add -A
           git commit -m "Fix medium regressions and redesign the editor sidebar"
           git push origin HEAD:agent/debug-map-inventory-v256
