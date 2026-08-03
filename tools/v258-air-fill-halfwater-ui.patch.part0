@@ -1,0 +1,240 @@
+diff --git a/.github/workflows/ci-release.yml b/.github/workflows/ci-release.yml
+index 6a16154..f41a90a 100644
+--- a/.github/workflows/ci-release.yml
++++ b/.github/workflows/ci-release.yml
+@@ -11,7 +11,7 @@ permissions:
+   contents: write
+ 
+ concurrency:
+-  group: sandhybrid-v257-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
++  group: sandhybrid-v258-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+   cancel-in-progress: true
+ 
+ jobs:
+@@ -22,10 +22,10 @@ jobs:
+         include:
+           - os: windows-2022
+             triplet: x64-windows
+-            artifact: SandHybrid-Windows-x64-v2.5.7
++            artifact: SandHybrid-Windows-x64-v2.5.8
+           - os: ubuntu-24.04
+             triplet: x64-linux
+-            artifact: SandHybrid-Linux-x64-v2.5.7
++            artifact: SandHybrid-Linux-x64-v2.5.8
+     runs-on: ${{ matrix.os }}
+     timeout-minutes: 90
+ 
+@@ -116,7 +116,7 @@ jobs:
+ 
+       - name: Add package documentation
+         shell: bash
+-        run: cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md CHANGELOG.md MAP_VIEW.md SCENE_LAYOUT.md RELEASE_NOTES_v2.5.7.md "dist/${{ matrix.artifact }}/"
++        run: cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md CHANGELOG.md MAP_VIEW.md SCENE_LAYOUT.md RELEASE_NOTES_v2.5.8.md "dist/${{ matrix.artifact }}/"
+ 
+       - name: Archive Windows package
+         if: runner.os == 'Windows'
+@@ -157,7 +157,7 @@ jobs:
+         with:
+           path: dist
+ 
+-      - name: Publish v2.5.7 release
++      - name: Publish v2.5.8 release
+         shell: bash
+         env:
+           GH_TOKEN: ${{ github.token }}
+@@ -169,22 +169,22 @@ jobs:
+             printf '%s\n' "${assets[@]}" >&2
+             exit 1
+           fi
+-          if gh release view v2.5.7 >/dev/null 2>&1; then
+-            gh release upload v2.5.7 "${assets[@]}" --clobber
+-            gh release edit v2.5.7 \
+-              --title 'SandHybrid v2.5.7' \
+-              --notes-file RELEASE_NOTES_v2.5.7.md \
++          if gh release view v2.5.8 >/dev/null 2>&1; then
++            gh release upload v2.5.8 "${assets[@]}" --clobber
++            gh release edit v2.5.8 \
++              --title 'SandHybrid v2.5.8' \
++              --notes-file RELEASE_NOTES_v2.5.8.md \
+               --latest
+           else
+-            gh release create v2.5.7 "${assets[@]}" \
++            gh release create v2.5.8 "${assets[@]}" \
+               --target "$GITHUB_SHA" \
+-              --title 'SandHybrid v2.5.7' \
+-              --notes-file RELEASE_NOTES_v2.5.7.md \
++              --title 'SandHybrid v2.5.8' \
++              --notes-file RELEASE_NOTES_v2.5.8.md \
+               --latest
+           fi
+ 
+       - name: Remove completed agent branch
+         shell: bash
+         run: |
+-          git push origin --delete agent/v257-air-water-equilibrium || true
++          git push origin --delete agent/v258-air-fill-halfwater-ui || true
+           # Preserve agent/nonoverlap-core-hygiene per Adam's explicit instruction.
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 45b3d48..828cdb4 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,3 +1,12 @@
++# Changelog
++
++## 2.5.8
++
++- Split cursor Air flood fill from the new Heat-category `IGNITE AIR` world action.
++- Renamed the visible Atmosphere utility control to Air while retaining the Atmosphere material-card identity.
++- Isolated Half Water from ambient-Air pressure bookkeeping and restored canonical Air after consolidation.
++- Widened the sidebar and moved the Cursor/card stack below the complete keymap to remove overlap.
++
+ ## 2.5.7
+ 
+ - Keeps exposed Water and Atmosphere fine-grained while retaining enclosed-medium sleep metadata.
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index afb8925..1973f24 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,6 +1,6 @@
+ cmake_minimum_required(VERSION 3.28)
+ 
+-project(SandHybrid VERSION 2.5.7 LANGUAGES CXX)
++project(SandHybrid VERSION 2.5.8 LANGUAGES CXX)
+ 
+ include(CTest)
+ include(GNUInstallDirs)
+diff --git a/HALF_WATER.md b/HALF_WATER.md
+index 1d04610..aa237f1 100644
+--- a/HALF_WATER.md
++++ b/HALF_WATER.md
+@@ -18,3 +18,7 @@ All other material behavior remains unchanged.
+ ## v2.4.0 settling
+ 
+ Equal-level random water hopping is removed. Half cells retain conserved displaced gas, merge when adjacent, and use stronger presentation coverage without changing represented volume. They do not chase one another across exposed surfaces. Full uniform liquid regions are decided by the 8x8 macro hierarchy; mixed edges are repaired periodically by the fine pass.
++## Ambient Air isolation
++
++When Water splits into two Half Water ledge cells against balanced Air, the Air is represented only by a zero-pressure marker. It does not occupy Half Water pressure/state bits, cannot displace the Half Water, and restores as canonical Air when the halves consolidate. Non-Air excess gases retain their represented volume.
++
+diff --git a/RELEASE_NOTES_v2.5.8.md b/RELEASE_NOTES_v2.5.8.md
+new file mode 100644
+index 0000000..f7a3c0b
+--- /dev/null
++++ b/RELEASE_NOTES_v2.5.8.md
+@@ -0,0 +1,7 @@
++# SandHybrid v2.5.8
++
++- `FILL` and the `F` modifier now flood the cursor-connected region with balanced Air instead of inheriting Fire or another selected material.
++- The Heat category now includes `IGNITE AIR`, seeded from the upper-leftmost Air cell in the resident world.
++- Visible controls say Air; the inspected material card remains canonically Atmosphere.
++- Half Water no longer stores ambient-Air pressure in its aux state and restores canonical Air when halves consolidate.
++- The sidebar is slightly wider, the full keymap has dedicated height, and the Cursor/material-card stack starts lower without overlap.
+diff --git a/include/sandhybrid/shared_state.hpp b/include/sandhybrid/shared_state.hpp
+index c3e9bb5..5b1e30c 100644
+--- a/include/sandhybrid/shared_state.hpp
++++ b/include/sandhybrid/shared_state.hpp
+@@ -21,6 +21,7 @@ struct SharedState final {
+     std::atomic_bool save_scene_image{false};
+     std::atomic_bool load_scene_image{false};
+     std::atomic_bool fill_region{false};
++    std::atomic_bool ignite_air{false};
+ 
+     std::atomic_uint32_t window_width{1280};
+     std::atomic_uint32_t window_height{720};
+diff --git a/include/sandhybrid/simulation_policy.hpp b/include/sandhybrid/simulation_policy.hpp
+index ce29586..e3998dc 100644
+--- a/include/sandhybrid/simulation_policy.hpp
++++ b/include/sandhybrid/simulation_policy.hpp
+@@ -38,6 +38,8 @@ inline constexpr std::uint32_t water_half_units_per_full_cell = 2u;
+ inline constexpr std::uint32_t water_ledge_release_units = 3u;
+ inline constexpr std::uint32_t water_full_horizontal_passes = 4u;
+ inline constexpr std::uint32_t water_half_horizontal_passes = 8u;
++inline constexpr std::uint32_t canonical_air_state = 220u;
++inline constexpr bool half_water_stores_ambient_air_pressure = false;
+ inline constexpr std::uint32_t sunlight_update_interval = 4u;
+ inline constexpr std::uint32_t vent_eruption_pressure = 220u;
+ inline constexpr std::uint32_t vent_gas_release_pressure = 72u;
+diff --git a/include/sandhybrid/ui_layout.hpp b/include/sandhybrid/ui_layout.hpp
+index 89b8360..ff41e78 100644
+--- a/include/sandhybrid/ui_layout.hpp
++++ b/include/sandhybrid/ui_layout.hpp
+@@ -6,13 +6,13 @@
+ #include <cstdint>
+ 
+ namespace sandhybrid::ui {
+-inline constexpr std::uint32_t preferred_sidebar_width = 384u;
+-inline constexpr std::uint32_t minimum_sidebar_width = 300u;
++inline constexpr std::uint32_t preferred_sidebar_width = 424u;
++inline constexpr std::uint32_t minimum_sidebar_width = 320u;
+ inline constexpr std::uint32_t status_height = 208u;
+ inline constexpr std::uint32_t group_tabs_height = 96u;
+ inline constexpr std::uint32_t palette_items_height = 124u;
+ inline constexpr std::uint32_t eraser_height = 34u;
+-inline constexpr std::uint32_t keymap_height = 98u;
++inline constexpr std::uint32_t keymap_height = 124u;
+ inline constexpr std::uint32_t cursor_editor_height = 112u;
+ inline constexpr std::uint32_t palette_height = 0u;
+ inline constexpr float margin = 5.0f;
+@@ -172,10 +172,17 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
+             {(std::max)(1.0f, cell_width - gap), (std::max)(1.0f, cell_height - gap)}};
+ }
+ 
++inline constexpr MaterialGroup ignite_air_group = MaterialGroup::fire_chemistry;
++
++[[nodiscard]] inline constexpr std::uint32_t palette_item_count(
++    const MaterialGroup group) noexcept {
++    return material_group_size(group) + (group == ignite_air_group ? 1u : 0u);
++}
++
+ [[nodiscard]] inline epochengine::gui_lib::Rect palette_item_rect(
+     const Layout& layout, MaterialGroup group, std::uint32_t index) noexcept {
+     constexpr std::uint32_t columns = 2u;
+-    const auto count = (std::max)(material_group_size(group), 1u);
++    const auto count = (std::max)(palette_item_count(group), 1u);
+     const auto rows = (count + columns - 1u) / columns;
+     const auto column = index % columns;
+     const auto row = index / columns;
+@@ -194,7 +201,7 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
+ 
+ [[nodiscard]] inline std::uint32_t palette_slot_at(
+     const Layout& layout, MaterialGroup group, epochengine::gui_lib::Vec2 point) noexcept {
+-    const auto count = material_group_size(group);
++    const auto count = palette_item_count(group);
+     for (std::uint32_t index = 0u; index < count; ++index)
+         if (epochengine::gui_lib::contains(palette_item_rect(layout, group, index), point)) return index;
+     return count;
+@@ -206,6 +213,13 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
+     return slot < material_group_size(group) ? grouped_material(group, slot) : Material::count;
+ }
+ 
++[[nodiscard]] inline bool ignite_air_action_at(
++    const Layout& layout, const MaterialGroup group,
++    const epochengine::gui_lib::Vec2 point) noexcept {
++    return group == ignite_air_group &&
++           palette_slot_at(layout, group, point) == material_group_size(group);
++}
++
+ [[nodiscard]] inline epochengine::gui_lib::Rect inventory_slot_rect(
+     const Layout& layout, const std::uint32_t window_height,
+     const std::uint32_t index) noexcept {
+diff --git a/missioncache.md b/missioncache.md
+index 7158f9a..dd1c30b 100644
+--- a/missioncache.md
++++ b/missioncache.md
+@@ -11,13 +11,13 @@ Before changing code:
+ 5. Verify Windows and Linux Release builds before publishing.
+ 6. Move a mission to the archive only after acceptance passes. Runtime contradiction reopens the same ID.
+ 7. During each broad pass, attempt every active mission once. Anything unfinished or runtime-unverified remains active with evidence.
+-8. This v2.5.7 pass reviewed every active row and directly attempted the current air, water, lava, vent, geology, trap, scene, and debug-telemetry regressions. Work without packaged interactive observation remains `OPEN`, `PARTIAL`, `REGRESSION`, or `DEFERRED`; no item is silently omitted or falsely closed.
++8. This v2.5.8 pass reviewed every active row and directly attempted Air fill/ignition separation, Half Water ambient-Air isolation, sidebar overlap, and the carried air, water, lava, vent, geology, trap, scene, and debug-telemetry regressions. Work without packaged interactive observation remains `OPEN`, `PARTIAL`, `REGRESSION`, or `DEFERRED`; no item is silently omitted or falsely closed.
+ 
+ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
+ 
+ ## Priority lanes
+ 
+-- **P0 / primary release gate:** MC-012, MC-013, MC-017, MC-018, MC-026, MC-031, MC-032, MC-038, MC-039, MC-068, MC-074, MC-079, MC-084, MC-097, MC-104, MC-105, MC-106, MC-107, MC-112, MC-113, MC-114, MC-115, MC-116, MC-118, MC-119, MC-120, MC-122, MC-123, MC-124, and MC-125. These are the current release blockers and must pass deterministic contracts plus Windows/Linux Release packaging before publication.
++- **P0 / primary release gate:** MC-012, MC-013, MC-017, MC-018, MC-026, MC-031, MC-032, MC-038, MC-039, MC-068, MC-074, MC-079, MC-084, MC-097, MC-104, MC-105, MC-106, MC-107, MC-112, MC-113, MC-114, MC-115, MC-116, MC-118, MC-119, MC-120, MC-122, MC-123, MC-124, MC-125, MC-126, MC-127, and MC-128. These are the current release blockers and must pass deterministic contracts plus Windows/Linux Release packaging before publication.
+ - **P1 / runtime correctness:** simulation, conservation, water, atmosphere, ecology, machinery, UI, scene, and performance missions that require packaged observation or deterministic runtime evidence.
+ - **P2 / architecture and later integration:** streaming, full replacement-runtime cutover, optional subsystem extraction, and EpochEngine integration.
+ - Priority is a scheduling property, not a second status system. Every unfinished row remains in this table exactly once.
+@@ -77,6 +77,8 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
+ | MC-028 | OPEN | Validate corner pressure structures | Preserve corner patterns only when conserved pressure/composition produ

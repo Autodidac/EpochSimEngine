@@ -1,0 +1,106 @@
+ces them. Reject structures created by gas-wall friction, sticky corners, or solid-adjacency sleep. |
+ | MC-029 | PARTIAL | Atmosphere inspection/tools | The large Atmosphere action writes the distinct append-only Atmosphere state, Oxygen remains independently selectable, Eraser writes vacuum, and cards distinguish those identities. Pressure and per-component gas percentages still require implementation and runtime acceptance. v2.5.5 core evidence: Core inspection exposes exact pressure and oxygen-per-mille plus component mapping; UI component percentages and production composition painting remain. |
+ | MC-079 | PARTIAL | Uniform atmosphere edge equilibrium and truthful activity count | A completely Atmosphere-filled resident map reaches zero gas-edge activity and full enclosed Atmosphere/Oxygen tiles sleep on the first reset frames. Finite world edges are sealed. `ACTIVE TILES` excludes clean enclosed air and reports only genuinely active tile work. Real excess gas remains active until pressure/density equilibrium. Static contracts pass; packaged startup observation remains required. |
++| MC-126 | REGRESSION | Separate Air flood fill from Ignite Air | `FILL` and the `F` modifier always replace the cursor-connected target region with balanced `Atmosphere`/Air, independent of the selected material. The Heat category exposes a distinct `IGNITE AIR` action that finds the upper-leftmost Atmosphere cell in row-major world order and replaces only that connected Air region with Fire. The utility button and non-card UI say `AIR`; the inspected material card retains the canonical `ATMOSPHERE` title. Deterministic source/UI contracts and Windows/Linux packaged observation are required. |
++| MC-127 | REGRESSION | Half Water isolated from ambient Air bookkeeping | Half Water remains a supplied ledge-volume state and cannot be displaced, rewritten, activated, or visually corrupted by balanced Air. When a full Water cell splits into Half Water against Air, Air is stored only as a zero-pressure ambient marker and restores as canonical Air on consolidation; no hidden Atmosphere pressure occupies Half Water aux state. Non-Air excess gases remain conserved. Packaged ledge/consolidation observation remains required. |
+ 
+ ## Life, ecology, and player interaction
+ 
+@@ -107,6 +109,7 @@ Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
+ | MC-085 | REGRESSION | Pair-test and skipped-work debug samples | `PAIR TESTS` and `SKIPPED` preserve the last completed simulation sample. Render-only frames never clear them to zero. Pair tests reflect actual fine/macro pair dispatch scope and skipped work reflects real tile/chunk rejection. |
+ | MC-080 | PARTIAL | Resource-first activity debug | Keep the accepted UI layout and text size. Sort resource-critical metrics first: FPS, resident cells, active map areas, tested pairs, skipped work, active/sleeping hierarchy. Follow with meaningful activity by cause: fine/bulk motion, gas/liquid transport, structural failures, conveyors, machine input/output, volcano lava/gas, chemistry, actors, and ecology. `FINE ACTIVE` is vivid/hot while `SLEEPING` is dark/cool and their legend order shows active -> settling -> sleeping. Runtime readability remains required. |
+ | MC-125 | REGRESSION | Truthful complete debug hierarchy telemetry | The sidebar reports scope cells, nonempty cells, structural/liquid/gas cells, total/active/sleeping/unclassified tiles, fine/bulk/settled tiles, and total/active/sleeping/dirty chunks from the actual live buffers. `TOTAL TILES = ACTIVE TILES + SLEEP TILES + UNCLASSIFIED` for every completed sample, total chunks bound the chunk-state rows, and movement labels match their real counters (`FINE SWAPS`, `BULK MOVES`, `BULK CELLS`, `FINE REPAIR`, `GAS EXCESS`, `PLAYER IMP`). Render-only frames preserve the last completed sample. Packaged screenshot acceptance remains required. |
++| MC-128 | REGRESSION | Non-overlapping wider sidebar stack | The sidebar is widened modestly, the keymap owns enough vertical space for every row, and the Cursor editor plus material card begin below it with explicit non-overlap. The CPU hit-test layout and fragment-shader drawing use the same heights and widths at 1920x1080 and compact supported sizes. Packaged screenshot acceptance remains required. |
+ | MC-092 | PARTIAL | Soil-facing terminology | Player-facing cards, palette labels, documentation, and UI call material ID 3 `SOIL`; internal IDs remain stable for saves and shader compatibility. Static contracts pass; packaged runtime inspection acceptance remains required. |
+ | MC-093 | PARTIAL | Distinct Atmosphere, Fill, Oxygen, and Eraser controls | `ATMOSPHERE` selects the balanced-air material, `F FILL` fills with the current selection, `OXYGEN` remains selectable pure gas, and `ERASER` selects vacuum. Their labels, colors, hit regions, and actions are never aliases. Packaged runtime UI acceptance remains required. |
+ | MC-094 | PARTIAL | Debug state cards and distinct ready/steady colors | The bottom of debug info contains readable cards with a large actual color block plus state name. `BULK READY` is vivid violet and `SETTLED` is vivid green; all relational states remain distinguishable in hue and brightness. Packaged screenshot acceptance remains required. |
+@@ -192,6 +195,9 @@ These observations are authoritative contradictions. A release cannot erase a ro
+ | EV-256-008 | Materials, liquids, powders, or gases sometimes stop despite an available productive move. | MC-011, MC-012, MC-017, MC-018, MC-053, MC-061, MC-062, MC-066, MC-123 | Failed macro transactions fall back to fine movement in the same tick; chunk sleep skips only sleep-safe pairs; active-window edges preserve state and wake deterministically. |
+ | EV-257-001 | Debug screenshot shows hierarchy counters without total tile/chunk scope and movement labels that do not identify the underlying counters, making missing/unclassified work impossible to diagnose. | MC-042, MC-080, MC-085, MC-125 | Debug reads the live cell/tile/chunk buffers, exposes complete scope totals and classification remainder, uses exact counter names, and preserves the last completed sample while paused/rendering. |
+ | EV-257-002 | Loose resource cells were described as decoration rather than a deliberate collapse hazard. | MC-105, MC-112, MC-118, MC-124 | Structural veins remain complete tiles; every loose resource cell belongs to a flagged sand trap above a cavity and can collapse with Sand to bury/expose the player. |
++| EV-258-001 | `FILL` can inherit Fire and ignite the connected atmosphere instead of restoring Air; no separate world-seeded ignition action exists. | MC-020, MC-029, MC-126 | Cursor fill has a fixed Air replacement; Heat has a separate `IGNITE AIR` action seeded from the upper-leftmost Air cell; card identity remains Atmosphere. |
++| EV-258-002 | Half Water presentation/settling is disturbed by Atmosphere bookkeeping. | MC-013, MC-014, MC-017, MC-084, MC-127 | Ambient Air is a marker rather than hidden pressure inside Half Water; consolidation restores canonical Air and non-Air gases remain conserved. |
++| EV-258-003 | Sidebar text overlaps and the Cursor/material-card stack begins too high. | MC-042, MC-085, MC-125, MC-128 | Sidebar width increases, keymap height fits all rows, and CPU/shader panel boundaries agree without overlap. |
+ 
+ ## Backlog review policy
+ 
+@@ -205,7 +211,7 @@ Every P0 mission is attempted in the current release. Every P1/P2 row is reviewe
+ - Material cells, actors, Atmosphere composition, and medium impulses are authoritative; hierarchy metadata only accelerates them.
+ - Behavior is canonical and provenance-independent.
+ - Gas/liquid volume, every gas component, pressure, and cross-boundary transfer are conserved.
+-- Normal air is one Atmosphere mixture.
++- Normal air is one Atmosphere mixture; user-facing controls call it Air while the inspected material card retains the canonical Atmosphere identity.
+ - Excess-gas transit remains visible until accepted.
+ - Every gas and liquid can rest and wake deterministically.
+ - Damping never suppresses a valid gravity, buoyancy, pressure, erosion, reaction, tool, or actor-driven move. It only removes non-productive residual oscillation after local equilibrium.
+diff --git a/shaders/fullscreen.frag b/shaders/fullscreen.frag
+index 1beb816..2cf05e6 100644
+--- a/shaders/fullscreen.frag
++++ b/shaders/fullscreen.frag
+@@ -621,7 +621,11 @@ void main() {
+ 
+         uint paletteTop = groupTop + renderPc.groupTabsHeight + 3u;
+         const uint palettePanelHeight = 124u;
+-        uint slotCount = max(groupMaterialCount(renderPc.selectedGroup), 1u);
++        const uint igniteAirGroup = 4u;
++        const uint igniteAirTextId = 165u;
++        uint materialSlotCount = groupMaterialCount(renderPc.selectedGroup);
++        uint slotCount = max(materialSlotCount +
++            (renderPc.selectedGroup == igniteAirGroup ? 1u : 0u), 1u);
+         uint slotRows = max((slotCount + 1u) / 2u, 1u);
+         uint cellWidth = max(contentWidth / 2u, 1u);
+         uint cellHeight = max(palettePanelHeight / slotRows, 1u);
+@@ -631,28 +635,41 @@ void main() {
+             uint row = min((y - paletteTop) / cellHeight, slotRows - 1u);
+             uint slot = row * 2u + column;
+             if (slot < slotCount) {
+-                uint material = groupMaterial(renderPc.selectedGroup, slot);
++                bool igniteAirAction = renderPc.selectedGroup == igniteAirGroup &&
++                                       slot == materialSlotCount;
+                 uint left = contentLeft + column * cellWidth;
+                 uint right = column == 1u ? contentLeft + contentWidth : left + cellWidth;
+                 uint top = paletteTop + row * cellHeight;
+                 uint bottom = min(paletteTop + palettePanelHeight, top + cellHeight);
+-                color = materialColor(material, 0u, material * 1299721u,
+-                                      ivec2(int(slot), int(renderPc.selectedGroup))).rgb * 0.62;
+-                if (material == renderPc.selectedMaterial) color = min(color * 1.10 + vec3(0.13), vec3(1.0));
+-                if (material == renderPc.hoveredMaterial) color = min(color + vec3(0.09), vec3(1.0));
+-                if (borderPixel(x, y, left, top, right, bottom)) color *= 0.5;
+-                int scale = int(right - left) >= int(materialTextLength(material)) * 12 + 8 ? 2 : 1;
+-                int width = int(materialTextLength(material)) * 6 * scale - scale;
+-                if (materialPixel(pixel, ivec2(int(left + right) / 2 - width / 2,
+-                                               int(top + bottom) / 2 - (7 * scale) / 2), scale, material))
+-                    color = dot(color, vec3(0.299, 0.587, 0.114)) > 0.55 ? vec3(0.02) : vec3(0.97);
++                if (igniteAirAction) {
++                    color = vec3(0.48, 0.16, 0.035);
++                    if (borderPixel(x, y, left, top, right, bottom)) color *= 0.5;
++                    uint length = fixedTextLength(igniteAirTextId);
++                    int scale = int(right - left) >= int(length * 12u + 8u) ? 2 : 1;
++                    int width = int(length) * 6 * scale - scale;
++                    if (fixedPixel(pixel, ivec2(int(left + right) / 2 - width / 2,
++                                                int(top + bottom) / 2 - (7 * scale) / 2),
++                                   scale, igniteAirTextId)) color = vec3(1.0, 0.92, 0.72);
++                } else {
++                    uint material = groupMaterial(renderPc.selectedGroup, slot);
++                    color = materialColor(material, 0u, material * 1299721u,
++                                          ivec2(int(slot), int(renderPc.selectedGroup))).rgb * 0.62;
++                    if (material == renderPc.selectedMaterial) color = min(color * 1.10 + vec3(0.13), vec3(1.0));
++                    if (material == renderPc.hoveredMaterial) color = min(color + vec3(0.09), vec3(1.0));
++                    if (borderPixel(x, y, left, top, right, bottom)) color *= 0.5;
++                    int scale = int(right - left) >= int(materialTextLength(material)) * 12 + 8 ? 2 : 1;
++                    int width = int(materialTextLength(material)) * 6 * scale - scale;
++                    if (materialPixel(pixel, ivec2(int(left + right) / 2 - width / 2,
++                                                   int(top + bottom) / 2 - (7 * scale) / 2), scale, material))
++                        color = dot(color, vec3(0.299, 0.587, 0.114)) > 0.55 ? vec3(0.02) : vec3(0.97);
++                }
+             }
+             outColor = vec4(color, 1.0);
+             return;
+         }
+ 
+         uint keymapTop = paletteTop + palettePanelHeight + 3u;
+-        uint keymapBottom = keymapTop + 98u;
++        uint keymapBottom = keymapTop + 124u;
+         if (y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {
+             color = vec3(0.035, 0.047, 0.064);
+             if (borderPixel(x, y, contentLeft, keymapTop,
