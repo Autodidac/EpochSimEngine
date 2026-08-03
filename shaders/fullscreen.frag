@@ -335,6 +335,11 @@ vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
     sameNeighbors += cellAt(grid + ivec2(0, -1)).material == cell.material ? 1u : 0u;
     sameNeighbors += cellAt(grid + ivec2(0, 1)).material == cell.material ? 1u : 0u;
     float cohesion = float(sameNeighbors) * 0.045;
+    if (cell.material == MAT_ATMOSPHERE || cell.material == MAT_OXYGEN) {
+        base.rgb = mix(vec3(0.22, 0.46, 0.70), base.rgb, 0.22);
+        base.a = clamp(0.075 + densityField * 0.075 + cohesion * 0.32, 0.065, 0.22);
+        return base;
+    }
     float restrained = 0.08 + densityField * 0.13 + cohesion;
     if (cell.material == MAT_CARBON_DIOXIDE) restrained = 0.22 + densityField * 0.18 + cohesion;
     if (cell.material == MAT_HYDROGEN) restrained = 0.14 + densityField * 0.17 + cohesion;
@@ -829,8 +834,10 @@ void main() {
         if (!activeArea) color.rgb *= renderPc.mapMode != 0u ? 0.62 : 0.52;
         ivec2 activeLocal = ivec2(grid.x % ACTIVE_REGION_WIDTH_CELLS,
                                   grid.y % ACTIVE_REGION_HEIGHT_CELLS);
-        if (activeArea && (activeLocal.x == 0 || activeLocal.y == 0))
-            color.rgb = mix(color.rgb, vec3(0.18, 0.95, 1.00), 0.78);
+        if (activeArea && (activeLocal.x == 0 || activeLocal.y == 0)) {
+            float boundaryAlpha = renderPc.mapMode != 0u ? 0.38 : 0.58;
+            color.rgb = mix(color.rgb, vec3(0.18, 0.95, 1.00), boundaryAlpha);
+        }
         TileState tile = tileAt(grid);
         ChunkState chunk = chunkAt(grid);
         ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));
@@ -846,7 +853,8 @@ void main() {
         float alpha = 0.0;
         if (tileHas(tile, TILE_COLLAPSING) || tileHas(tile, TILE_DAMAGED)) {
             overlay = debugKeyColor(0u); alpha = 0.62;
-        } else if (tileHas(tile, TILE_MEDIUM_BREAKUP)) {
+        } else if (tileHas(tile, TILE_MEDIUM_BREAKUP) &&
+                   !tileHas(tile, TILE_SLEEPING)) {
             overlay = debugKeyColor(9u); alpha = 0.58;
         } else if (tileHas(tile, TILE_MACRO_MOVED)) {
             overlay = debugKeyColor(2u); alpha = 0.56;
@@ -867,10 +875,10 @@ void main() {
         }
         bool stateEdge = local.x <= 1 || local.y <= 1 || local.x >= 6 || local.y >= 6;
         if (renderPc.mapMode != 0u) {
-            alpha *= mediumCell ? 0.12 : 0.30;
-            if (!stateEdge) alpha *= 0.16;
+            alpha *= mediumCell ? (stateEdge ? 0.055 : 0.0) : 0.30;
+            if (!mediumCell && !stateEdge) alpha *= 0.16;
         } else if (mediumCell) {
-            alpha *= stateEdge ? 0.28 : 0.06;
+            alpha *= stateEdge ? 0.10 : 0.0;
         }
         float occupancyAlpha = max(0.28, float(tileOccupancy(tile)) / 64.0);
         color.rgb = mix(color.rgb, overlay, alpha * occupancyAlpha);
@@ -879,8 +887,8 @@ void main() {
             (chunkHas(chunk, CHUNK_SLEEPING) ? vec3(0.035, 0.10, 0.30)
                                              : vec3(0.05, 0.42, 0.90));
         float chunkAlpha = renderPc.mapMode != 0u
-            ? (mediumCell ? 0.015 : 0.045)
-            : (mediumCell ? 0.025 : (chunkHas(chunk, CHUNK_SLEEPING) ? 0.10 : 0.06));
+            ? (mediumCell ? 0.0 : 0.045)
+            : (mediumCell ? 0.0 : (chunkHas(chunk, CHUNK_SLEEPING) ? 0.10 : 0.06));
         color.rgb = mix(color.rgb, chunkOverlay, chunkAlpha);
 
         if (renderPc.mapMode != 0u) {

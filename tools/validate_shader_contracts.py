@@ -221,6 +221,24 @@ def main() -> int:
             errors.append(f"one-shot medium-boundary settling contract missing {token!r}")
 
 
+    fullscreen_medium = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
+    for token in ("if (isHalfWaterCell(a) || isHalfWaterCell(b)) return;",
+                  "Cell reserve = sampleAt(sourcePosition - ivec2(direction * 2, 0));"):
+        if token not in move:
+            errors.append(f"half-water no-crawl/supply contract missing {token!r}")
+    for token in ("bool settledHalfWater = halfWater && !moving",
+                  "!macroMovable && !settledHalfWater",
+                  "settledMedium || settledFineMedium || settledHalfWater",
+                  "!mediumBreakup;"):
+        if token not in tiles:
+            errors.append(f"stable fine-medium contract missing {token!r}")
+    for token in ("cell.material == MAT_ATMOSPHERE || cell.material == MAT_OXYGEN",
+                  "!tileHas(tile, TILE_SLEEPING)", "stateEdge ? 0.10 : 0.0",
+                  "mediumCell ? 0.0 : 0.045"):
+        if token not in fullscreen_medium:
+            errors.append(f"medium presentation contract missing {token!r}")
+
+
     app_cpp = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
     ui_layout_hpp = (ROOT / "include/sandhybrid/ui_layout.hpp").read_text(encoding="utf-8")
     shared_state_hpp = (ROOT / "include/sandhybrid/shared_state.hpp").read_text(encoding="utf-8")

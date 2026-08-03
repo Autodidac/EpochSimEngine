@@ -2,6 +2,9 @@
 
 ## 2.5.6
 
+- Fixed Half Water horizontal crawling and tightened ledge splitting to require a supported three-cell water supply.
+- Made exposed full Water/Atmosphere packets perform one fine handoff and then sleep immediately when unchanged, eliminating long-lived 8x8 checkerboard activity.
+- Smoothed balanced Atmosphere rendering and reduced medium debug/map overlays to restrained edge markers so Water, Half Water, and air remain visible.
 - Stabilized resident mud and ore veins as authored structural geology so they no longer collapse into false voids that wake Atmosphere and liquids.
 - Redesigned the sidebar into explicit Scene, Simulation, View, and Tool rows; Reset and Pause are paired, and Atmosphere/Erase/Fill remain large and visible.
 - Changed debug/map hierarchy visualization to preserve Atmosphere, Water, and Half Water colors while showing state through restrained tile edges and markers.
