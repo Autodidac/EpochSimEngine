@@ -37,13 +37,14 @@ jobs:
           cmake --build build/cache --parallel
           ctest --test-dir build/cache --output-on-failure
 
-      - name: Commit validated source and remove temporary machinery
+      - name: Commit validated non-workflow source
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git rm -f --ignore-unmatch tools/finalize_v255.py
-          git rm -f --ignore-unmatch .github/workflows/finalize-cache-foundations-v255.yml
-          git rm -f --ignore-unmatch .github/workflows/pr-finalize-v255.yml
+          git checkout origin/agent/cache-foundations-v255 -- .github/workflows/ci-release.yml
           git add -A
+          if git diff --cached --quiet; then
+            exit 0
+          fi
           git commit -m "Finalize SandHybrid v2.5.5 cache foundations"
           git push origin HEAD:agent/cache-foundations-v255
