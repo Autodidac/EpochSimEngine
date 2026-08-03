@@ -49,21 +49,16 @@ bool terrainVeinCoreTile(uvec2 tile, uint depth) {
     return ellipse <= limit + rough * radius.x;
 }
 
-bool terrainLooseInclusion(uint baseMaterial, ivec2 position, uint depth) {
-    if (baseMaterial != MAT_SAND) return false;
-    uvec2 tile = uvec2(position) / TERRAIN_TILE_SIZE;
-    uvec2 cluster = tile / uvec2(TERRAIN_VEIN_CLUSTER_X, TERRAIN_VEIN_CLUSTER_Y);
-    if (terrainClusterDeposit(cluster, depth) == MAT_EMPTY || terrainVeinCoreTile(tile, depth)) return false;
-    bool touchesCore = false;
-    for (int oy = -1; oy <= 1; ++oy) {
-        for (int ox = -1; ox <= 1; ++ox) {
-            if (ox == 0 && oy == 0) continue;
-            ivec2 neighbor = ivec2(tile) + ivec2(ox, oy);
-            if (neighbor.x >= 0 && neighbor.y >= 0 && terrainVeinCoreTile(uvec2(neighbor), depth))
-                touchesCore = true;
-        }
-    }
-    return touchesCore && terrainHash(uvec2(position), 0x10c5u) % 73u == 0u;
+uint terrainTrapResource(uvec2 trapCluster, uint depth) {
+    uint roll = terrainHash(trapCluster, 0x3a71u) & 1023u;
+    if (depth >= 160u && roll < 18u) return MAT_URANIUM;
+    if (roll < 170u) return MAT_COPPER;
+    if (roll < 300u) return MAT_ALUMINUM;
+    return MAT_IRON_ORE;
+}
+
+bool terrainTrapResourceCell(ivec2 position) {
+    return terrainHash(uvec2(position), 0x10c5u) % 6u == 0u;
 }
 
 bool terrainTrapSelected(uvec2 tile, uint depth) {
@@ -85,14 +80,16 @@ uvec2 terrainSample(uint baseMaterial, ivec2 position, uint depth) {
                        local.y > roofY && local.y <= roofY + 3u;
         bool looseRoof = local.x + 2u >= centerX && local.x <= centerX + 2u && local.y == roofY;
         if (chamber) return uvec2(MAT_EMPTY, TERRAIN_FLAG_SAND_TRAP);
-        if (looseRoof) return uvec2(MAT_SAND, TERRAIN_FLAG_DELIBERATE_LOOSE | TERRAIN_FLAG_SAND_TRAP);
+        if (looseRoof) {
+            uint trapMaterial = terrainTrapResource(cluster, depth);
+            uint material = terrainTrapResourceCell(position) ? trapMaterial : MAT_SAND;
+            return uvec2(material, TERRAIN_FLAG_DELIBERATE_LOOSE | TERRAIN_FLAG_SAND_TRAP);
+        }
     }
     uvec2 cluster = tile / uvec2(TERRAIN_VEIN_CLUSTER_X, TERRAIN_VEIN_CLUSTER_Y);
     uint deposit = terrainClusterDeposit(cluster, depth);
     if (deposit != MAT_EMPTY && terrainVeinCoreTile(tile, depth))
         return uvec2(deposit, TERRAIN_FLAG_STRUCTURAL);
-    if (deposit != MAT_EMPTY && terrainLooseInclusion(baseMaterial, position, depth))
-        return uvec2(deposit, TERRAIN_FLAG_DELIBERATE_LOOSE);
     return uvec2(baseMaterial, TERRAIN_FLAG_STRUCTURAL);
 }
 

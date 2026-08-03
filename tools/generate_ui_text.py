@@ -37,6 +37,7 @@ FIXED = [
     "RESIDENT MB", "PAIR TESTS", "SKIPPED", "MOVING", "GAS FLOW", "LIQUID FLOW",
     "STRUCT FAIL", "CONVEYOR", "MACHINE IN", "MACHINE OUT", "VOLCANO LAVA",
     "VOLCANO GAS", "GAS EDGE", "REACTIONS", "HALF WATER", "WET", "ERASER",
+    "SCOPE CELLS", "NONEMPTY CELLS", "TOTAL TILES", "UNCLASSIFIED", "TOTAL CHUNKS",
 ]
 SCENES = [
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",

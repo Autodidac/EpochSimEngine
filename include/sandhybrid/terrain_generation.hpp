@@ -73,31 +73,21 @@ struct Sample final {
     return ellipse <= limit + rough * radius_x;
 }
 
-[[nodiscard]] constexpr bool loose_inclusion_cell(
-    const Material base_material,
-    const std::uint32_t x,
-    const std::uint32_t y,
+[[nodiscard]] constexpr Material trap_resource(
+    const std::uint32_t trap_cluster_x,
+    const std::uint32_t trap_cluster_y,
     const std::uint32_t depth) noexcept {
-    if (base_material != Material::sand) return false;
-    const auto tile_x = x / tile_size;
-    const auto tile_y = y / tile_size;
-    const auto cluster_x = tile_x / vein_cluster_tiles_x;
-    const auto cluster_y = tile_y / vein_cluster_tiles_y;
-    if (cluster_deposit(cluster_x, cluster_y, depth) == Material::empty) return false;
-    if (vein_core_tile(tile_x, tile_y, depth)) return false;
-    bool touches_core = false;
-    for (std::int32_t oy = -1; oy <= 1; ++oy) {
-        for (std::int32_t ox = -1; ox <= 1; ++ox) {
-            if (ox == 0 && oy == 0) continue;
-            const auto nx = static_cast<std::int32_t>(tile_x) + ox;
-            const auto ny = static_cast<std::int32_t>(tile_y) + oy;
-            if (nx >= 0 && ny >= 0 && vein_core_tile(
-                    static_cast<std::uint32_t>(nx), static_cast<std::uint32_t>(ny), depth)) {
-                touches_core = true;
-            }
-        }
-    }
-    return touches_core && (hash(x, y, 0x10c5u) % 73u) == 0u;
+    const auto roll = hash(trap_cluster_x, trap_cluster_y, 0x3a71u) & 1023u;
+    if (depth >= 160u && roll < 18u) return Material::uranium;
+    if (roll < 170u) return Material::copper;
+    if (roll < 300u) return Material::aluminum;
+    return Material::iron_ore;
+}
+
+[[nodiscard]] constexpr bool trap_resource_cell(
+    const std::uint32_t x,
+    const std::uint32_t y) noexcept {
+    return (hash(x, y, 0x10c5u) % 6u) == 0u;
 }
 
 [[nodiscard]] constexpr bool trap_selected(
@@ -130,7 +120,12 @@ struct Sample final {
         const bool loose_roof = local_x + 2u >= center_x && local_x <= center_x + 2u &&
                                 local_y == roof_y;
         if (chamber) return {Material::empty, false, false, true};
-        if (loose_roof) return {Material::sand, false, true, true};
+        if (loose_roof) {
+            const auto resource = trap_resource(
+                tile_x / trap_cluster_tiles_x, tile_y / trap_cluster_tiles_y, depth);
+            if (trap_resource_cell(x, y)) return {resource, false, true, true};
+            return {Material::sand, false, true, true};
+        }
     }
 
     const auto cluster_x = tile_x / vein_cluster_tiles_x;
@@ -138,8 +133,6 @@ struct Sample final {
     const auto deposit = cluster_deposit(cluster_x, cluster_y, depth);
     if (deposit != Material::empty && vein_core_tile(tile_x, tile_y, depth))
         return {deposit, true, false, false};
-    if (deposit != Material::empty && loose_inclusion_cell(base_material, x, y, depth))
-        return {deposit, false, true, false};
     return {base_material, true, false, false};
 }
 

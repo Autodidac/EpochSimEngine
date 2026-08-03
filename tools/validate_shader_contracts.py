@@ -480,12 +480,12 @@ def main() -> int:
     chunks_comp = (SHADERS / "chunks.comp").read_text(encoding="utf-8")
     material_physics = (SHADERS / "material_physics.glsl").read_text(encoding="utf-8")
     for token in (
-        "terrainVeinCoreTile", "terrainLooseInclusion", "terrainTrapSelected",
+        "terrainVeinCoreTile", "terrainTrapResourceCell", "terrainTrapSelected",
         "TERRAIN_FLAG_STRUCTURAL", "TERRAIN_FLAG_SAND_TRAP",
     ):
         if token not in terrain_glsl:
             errors.append(f"shader terrain-generation contract missing {token!r}")
-    for token in ("vein_core_tile", "loose_inclusion_cell", "trap_selected", "struct Sample"):
+    for token in ("vein_core_tile", "trap_resource_cell", "trap_selected", "struct Sample"):
         if token not in terrain_hpp:
             errors.append(f"library terrain-generation contract missing {token!r}")
     for token in (
@@ -505,6 +505,10 @@ def main() -> int:
             errors.append(f"fine Water/Atmosphere equilibrium contract missing {token!r}")
 
     for token in (
+        "STAT_SCOPE_CELLS",
+        "STAT_TOTAL_TILES",
+        "STAT_UNCLASSIFIED_TILES",
+        "STAT_TOTAL_CHUNKS",
         "STAT_MACRO_GAS_TILES",
         "STAT_MACRO_LIQUID_TILES",
         "STAT_MEDIUM_ENCLOSED_TILES",
@@ -515,8 +519,16 @@ def main() -> int:
     for token in ("COLOR KEY", "TILE_MEDIUM_BREAKUP", "debugKeyColor", "textScale"):
         if token not in fullscreen and token != "COLOR KEY":
             errors.append(f"high-contrast debug contract missing {token!r}")
-    if "COLOR KEY" not in (ROOT / "tools/generate_ui_text.py").read_text(encoding="utf-8"):
+    generator_text = (ROOT / "tools/generate_ui_text.py").read_text(encoding="utf-8")
+    if "COLOR KEY" not in generator_text:
         errors.append("debug color-key text is missing")
+    for token in ("SCOPE CELLS", "NONEMPTY CELLS", "TOTAL TILES", "UNCLASSIFIED", "TOTAL CHUNKS"):
+        if token not in generator_text:
+            errors.append(f"complete debug hierarchy label missing {token!r}")
+    for token in ("debugStats[STAT_TOTAL_TILES]", "debugStats[STAT_TOTAL_CHUNKS]",
+                  "debugStats[STAT_UNCLASSIFIED_TILES]", "debugStats[STAT_SCOPE_CELLS]"):
+        if token not in fullscreen:
+            errors.append(f"complete debug hierarchy display missing {token!r}")
     for retired in ("MAT_METAL", "MAT_GOLD_ORE", "MAT_ALLY_BOT", "MAT_ENEMY_BOT", "MAT_BOT_FABRICATOR"):
         for shader_name in ENTRY_SHADERS:
             if retired in (SHADERS / shader_name).read_text(encoding="utf-8"):
@@ -862,13 +874,13 @@ def main() -> int:
     terrain_glsl_contract = (SHADERS / "terrain_generation.glsl").read_text(encoding="utf-8")
     terrain_hpp_contract = (ROOT / "include/sandhybrid/terrain_generation.hpp").read_text(encoding="utf-8")
     for token in (
-        "terrainClusterDeposit", "terrainVeinCoreTile", "terrainLooseInclusion",
-        "terrainTrapSelected", "TERRAIN_FLAG_STRUCTURAL",
+        "terrainClusterDeposit", "terrainVeinCoreTile", "terrainTrapResourceCell",
+        "terrainTrapSelected", "TERRAIN_FLAG_STRUCTURAL", "TERRAIN_FLAG_SAND_TRAP",
     ):
         if token not in terrain_glsl_contract:
             errors.append(f"resident ground deposit contract missing {token!r}")
     for token in (
-        "cluster_deposit", "vein_core_tile", "loose_inclusion_cell",
+        "cluster_deposit", "vein_core_tile", "trap_resource_cell",
         "trap_selected", "struct Sample",
     ):
         if token not in terrain_hpp_contract:

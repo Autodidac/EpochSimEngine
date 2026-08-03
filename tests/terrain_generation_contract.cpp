@@ -12,7 +12,7 @@ static_assert(!terrain::host_material(Material::water));
 int main() {
     std::size_t structural_cells = 0u;
     std::size_t structural_partial_tiles = 0u;
-    std::size_t loose_inclusions = 0u;
+    std::size_t loose_trap_resources = 0u;
     std::size_t trap_cells = 0u;
     std::size_t loose_trap_roof_cells = 0u;
 
@@ -28,7 +28,10 @@ int main() {
                         sample.material == Material::copper || sample.material == Material::aluminum ||
                         sample.material == Material::uranium;
                     if (deposit && sample.structural) ++tile_structural_deposit;
-                    if (deposit && sample.deliberate_loose) ++loose_inclusions;
+                    if (deposit && sample.deliberate_loose) {
+                        if (!sample.sand_trap) return 3;
+                        ++loose_trap_resources;
+                    }
                     if (sample.sand_trap) {
                         ++trap_cells;
                         if (sample.material == Material::sand && sample.deliberate_loose)
@@ -44,7 +47,7 @@ int main() {
     }
     if (structural_cells == 0u) return 1;
     if (structural_partial_tiles != 0u) return 2;
-    if (loose_inclusions == 0u) return 3;
+    if (loose_trap_resources == 0u) return 3;
     if (trap_cells == 0u || loose_trap_roof_cells == 0u) return 4;
     return 0;
 }

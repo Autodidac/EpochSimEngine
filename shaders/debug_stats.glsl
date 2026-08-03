@@ -51,5 +51,9 @@ const uint STAT_VOLCANO_LAVA_OUTPUTS = 118u;
 const uint STAT_VOLCANO_GAS_OUTPUTS = 119u;
 const uint STAT_GAS_EDGE_ACTIVE_TILES = 120u;
 const uint STAT_CHEMISTRY_CHANGES = 121u;
+const uint STAT_SCOPE_CELLS = 122u;
+const uint STAT_TOTAL_TILES = 123u;
+const uint STAT_UNCLASSIFIED_TILES = 124u;
+const uint STAT_TOTAL_CHUNKS = 125u;
 
 #endif

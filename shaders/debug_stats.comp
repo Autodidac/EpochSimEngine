@@ -23,6 +23,7 @@ void main() {
     if (linearIndex < cellCount) {
         ivec2 cellPosition = ivec2(int(linearIndex % pc.width), int(linearIndex / pc.width));
         if (sectionActiveAt(cellPosition, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) {
+            atomicAdd(debugStats[STAT_SCOPE_CELLS], 1u);
             Cell cell = cells[linearIndex];
             if (cell.material < MATERIAL_COUNT)
                 atomicAdd(debugStats[STAT_MATERIAL_BASE + cell.material], 1u);
@@ -53,8 +54,12 @@ void main() {
         ivec2 tileCellPosition = tilePosition * int(TILE_SIZE);
         if (sectionActiveAt(tileCellPosition, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) {
             TileState tile = tiles[linearIndex];
-            if (tileHas(tile, TILE_SLEEPING)) atomicAdd(debugStats[STAT_SLEEPING_TILES], 1u);
-            if (tileHas(tile, TILE_ACTIVE)) atomicAdd(debugStats[STAT_ACTIVE_TILES], 1u);
+            atomicAdd(debugStats[STAT_TOTAL_TILES], 1u);
+            bool sleeping = tileHas(tile, TILE_SLEEPING);
+            bool tileActive = tileHas(tile, TILE_ACTIVE);
+            if (sleeping) atomicAdd(debugStats[STAT_SLEEPING_TILES], 1u);
+            if (tileActive) atomicAdd(debugStats[STAT_ACTIVE_TILES], 1u);
+            if (!sleeping && !tileActive) atomicAdd(debugStats[STAT_UNCLASSIFIED_TILES], 1u);
             if (tileHas(tile, TILE_FINE_ACTIVE)) atomicAdd(debugStats[STAT_FINE_TILES], 1u);
             if (tileHas(tile, TILE_MACRO_MOVABLE)) atomicAdd(debugStats[STAT_MACRO_TILES], 1u);
             if (tileHas(tile, TILE_SETTLED_MEDIUM)) atomicAdd(debugStats[STAT_SETTLED_TILES], 1u);
@@ -77,6 +82,7 @@ void main() {
         ivec2 chunkOrigin = ivec2(int(chunkX * CHUNK_CELL_SIZE),
                                   int(chunkY * CHUNK_CELL_SIZE));
         if (sectionActiveAt(chunkOrigin, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) {
+            atomicAdd(debugStats[STAT_TOTAL_CHUNKS], 1u);
             ChunkState chunk = chunks[linearIndex];
             if (chunkHas(chunk, CHUNK_SLEEPING)) {
                 atomicAdd(debugStats[STAT_SLEEPING_CHUNKS], 1u);

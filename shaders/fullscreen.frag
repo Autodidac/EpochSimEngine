@@ -209,26 +209,48 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
         textColor = vec3(0.52, 0.94, 0.58);
     }
 
-    const uint statCount = 22u;
+    const uint statCount = 40u;
     uint rowHeight = textScale == 2 ? 18u : 12u;
     uint headerHeight = textScale == 2 ? 24u : 15u;
     uint fixedLabels[statCount] = uint[statCount](
-        1u, 143u, 137u, 144u, 145u, 98u, 81u,
-        146u, 78u, 117u, 147u, 148u, 149u, 150u,
-        151u, 152u, 153u, 154u, 155u, 156u, 110u, 82u);
+        1u, 143u, 137u,
+        160u, 161u, 94u, 95u, 96u,
+        144u, 145u,
+        162u, 98u, 81u, 163u, 119u, 120u, 121u,
+        164u, 115u, 114u, 122u,
+        146u, 78u, 116u, 117u, 123u, 124u, 112u, 113u, 111u,
+        149u, 150u, 151u, 152u, 153u, 154u, 155u, 156u, 110u, 82u);
     uint fixedValues[statCount] = uint[statCount](
         renderPc.framesPerSecond,
         renderPc.gridWidth * renderPc.gridHeight * 36u / (1024u * 1024u),
         renderPc.activeAreaCount,
+        debugStats[STAT_SCOPE_CELLS],
+        debugStats[STAT_ACTIVE_CELLS],
+        debugStats[STAT_STRUCTURAL_CELLS],
+        debugStats[STAT_LIQUID_CELLS],
+        debugStats[STAT_GAS_CELLS],
         debugStats[STAT_MOVE_PAIR_TESTS],
         debugStats[STAT_CHUNK_SKIPPED_CELLS],
+        debugStats[STAT_TOTAL_TILES],
         debugStats[STAT_ACTIVE_TILES],
         debugStats[STAT_SLEEPING_TILES],
+        debugStats[STAT_UNCLASSIFIED_TILES],
+        debugStats[STAT_FINE_TILES],
+        debugStats[STAT_MACRO_TILES],
+        debugStats[STAT_SETTLED_TILES],
+        debugStats[STAT_TOTAL_CHUNKS],
+        debugStats[STAT_ACTIVE_CHUNKS],
+        debugStats[STAT_SLEEPING_CHUNKS],
+        debugStats[STAT_DIRTY_CHUNKS],
         debugStats[STAT_MOVED_CELLS],
         debugStats[STAT_MOVE_SWAPS],
         debugStats[STAT_MACRO_TILE_MOVES],
+        debugStats[STAT_MACRO_CELL_MOVES],
         debugStats[STAT_MACRO_GAS_TILES],
         debugStats[STAT_MACRO_LIQUID_TILES],
+        debugStats[STAT_FINE_REPAIR_MOVES],
+        debugStats[STAT_GAS_EXCESS_MOVES],
+        debugStats[STAT_PLAYER_IMPULSES],
         debugStats[STAT_STRUCTURAL_COLLAPSES],
         debugStats[STAT_CONVEYOR_MOVES],
         debugStats[STAT_MACHINE_INPUTS],
@@ -245,17 +267,18 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
             textScale, fixedLabels[stat], fixedValues[stat]);
         if (hit) {
             textHit = true;
-            textColor = debugStatColor(stat > 1u ? stat - 2u : stat);
+            textColor = debugStatColor(stat > 2u ? stat - 3u : stat);
         }
     }
 
     // Restrained visual grouping: resource pressure, hierarchy/activity, and
     // world events remain readable without surrounding every row with boxes.
-    uint separatorYs[3] = uint[3](
-        panelTop + headerHeight + 5u * rowHeight - 4u,
-        panelTop + headerHeight + 9u * rowHeight - 4u,
-        panelTop + headerHeight + 13u * rowHeight - 4u);
-    for (uint separator = 0u; separator < 3u; ++separator) {
+    uint separatorYs[4] = uint[4](
+        panelTop + headerHeight + 8u * rowHeight - 4u,
+        panelTop + headerHeight + 17u * rowHeight - 4u,
+        panelTop + headerHeight + 21u * rowHeight - 4u,
+        panelTop + headerHeight + 30u * rowHeight - 4u);
+    for (uint separator = 0u; separator < 4u; ++separator) {
         uint separatorY = separatorYs[separator];
         if (y >= separatorY && y < separatorY + 1u &&
             x >= panelLeft + 8u && x < panelRight - 8u)
