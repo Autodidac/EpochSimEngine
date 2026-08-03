@@ -30,7 +30,7 @@ jobs:
           path = Path('src/app.cpp')
           text = path.read_text(encoding='utf-8')
           old = '        if (input.toggle_mining) {'
-          marker = '        if (input.toggle_mining /* preserve-v256-input-loop */) {'
+          marker = '        if (static_cast<bool>(input.toggle_mining)) {'
           if old not in text:
               raise SystemExit('early mining-toggle anchor missing')
           text = text.replace(old, marker, 1)
@@ -42,23 +42,13 @@ jobs:
           from pathlib import Path
           path = Path('src/app.cpp')
           text = path.read_text(encoding='utf-8')
-          marker = '        if (input.toggle_mining /* preserve-v256-input-loop */) {'
+          marker = '        if (static_cast<bool>(input.toggle_mining)) {'
           if marker not in text:
               raise SystemExit('preserved mining-toggle marker missing after finalizer')
           path.write_text(text.replace(marker, '        if (input.toggle_mining) {', 1), encoding='utf-8')
           PY
           python3 tools/v256_hotfix.py
-
-      - name: Publish generated debug snapshot
-        if: always()
-        shell: bash
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git checkout -B agent/v256-debug-output
-          git add -A
-          git commit -m "Capture generated v2.5.6 output" || true
-          git push --force origin HEAD:agent/v256-debug-output
+          python3 tools/v256_hotfix2.py
 
       - name: Validate source contracts
         run: |
@@ -77,8 +67,7 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git checkout agent/debug-map-inventory-v256
-          git rm -f tools/v256part*.b64 tools/v256_hotfix.py
+          git rm -f tools/v256part*.b64 tools/v256_hotfix.py tools/v256_hotfix2.py
           git add -A
           if git diff --cached --quiet; then
             exit 0
