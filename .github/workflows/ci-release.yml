@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sandhybrid-v256-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: sandhybrid-v257-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -22,10 +22,10 @@ jobs:
         include:
           - os: windows-2022
             triplet: x64-windows
-            artifact: SandHybrid-Windows-x64-v2.5.6
+            artifact: SandHybrid-Windows-x64-v2.5.7
           - os: ubuntu-24.04
             triplet: x64-linux
-            artifact: SandHybrid-Linux-x64-v2.5.6
+            artifact: SandHybrid-Linux-x64-v2.5.7
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
 
@@ -116,7 +116,7 @@ jobs:
 
       - name: Add package documentation
         shell: bash
-        run: cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md CHANGELOG.md MAP_VIEW.md SCENE_LAYOUT.md RELEASE_NOTES_v2.5.6.md "dist/${{ matrix.artifact }}/"
+        run: cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md CHANGELOG.md MAP_VIEW.md SCENE_LAYOUT.md RELEASE_NOTES_v2.5.7.md "dist/${{ matrix.artifact }}/"
 
       - name: Archive Windows package
         if: runner.os == 'Windows'
@@ -157,7 +157,7 @@ jobs:
         with:
           path: dist
 
-      - name: Publish v2.5.6 release
+      - name: Publish v2.5.7 release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -169,31 +169,22 @@ jobs:
             printf '%s\n' "${assets[@]}" >&2
             exit 1
           fi
-          if gh release view v2.5.6 >/dev/null 2>&1; then
-            gh release upload v2.5.6 "${assets[@]}" --clobber
-            gh release edit v2.5.6 \
-              --title 'SandHybrid v2.5.6' \
-              --notes-file CHANGELOG.md \
+          if gh release view v2.5.7 >/dev/null 2>&1; then
+            gh release upload v2.5.7 "${assets[@]}" --clobber
+            gh release edit v2.5.7 \
+              --title 'SandHybrid v2.5.7' \
+              --notes-file RELEASE_NOTES_v2.5.7.md \
               --latest
           else
-            gh release create v2.5.6 "${assets[@]}" \
+            gh release create v2.5.7 "${assets[@]}" \
               --target "$GITHUB_SHA" \
-              --title 'SandHybrid v2.5.6' \
-              --notes-file CHANGELOG.md \
+              --title 'SandHybrid v2.5.7' \
+              --notes-file RELEASE_NOTES_v2.5.7.md \
               --latest
           fi
 
-      - name: Remove completed agent branches
+      - name: Remove completed agent branch
         shell: bash
         run: |
-          git push origin --delete agent/beehive-primary-cache-release-v252 || true
-          git push origin --delete agent/scene-geology-stack-v251 || true
-          git push origin --delete agent/integrate-core-hygiene-release-v253 || true
-          git push origin --delete agent/finalize-missioncache-release-v253 || true
-          git push origin --delete agent/external-handoff-priority-note || true
-          git push origin --delete agent/tmp-noop || true
-          git push origin --delete agent/durable-structural-ground-deposits-v254 || true
-          git push origin --delete agent/cache-foundations-v255 || true
-          git push origin --delete agent/debug-map-inventory-v256 || true
-          git push origin --delete agent/v256-debug-output || true
+          git push origin --delete agent/v257-air-water-equilibrium || true
           # Preserve agent/nonoverlap-core-hygiene per Adam's explicit instruction.
