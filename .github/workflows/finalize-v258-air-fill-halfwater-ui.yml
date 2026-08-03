@@ -1,0 +1,70 @@
+name: Finalize SandHybrid v2.5.8 Air fill and Half Water
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-v258-air-fill-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.head_ref == 'agent/v258-air-fill-halfwater-ui'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/v258-air-fill-halfwater-ui
+          fetch-depth: 0
+
+      - name: Apply cached v2.5.8 source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat tools/v258-air-fill-halfwater-ui.part0 \
+              tools/v258-air-fill-halfwater-ui.part1 \
+              tools/v258-air-fill-halfwater-ui.part2 \
+              tools/v258-air-fill-halfwater-ui.part3 \
+            | base64 --decode > /tmp/v258.patch.gz
+          echo 'd54f904e3f225835f1cbe35d8ba0ee7cef45917b64c6d2cc357e6ad909e9bae7  /tmp/v258.patch.gz' | sha256sum --check
+          gzip --decompress --stdout /tmp/v258.patch.gz > /tmp/v258.patch
+          git apply --check /tmp/v258.patch
+          git apply /tmp/v258.patch
+
+      - name: Validate source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+          cmake -S . -B build/v258-finalizer -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build/v258-finalizer --parallel
+          ctest --test-dir build/v258-finalizer --output-on-failure
+
+      - name: Commit permanent source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -f \
+            tools/v258-air-fill-halfwater-ui.part0 \
+            tools/v258-air-fill-halfwater-ui.part1 \
+            tools/v258-air-fill-halfwater-ui.part2 \
+            tools/v258-air-fill-halfwater-ui.part3 \
+            .github/workflows/finalize-v258-air-fill-halfwater-ui.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'Fix v2.5.8 Air fill Half Water and UI layout'
+          git push origin HEAD:agent/v258-air-fill-halfwater-ui
