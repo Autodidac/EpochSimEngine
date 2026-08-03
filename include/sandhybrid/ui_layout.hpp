@@ -6,13 +6,13 @@
 #include <cstdint>
 
 namespace sandhybrid::ui {
-inline constexpr std::uint32_t preferred_sidebar_width = 384u;
-inline constexpr std::uint32_t minimum_sidebar_width = 300u;
+inline constexpr std::uint32_t preferred_sidebar_width = 424u;
+inline constexpr std::uint32_t minimum_sidebar_width = 320u;
 inline constexpr std::uint32_t status_height = 208u;
 inline constexpr std::uint32_t group_tabs_height = 96u;
 inline constexpr std::uint32_t palette_items_height = 124u;
 inline constexpr std::uint32_t eraser_height = 34u;
-inline constexpr std::uint32_t keymap_height = 98u;
+inline constexpr std::uint32_t keymap_height = 124u;
 inline constexpr std::uint32_t cursor_editor_height = 112u;
 inline constexpr std::uint32_t palette_height = 0u;
 inline constexpr float margin = 5.0f;
@@ -172,10 +172,17 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
             {(std::max)(1.0f, cell_width - gap), (std::max)(1.0f, cell_height - gap)}};
 }
 
+inline constexpr MaterialGroup ignite_air_group = MaterialGroup::fire_chemistry;
+
+[[nodiscard]] inline constexpr std::uint32_t palette_item_count(
+    const MaterialGroup group) noexcept {
+    return material_group_size(group) + (group == ignite_air_group ? 1u : 0u);
+}
+
 [[nodiscard]] inline epochengine::gui_lib::Rect palette_item_rect(
     const Layout& layout, MaterialGroup group, std::uint32_t index) noexcept {
     constexpr std::uint32_t columns = 2u;
-    const auto count = (std::max)(material_group_size(group), 1u);
+    const auto count = (std::max)(palette_item_count(group), 1u);
     const auto rows = (count + columns - 1u) / columns;
     const auto column = index % columns;
     const auto row = index / columns;
@@ -194,7 +201,7 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
 
 [[nodiscard]] inline std::uint32_t palette_slot_at(
     const Layout& layout, MaterialGroup group, epochengine::gui_lib::Vec2 point) noexcept {
-    const auto count = material_group_size(group);
+    const auto count = palette_item_count(group);
     for (std::uint32_t index = 0u; index < count; ++index)
         if (epochengine::gui_lib::contains(palette_item_rect(layout, group, index), point)) return index;
     return count;
@@ -204,6 +211,13 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
     const Layout& layout, MaterialGroup group, epochengine::gui_lib::Vec2 point) noexcept {
     const auto slot = palette_slot_at(layout, group, point);
     return slot < material_group_size(group) ? grouped_material(group, slot) : Material::count;
+}
+
+[[nodiscard]] inline bool ignite_air_action_at(
+    const Layout& layout, const MaterialGroup group,
+    const epochengine::gui_lib::Vec2 point) noexcept {
+    return group == ignite_air_group &&
+           palette_slot_at(layout, group, point) == material_group_size(group);
 }
 
 [[nodiscard]] inline epochengine::gui_lib::Rect inventory_slot_rect(

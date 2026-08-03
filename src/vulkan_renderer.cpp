@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <iterator>
 #include <optional>
 #include <set>
 #include <span>
@@ -1469,34 +1470,19 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         return cells;
     }
 
-    void fill_connected_region(SharedState& state) {
-        auto cells = download_scene_cells();
-        const auto [cursor_x, cursor_y] = grid_cursor(state);
-        if (cursor_x < 0 || cursor_y < 0 ||
-            cursor_x >= static_cast<std::int32_t>(config.grid_width) ||
-            cursor_y >= static_cast<std::int32_t>(config.grid_height)) return;
-
-        const auto replacement_id =
-            state.selected_material.load(std::memory_order_relaxed) % material_count;
-        const auto replacement = static_cast<Material>(replacement_id);
-        if (replacement == Material::bee || replacement == Material::queen_bee ||
-            replacement == Material::beehive) {
-            startup_log("Fill ignored for colony agents/prefab; place Beehive to build a live colony.");
-            return;
-        }
-
-        const auto start = static_cast<std::uint32_t>(cursor_y) * config.grid_width +
-                           static_cast<std::uint32_t>(cursor_x);
-        const auto target = cells[start].material;
-        if (target == replacement_id) return;
-
+    std::size_t flood_replace_connected(std::vector<SceneCell>& cells,
+                                        const std::uint32_t start,
+                                        const std::uint32_t target,
+                                        const std::uint32_t replacement) {
+        if (static_cast<std::size_t>(start) >= cells.size() || target == replacement ||
+            cells[start].material != target)
+            return 0u;
         std::vector<std::uint8_t> visited(cells.size(), 0u);
         std::vector<std::uint32_t> queue(cells.size());
-        std::size_t head = 0;
-        std::size_t tail = 0;
+        std::size_t head = 0u;
+        std::size_t tail = 0u;
         visited[start] = 1u;
         queue[tail++] = start;
-
         while (head < tail) {
             const auto index = queue[head++];
             const auto x = index % config.grid_width;
@@ -1512,60 +1498,52 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             if (y > 0u) enqueue(index - config.grid_width);
             if (y + 1u < config.grid_height) enqueue(index + config.grid_width);
         }
-
-        std::size_t changed = 0;
-        if (is_block_material(replacement)) {
-            constexpr std::uint32_t block = 8u;
-            const auto tile_columns = divide_round_up(config.grid_width, block);
-            const auto tile_rows = divide_round_up(config.grid_height, block);
-            std::vector<std::uint8_t> touched(
-                static_cast<std::size_t>(tile_columns) * tile_rows, 0u);
-            for (std::uint32_t index = 0; index < visited.size(); ++index) {
-                if (visited[index] == 0u) continue;
-                const auto x = index % config.grid_width;
-                const auto y = index / config.grid_width;
-                touched[(y / block) * tile_columns + (x / block)] = 1u;
-            }
-            for (std::uint32_t tile_y = 0; tile_y < tile_rows; ++tile_y) {
-                for (std::uint32_t tile_x = 0; tile_x < tile_columns; ++tile_x) {
-                    if (touched[tile_y * tile_columns + tile_x] == 0u) continue;
-                    bool complete = true;
-                    for (std::uint32_t local_y = 0; local_y < block && complete; ++local_y) {
-                        for (std::uint32_t local_x = 0; local_x < block; ++local_x) {
-                            const auto x = tile_x * block + local_x;
-                            const auto y = tile_y * block + local_y;
-                            if (x >= config.grid_width || y >= config.grid_height ||
-                                visited[y * config.grid_width + x] == 0u) {
-                                complete = false;
-                                break;
-                            }
-                        }
-                    }
-                    if (!complete) continue;
-                    for (std::uint32_t local_y = 0; local_y < block; ++local_y) {
-                        for (std::uint32_t local_x = 0; local_x < block; ++local_x) {
-                            const auto index = (tile_y * block + local_y) * config.grid_width +
-                                               tile_x * block + local_x;
-                            cells[index] = make_fill_cell(replacement_id, index);
-                            ++changed;
-                        }
-                    }
-                }
-            }
-        } else {
-            for (std::uint32_t index = 0; index < visited.size(); ++index) {
-                if (visited[index] == 0u) continue;
-                cells[index] = make_fill_cell(replacement_id, index);
-                ++changed;
-            }
+        for (std::size_t index = 0u; index < visited.size(); ++index) {
+            if (visited[index] != 0u)
+                cells[index] = make_fill_cell(replacement, static_cast<std::uint32_t>(index));
         }
+        return tail;
+    }
 
+    void fill_connected_region(SharedState& state) {
+        auto cells = download_scene_cells();
+        const auto [cursor_x, cursor_y] = grid_cursor(state);
+        if (cursor_x < 0 || cursor_y < 0 ||
+            cursor_x >= static_cast<std::int32_t>(config.grid_width) ||
+            cursor_y >= static_cast<std::int32_t>(config.grid_height)) return;
+        const auto start = static_cast<std::uint32_t>(cursor_y) * config.grid_width +
+                           static_cast<std::uint32_t>(cursor_x);
+        const auto target = cells[start].material;
+        const auto replacement = static_cast<std::uint32_t>(Material::atmosphere);
+        const auto changed = flood_replace_connected(cells, start, target, replacement);
         if (changed == 0u) {
-            startup_log("Fill found no complete aligned bricks in the connected region.");
+            startup_log("Air fill found no different connected cells.");
             return;
         }
         upload_scene_cells(cells);
-        startup_log("Filled connected region: " + std::to_string(changed) + " cells.");
+        startup_log("Filled connected region with Air: " + std::to_string(changed) + " cells.");
+    }
+
+    void ignite_air_region() {
+        auto cells = download_scene_cells();
+        const auto air = static_cast<std::uint32_t>(Material::atmosphere);
+        const auto fire = static_cast<std::uint32_t>(Material::fire);
+        const auto iterator = std::find_if(cells.begin(), cells.end(), [air](const SceneCell& cell) {
+            return cell.material == air;
+        });
+        if (iterator == cells.end()) {
+            startup_log("Ignite Air found no Air cell.");
+            return;
+        }
+        const auto start = static_cast<std::uint32_t>(std::distance(cells.begin(), iterator));
+        const auto changed = flood_replace_connected(cells, start, air, fire);
+        if (changed == 0u) {
+            startup_log("Ignite Air found no connected Air region.");
+            return;
+        }
+        upload_scene_cells(cells);
+        startup_log("Ignited upper-left connected Air region: " +
+                    std::to_string(changed) + " cells.");
     }
 
     void upload_scene_cells(const std::span<const SceneCell> cells) {
@@ -1666,7 +1644,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         std::string key_error;
         if (!write_scene_material_key(scene_directory(), key_error))
             startup_log("Scene material-key warning: " + key_error);
-        startup_log("Loaded aligned 640x360 authored scene image; legacy boundary sky normalized to Atmosphere and resident geology rebuilt: " + path.string());
+        startup_log("Loaded aligned 640x360 authored scene image; legacy boundary sky normalized to Air and resident geology rebuilt: " + path.string());
         return true;
     }
 
@@ -2277,6 +2255,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         if (state.fill_region.exchange(false, std::memory_order_acq_rel)) {
             if (!needs_reset) fill_connected_region(state);
             else startup_log("Fill skipped until the initial scene exists.");
+        }
+        if (state.ignite_air.exchange(false, std::memory_order_acq_rel)) {
+            if (!needs_reset) ignite_air_region();
+            else startup_log("Ignite Air skipped until the initial scene exists.");
         }
         const bool reset_requested = needs_reset || state.reset.exchange(false, std::memory_order_acq_rel);
         bool image_loaded = false;

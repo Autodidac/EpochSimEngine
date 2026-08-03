@@ -21,6 +21,7 @@ const uint AUX_BEE_POLLEN = 0x20000000u;
 const uint AUX_BEE_FED = 0x10000000u;
 const uint AUX_BEE_SWARM = 0x08000000u;
 const uint AUX_STRUCTURAL = 0x04000000u;
+const uint AUX_SUPPORTED = 0x02000000u;
 const uint AUX_MOVED = 0x01000000u;
 const uint AUX_WATER_HALF = 0x00800000u;
 const uint AUX_STATE_MASK = 0x000000ffu;
@@ -48,7 +49,7 @@ layout(push_constant) uniform MovementPush {
 
 const uint MATERIAL_DENSITY[MATERIAL_COUNT] = uint[](
       0u,  84u,  44u,  80u, 235u, 205u,  68u,  48u,
-     64u,   4u,   5u,   2u,  72u,  25u, 170u, 160u,
+     64u,   1u,   5u,   2u,  72u,  25u, 170u, 160u,
     180u,  58u,   8u,  76u,  40u, 150u,  28u,  18u,
     190u,  81u,  32u,  38u, 145u,  76u,  50u, 175u,
       6u,  46u,  12u,  30u, 225u, 215u, 230u, 180u,
@@ -153,7 +154,10 @@ void clearHalfMedium(inout Cell cell) {
 
 void setHalfMedium(inout Cell cell, uint material, uint volume) {
     clearHalfMedium(cell);
-    if (volume == 0u || material == MAT_EMPTY) return;
+    if (material == MAT_EMPTY) return;
+    // Balanced Air is an ambient marker, not hidden pressure inside Half Water.
+    // It restores to the canonical Air state when two halves consolidate.
+    if (volume == 0u && material != MAT_ATMOSPHERE) return;
     cell.aux |= ((material & 0x7fu) << AUX_HALF_MEDIUM_MATERIAL_SHIFT) |
                 ((min(volume, 255u) & 0xffu) << AUX_HALF_MEDIUM_VOLUME_SHIFT);
 }
@@ -165,22 +169,32 @@ uint representedGasVolume(Cell cell) {
 }
 
 Cell restoredMediumFrom(Cell source, uint material, uint volume) {
-    if (material == MAT_EMPTY || volume == 0u) return Cell(MAT_EMPTY, 0u, 20, 0u);
+    if (material == MAT_EMPTY) return Cell(MAT_EMPTY, 0u, 20, 0u);
+    if (volume == 0u && material != MAT_ATMOSPHERE)
+        return Cell(MAT_EMPTY, 0u, 20, 0u);
     source.material = material;
     source.age = 0u;
     source.temperature = 20;
     source.aux &= ~(AUX_WATER_HALF | AUX_MOVED | AUX_STATE_MASK |
                     AUX_HALF_MEDIUM_MATERIAL_MASK | AUX_HALF_MEDIUM_VOLUME_MASK);
-    setStateValue(source, volume);
+    setStateValue(source, material == MAT_ATMOSPHERE && volume == 0u ? 220u : volume);
     return source;
 }
 
 bool halfWaterMergeCompatible(Cell first, Cell second) {
     uint firstVolume = halfMediumVolume(first);
     uint secondVolume = halfMediumVolume(second);
-    if (firstVolume == 0u || secondVolume == 0u) return firstVolume + secondVolume <= 255u;
-    return halfMediumMaterial(first) == halfMediumMaterial(second) &&
-           firstVolume + secondVolume <= 255u;
+    uint firstMaterial = halfMediumMaterial(first);
+    uint secondMaterial = halfMediumMaterial(second);
+    if (firstVolume == 0u && secondVolume == 0u)
+        return firstMaterial == secondMaterial;
+    if (firstVolume == 0u)
+        return (firstMaterial == MAT_EMPTY || firstMaterial == secondMaterial) &&
+               secondVolume <= 255u;
+    if (secondVolume == 0u)
+        return (secondMaterial == MAT_EMPTY || firstMaterial == secondMaterial) &&
+               firstVolume <= 255u;
+    return firstMaterial == secondMaterial && firstVolume + secondVolume <= 255u;
 }
 
 bool mergeHalfWaterPair(ivec2 keepPosition, ivec2 releasePosition, Cell keep, Cell released) {
@@ -203,8 +217,9 @@ bool mergeHalfWaterPair(ivec2 keepPosition, ivec2 releasePosition, Cell keep, Ce
 }
 
 void splitFullWaterPair(ivec2 sourcePosition, ivec2 targetPosition, Cell source, Cell target) {
+    bool ambientAir = target.material == MAT_ATMOSPHERE;
     uint mediumMaterial = isStoredGasMaterial(target.material) ? target.material : MAT_EMPTY;
-    uint mediumVolume = representedGasVolume(target);
+    uint mediumVolume = ambientAir ? 0u : representedGasVolume(target);
     uint sourceMediumVolume = mediumVolume / 2u;
     uint targetMediumVolume = mediumVolume - sourceMediumVolume;
 
@@ -450,6 +465,69 @@ bool movementAllows(Cell cell, uint randomValue) {
     return true;
 }
 
+bool repairCandidateAt(ivec2 candidatePosition, Cell source,
+                       inout ivec2 repairPosition, inout Cell repaired) {
+    if (!moveInside(candidatePosition) || repairPosition.x >= 0) return false;
+    Cell candidate = moveAt(candidatePosition);
+    if (isOpenGas(candidate)) {
+        repaired = source;
+        repaired.age = 0u;
+        repaired.aux &= ~(AUX_MOVED | AUX_STATE_MASK);
+        repaired.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
+        setStateValue(repaired, 255u);
+        repairPosition = candidatePosition;
+        return true;
+    }
+    if (candidate.material == source.material && isStructural(candidate)) {
+        uint health = stateValue(candidate);
+        if (health != 0u && health < 255u) {
+            repaired = candidate;
+            repaired.age = 0u;
+            repaired.aux |= AUX_STRUCTURAL | AUX_SUPPORTED | AUX_MOVED;
+            setStateValue(repaired, 255u);
+            repairPosition = candidatePosition;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool repairDamagedTileFromLooseCell(ivec2 sourcePosition, ivec2 contactPosition,
+                                      Cell source, Cell contact) {
+    if (isStructural(source) || isCellGas(source) || isCellLiquid(source) ||
+        source.material == MAT_EMPTY || source.material == MAT_LAVA ||
+        source.material != contact.material || !isStructural(contact)) return false;
+
+    uint targetTileIndex = tileIndex(contactPosition, movePc.width);
+    TileState targetTile = tiles[targetTileIndex];
+    if (!tileHas(targetTile, TILE_STRUCTURAL) || !tileHas(targetTile, TILE_DAMAGED) ||
+        targetTile.material != source.material) return false;
+
+    ivec2 origin = (contactPosition / int(TILE_SIZE)) * int(TILE_SIZE);
+    int repairX = clamp(sourcePosition.x, origin.x, origin.x + int(TILE_SIZE) - 1);
+    ivec2 repairPosition = ivec2(-1);
+    Cell repaired = source;
+
+    // One vertical pair owns one tile column. Fixed candidates avoid unbounded
+    // driver loops while preferring lower holes, then damaged represented cells.
+    repairCandidateAt(ivec2(repairX, origin.y + 7), source, repairPosition, repaired);
+    repairCandidateAt(ivec2(repairX, origin.y + 6), source, repairPosition, repaired);
+    repairCandidateAt(ivec2(repairX, origin.y + 5), source, repairPosition, repaired);
+    repairCandidateAt(ivec2(repairX, origin.y + 4), source, repairPosition, repaired);
+    repairCandidateAt(ivec2(repairX, origin.y + 3), source, repairPosition, repaired);
+    repairCandidateAt(ivec2(repairX, origin.y + 2), source, repairPosition, repaired);
+    repairCandidateAt(ivec2(repairX, origin.y + 1), source, repairPosition, repaired);
+    repairCandidateAt(ivec2(repairX, origin.y + 0), source, repairPosition, repaired);
+    if (repairPosition.x < 0) return false;
+
+    cells[moveIndex(repairPosition)] = repaired;
+    cells[moveIndex(sourcePosition)] = Cell(MAT_EMPTY, 0u, 20, 0u);
+    markChunkDirty(repairPosition);
+    markChunkDirty(sourcePosition);
+    if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_FINE_REPAIR_MOVES], 1u);
+    return true;
+}
+
 bool canCellFallInto(Cell moving, Cell target) {
     bool looseSolid = isLooseSolid(moving);
     if (isStructural(moving) || (!looseSolid && isCellImmovable(moving))) return false;
@@ -514,8 +592,14 @@ bool liquidCanSpread(ivec2 sourcePosition, ivec2 targetPosition, Cell source, ui
                       isOpenGas(moveAt(next2)) &&
                       canCellFallInto(source, moveAt(next2 + ivec2(0, 1)));
     if (firstDrop || secondDrop) return true;
-    // Equal-height basins have no random fallback: accumulated age becomes real rest.
-    return source.age < 12u && sourcePressure > 0 && targetPressure + 1 < sourcePressure;
+    // A supplied low-viscosity surface may run outward briefly to form a level pool.
+    // Age is preserved by liquid swaps, so an equal basin still reaches real rest.
+    int directionBack = targetPosition.x > sourcePosition.x ? -1 : 1;
+    Cell behind = moveAt(sourcePosition + ivec2(directionBack, 0));
+    Cell above = moveAt(sourcePosition + ivec2(0, -1));
+    bool suppliedSurface = behind.material == source.material || above.material == source.material;
+    bool lowViscosity = source.material != MAT_HONEY && source.material != MAT_OIL;
+    return lowViscosity && suppliedSurface && source.age < 18u;
 }
 
 bool solidSupportsWaterAt(ivec2 position) {
@@ -689,6 +773,34 @@ bool lightningMoveAllowed(ivec2 sourcePosition, ivec2 targetPosition, uint rando
     return targetTarget != sourceTarget ? targetTarget : ((randomValue & 1u) == 0u);
 }
 
+uint representedGasPressure(Cell cell) {
+    uint pressure = stateValue(cell);
+    if (pressure != 0u) return pressure;
+    if (cell.material == MAT_ATMOSPHERE || cell.material == MAT_OXYGEN) return 220u;
+    return 1u;
+}
+
+bool expandAirIntoVacuum(ivec2 sourcePosition, ivec2 targetPosition, Cell source, Cell target) {
+    if (source.material != MAT_ATMOSPHERE || target.material != MAT_EMPTY) return false;
+    uint pressure = representedGasPressure(source);
+    if (pressure <= 1u) return false;
+    uint transferred = max(1u, pressure / 2u);
+
+    Cell expanded = source;
+    source.age = 0u;
+    expanded.age = 0u;
+    source.aux |= AUX_MOVED;
+    expanded.aux |= AUX_MOVED;
+    setStateValue(source, pressure - transferred);
+    setStateValue(expanded, transferred);
+    cells[moveIndex(sourcePosition)] = source;
+    cells[moveIndex(targetPosition)] = expanded;
+    markChunkDirty(sourcePosition);
+    markChunkDirty(targetPosition);
+    if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_GAS_EXCESS_MOVES], 1u);
+    return true;
+}
+
 bool gasExpansionAllows(Cell cell) {
     if (cell.material == MAT_ATMOSPHERE || cell.material == MAT_OXYGEN)
         return cell.age < 24u;
@@ -827,6 +939,10 @@ void processVertical(ivec2 top, ivec2 bottom) {
     if (isHalfWaterCell(a) && isHalfWaterCell(b) &&
         mergeHalfWaterPair(bottom, top, b, a)) return;
 
+    if (repairDamagedTileFromLooseCell(top, bottom, a, b)) return;
+    if (expandAirIntoVacuum(top, bottom, a, b) ||
+        expandAirIntoVacuum(bottom, top, b, a)) return;
+
     if (isInsect(a.material) && isPassableLifeMedium(b) &&
         insectMediumMoveAllowed(a, top, bottom, randomValue)) {
         swapCells(top, bottom);
@@ -903,6 +1019,8 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
 
     if (isHalfWaterCell(source) && isHalfWaterCell(target) &&
         mergeHalfWaterPair(targetPosition, sourcePosition, target, source)) return;
+
+    if (expandAirIntoVacuum(sourcePosition, targetPosition, source, target)) return;
 
     if (isInsect(source.material) && isPassableLifeMedium(target) &&
         insectMediumMoveAllowed(source, sourcePosition, targetPosition, randomValue)) {
@@ -1046,6 +1164,9 @@ void processHorizontal(ivec2 left, ivec2 right) {
     if (isHalfWaterCell(a) || isHalfWaterCell(b)) return;
 
     if ((movePc.reserved1 & 1u) != 0u) return;
+
+    if (expandAirIntoVacuum(left, right, a, b) ||
+        expandAirIntoVacuum(right, left, b, a)) return;
 
     if (isCellLiquid(a) && isOpenGas(b) && liquidCanSpread(left, right, a, randomValue)) {
         if (a.material == MAT_WATER && !isHalfWaterCell(a) &&

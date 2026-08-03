@@ -233,7 +233,7 @@ def main() -> int:
         if token not in tiles:
             errors.append(f"stable fine-medium contract missing {token!r}")
     for token in ("cell.material == MAT_ATMOSPHERE || cell.material == MAT_OXYGEN",
-                  "!tileHas(tile, TILE_SLEEPING)", "stateEdge ? 0.10 : 0.0",
+                  "!tileHas(tile, TILE_SLEEPING)", "stateEdge ? 0.16 : 0.0",
                   "mediumCell ? 0.0 : 0.045"):
         if token not in fullscreen_medium:
             errors.append(f"medium presentation contract missing {token!r}")
@@ -298,7 +298,7 @@ def main() -> int:
     fullscreen = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
     for token in ("mediumCell", "stateEdge", "utilityLabels[3] = uint[3](67u, 159u, 108u)",
                   "debugScale", "palettePanelHeight = 124u",
-                  "keymapBottom = keymapTop + 98u",
+                  "keymapBottom = keymapTop + 124u",
                   "cursorBottom = cursorTop + 112u",
                   "controlTop = cursorTop + 85u"):
         if token not in fullscreen:
@@ -308,11 +308,45 @@ def main() -> int:
                   "residentSubstrateStructural(substrateSample)"):
         if token not in reset_shader:
             errors.append(f"resident structural deposit contract missing {token!r}")
+    for token in (
+        "std::atomic_bool ignite_air{false};",
+        "Filled connected region with Air",
+        "Ignited upper-left connected Air region",
+        "static_cast<std::uint32_t>(Material::atmosphere)",
+        "static_cast<std::uint32_t>(Material::fire)",
+    ):
+        if token not in shared_state_hpp + renderer_cpp:
+            errors.append(f"Air fill/ignition action contract missing {token!r}")
+    for token in (
+        "Balanced Air is an ambient marker",
+        "volume == 0u && material != MAT_ATMOSPHERE",
+        "ambientAir ? 0u : representedGasVolume(target)",
+        "material == MAT_ATMOSPHERE && volume == 0u ? 220u : volume",
+    ):
+        if token not in move:
+            errors.append(f"Half Water ambient-Air isolation contract missing {token!r}")
+    for token in (
+        "repairDamagedTileFromLooseCell",
+        "expandAirIntoVacuum",
+        "suppliedSurface",
+        "source.material != MAT_HONEY && source.material != MAT_OIL",
+    ):
+        if token not in move:
+            errors.append(f"v2.5.8 movement equilibrium contract missing {token!r}")
+    for token in (
+        "Legend order matches the state precedence",
+        "hierarchy state is an edge key",
+        "vec3(0.05, 0.78, 1.00)",
+        "vec3(0.025, 0.075, 0.22)",
+    ):
+        if token not in fullscreen:
+            errors.append(f"debug legend contract missing {token!r}")
+
     if "std::atomic_bool camera_controls{false};" not in shared_state_hpp:
         errors.append("shared camera-control mode state is missing")
     if "camera_controls = state.camera_controls.load" not in renderer_cpp:
         errors.append("camera-control mode is not forwarded to rendering")
-    for token in ("RMB PAN", "PLAYER WASD"):
+    for token in ("RMB PAN", "PLAYER WASD", '"AIR"', '"IGNITE AIR"'):
         if token not in generator_py:
             errors.append(f"generated control label contract missing {token!r}")
     ui_text = (SHADERS / "ui_text.glsl").read_text(encoding="utf-8")
@@ -555,10 +589,13 @@ def main() -> int:
         if token not in ui_layout + app_cpp + renderer_cpp:
             errors.append(f"aspect-correct live-view viewport contract missing {token!r}")
     for token in (
-        "preferred_sidebar_width = 384u",
+        "preferred_sidebar_width = 424u",
         "status_height = 208u",
         "group_tabs_height = 96u",
         "palette_items_height = 124u",
+        "keymap_height = 124u",
+        "palette_item_count",
+        "ignite_air_action_at",
         "material_card",
     ):
         if token not in ui_layout:
@@ -566,6 +603,8 @@ def main() -> int:
     for token in (
         "sidebarWidth",
         "groupMaterialCount(renderPc.selectedGroup)",
+        "igniteAirTextId = 165u",
+        "igniteAirAction",
         "materialPixel(pixel",
         "3, cardMaterial",
         "cardPixel(pixel",
@@ -926,9 +965,9 @@ def main() -> int:
     labels = (ROOT / "tools/generate_ui_text.py").read_text(encoding="utf-8")
     for token in ("RESIDENT MB", "STRUCT FAIL", "CONVEYOR", "MACHINE IN", "MACHINE OUT", "VOLCANO LAVA", "VOLCANO GAS", "GAS EDGE", "REACTIONS"):
         if token not in labels: errors.append(f"activity debug label missing {token!r}")
-    for token in ("vec3(1.00, 0.10, 0.72)", "vec3(0.035, 0.10, 0.30)", "debugStats[STAT_STRUCTURAL_COLLAPSES]", "debugStats[STAT_CONVEYOR_MOVES]", "debugStats[STAT_MACHINE_INPUTS]", "debugStats[STAT_MACHINE_OUTPUTS]", "debugStats[STAT_VOLCANO_LAVA_OUTPUTS]", "debugStats[STAT_VOLCANO_GAS_OUTPUTS]"):
+    for token in ("vec3(1.00, 0.08, 0.72)", "vec3(0.025, 0.075, 0.22)", "debugStats[STAT_STRUCTURAL_COLLAPSES]", "debugStats[STAT_CONVEYOR_MOVES]", "debugStats[STAT_MACHINE_INPUTS]", "debugStats[STAT_MACHINE_OUTPUTS]", "debugStats[STAT_VOLCANO_LAVA_OUTPUTS]", "debugStats[STAT_VOLCANO_GAS_OUTPUTS]"):
         if token not in renderer: errors.append(f"resource-first debug contract missing {token!r}")
-    for token in ("vec3(0.58, 0.20, 1.00)", "vec3(0.08, 0.96, 0.28)",
+    for token in ("vec3(0.62, 0.18, 1.00)", "vec3(0.08, 0.94, 0.30)",
                   "value = min(value, 99999999u)", "separatorYs", "keyColorMap"):
         if token not in renderer: errors.append(f"v2.4.8 debug readability contract missing {token!r}")
     for token in ("layout.atmosphere", "layout.fill", "layout.eraser",

@@ -438,6 +438,8 @@ int run_application() {
         const auto hovered_material = ui::palette_material_at(layout, selected_group, pointer);
         shared_state.hovered_material.store(
             static_cast<std::uint32_t>(hovered_material), std::memory_order_relaxed);
+        const bool hovered_ignite_air =
+            ui::ignite_air_action_at(layout, selected_group, pointer);
 
         if (primary_pressed) {
             if (epochengine::gui_lib::contains(layout.previous_scene, pointer)) {
@@ -517,6 +519,8 @@ int run_application() {
                     std::memory_order_relaxed);
             } else if (hovered_group < material_group_count) {
                 shared_state.selected_group.store(hovered_group, std::memory_order_relaxed);
+            } else if (hovered_ignite_air) {
+                shared_state.ignite_air.store(true, std::memory_order_release);
             } else if (hovered_material != Material::count) {
                 shared_state.selected_material.store(
                     static_cast<std::uint32_t>(hovered_material), std::memory_order_relaxed);

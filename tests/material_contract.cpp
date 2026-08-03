@@ -23,6 +23,9 @@ static_assert(sandhybrid::material_names[static_cast<std::uint32_t>(Material::at
 static_assert(sandhybrid::material_profile(Material::atmosphere).base_phase == MaterialPhase::gas);
 static_assert(sandhybrid::material_profile(Material::lava).base_phase == MaterialPhase::powder);
 static_assert(sandhybrid::material_profile(Material::lava).density > sandhybrid::material_profile(Material::silt).density);
+static_assert(sandhybrid::material_profile(Material::acid).base_phase == MaterialPhase::liquid);
+static_assert(sandhybrid::material_profile(Material::smoke).density <
+              sandhybrid::material_profile(Material::atmosphere).density);
 static_assert(sandhybrid::material_group_count == 8u);
 static_assert(sandhybrid::material_slots_per_group == 10u);
 static_assert(sandhybrid::material_group_size(MaterialGroup::ground) == 7u);
