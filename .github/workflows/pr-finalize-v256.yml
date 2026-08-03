@@ -31,12 +31,16 @@ jobs:
           text = path.read_text(encoding='utf-8')
           old_value = 'const bool mining = shared_state.mining_mode.load(std::memory_order_relaxed);'
           old_use = 'shared_state.mining_mode.store(!mining, std::memory_order_release);'
-          if old_value not in text or old_use not in text:
-              raise SystemExit('toolbar mining-toggle anchor missing')
-          text = text.replace(old_value,
-              'const bool current_mining = shared_state.mining_mode.load(std::memory_order_relaxed);', 1)
-          text = text.replace(old_use,
-              'shared_state.mining_mode.store(!current_mining, std::memory_order_release);', 1)
+          occurrences = text.count(old_value)
+          if occurrences < 2:
+              raise SystemExit(f'expected multiple mining blocks, found {occurrences}')
+          for _ in range(occurrences - 1):
+              if old_use not in text:
+                  raise SystemExit('matching mining-toggle store missing')
+              text = text.replace(old_value,
+                  'const bool current_mining = shared_state.mining_mode.load(std::memory_order_relaxed);', 1)
+              text = text.replace(old_use,
+                  'shared_state.mining_mode.store(!current_mining, std::memory_order_release);', 1)
           path.write_text(text, encoding='utf-8')
           PY
           cat tools/v256part*.b64 | base64 --decode | gzip --decompress > /tmp/finalize_v256.py
