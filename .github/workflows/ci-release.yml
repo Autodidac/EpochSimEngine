@@ -53,14 +53,16 @@ jobs:
           from pathlib import Path
           path = Path('shaders/reset.comp')
           text = path.read_text(encoding='utf-8')
-          old = '''bool residentSubstrateStructural(uvec2 sample) {
-    return (sample.y & TERRAIN_FLAG_STRUCTURAL) != 0u;
-}
-'''
-          new = '''bool residentSubstrateStructural(uvec2 terrainResult) {
-    return (terrainResult.y & TERRAIN_FLAG_STRUCTURAL) != 0u;
-}
-'''
+          old = (
+              "bool residentSubstrateStructural(uvec2 sample) {\n"
+              "    return (sample.y & TERRAIN_FLAG_STRUCTURAL) != 0u;\n"
+              "}\n"
+          )
+          new = (
+              "bool residentSubstrateStructural(uvec2 terrainResult) {\n"
+              "    return (terrainResult.y & TERRAIN_FLAG_STRUCTURAL) != 0u;\n"
+              "}\n"
+          )
           if old not in text:
               raise SystemExit('reserved GLSL parameter marker missing')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
