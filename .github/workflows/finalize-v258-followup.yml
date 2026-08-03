@@ -1,0 +1,89 @@
+name: Finalize SandHybrid v2.5.8 runtime follow-up
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: finalize-v258-followup-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.head_ref == 'agent/v258-air-fill-halfwater-ui'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/v258-air-fill-halfwater-ui
+          fetch-depth: 0
+
+      - name: Read cached patch from PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/issues/53/comments?per_page=100" > /tmp/comments.json
+          python3 - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          comments = json.loads(Path('/tmp/comments.json').read_text(encoding='utf-8'))
+          bodies = [
+              comment.get('body', '')
+              for comment in comments
+              if '<!-- v258-followup-patch -->' in comment.get('body', '')
+          ]
+          if not bodies:
+              raise SystemExit('v2.5.8 follow-up patch comment missing')
+          match = re.search(r'```payload\s*([A-Za-z0-9+/=\s]+?)\s*```', bodies[-1], re.S)
+          if match is None:
+              raise SystemExit('v2.5.8 follow-up payload fence missing')
+          Path('/tmp/v258.b64').write_text(''.join(match.group(1).split()), encoding='ascii')
+          PY
+          base64 --decode /tmp/v258.b64 > /tmp/v258.patch.gz
+          echo 'cb22f4f581d7768f50e2ac974b7d175b44ed97f5ef0a56b9375e4e530db988c2  /tmp/v258.patch.gz' | sha256sum --check
+          gzip --decompress --stdout /tmp/v258.patch.gz > /tmp/v258.patch
+          echo 'a9da91059453fe1b52c71cad06777839b5bf122e7a293e39ba20820301689920  /tmp/v258.patch' | sha256sum --check
+          git apply --check /tmp/v258.patch
+          git apply /tmp/v258.patch
+          python3 tools/generate_ui_text.py
+
+      - name: Validate source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+          cmake -S . -B build/v258-followup -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build/v258-followup --parallel
+          ctest --test-dir build/v258-followup --output-on-failure
+
+      - name: Commit permanent source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A -- ':!.github/workflows/finalize-v258-followup.yml'
+          if git diff --cached --quiet; then
+            echo 'No source changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Fix tile repair liquid gas and debug state behavior'
+          git push origin HEAD:agent/v258-air-fill-halfwater-ui
