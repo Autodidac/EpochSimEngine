@@ -153,8 +153,8 @@ uvec2 residentWorldSubstrateSample(ivec2 worldPosition) {
     return residentGroundSample(geology, worldPosition, depth);
 }
 
-bool residentSubstrateStructural(uvec2 sample) {
-    return (sample.y & TERRAIN_FLAG_STRUCTURAL) != 0u;
+bool residentSubstrateStructural(uvec2 terrainResult) {
+    return (terrainResult.y & TERRAIN_FLAG_STRUCTURAL) != 0u;
 }
 
 bool brickRect(ivec2 p, ivec2 minimumBrick, ivec2 maximumBrick) {
