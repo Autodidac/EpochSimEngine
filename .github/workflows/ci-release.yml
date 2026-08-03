@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sandhybrid-v254-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: sandhybrid-v255-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -22,10 +22,10 @@ jobs:
         include:
           - os: windows-2022
             triplet: x64-windows
-            artifact: SandHybrid-Windows-x64-v2.5.4
+            artifact: SandHybrid-Windows-x64-v2.5.5
           - os: ubuntu-24.04
             triplet: x64-linux
-            artifact: SandHybrid-Linux-x64-v2.5.4
+            artifact: SandHybrid-Linux-x64-v2.5.5
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
 
@@ -157,7 +157,7 @@ jobs:
         with:
           path: dist
 
-      - name: Publish v2.5.4 release
+      - name: Publish v2.5.5 release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -169,16 +169,16 @@ jobs:
             printf '%s\n' "${assets[@]}" >&2
             exit 1
           fi
-          if gh release view v2.5.4 >/dev/null 2>&1; then
-            gh release upload v2.5.4 "${assets[@]}" --clobber
-            gh release edit v2.5.4 \
-              --title 'SandHybrid v2.5.4' \
+          if gh release view v2.5.5 >/dev/null 2>&1; then
+            gh release upload v2.5.5 "${assets[@]}" --clobber
+            gh release edit v2.5.5 \
+              --title 'SandHybrid v2.5.5' \
               --notes-file CHANGELOG.md \
               --latest
           else
-            gh release create v2.5.4 "${assets[@]}" \
+            gh release create v2.5.5 "${assets[@]}" \
               --target "$GITHUB_SHA" \
-              --title 'SandHybrid v2.5.4' \
+              --title 'SandHybrid v2.5.5' \
               --notes-file CHANGELOG.md \
               --latest
           fi
@@ -193,4 +193,5 @@ jobs:
           git push origin --delete agent/external-handoff-priority-note || true
           git push origin --delete agent/tmp-noop || true
           git push origin --delete agent/durable-structural-ground-deposits-v254 || true
+          git push origin --delete agent/cache-foundations-v255 || true
           # Preserve agent/nonoverlap-core-hygiene per Adam's explicit instruction.
