@@ -1,71 +1,190 @@
-name: Finalize SandHybrid v2.5.7 debug and trap pass
+name: SandHybrid CI and Release
 
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: finalize-v257-debug-traps-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  group: sandhybrid-v257-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  finalize:
-    if: github.head_ref == 'agent/v257-air-water-equilibrium'
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            triplet: x64-windows
+            artifact: SandHybrid-Windows-x64-v2.5.7
+          - os: ubuntu-24.04
+            triplet: x64-linux
+            artifact: SandHybrid-Linux-x64-v2.5.7
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate generated and shader contracts
+        run: python tools/validate_shader_contracts.py
+
+      - name: Validate canonical mission cache
+        run: python tools/validate_mission_cache.py
+
+      - name: Reject simulation coroutines
+        run: python tools/validate_no_simulation_coroutines.py
+
+      - name: Enforce SandHybrid branding
+        run: python tools/validate_project_branding.py
+
+      - name: Install Linux host packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libxcb1-dev
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="${RUNNER_TEMP}/vcpkg"
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git "$root"
+          git -C "$root" checkout 04a735608afac5844e86fc91d6ba2112cac613c1
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            "$root/bootstrap-vcpkg.bat" -disableMetrics
+          else
+            "$root/bootstrap-vcpkg.sh" -disableMetrics
+          fi
+          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
+
+      - name: Configure Windows Release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake -S . -B build/ci -G 'Visual Studio 17 2022' -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} `
+            -DVCPKG_HOST_TRIPLET=${{ matrix.triplet }} `
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON `
+            -DSANDHYBRID_ENABLE_VALIDATION=OFF `
+            -DBUILD_TESTING=ON
+
+      - name: Configure Linux Release
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cmake -S . -B build/ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
+            -DVCPKG_HOST_TRIPLET=${{ matrix.triplet }} \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DSANDHYBRID_ENABLE_VALIDATION=OFF \
+            -DBUILD_TESTING=ON
+
+      - name: Build Windows Release
+        if: runner.os == 'Windows'
+        run: cmake --build build/ci --config Release --parallel
+
+      - name: Build Linux Release
+        if: runner.os == 'Linux'
+        run: cmake --build build/ci --parallel
+
+      - name: Test Windows Release
+        if: runner.os == 'Windows'
+        run: ctest --test-dir build/ci -C Release --output-on-failure
+
+      - name: Test Linux Release
+        if: runner.os == 'Linux'
+        run: ctest --test-dir build/ci --output-on-failure
+
+      - name: Install Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake --install build/ci --config Release --prefix dist/${{ matrix.artifact }}
+
+      - name: Install Linux package
+        if: runner.os == 'Linux'
+        run: cmake --install build/ci --prefix dist/${{ matrix.artifact }}
+
+      - name: Add package documentation
+        shell: bash
+        run: cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md CHANGELOG.md MAP_VIEW.md SCENE_LAYOUT.md RELEASE_NOTES_v2.5.7.md "dist/${{ matrix.artifact }}/"
+
+      - name: Archive Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path 'dist/${{ matrix.artifact }}/*' -DestinationPath 'dist/${{ matrix.artifact }}.zip'
+
+      - name: Archive Linux package
+        if: runner.os == 'Linux'
+        run: tar -C dist -czf 'dist/${{ matrix.artifact }}.tar.gz' '${{ matrix.artifact }}'
+
+      - name: Upload Windows package
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.zip
+          if-no-files-found: error
+
+      - name: Upload Linux package
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.tar.gz
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/v257-air-water-equilibrium
           fetch-depth: 0
 
-      - name: Apply cached v2.5.7 source patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat tools/v257-debug-traps.part00 \
-              tools/v257-debug-traps.part01 \
-              tools/v257-debug-traps.part02 \
-              tools/v257-debug-traps.part03 \
-              tools/v257-debug-traps.part04 \
-              tools/v257-debug-traps.part05 \
-              tools/v257-debug-traps.part06 \
-            | base64 --decode \
-            | gzip --decompress > /tmp/v257-debug-traps.patch
-          git apply --check /tmp/v257-debug-traps.patch
-          git apply /tmp/v257-debug-traps.patch
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
 
-      - name: Validate mission, shader, and core contracts
+      - name: Publish v2.5.7 release
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 tools/validate_shader_contracts.py
-          python3 tools/validate_mission_cache.py
-          python3 tools/validate_no_simulation_coroutines.py
-          python3 tools/validate_project_branding.py
-          cmake -S . -B build/v257-finalize -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DSANDHYBRID_BUILD_APP=OFF \
-            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
-            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
-            -DBUILD_TESTING=ON
-          cmake --build build/v257-finalize --parallel
-          ctest --test-dir build/v257-finalize --output-on-failure
+          mapfile -t assets < <(find dist -type f \( -name '*.zip' -o -name '*.tar.gz' \) -print | sort)
+          if [[ "${#assets[@]}" -ne 2 ]]; then
+            printf 'Expected two package assets, found %s\n' "${#assets[@]}" >&2
+            printf '%s\n' "${assets[@]}" >&2
+            exit 1
+          fi
+          if gh release view v2.5.7 >/dev/null 2>&1; then
+            gh release upload v2.5.7 "${assets[@]}" --clobber
+            gh release edit v2.5.7 \
+              --title 'SandHybrid v2.5.7' \
+              --notes-file RELEASE_NOTES_v2.5.7.md \
+              --latest
+          else
+            gh release create v2.5.7 "${assets[@]}" \
+              --target "$GITHUB_SHA" \
+              --title 'SandHybrid v2.5.7' \
+              --notes-file RELEASE_NOTES_v2.5.7.md \
+              --latest
+          fi
 
-      - name: Commit permanent source changes
+      - name: Remove completed agent branch
         shell: bash
         run: |
-          set -euo pipefail
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add CHANGELOG.md RELEASE_NOTES_v2.5.7.md missioncache.md \
-            tools/generate_ui_text.py tools/validate_shader_contracts.py \
-            include/sandhybrid/terrain_generation.hpp include/sandhybrid/ui_text_data.hpp \
-            shaders/ui_text.glsl shaders/debug_stats.glsl shaders/debug_stats.comp \
-            shaders/fullscreen.frag shaders/terrain_generation.glsl \
-            tests/terrain_generation_contract.cpp
-          git commit -m 'Complete v2.5.7 debug telemetry and trap geology'
-          git push origin HEAD:agent/v257-air-water-equilibrium
+          git push origin --delete agent/v257-air-water-equilibrium || true
+          # Preserve agent/nonoverlap-core-hygiene per Adam's explicit instruction.
