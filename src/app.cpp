@@ -304,7 +304,6 @@ int run_application() {
             static_cast<float>(input.mouse_y),
         };
         const bool primary_pressed = input.primary_pressed;
-        const bool secondary_pressed = input.secondary_pressed;
         const bool over_simulation = epochengine::gui_lib::contains(simulation_viewport.rect, pointer);
         if (input.wheel_delta != 0 && over_simulation)
             zoom_at_pointer(shared_state, simulation_config, simulation_viewport,

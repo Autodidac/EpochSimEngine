@@ -477,8 +477,10 @@ def main() -> int:
         for token in ("primary_pressed = true", "secondary_pressed = true"):
             if token not in source:
                 errors.append(f"{source_name} press-edge latch missing {token!r}")
-    if "input.primary_pressed" not in app_cpp or "input.secondary_pressed" not in app_cpp:
-        errors.append("app does not consume native press-edge latches")
+    if "input.primary_pressed" not in app_cpp:
+        errors.append("app does not consume the native primary press-edge latch")
+    if "const bool secondary_pressed = input.secondary_pressed;" in app_cpp:
+        errors.append("obsolete unused secondary press-edge local remains")
     for token in ("looseAuthoredTerrain", "material == MAT_DIRT", "material == MAT_GRASS", "residentGroundDepositMaterial"):
         if token not in reset_comp:
             errors.append(f"authored terrain stability contract missing {token!r}")
