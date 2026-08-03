@@ -19,8 +19,6 @@ void main() {
 
     uint index = chunk.y * columns + chunk.x;
     ChunkState previous = chunks[index];
-    if (chunkHas(previous, CHUNK_SLEEPING) && !chunkHas(previous, CHUNK_DIRTY)) return;
-
     uint tileColumnsValue = tileColumns(pc.width);
     uint tileRowsValue = (pc.height + TILE_SIZE - 1u) / TILE_SIZE;
     uvec2 brickOrigin = chunk * CHUNK_TILES_PER_AXIS;

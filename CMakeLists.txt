@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SandHybrid VERSION 2.5.6 LANGUAGES CXX)
+project(SandHybrid VERSION 2.5.7 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -182,6 +182,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
                     "${SHADER_SOURCE_DIR}/conservation.glsl"
                     "${SHADER_SOURCE_DIR}/debug_stats.glsl"
                     "${SHADER_SOURCE_DIR}/actor.glsl"
+                    "${SHADER_SOURCE_DIR}/terrain_generation.glsl"
                     "${SHADER_SOURCE_DIR}/epochgui_font.glsl"
                     "${SHADER_SOURCE_DIR}/ui_text.glsl"
             VERBATIM
@@ -265,6 +266,7 @@ set(SANDHYBRID_CORE_PUBLIC_HEADERS
     include/sandhybrid/section_grid.hpp
     include/sandhybrid/section_scheduler.hpp
     include/sandhybrid/simulation_policy.hpp
+    include/sandhybrid/terrain_generation.hpp
     include/sandhybrid/world_layout.hpp
 )
 install(FILES ${SANDHYBRID_CORE_PUBLIC_HEADERS}
@@ -352,6 +354,12 @@ if(BUILD_TESTING)
     target_compile_features(sandhybrid_public_api_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_public_api_contract)
     add_test(NAME sandhybrid_public_api_contract COMMAND sandhybrid_public_api_contract)
+
+    add_executable(sandhybrid_terrain_generation_contract tests/terrain_generation_contract.cpp)
+    target_include_directories(sandhybrid_terrain_generation_contract PRIVATE include)
+    target_compile_features(sandhybrid_terrain_generation_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_terrain_generation_contract)
+    add_test(NAME sandhybrid_terrain_generation_contract COMMAND sandhybrid_terrain_generation_contract)
 
     add_executable(sandhybrid_world_layout_contract tests/world_layout_contract.cpp)
     target_link_libraries(sandhybrid_world_layout_contract PRIVATE SandHybrid::SandHybrid)

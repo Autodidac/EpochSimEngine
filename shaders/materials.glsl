@@ -209,7 +209,7 @@ bool isWaterBased(uint material) {
 
 bool isLiquid(uint material) {
     return material == MAT_WATER || material == MAT_SALTWATER || material == MAT_DIRTY_WATER ||
-           material == MAT_ACID || material == MAT_LAVA || material == MAT_OIL || material == MAT_HONEY;
+           material == MAT_ACID || material == MAT_OIL || material == MAT_HONEY;
 }
 
 bool isPowder(uint material) {
@@ -217,7 +217,7 @@ bool isPowder(uint material) {
            material == MAT_ASH || material == MAT_GUNPOWDER || material == MAT_SNOW ||
            material == MAT_SEED || material == MAT_POLLEN || material == MAT_SILT ||
            material == MAT_FERTILIZER || material == MAT_FOOD || material == MAT_WASTE ||
-           material == MAT_ALUMINUM_SHAVINGS || material == MAT_IRON_ORE;
+           material == MAT_LAVA || material == MAT_ALUMINUM_SHAVINGS || material == MAT_IRON_ORE;
 }
 
 bool isPlant(uint material) {

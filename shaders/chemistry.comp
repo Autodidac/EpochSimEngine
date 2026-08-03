@@ -597,8 +597,19 @@ uint ventEmissionKind(ivec2 ventPosition, uint pressure) {
     return 0u;
 }
 
+bool ventOutletBlockedBySolid(Cell cell) {
+    return isStructural(cell) || isImmovable(cell.material);
+}
+
 bool ventOutletMedium(Cell cell) {
-    return cell.material == MAT_EMPTY || isGas(cell.material);
+    return !ventOutletBlockedBySolid(cell);
+}
+
+uint lavaNeighborCount(ivec2 p) {
+    uint count = 0u;
+    for (uint i = 0u; i < 8u; ++i)
+        if (at(p + neighborOffsets[i]).material == MAT_LAVA) ++count;
+    return count;
 }
 
 bool lineHasMaterial(ivec2 p, int direction, uint material, int distance) {
@@ -923,8 +934,17 @@ void main() {
         uint pressure = stateValue(belowSource);
         uint emission = ventEmissionKind(ventPosition, pressure);
         if (emission == 2u) {
-            result = makeCell(MAT_LAVA);
-            result.temperature = 1250;
+            if (source.material == MAT_LAVA) {
+                result = source;
+                setStateValue(result, 255u);
+                result.temperature = max(result.temperature, 1250);
+                result.age = 0u;
+                result.aux |= AUX_MOVED;
+            } else {
+                result = makeCell(MAT_LAVA);
+                setStateValue(result, 255u);
+                result.temperature = 1250;
+            }
             if (pc.reserved != 0u) atomicAdd(debugStats[STAT_VOLCANO_LAVA_OUTPUTS], 1u);
         } else if (emission == 1u) {
             uint roll = hash32(indexOf(ventPosition) ^ pc.step ^ 0x9a551u);
@@ -1204,24 +1224,25 @@ void main() {
     } else if (source.material == MAT_DIRTY_WATER &&
                (nearLava || nearFire || result.temperature >= 100)) {
         result = makeCell(MAT_DIRTY_STEAM);
-    } else if (source.material == MAT_LAVA && (nearWater || nearSaltwater)) {
-        result = makeCell(MAT_STONE);
     } else if (source.material == MAT_LAVA) {
-        result.temperature = max(result.temperature, 1100);
-        if (source.age > 7200u && (randomValue & 1023u) == 0u) result = makeCell(MAT_STONE);
+        uint connectedLava = lavaNeighborCount(p);
+        bool isolated = connectedLava == 0u;
+        if (isolated && (nearWater || nearSaltwater)) {
+            result = makeCell(MAT_STONE);
+        } else {
+            result.temperature = max(result.temperature, connectedLava > 0u ? 1125 : 900);
+            if (isolated && source.age > 7200u && (randomValue & 1023u) == 0u)
+                result = makeCell(MAT_STONE);
+        }
     } else if (source.material == MAT_MAGMA_VENT) {
         result.temperature = 1350;
         Cell outlet = at(p + ivec2(0, -1));
-        bool openOutlet = outlet.material == MAT_EMPTY || isGas(outlet.material) ||
-                          outlet.material == MAT_LAVA;
-        bool blocked = !openOutlet &&
-                       at(p + ivec2(-1, 0)).material != MAT_EMPTY &&
-                       at(p + ivec2(1, 0)).material != MAT_EMPTY;
+        bool blocked = ventOutletBlockedBySolid(outlet);
         uint pressure = stateValue(source);
-        uint emission = ventEmissionKind(p, pressure);
-        if (emission == 2u) pressure = pressure > 96u ? pressure - 96u : 0u;
-        else if (emission == 1u) pressure = pressure > 24u ? pressure - 24u : 0u;
-        uint recharge = blocked ? 8u : (openOutlet ? 3u : 5u);
+        uint emission = blocked ? 0u : ventEmissionKind(p, pressure);
+        if (emission == 2u) pressure = pressure > 32u ? pressure - 32u : 0u;
+        else if (emission == 1u) pressure = pressure > 12u ? pressure - 12u : 0u;
+        uint recharge = blocked ? 4u : 18u;
         pressure = min(255u, pressure + recharge);
         setStateValue(result, pressure);
     }

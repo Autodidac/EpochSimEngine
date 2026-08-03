@@ -26,7 +26,7 @@ uint materialDensity(uint material) {
     case 9u: return 4u;
     case 10u: return 5u;
     case 11u: return 2u;
-    case 12u: return 72u;
+    case 12u: return 205u;
     case 13u: return 25u;
     case 14u: return 170u;
     case 15u: return 160u;
@@ -99,7 +99,7 @@ uint materialBasePhase(uint material) {
     case 9u: return PHASE_GAS;
     case 10u: return PHASE_GAS;
     case 11u: return PHASE_PLASMA;
-    case 12u: return PHASE_LIQUID;
+    case 12u: return PHASE_POWDER;
     case 13u: return PHASE_LIQUID;
     case 14u: return PHASE_SOLID;
     case 15u: return PHASE_SOLID;

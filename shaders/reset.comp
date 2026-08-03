@@ -3,6 +3,7 @@
 #include "materials.glsl"
 #include "bee_swarm.glsl"
 #include "beehive.glsl"
+#include "terrain_generation.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
@@ -85,38 +86,15 @@ bool residentGroundRoughEdgeCell(ivec2 position, uint salt) {
     return (residentGroundHash(ivec2(position.x / 3, position.y / 3 + int(salt))) & 15u) == 0u;
 }
 
-uint residentGroundDepositMaterial(uint baseMaterial, ivec2 position, int depth) {
-    if (!residentGroundHostMaterial(baseMaterial)) return baseMaterial;
-    const ivec2 clusterSize = ivec2(32, 24);
-    ivec2 cluster = position / clusterSize;
-    uint seed = residentGroundHash(cluster);
-    uint roll = seed & 2047u;
-
-    uint deposit = MAT_EMPTY;
-    if (depth >= 160 && roll < 8u) deposit = MAT_URANIUM;
-    else if (roll < 24u) deposit = MAT_ALUMINUM;
-    else if (roll < 52u) deposit = MAT_COPPER;
-    else if (roll < 132u) deposit = MAT_IRON_ORE;
-    if (deposit == MAT_EMPTY) return baseMaterial;
-
-    ivec2 local = position % clusterSize;
-    ivec2 center = ivec2(10 + int((seed >> 11u) % 13u),
-                         7 + int((seed >> 16u) % 9u));
-    ivec2 radius = ivec2(8 + int((seed >> 21u) % 6u),
-                         5 + int((seed >> 25u) % 4u));
-    ivec2 delta = local - center;
-    int roughness = int(residentGroundHash(position / 4) & 31u) - 15;
-    int lhs = delta.x * delta.x * radius.y * radius.y +
-              delta.y * delta.y * radius.x * radius.x;
-    int rhs = radius.x * radius.x * radius.y * radius.y + roughness * radius.x;
-    return lhs <= rhs ? deposit : baseMaterial;
+uvec2 residentGroundSample(uint baseMaterial, ivec2 position, int depth) {
+    return terrainSample(baseMaterial, position, uint(max(depth, 0)));
 }
 
 // Every scene occupies the crystal-marker camera footprint: the third
 // 640x360 resident row. The two complete rows above it remain empty sky. A
 // one-brick foundation separates the scene from the remaining lower geology;
 // a two-brick lava band spans the bottom inside stone cap, shell, and side walls.
-uint residentWorldSubstrateMaterial(ivec2 worldPosition) {
+uvec2 residentWorldSubstrateSample(ivec2 worldPosition) {
     int width = int(pc.width);
     int height = int(pc.height);
     int sceneTop = authoredWorldOrigin().y;
@@ -125,27 +103,27 @@ uint residentWorldSubstrateMaterial(ivec2 worldPosition) {
     int topShell = min(height, BRICK_SIZE);
     bool sideShell = worldPosition.x < horizontalShell ||
                      worldPosition.x >= width - horizontalShell;
-    if (sideShell || worldPosition.y < topShell) return MAT_STONE;
-    if (worldPosition.y < sceneTop) return MAT_EMPTY;
+    if (sideShell || worldPosition.y < topShell) return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
+    if (worldPosition.y < sceneTop) return uvec2(MAT_EMPTY, 0u);
 
     int foundation = min(sceneBottom - sceneTop, BRICK_SIZE);
     int foundationStart = sceneBottom - foundation;
     if (worldPosition.y < sceneBottom) {
-        if (worldPosition.y >= foundationStart) return MAT_STONE;
-        return MAT_EMPTY;
+        if (worldPosition.y >= foundationStart) return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
+        return uvec2(MAT_EMPTY, 0u);
     }
 
     int bottomShell = min(height, BRICK_SIZE);
     int bottomShellStart = height - bottomShell;
-    if (worldPosition.y >= bottomShellStart) return MAT_STONE;
+    if (worldPosition.y >= bottomShellStart) return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
     int lavaRoom = max(bottomShellStart - sceneBottom, 0);
     int lavaThickness = min(lavaRoom, BRICK_SIZE * 2);
     int lavaStart = bottomShellStart - lavaThickness;
-    if (worldPosition.y >= lavaStart) return MAT_LAVA;
+    if (worldPosition.y >= lavaStart) return uvec2(MAT_LAVA, TERRAIN_FLAG_DELIBERATE_LOOSE);
     int capRoom = max(lavaStart - sceneBottom, 0);
     int capThickness = min(capRoom, BRICK_SIZE);
     int lavaCapStart = lavaStart - capThickness;
-    if (worldPosition.y >= lavaCapStart) return MAT_STONE;
+    if (worldPosition.y >= lavaCapStart) return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
 
     int depth = worldPosition.y - sceneBottom;
     int zone = min(depth / AUTHORED_WORLD_CELLS.y, 2);
@@ -172,13 +150,11 @@ uint residentWorldSubstrateMaterial(ivec2 worldPosition) {
         mudLocal.x * mudLocal.x * 9 + mudLocal.y * mudLocal.y * 16 < 900) {
         geology = MAT_MUD;
     }
-    return residentGroundDepositMaterial(geology, worldPosition, depth);
+    return residentGroundSample(geology, worldPosition, depth);
 }
 
-bool residentSubstrateStructural(uint material) {
-    return residentGroundHostMaterial(material) ||
-           material == MAT_IRON_ORE || material == MAT_COPPER ||
-           material == MAT_ALUMINUM || material == MAT_URANIUM;
+bool residentSubstrateStructural(uvec2 terrainResult) {
+    return (terrainResult.y & TERRAIN_FLAG_STRUCTURAL) != 0u;
 }
 
 bool brickRect(ivec2 p, ivec2 minimumBrick, ivec2 maximumBrick) {
@@ -250,45 +226,44 @@ uint sandboxMaterial(ivec2 p) {
 uint volcanoMaterial(ivec2 p) {
     ivec2 world = worldBrickSize();
     ivec2 b = brickCoordinate(p);
-    int center = world.x / 2;
     int floorRow = world.y - 2;
-    int top = max(3, floorRow - 27);
+    int center = max(18, world.x * 3 / 10);
+    int top = max(4, floorRow - 36);
     uint material = MAT_EMPTY;
 
     if (b.y >= floorRow) return MAT_STONE;
     int depth = b.y - top;
-    int halfWidth = max(0, depth * 2 / 3 + 2);
+    int halfWidth = max(0, depth * 2 / 3 + 3);
     bool insideCone = b.y >= top && b.y < floorRow && abs(b.x - center) <= halfWidth;
     if (insideCone) material = MAT_STONE;
 
-    // Hollow chamber and conduit. Lava is the stored magma; a small set of
-    // pressure-backed vents at the chamber floor and crater nozzle perform emission.
-    ivec2 chamberCenter = ivec2(center, floorRow - 6);
+    ivec2 chamberCenter = ivec2(center, floorRow - 7);
     ivec2 chamberDelta = b - chamberCenter;
     bool chamberInterior = chamberDelta.x * chamberDelta.x * 2 +
-                           chamberDelta.y * chamberDelta.y * 5 <= 42;
+                           chamberDelta.y * chamberDelta.y * 5 <= 58;
     if (chamberInterior) material = MAT_LAVA;
     if (abs(b.x - center) <= 1 && b.y >= top + 2 && b.y <= chamberCenter.y)
         material = MAT_LAVA;
-    if (b.y >= top && b.y < top + 2 && abs(b.x - center) <= 3)
+    if (b.y >= top && b.y < top + 2 && abs(b.x - center) <= 4)
         material = MAT_EMPTY;
     if (b.y == top + 1 && abs(b.x - center) <= 1)
         material = MAT_MAGMA_VENT;
-    if (b.y == chamberCenter.y + 2 && abs(b.x - center) <= 1)
+    if (b.y == chamberCenter.y + 2 && abs(b.x - center) <= 2)
         material = MAT_MAGMA_VENT;
 
-    // Brick-aligned cooling lake.
-    ivec2 lakeMin = ivec2(min(world.x - 17, center + 14), floorRow - 8);
-    ivec2 lakeMax = ivec2(min(world.x - 2, center + 30), floorRow + 1);
+    // Natural map-scale lake on the open side of the volcano.
+    ivec2 lakeMin = ivec2(max(center + 25, world.x * 2 / 3), floorRow - 11);
+    ivec2 lakeMax = ivec2(world.x - 2, floorRow + 1);
     if (brickFrame(p, lakeMin, lakeMax, 1)) material = MAT_STONE;
     else if (brickRect(p, lakeMin + ivec2(1), lakeMax - ivec2(1))) material = MAT_WATER;
 
-    if (material == MAT_EMPTY && p.y < top * BRICK_SIZE && p.y > max(8, top * BRICK_SIZE - 88) &&
-        abs(p.x - center * BRICK_SIZE) < 72 && (hash32(indexOf(p) ^ pc.seed ^ 0x51a9u) % 29u) == 0u)
+    if (material == MAT_EMPTY && p.y < (top + 2) * BRICK_SIZE &&
+        p.y > max(8, top * BRICK_SIZE - 120) &&
+        abs(p.x - center * BRICK_SIZE) < 110 &&
+        (hash32(indexOf(p) ^ pc.seed ^ 0x51a9u) % 37u) == 0u)
         material = MAT_SMOKE;
     return material;
 }
-
 uint waterworksMaterial(ivec2 p) {
     ivec2 world = worldBrickSize();
     ivec2 b = brickCoordinate(p);
@@ -651,12 +626,14 @@ void main() {
     bool authored = insideAuthoredWorld(p);
     ivec2 local = authoredLocalCoordinate(p);
     uint material = authored ? materialForScene(scene, local) : MAT_EMPTY;
-    uint substrateMaterial = residentWorldSubstrateMaterial(p);
-    bool substrateCell = substrateMaterial != MAT_EMPTY;
+    uvec2 substrateSample = residentWorldSubstrateSample(p);
+    uint substrateMaterial = substrateSample.x;
+    bool substrateCell = substrateMaterial != MAT_EMPTY ||
+                         (substrateSample.y & TERRAIN_FLAG_SAND_TRAP) != 0u;
     if (substrateCell) material = substrateMaterial;
     if (material == MAT_EMPTY) material = MAT_ATMOSPHERE;
     bool structural = substrateCell
-        ? residentSubstrateStructural(material)
+        ? residentSubstrateStructural(substrateSample)
         : (authored && authoredStructuralCell(scene, local, material));
     Cell cell = structural ? makeStructuralCell(material, true) : makeCell(material);
     bool machineController = authored &&

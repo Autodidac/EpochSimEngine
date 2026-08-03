@@ -51,9 +51,6 @@ void main() {
     uint index = tile.y * columns + tile.x;
     ivec2 origin = ivec2(tile * TILE_SIZE);
     if (!sectionActiveAt(origin, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) return;
-    ChunkState priorChunk = chunks[chunkIndex(origin, pc.width)];
-    if (chunkHas(priorChunk, CHUNK_SLEEPING) && !chunkHas(priorChunk, CHUNK_DIRTY)) return;
-
     TileState previous = tiles[index];
     uint counts[MATERIAL_COUNT];
     for (uint i = 0u; i < MATERIAL_COUNT; ++i) counts[i] = 0u;
@@ -71,6 +68,7 @@ void main() {
     bool wetContent = false;
     bool halfWater = false;
     bool activeAgent = false;
+    bool productiveMediumMove = false;
     bool hasQueen = false;
     bool hasHive = false;
     bool hasFlower = false;
@@ -112,6 +110,22 @@ void main() {
                         cell.material == MAT_DIRTY_STEAM || cell.material == MAT_LIGHTNING ||
                         cell.material == MAT_RADIATION;
             bool fluid = isCellGas(cell) || isCellLiquid(cell);
+            if (fluid) {
+                Cell below = tileInside(p + ivec2(0, 1)) ? cells[indexOf(p + ivec2(0, 1))] : Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
+                Cell above = tileInside(p + ivec2(0, -1)) ? cells[indexOf(p + ivec2(0, -1))] : Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
+                Cell left = tileInside(p + ivec2(-1, 0)) ? cells[indexOf(p + ivec2(-1, 0))] : Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
+                Cell right = tileInside(p + ivec2(1, 0)) ? cells[indexOf(p + ivec2(1, 0))] : Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
+                if (isCellLiquid(cell)) {
+                    productiveMediumMove = productiveMediumMove || isCellGas(below) ||
+                        isCellGas(left) || isCellGas(right) ||
+                        (isCellLiquid(below) && materialDensity(cell.material) > materialDensity(below.material));
+                } else {
+                    productiveMediumMove = productiveMediumMove ||
+                        (isCellGas(above) && materialDensity(cell.material) < materialDensity(above.material)) ||
+                        (isCellGas(left) && materialDensity(cell.material) != materialDensity(left.material)) ||
+                        (isCellGas(right) && materialDensity(cell.material) != materialDensity(right.material));
+                }
+            }
             bool activeLoose = !isStructural(cell) && !isReconstructableMaterial(cell.material) &&
                                !isCellImmovable(cell);
             bool activeStructure = cell.material == MAT_CONVEYOR || cell.material == MAT_SMELTER ||
@@ -166,8 +180,8 @@ void main() {
     bool mediumBreakup = liquidBreakup || gasBreakup;
     // Exposed full media remain macro packets only while their cells are actively
     // moving. Once motion ends they return to fine cells at the boundary.
-    bool macroLiquid = fullLiquid && (moving || liquidEnclosed);
-    bool macroGas = fullGas && (moving || gasEnclosed);
+    bool macroLiquid = fullLiquid && liquidEnclosed && !moving;
+    bool macroGas = fullGas && gasEnclosed && !moving;
     bool macroPowder = fullRegion && isPowder(dominant) &&
                        !structuralTile && !isBlockCapable(dominant);
     // Block-capable solids may use tile metadata for cohesion, support, sleep,
@@ -227,7 +241,7 @@ void main() {
     // Exposed packets hand ownership to fine cells once, then sleep on the
     // next unchanged pass instead of cycling through breakup for 48 frames.
     bool settledFineMedium = boundaryFineMedium && !moving && !reacting && !hot &&
-                             !mediumBreakup;
+                             !mediumBreakup && !productiveMediumMove;
     bool settledHalfWater = halfWater && !moving && !reacting && !hot &&
                             minimumAge >= 12u;
     bool fineActive = represented != 0u && !macroMovable && !settledHalfWater &&
