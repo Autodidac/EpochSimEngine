@@ -257,7 +257,10 @@ def main() -> int:
             errors.append(f"grouped editor layout contract missing {token!r}")
     fullscreen = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
     for token in ("mediumCell", "stateEdge", "utilityLabels[3] = uint[3](67u, 159u, 108u)",
-                  "debugScale"):
+                  "debugScale", "palettePanelHeight = 124u",
+                  "keymapBottom = keymapTop + 98u",
+                  "cursorBottom = cursorTop + 112u",
+                  "controlTop = cursorTop + 85u"):
         if token not in fullscreen:
             errors.append(f"medium-preserving debug/interface contract missing {token!r}")
     reset_shader = (SHADERS / "reset.comp").read_text(encoding="utf-8")

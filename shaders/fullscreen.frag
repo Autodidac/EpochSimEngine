@@ -592,7 +592,7 @@ void main() {
         }
 
         uint paletteTop = groupTop + renderPc.groupTabsHeight + 3u;
-        const uint palettePanelHeight = 136u;
+        const uint palettePanelHeight = 124u;
         uint slotCount = max(groupMaterialCount(renderPc.selectedGroup), 1u);
         uint slotRows = max((slotCount + 1u) / 2u, 1u);
         uint cellWidth = max(contentWidth / 2u, 1u);
@@ -624,7 +624,7 @@ void main() {
         }
 
         uint keymapTop = paletteTop + palettePanelHeight + 3u;
-        uint keymapBottom = keymapTop + 126u;
+        uint keymapBottom = keymapTop + 98u;
         if (y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {
             color = vec3(0.035, 0.047, 0.064);
             if (borderPixel(x, y, contentLeft, keymapTop, contentLeft + contentWidth, keymapBottom))
@@ -646,7 +646,7 @@ void main() {
         }
 
         uint cursorTop = keymapBottom + 3u;
-        uint cursorBottom = cursorTop + 120u;
+        uint cursorBottom = cursorTop + 112u;
         if (y >= cursorTop && y < cursorBottom && x >= contentLeft && x < contentLeft + contentWidth) {
             color = vec3(0.035, 0.047, 0.064);
             if (borderPixel(x, y, contentLeft, cursorTop, contentLeft + contentWidth, cursorBottom))
@@ -683,7 +683,7 @@ void main() {
                 cursorText = cursorText || fixedPixel(pixel,
                     ivec2(int(left + right) / 2 - labelWidth / 2, int(shapeTop + 8u)), 1, shapeIds[shape]);
             }
-            uint controlTop = cursorTop + 89u;
+            uint controlTop = cursorTop + 85u;
             uint halfWidth = contentWidth / 2u;
             const uint controlButtonWidth = 44u;
             uint brushMinusLeft = contentLeft + 4u;
@@ -694,9 +694,9 @@ void main() {
             for (uint button = 0u; button < 4u; ++button) {
                 uint left = buttonLefts[button];
                 uint right = left + controlButtonWidth;
-                if (x >= left && x < right && y >= controlTop && y < controlTop + 26u) {
+                if (x >= left && x < right && y >= controlTop && y < controlTop + 24u) {
                     color = vec3(0.075, 0.105, 0.145);
-                    if (borderPixel(x, y, left, controlTop, right, controlTop + 26u)) color *= 0.55;
+                    if (borderPixel(x, y, left, controlTop, right, controlTop + 24u)) color *= 0.55;
                 }
             }
             cursorText = cursorText || fixedPixel(pixel, ivec2(int(contentLeft + 53u), int(controlTop + 2u)), 1, 104u) ||
