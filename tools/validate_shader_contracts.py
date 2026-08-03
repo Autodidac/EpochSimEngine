@@ -483,6 +483,13 @@ def main() -> int:
         if token not in reset_comp:
             errors.append(f"authored terrain stability contract missing {token!r}")
     for token in (
+        "static_cast<std::uint64_t>(panel_width) * safe_height",
+        "layout, visible_view.width, visible_view.height",
+        "layout, view.width, view.height",
+    ):
+        if token not in ui_layout + app_cpp + renderer_cpp:
+            errors.append(f"aspect-correct live-view viewport contract missing {token!r}")
+    for token in (
         "preferred_sidebar_width = 384u",
         "status_height = 208u",
         "group_tabs_height = 96u",

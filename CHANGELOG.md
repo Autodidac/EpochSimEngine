@@ -2,6 +2,7 @@
 
 ## 2.5.6
 
+- Aspect-fitted both the live camera and full-world map view from their actual visible dimensions; the 16x4 map now renders at its true 64:9 shape instead of stretching to the simulation panel.
 - Reshaped the 64-footprint world from 8x8/4x4 assumptions into a resident 16x4, 10240x1440 world extended to the right while preserving the authored scene origin at (960,720).
 - Replaced the sparse 17-region starburst with a contiguous clipped 4x4 camera active window of at most 16 complete 640x360 regions.
 - Updated generated scenes, saved-scene offsets, bee homes, camera reset, full-world map framing, and all player spawns to the preserved scene coordinate system.

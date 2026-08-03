@@ -1791,7 +1791,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const auto width = (std::max)(state.window_width.load(std::memory_order_relaxed), 1u);
         const auto height = (std::max)(state.window_height.load(std::memory_order_relaxed), 1u);
         const auto layout = ui::make_layout(width, height);
-        const auto viewport = ui::make_simulation_viewport(layout, config.grid_width, config.grid_height);
+        const auto view = render_grid_view(state);
+        const auto viewport = ui::make_simulation_viewport(layout, view.width, view.height);
         const auto viewport_width = (std::max)(static_cast<std::uint32_t>(viewport.rect.size.x), 1u);
         const auto viewport_height = (std::max)(static_cast<std::uint32_t>(viewport.rect.size.y), 1u);
         const auto mouse_x = std::clamp(
@@ -1800,7 +1801,6 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const auto mouse_y = std::clamp(
             state.mouse_y.load(std::memory_order_relaxed) - static_cast<int>(viewport.rect.position.y),
             0, static_cast<int>(viewport_height - 1u));
-        const auto view = render_grid_view(state);
         const auto grid_x = static_cast<std::int32_t>(view.origin_x +
             static_cast<std::uint64_t>(mouse_x) * view.width / viewport_width);
         const auto grid_y = static_cast<std::int32_t>(view.origin_y +
@@ -2182,9 +2182,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
         const auto [cursor_x, cursor_y] = grid_cursor(state);
         const auto layout = ui::make_layout(swapchain_extent.width, swapchain_extent.height);
-        const auto simulation_viewport = ui::make_simulation_viewport(
-            layout, config.grid_width, config.grid_height);
         const auto view = render_grid_view(state);
+        const auto simulation_viewport = ui::make_simulation_viewport(
+            layout, view.width, view.height);
         const auto camera_view = camera_grid_view(state);
         const epochengine::gui_lib::Vec2 pointer{
             static_cast<float>(state.mouse_x.load(std::memory_order_relaxed)),

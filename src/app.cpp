@@ -293,8 +293,12 @@ int run_application() {
         if (input.load_scene) shared_state.load_scene_image.store(true, std::memory_order_release);
 
         const auto layout = ui::make_layout(input.width, input.height);
+        const bool map_view_enabled =
+            shared_state.map_view.load(std::memory_order_relaxed);
+        const auto visible_view = camera_view(
+            shared_state, simulation_config, map_view_enabled);
         const auto simulation_viewport = ui::make_simulation_viewport(
-            layout, simulation_config.grid_width, simulation_config.grid_height);
+            layout, visible_view.width, visible_view.height);
         const epochengine::gui_lib::Vec2 pointer{
             static_cast<float>(input.mouse_x),
             static_cast<float>(input.mouse_y),
@@ -311,8 +315,6 @@ int run_application() {
   shared_state.camera_controls.load(std::memory_order_relaxed);
         const bool player_controls =
   player_wasd_enabled(scene_player_present, camera_controls_enabled);
-        const bool map_view_enabled =
-            shared_state.map_view.load(std::memory_order_relaxed);
         const bool pan_button_down = input.secondary_down;
         if (pan_button_down && (over_simulation || pan_dragging)) {
   if (!pan_dragging) {

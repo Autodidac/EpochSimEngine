@@ -36,7 +36,25 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
     const auto tile_rows = (std::max)(1u, (grid_height + cells_per_tile - 1u) / cells_per_tile);
     const auto panel_width = (std::max)(1u, static_cast<std::uint32_t>(layout.simulation.size.x));
     const auto panel_height = (std::max)(1u, static_cast<std::uint32_t>(layout.simulation.size.y));
-    if (panel_width < tile_columns || panel_height < tile_rows) return {layout.simulation, 0u};
+    if (panel_width < tile_columns || panel_height < tile_rows) {
+        const auto safe_width = (std::max)(grid_width, 1u);
+        const auto safe_height = (std::max)(grid_height, 1u);
+        std::uint32_t viewport_width = panel_width;
+        std::uint32_t viewport_height = panel_height;
+        if (static_cast<std::uint64_t>(panel_width) * safe_height <=
+            static_cast<std::uint64_t>(panel_height) * safe_width) {
+            viewport_height = (std::max)(1u, static_cast<std::uint32_t>(
+                static_cast<std::uint64_t>(panel_width) * safe_height / safe_width));
+        } else {
+            viewport_width = (std::max)(1u, static_cast<std::uint32_t>(
+                static_cast<std::uint64_t>(panel_height) * safe_width / safe_height));
+        }
+        const auto left = layout.simulation.position.x +
+                          float((panel_width - viewport_width) / 2u);
+        const auto top = layout.simulation.position.y +
+                         float((panel_height - viewport_height) / 2u);
+        return {{{left, top}, {float(viewport_width), float(viewport_height)}}, 0u};
+    }
     const auto tile_pixels = (std::max)(1u, (std::min)(panel_width / tile_columns, panel_height / tile_rows));
     const auto viewport_width = tile_columns * tile_pixels;
     const auto viewport_height = tile_rows * tile_pixels;

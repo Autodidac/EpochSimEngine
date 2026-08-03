@@ -1,3 +1,4 @@
+#include "sandhybrid/camera_policy.hpp"
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/ui_layout.hpp"
 
@@ -46,6 +47,12 @@ int main() {
     if (viewport.rect.size.x / 80.0f != viewport.rect.size.y / 45.0f) return 8;
     if (viewport.rect.position.x < 0.0f ||
         viewport.rect.position.y < layout.simulation.position.y) return 9;
+
+    const auto wide_map = sandhybrid::ui::make_simulation_viewport(
+        layout, sandhybrid::resident_world_width, sandhybrid::resident_world_height);
+    if (static_cast<std::uint32_t>(wide_map.rect.size.x) != 896u ||
+        static_cast<std::uint32_t>(wide_map.rect.size.y) != 126u ||
+        wide_map.tile_pixel_size != 0u) return 14;
 
     const auto compact = sandhybrid::ui::make_layout(480u, 320u);
     if (compact.simulation.size.y <= 0.0f || compact.status.size.x < 300.0f) return 10;
