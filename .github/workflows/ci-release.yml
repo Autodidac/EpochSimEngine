@@ -1,22 +1,19 @@
-name: SandHybrid CI and Release
+name: Finalize SandHybrid v2.5.7 debug and trap pass
 
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: sandhybrid-v257-finalize-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: finalize-v257-debug-traps-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 
 jobs:
-  finalize-debug-traps:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/v257-air-water-equilibrium'
+  finalize:
+    if: github.head_ref == 'agent/v257-air-water-equilibrium'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -29,11 +26,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -q 'STAT_SCOPE_CELLS = 122u' shaders/debug_stats.glsl; then
-            echo 'v2.5.7 debug/trap source already applied.'
-            exit 0
-          fi
-          base64 --decode tools/v257-debug-traps.patch.gz.b64 \
+          cat tools/v257-debug-traps.part00 \
+              tools/v257-debug-traps.part01 \
+              tools/v257-debug-traps.part02 \
+              tools/v257-debug-traps.part03 \
+              tools/v257-debug-traps.part04 \
+              tools/v257-debug-traps.part05 \
+              tools/v257-debug-traps.part06 \
+            | base64 --decode \
             | gzip --decompress > /tmp/v257-debug-traps.patch
           git apply --check /tmp/v257-debug-traps.patch
           git apply /tmp/v257-debug-traps.patch
@@ -46,22 +46,19 @@ jobs:
           python3 tools/validate_mission_cache.py
           python3 tools/validate_no_simulation_coroutines.py
           python3 tools/validate_project_branding.py
-          cmake -S . -B build/v257-debug-traps -G Ninja \
+          cmake -S . -B build/v257-finalize -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DSANDHYBRID_BUILD_APP=OFF \
             -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
             -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
             -DBUILD_TESTING=ON
-          cmake --build build/v257-debug-traps --parallel
-          ctest --test-dir build/v257-debug-traps --output-on-failure
+          cmake --build build/v257-finalize --parallel
+          ctest --test-dir build/v257-finalize --output-on-failure
 
       - name: Commit permanent source changes
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet; then
-            exit 0
-          fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add CHANGELOG.md RELEASE_NOTES_v2.5.7.md missioncache.md \
