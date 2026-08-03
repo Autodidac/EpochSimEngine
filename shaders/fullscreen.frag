@@ -831,65 +831,68 @@ void main() {
         bool activeArea = sectionActiveAt(grid, renderPc.activeAreaX, renderPc.activeAreaY,
                                           renderPc.activeScopeMode);
         bool mediumCell = isCellGas(cell) || isCellLiquid(cell) || isHalfWater(cell);
-        if (!activeArea) color.rgb *= renderPc.mapMode != 0u ? 0.62 : 0.52;
+        if (!activeArea) color.rgb *= renderPc.mapMode != 0u ? 0.82 : 0.52;
         ivec2 activeLocal = ivec2(grid.x % ACTIVE_REGION_WIDTH_CELLS,
                                   grid.y % ACTIVE_REGION_HEIGHT_CELLS);
         if (activeArea && (activeLocal.x == 0 || activeLocal.y == 0)) {
-            float boundaryAlpha = renderPc.mapMode != 0u ? 0.38 : 0.58;
+            float boundaryAlpha = renderPc.mapMode != 0u ? 0.22 : 0.58;
             color.rgb = mix(color.rgb, vec3(0.18, 0.95, 1.00), boundaryAlpha);
         }
-        TileState tile = tileAt(grid);
-        ChunkState chunk = chunkAt(grid);
-        ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));
-        bool readableTileGrid = renderPc.viewportWidth / max(renderPc.viewWidth, 1u) >= 2u;
-        if (readableTileGrid && (local.x == 0 || local.y == 0))
-            color.rgb = mix(color.rgb, vec3(0.94, 0.98, 1.00), 0.28);
-        ivec2 chunkLocal = ivec2(int(gridX & (CHUNK_CELL_SIZE - 1u)),
-                                int(gridY & (CHUNK_CELL_SIZE - 1u)));
-        if (chunkLocal.x == 0 || chunkLocal.y == 0)
-            color.rgb = mix(color.rgb, vec3(0.01, 0.015, 0.025), 0.72);
+        if (renderPc.debugMode != 0u && renderPc.mapMode == 0u) {
+            TileState tile = tileAt(grid);
+            ChunkState chunk = chunkAt(grid);
+            ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));
+            bool readableTileGrid = renderPc.viewportWidth / max(renderPc.viewWidth, 1u) >= 2u;
+            if (readableTileGrid && (local.x == 0 || local.y == 0))
+                color.rgb = mix(color.rgb, vec3(0.94, 0.98, 1.00), 0.28);
+            ivec2 chunkLocal = ivec2(int(gridX & (CHUNK_CELL_SIZE - 1u)),
+                                    int(gridY & (CHUNK_CELL_SIZE - 1u)));
+            if (chunkLocal.x == 0 || chunkLocal.y == 0)
+                color.rgb = mix(color.rgb, vec3(0.01, 0.015, 0.025), 0.72);
 
-        vec3 overlay = vec3(0.0);
-        float alpha = 0.0;
-        if (tileHas(tile, TILE_COLLAPSING) || tileHas(tile, TILE_DAMAGED)) {
-            overlay = debugKeyColor(0u); alpha = 0.62;
-        } else if (tileHas(tile, TILE_MEDIUM_BREAKUP) &&
-                   !tileHas(tile, TILE_SLEEPING)) {
-            overlay = debugKeyColor(9u); alpha = 0.58;
-        } else if (tileHas(tile, TILE_MACRO_MOVED)) {
-            overlay = debugKeyColor(2u); alpha = 0.56;
-        } else if (tileHas(tile, TILE_FINE_ACTIVE)) {
-            overlay = debugKeyColor(3u); alpha = 0.48;
-        } else if (tileHas(tile, TILE_STABLE) || tileHas(tile, TILE_CANDIDATE)) {
-            overlay = debugKeyColor(1u); alpha = 0.50;
-        } else if (tileHas(tile, TILE_SETTLED_MEDIUM)) {
-            overlay = debugKeyColor(5u); alpha = 0.46;
-        } else if (tileHas(tile, TILE_BULK_READY) || tileHas(tile, TILE_MACRO_MOVABLE)) {
-            overlay = debugKeyColor(4u); alpha = 0.44;
-        } else if (tileHas(tile, TILE_MEDIUM_ENCLOSED)) {
-            overlay = debugKeyColor(8u); alpha = 0.40;
-        } else if (tileHas(tile, TILE_SLEEPING)) {
-            overlay = debugKeyColor(6u); alpha = 0.36;
-        } else if (tileHas(tile, TILE_ACTIVE)) {
-            overlay = debugKeyColor(7u); alpha = 0.34;
-        }
-        bool stateEdge = local.x <= 1 || local.y <= 1 || local.x >= 6 || local.y >= 6;
-        if (renderPc.mapMode != 0u) {
-            alpha *= mediumCell ? (stateEdge ? 0.055 : 0.0) : 0.30;
-            if (!mediumCell && !stateEdge) alpha *= 0.16;
-        } else if (mediumCell) {
-            alpha *= stateEdge ? 0.10 : 0.0;
-        }
-        float occupancyAlpha = max(0.28, float(tileOccupancy(tile)) / 64.0);
-        color.rgb = mix(color.rgb, overlay, alpha * occupancyAlpha);
+            vec3 overlay = vec3(0.0);
+            float alpha = 0.0;
+            if (tileHas(tile, TILE_COLLAPSING) || tileHas(tile, TILE_DAMAGED)) {
+                overlay = debugKeyColor(0u); alpha = 0.62;
+            } else if (tileHas(tile, TILE_MEDIUM_BREAKUP) &&
+                       !tileHas(tile, TILE_SLEEPING)) {
+                overlay = debugKeyColor(9u); alpha = 0.58;
+            } else if (tileHas(tile, TILE_MACRO_MOVED)) {
+                overlay = debugKeyColor(2u); alpha = 0.56;
+            } else if (tileHas(tile, TILE_FINE_ACTIVE)) {
+                overlay = debugKeyColor(3u); alpha = 0.48;
+            } else if (tileHas(tile, TILE_STABLE) || tileHas(tile, TILE_CANDIDATE)) {
+                overlay = debugKeyColor(1u); alpha = 0.50;
+            } else if (tileHas(tile, TILE_SETTLED_MEDIUM)) {
+                overlay = debugKeyColor(5u); alpha = 0.46;
+            } else if (tileHas(tile, TILE_BULK_READY) || tileHas(tile, TILE_MACRO_MOVABLE)) {
+                overlay = debugKeyColor(4u); alpha = 0.44;
+            } else if (tileHas(tile, TILE_MEDIUM_ENCLOSED)) {
+                overlay = debugKeyColor(8u); alpha = 0.40;
+            } else if (tileHas(tile, TILE_SLEEPING)) {
+                overlay = debugKeyColor(6u); alpha = 0.36;
+            } else if (tileHas(tile, TILE_ACTIVE)) {
+                overlay = debugKeyColor(7u); alpha = 0.34;
+            }
+            bool stateEdge = local.x <= 1 || local.y <= 1 || local.x >= 6 || local.y >= 6;
+            if (renderPc.mapMode != 0u) {
+                alpha *= mediumCell ? (stateEdge ? 0.055 : 0.0) : 0.30;
+                if (!mediumCell && !stateEdge) alpha *= 0.16;
+            } else if (mediumCell) {
+                alpha *= stateEdge ? 0.10 : 0.0;
+            }
+            float occupancyAlpha = max(0.28, float(tileOccupancy(tile)) / 64.0);
+            color.rgb = mix(color.rgb, overlay, alpha * occupancyAlpha);
 
-        vec3 chunkOverlay = chunkHas(chunk, CHUNK_DIRTY) ? vec3(1.00, 0.10, 0.04) :
-            (chunkHas(chunk, CHUNK_SLEEPING) ? vec3(0.035, 0.10, 0.30)
-                                             : vec3(0.05, 0.42, 0.90));
-        float chunkAlpha = renderPc.mapMode != 0u
-            ? (mediumCell ? 0.0 : 0.045)
-            : (mediumCell ? 0.0 : (chunkHas(chunk, CHUNK_SLEEPING) ? 0.10 : 0.06));
-        color.rgb = mix(color.rgb, chunkOverlay, chunkAlpha);
+            vec3 chunkOverlay = chunkHas(chunk, CHUNK_DIRTY) ? vec3(1.00, 0.10, 0.04) :
+                (chunkHas(chunk, CHUNK_SLEEPING) ? vec3(0.035, 0.10, 0.30)
+                                                 : vec3(0.05, 0.42, 0.90));
+            float chunkAlpha = renderPc.mapMode != 0u
+                ? (mediumCell ? 0.0 : 0.045)
+                : (mediumCell ? 0.0 : (chunkHas(chunk, CHUNK_SLEEPING) ? 0.10 : 0.06));
+            color.rgb = mix(color.rgb, chunkOverlay, chunkAlpha);
+
+        }
 
         if (renderPc.mapMode != 0u) {
             uint cameraRight = renderPc.cameraOriginX + renderPc.cameraViewWidth;

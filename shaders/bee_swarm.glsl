@@ -71,8 +71,9 @@ ivec2 beeAuthoredWorldOrigin(uint width, uint height) {
     int skyHeight = int(height) >= BEE_AUTHORED_WORLD_CELLS.y * 3
         ? BEE_AUTHORED_WORLD_CELLS.y * 2
         : 0;
-    int originX = int(width) >= 1600 ? 960 :
-        max((int(width) - BEE_AUTHORED_WORLD_CELLS.x) / 2, 0);
+    int originX = int(width) >= BEE_AUTHORED_WORLD_CELLS.x * 3
+        ? BEE_AUTHORED_WORLD_CELLS.x * 2
+        : max((int(width) - BEE_AUTHORED_WORLD_CELLS.x) / 2, 0);
     return ivec2(originX, skyHeight);
 }
 

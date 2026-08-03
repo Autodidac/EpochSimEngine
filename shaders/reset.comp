@@ -21,8 +21,9 @@ const int BRICK_SIZE = 8;
 const ivec2 AUTHORED_WORLD_CELLS = ivec2(640, 360);
 
 ivec2 authoredWorldOrigin() {
-    int x = int(pc.width) >= 1600 ? 960 :
-        max((int(pc.width) - AUTHORED_WORLD_CELLS.x) / 2, 0);
+    int x = int(pc.width) >= AUTHORED_WORLD_CELLS.x * 3
+        ? AUTHORED_WORLD_CELLS.x * 2
+        : max((int(pc.width) - AUTHORED_WORLD_CELLS.x) / 2, 0);
     int skyHeight = int(pc.height) >= AUTHORED_WORLD_CELLS.y * 3
         ? AUTHORED_WORLD_CELLS.y * 2
         : 0;
@@ -121,17 +122,18 @@ uint residentWorldSubstrateMaterial(ivec2 worldPosition) {
     int sceneTop = authoredWorldOrigin().y;
     int sceneBottom = min(height, sceneTop + AUTHORED_WORLD_CELLS.y);
     int horizontalShell = min(width, BRICK_SIZE);
+    int topShell = min(height, BRICK_SIZE);
     bool sideShell = worldPosition.x < horizontalShell ||
                      worldPosition.x >= width - horizontalShell;
+    if (sideShell || worldPosition.y < topShell) return MAT_STONE;
     if (worldPosition.y < sceneTop) return MAT_EMPTY;
 
     int foundation = min(sceneBottom - sceneTop, BRICK_SIZE);
     int foundationStart = sceneBottom - foundation;
     if (worldPosition.y < sceneBottom) {
-        if (worldPosition.y >= foundationStart || sideShell) return MAT_STONE;
+        if (worldPosition.y >= foundationStart) return MAT_STONE;
         return MAT_EMPTY;
     }
-    if (sideShell) return MAT_STONE;
 
     int bottomShell = min(height, BRICK_SIZE);
     int bottomShellStart = height - bottomShell;
@@ -221,7 +223,6 @@ uint sandboxMaterial(ivec2 p) {
     if (b.y >= world.y - 2) material = MAT_STONE;
     else if (b.y == ground) material = MAT_GRASS;
     else if (b.y > ground) material = MAT_DIRT;
-    if ((b.x == 0 || b.x == world.x - 1) && b.y >= 2) material = MAT_STONE;
 
     // Brick-aligned water basin.
     ivec2 basinMin = ivec2(world.x * 2 / 5, ground - 7);
@@ -257,16 +258,24 @@ uint volcanoMaterial(ivec2 p) {
     if (b.y >= floorRow) return MAT_STONE;
     int depth = b.y - top;
     int halfWidth = max(0, depth * 2 / 3 + 2);
-    if (b.y >= top && b.y < floorRow && abs(b.x - center) <= halfWidth) material = MAT_STONE;
+    bool insideCone = b.y >= top && b.y < floorRow && abs(b.x - center) <= halfWidth;
+    if (insideCone) material = MAT_STONE;
 
-    // Brick-aligned magma chamber, conduit, crater, and vents.
+    // Hollow chamber and conduit. Lava is the stored magma; a small set of
+    // pressure-backed vents at the chamber floor and crater nozzle perform emission.
     ivec2 chamberCenter = ivec2(center, floorRow - 6);
     ivec2 chamberDelta = b - chamberCenter;
-    if (chamberDelta.x * chamberDelta.x * 2 + chamberDelta.y * chamberDelta.y * 5 <= 54)
+    bool chamberInterior = chamberDelta.x * chamberDelta.x * 2 +
+                           chamberDelta.y * chamberDelta.y * 5 <= 42;
+    if (chamberInterior) material = MAT_LAVA;
+    if (abs(b.x - center) <= 1 && b.y >= top + 2 && b.y <= chamberCenter.y)
+        material = MAT_LAVA;
+    if (b.y >= top && b.y < top + 2 && abs(b.x - center) <= 3)
+        material = MAT_EMPTY;
+    if (b.y == top + 1 && abs(b.x - center) <= 1)
         material = MAT_MAGMA_VENT;
-    if (abs(b.x - center) <= 1 && b.y >= top + 2 && b.y <= chamberCenter.y) material = MAT_MAGMA_VENT;
-    if (b.y >= top && b.y < top + 2 && abs(b.x - center) <= 3) material = MAT_EMPTY;
-    if (b.y == chamberCenter.y + 2 && abs(b.x - center) <= 1) material = MAT_MAGMA_VENT;
+    if (b.y == chamberCenter.y + 2 && abs(b.x - center) <= 1)
+        material = MAT_MAGMA_VENT;
 
     // Brick-aligned cooling lake.
     ivec2 lakeMin = ivec2(min(world.x - 17, center + 14), floorRow - 8);
@@ -275,7 +284,7 @@ uint volcanoMaterial(ivec2 p) {
     else if (brickRect(p, lakeMin + ivec2(1), lakeMax - ivec2(1))) material = MAT_WATER;
 
     if (material == MAT_EMPTY && p.y < top * BRICK_SIZE && p.y > max(8, top * BRICK_SIZE - 88) &&
-        abs(p.x - center * BRICK_SIZE) < 72 && (hash32(indexOf(p) ^ pc.seed ^ 0x51a9u) % 19u) == 0u)
+        abs(p.x - center * BRICK_SIZE) < 72 && (hash32(indexOf(p) ^ pc.seed ^ 0x51a9u) % 29u) == 0u)
         material = MAT_SMOKE;
     return material;
 }
@@ -320,7 +329,6 @@ uint ecosystemMaterial(ivec2 p) {
     uint material = MAT_EMPTY;
 
     if (b.y >= world.y - 2) return MAT_STONE;
-    if ((b.x == 0 || b.x == world.x - 1) && b.y >= 2) material = MAT_STONE;
     if (b.y == ground) material = MAT_GRASS;
     else if (b.y > ground) material = MAT_DIRT;
 
@@ -460,7 +468,6 @@ uint goldMineMaterial(ivec2 p) {
     int floorRow = world.y - 2;
 
     if (b.y >= floorRow) return MAT_STONE;
-    if ((b.x == 0 || b.x == world.x - 1) && b.y >= 2) material = MAT_STONE;
 
     // Large upper reservoir and filter bed, aligned to the global brick grid.
     ivec2 reservoirMin = ivec2(22, 3);
@@ -513,7 +520,6 @@ uint demolitionMaterial(ivec2 p) {
     uint material = MAT_EMPTY;
 
     if (b.y >= floorRow) material = MAT_STONE;
-    if ((b.x == 0 || b.x == world.x - 1) && b.y >= 2) material = MAT_STONE;
 
     ivec2 towerMin = ivec2(world.x / 3, 7);
     ivec2 towerMax = ivec2(world.x * 2 / 3, floorRow);

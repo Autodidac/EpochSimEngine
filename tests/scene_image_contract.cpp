@@ -79,6 +79,25 @@ int main() {
     if (!std::filesystem::is_regular_file(root / "material_key.txt") ||
         !std::filesystem::is_regular_file(root / "material_key.ppm")) return 9;
 
+    // Legacy scene images used Empty for open sky. Only boundary-connected
+    // Empty migrates to Atmosphere; the sealed vacuum pocket remains Empty.
+    constexpr std::uint32_t legacy_width = 16u;
+    constexpr std::uint32_t legacy_height = 16u;
+    std::vector<sandhybrid::SceneCell> legacy(legacy_width * legacy_height);
+    for (std::uint32_t y = 5u; y <= 10u; ++y) {
+        for (std::uint32_t x = 5u; x <= 10u; ++x) {
+            const bool wall = x == 5u || x == 10u || y == 5u || y == 10u;
+            legacy[y * legacy_width + x].material = static_cast<std::uint32_t>(
+                wall ? sandhybrid::Material::stone : sandhybrid::Material::empty);
+        }
+    }
+    const auto legacy_path = root / "legacy.ppm";
+    if (!sandhybrid::save_scene_ppm(legacy_path, legacy_width, legacy_height, legacy, error)) return 10;
+    std::vector<sandhybrid::SceneCell> migrated(legacy_width * legacy_height);
+    if (!sandhybrid::load_scene_ppm(legacy_path, legacy_width, legacy_height, migrated, error)) return 11;
+    if (migrated[0u].material != static_cast<std::uint32_t>(sandhybrid::Material::atmosphere)) return 12;
+    if (migrated[7u * legacy_width + 7u].material != static_cast<std::uint32_t>(sandhybrid::Material::empty)) return 13;
+
     std::filesystem::remove_all(root, cleanup_error);
     return 0;
 }

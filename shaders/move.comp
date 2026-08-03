@@ -436,7 +436,7 @@ bool movementAllows(Cell cell, uint randomValue) {
         return interval <= 1u || (randomValue % interval) == 0u;
     }
     if (cell.material == MAT_SALT) return (randomValue & 3u) != 0u;
-    if (cell.material == MAT_ASH) return (randomValue % 10u) == 0u;
+    if (cell.material == MAT_ASH) return (randomValue & 3u) != 0u;
     if (cell.material == MAT_POLLEN) return (randomValue % 6u) == 0u;
     if (cell.material == MAT_GUNPOWDER || cell.material == MAT_SEED) return (randomValue & 1u) == 0u;
     if (cell.material == MAT_SNOW) return (randomValue % 3u) == 0u;
@@ -802,14 +802,14 @@ bool pairSleeping(ivec2 a, ivec2 b) {
         return true;
     }
     bool finePair = tileNeedsFine(tileA) || tileNeedsFine(tileB);
-    if (!finePair && (tileIsMacro(tileA) || tileIsMacro(tileB) ||
-                      tileHas(tileA, TILE_SETTLED_MEDIUM) || tileHas(tileB, TILE_SETTLED_MEDIUM))) {
+    if (!finePair && (tileHas(tileA, TILE_SETTLED_MEDIUM) ||
+                      tileHas(tileB, TILE_SETTLED_MEDIUM))) {
         if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], 2u);
         return true;
     }
     if (tileHas(tileA, TILE_ACTIVE) || tileHas(tileB, TILE_ACTIVE) ||
         tileHas(tileA, TILE_HAS_BEES) || tileHas(tileB, TILE_HAS_BEES)) return false;
-    if (chunkPairSleeping(a, b)) {
+    if (chunkPairSleeping(a, b) && sleepSafe(a, firstCell) && sleepSafe(b, secondCell)) {
         if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], 2u);
         return true;
     }

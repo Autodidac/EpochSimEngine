@@ -13,8 +13,12 @@ This release completes the runtime-control, map-debugging, scene-layout, Water, 
 ## World, scenes, and map
 
 - Reshapes the same 64 map footprints into a 16x4 resident world: 10240x1440 cells.
-- Extends the world only to the right; the authored 640x360 scene remains at world origin `(960,720)`.
+- Extends the world only to the right; the authored 640x360 scene remains at aligned region origin `(1280,720)`.
 - Updates generated scenes, saved-scene offsets, bee homes, camera reset, scene metadata, and Gold Mine/Demolition/Frontier Base player spawns to that preserved coordinate system.
+- Propagates the aligned origin to actor reset and removes generic scene-local side walls; the foundation continues across the world and only the outer perimeter remains walled.
+- Normalizes boundary-connected legacy Empty sky to Atmosphere during Load while preserving sealed vacuum pockets.
+- Rebuilds Volcano as a Lava chamber with pressure-backed crater/floor vents that emit Lava or hot Ash/Smoke/Steam into Atmosphere and recharge instead of silently stopping.
+- Makes Ash fall as particulate powder and forces blocked macro candidates/stale sleeping chunks to fall back to valid fine movement.
 - Replaces the sparse 17-region starburst with one clipped contiguous 4x4 active window of complete 640x360 regions around the camera.
 - Adds a separate 4 Hz full-world map that defaults to the complete 16x4 frame, shows active/inactive regions, and outlines the live main camera without affecting simulation scheduling or LOD.
 - Aspect-fits the live camera and map from their actual view dimensions. The full-world map retains its true 64:9 shape with letterboxing instead of stretching to the viewport.

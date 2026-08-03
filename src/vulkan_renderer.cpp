@@ -1666,7 +1666,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         std::string key_error;
         if (!write_scene_material_key(scene_directory(), key_error))
             startup_log("Scene material-key warning: " + key_error);
-        startup_log("Loaded crystal-row 640x360 scene image with common lower geology: " + path.string());
+        startup_log("Loaded aligned 640x360 authored scene image; legacy boundary sky normalized to Atmosphere and resident geology rebuilt: " + path.string());
         return true;
     }
 

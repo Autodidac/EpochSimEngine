@@ -23,9 +23,9 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
 
 [[nodiscard]] constexpr std::uint32_t authored_scene_origin_x(
     const std::uint32_t world_width) noexcept {
-    // Preserve the original 4x4-world scene coordinate while the world grows
-    // only to the right. Smaller compatibility worlds remain centered.
-    constexpr auto preserved_origin = pre_expansion_world_width * 3u / 2u;
+    // A complete authored scene occupies exactly one 640-cell camera region.
+    // The 16x4 world still grows only to the right; the scene begins at region 2.
+    constexpr auto preserved_origin = pre_expansion_world_width * 2u;
     return world_width >= preserved_origin + pre_expansion_world_width
         ? preserved_origin
         : (world_width > pre_expansion_world_width
@@ -131,17 +131,18 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
     const auto scene_bottom = (std::min)(
         world_height, scene_top + pre_expansion_world_height);
     const auto horizontal_shell = (std::min)(world_width, resident_world_shell_cells);
+    const auto top_shell = (std::min)(world_height, resident_world_shell_cells);
     const bool side_shell = x < horizontal_shell || x >= world_width - horizontal_shell;
+    if (side_shell || y < top_shell) return Material::stone;
     if (y < scene_top) return Material::empty;
 
     const auto scene_height = scene_bottom - scene_top;
     const auto foundation = (std::min)(scene_height, authored_scene_foundation_cells);
     const auto foundation_start = scene_bottom - foundation;
     if (y < scene_bottom) {
-        if (y >= foundation_start || side_shell) return Material::stone;
+        if (y >= foundation_start) return Material::stone;
         return Material::empty;
     }
-    if (side_shell) return Material::stone;
 
     const auto bottom_shell = (std::min)(world_height, resident_world_shell_cells);
     const auto bottom_shell_start = world_height - bottom_shell;

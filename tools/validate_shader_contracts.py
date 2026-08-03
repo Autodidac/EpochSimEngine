@@ -239,6 +239,28 @@ def main() -> int:
             errors.append(f"medium presentation contract missing {token!r}")
 
 
+    scene_image_cpp = (ROOT / "src/scene_image.cpp").read_text(encoding="utf-8")
+    actor_shader = (SHADERS / "actor.comp").read_text(encoding="utf-8")
+    chemistry = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
+    world_layout = (ROOT / "include/sandhybrid/world_layout.hpp").read_text(encoding="utf-8")
+    reset_shader = (SHADERS / "reset.comp").read_text(encoding="utf-8")
+    for token in (
+        "pre_expansion_world_width * 2u",
+        "AUTHORED_WORLD_CELLS.x * 2",
+        "BEE_AUTHORED_WORLD_CELLS.x * 2",
+        "640 * 2",
+        "normalize_legacy_open_air",
+        "ventOutletMedium",
+        "MAT_ASH : (ejecta == 1u ? MAT_SMOKE : MAT_STEAM)",
+        "pressure = min(255u, pressure + recharge)",
+        "if (cell.material == MAT_ASH) return (randomValue & 3u) != 0u;",
+        "chunkPairSleeping(a, b) && sleepSafe(a, firstCell) && sleepSafe(b, secondCell)",
+        "renderPc.debugMode != 0u && renderPc.mapMode == 0u",
+    ):
+        if token not in world_layout + reset_shader + bee_swarm + actor_shader + scene_image_cpp + chemistry + move + fullscreen_medium:
+            errors.append(f"runtime screenshot propagation contract missing {token!r}")
+    if re.search(r"b\.x == 0 \|\| b\.x == world\.x - 1", reset_shader):
+        errors.append("authored scene-local side wall remains")
     app_cpp = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
     ui_layout_hpp = (ROOT / "include/sandhybrid/ui_layout.hpp").read_text(encoding="utf-8")
     shared_state_hpp = (ROOT / "include/sandhybrid/shared_state.hpp").read_text(encoding="utf-8")
@@ -395,8 +417,8 @@ def main() -> int:
             errors.append(f"4x4 active-window shader contract missing {token!r}")
     for source_name, source in (("reset", reset_comp), ("actor", actor_comp),
                                 ("bee", (SHADERS / "bee_swarm.glsl").read_text(encoding="utf-8"))):
-        if "960" not in source:
-            errors.append(f"preserved authored x-origin missing from {source_name}")
+        if "* 2" not in source:
+            errors.append(f"aligned authored x-origin missing from {source_name}")
     app_cpp = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
     input_routing_hpp = (ROOT / "include/sandhybrid/input_routing.hpp").read_text(encoding="utf-8")
     window_hpp = (ROOT / "include/sandhybrid/window.hpp").read_text(encoding="utf-8")
@@ -741,7 +763,7 @@ def main() -> int:
         if token not in paint:
             errors.append(f"universal cell/tile placement contract missing {token!r}")
     for token in (
-        "int x = int(pc.width) >= 1600 ? 960 :",
+        "AUTHORED_WORLD_CELLS.x * 2",
         "int skyHeight = int(pc.height) >= AUTHORED_WORLD_CELLS.y * 3",
         "? AUTHORED_WORLD_CELLS.y * 2",
         "return ivec2(x, skyHeight);",
@@ -898,7 +920,7 @@ def main() -> int:
         "resident_substrate_material(",
         "make_resident_substrate_cell(",
         "Material::atmosphere",
-        "Loaded crystal-row 640x360 scene image with common lower geology",
+        "Loaded aligned 640x360 authored scene image",
     ):
         if token not in renderer_cpp:
             errors.append(f"loaded-scene geology parity contract missing {token!r}")

@@ -2,9 +2,15 @@
 
 ## 2.5.6
 
+- Aligned the complete authored scene to region origin `(1280,720)` and propagated that origin to reset, load/save, actor reset, player spawns, bee homes, camera home, metadata, and contracts.
+- Removed generic internal scene side walls, kept a continuous full-width foundation, and limited structural containment to the outer resident-world perimeter.
+- Migrated legacy boundary-connected Empty sky to Atmosphere on Load while preserving sealed vacuum pockets.
+- Rebuilt Volcano as a Lava chamber with local pressure-backed crater/floor vents that emit Lava or hot Ash/Smoke/Steam into Atmosphere and recharge instead of silently stopping.
+- Made Ash settle as particulate powder and prevented failed macro candidates or stale sleeping chunks from freezing productive fine movement.
+- Removed per-tile/per-chunk checkerboard paint from MAP and added an explicit screenshot-evidence release ledger to `missioncache.md`.
 - Removed the stale unused secondary-button press local after right-click became camera-only, restoring warnings-as-errors runtime builds.
 - Aspect-fitted both the live camera and full-world map view from their actual visible dimensions; the 16x4 map now renders at its true 64:9 shape instead of stretching to the simulation panel.
-- Reshaped the 64-footprint world from 8x8/4x4 assumptions into a resident 16x4, 10240x1440 world extended to the right while preserving the authored scene origin at (960,720).
+- Reshaped the 64-footprint world from 8x8/4x4 assumptions into a resident 16x4, 10240x1440 world extended to the right while placing the complete authored scene at aligned region origin (1280,720).
 - Replaced the sparse 17-region starburst with a contiguous clipped 4x4 camera active window of at most 16 complete 640x360 regions.
 - Updated generated scenes, saved-scene offsets, bee homes, camera reset, full-world map framing, and all player spawns to the preserved scene coordinate system.
 - Fixed Half Water horizontal crawling and tightened ledge splitting to require a supported three-cell water supply.
