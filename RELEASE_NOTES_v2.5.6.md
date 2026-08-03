@@ -16,7 +16,8 @@ This release completes the runtime-control, map-debugging, scene-layout, Water, 
 - Extends the world only to the right; the authored 640x360 scene remains at world origin `(960,720)`.
 - Updates generated scenes, saved-scene offsets, bee homes, camera reset, scene metadata, and Gold Mine/Demolition/Frontier Base player spawns to that preserved coordinate system.
 - Replaces the sparse 17-region starburst with one clipped contiguous 4x4 active window of complete 640x360 regions around the camera.
-- Adds a separate slow-refresh full-world map that defaults to the complete 16x4 frame, shows active/inactive regions, and outlines the live main camera without affecting simulation scheduling or LOD.
+- Adds a separate 4 Hz full-world map that defaults to the complete 16x4 frame, shows active/inactive regions, and outlines the live main camera without affecting simulation scheduling or LOD.
+- Aspect-fits the live camera and map from their actual view dimensions. The full-world map retains its true 64:9 shape with letterboxing instead of stretching to the viewport.
 
 ## Water and atmosphere
 
