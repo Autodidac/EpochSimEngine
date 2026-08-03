@@ -57,6 +57,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # GitHub Apps without workflows permission cannot push ci-release.yml.
+          # Preserve the validated source changes and let the connector update that file separately.
+          git checkout -- .github/workflows/ci-release.yml
           git rm -f \
             tools/v258-air-fill-halfwater-ui.patch.part0 \
             tools/v258-air-fill-halfwater-ui.patch.part1 \
