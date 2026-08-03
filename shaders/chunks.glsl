@@ -36,24 +36,20 @@ uint packChunkCounters(uint quietTicks, uint presentTiles) {
 }
 bool chunkHas(ChunkState state, uint flag) { return (state.flags & flag) != 0u; }
 
-int sectionAbs(int value) { return value < 0 ? -value : value; }
+const ivec2 ACTIVE_WINDOW_REGIONS = ivec2(4, 4);
 
-bool sectionCoordinateActive(ivec2 candidate, ivec2 center) {
-    ivec2 delta = candidate - center;
-    int ax = sectionAbs(delta.x);
-    int ay = sectionAbs(delta.y);
-    int radius = max(ax, ay);
-    if (radius == 0 || radius == 1) return true;
-    if (radius != 2) return false;
-    return delta.x == 0 || delta.y == 0 || ax == ay;
+bool sectionCoordinateActive(ivec2 candidate, ivec2 origin) {
+    ivec2 local = candidate - origin;
+    return all(greaterThanEqual(local, ivec2(0))) &&
+           all(lessThan(local, ACTIVE_WINDOW_REGIONS));
 }
 
-bool sectionActiveAt(ivec2 p, int centerX, int centerY, uint enabled) {
+bool sectionActiveAt(ivec2 p, int originX, int originY, uint enabled) {
     if (enabled == 0u) return true;
     ivec2 clamped = max(p, ivec2(0));
     ivec2 section = ivec2(clamped.x / ACTIVE_REGION_WIDTH_CELLS,
                           clamped.y / ACTIVE_REGION_HEIGHT_CELLS);
-    return sectionCoordinateActive(section, ivec2(centerX, centerY));
+    return sectionCoordinateActive(section, ivec2(originX, originY));
 }
 
 #endif

@@ -35,10 +35,15 @@ struct CameraView final {
 [[nodiscard]] CameraView camera_view_from(const SimulationConfig& config,
                                      const std::uint32_t requested_zoom,
                                      const int requested_center_x,
-                                     const int requested_center_y) noexcept {
-    const auto zoom = std::clamp(requested_zoom, camera_zoom_min, camera_zoom_max);
-    const auto visible_width = (std::max)(8u, config.grid_width / zoom);
-    const auto visible_height = (std::max)(8u, config.grid_height / zoom);
+                                     const int requested_center_y,
+                                     const bool map_view) noexcept {
+    const auto zoom = map_view
+        ? std::clamp(requested_zoom, map_zoom_min, map_zoom_max)
+        : std::clamp(requested_zoom, camera_zoom_min, camera_zoom_max);
+    const auto visible_width = (std::min)(config.grid_width, map_view
+        ? map_view_width(config.grid_width, zoom) : camera_view_width(zoom));
+    const auto visible_height = (std::min)(config.grid_height, map_view
+        ? map_view_height(config.grid_height, zoom) : camera_view_height(zoom));
     const auto center_x = std::clamp(requested_center_x,
                                      0, static_cast<int>(config.grid_width - 1u));
     const auto center_y = std::clamp(requested_center_y,
@@ -61,7 +66,8 @@ struct CameraView final {
         map_view ? state.map_center_x.load(std::memory_order_relaxed)
                  : state.camera_center_x.load(std::memory_order_relaxed),
         map_view ? state.map_center_y.load(std::memory_order_relaxed)
-                 : state.camera_center_y.load(std::memory_order_relaxed));
+                 : state.camera_center_y.load(std::memory_order_relaxed),
+        map_view);
 }
 
 [[nodiscard]] std::pair<std::int32_t, std::int32_t> pointer_grid(
@@ -91,11 +97,13 @@ void zoom_at_pointer(SharedState& state, const SimulationConfig& config,
     auto& zoom_state = map_view ? state.map_zoom : state.camera_zoom;
     auto& center_x_state = map_view ? state.map_center_x : state.camera_center_x;
     auto& center_y_state = map_view ? state.map_center_y : state.camera_center_y;
+    const auto minimum_zoom = map_view ? map_zoom_min : camera_zoom_min;
+    const auto maximum_zoom = map_view ? map_zoom_max : camera_zoom_max;
     const auto old_zoom = std::clamp(zoom_state.load(std::memory_order_relaxed),
-                                     camera_zoom_min, camera_zoom_max);
+                                     minimum_zoom, maximum_zoom);
     const auto new_zoom = static_cast<std::uint32_t>(std::clamp(
         static_cast<int>(old_zoom) + delta,
-        static_cast<int>(camera_zoom_min), static_cast<int>(camera_zoom_max)));
+        static_cast<int>(minimum_zoom), static_cast<int>(maximum_zoom)));
     if (new_zoom == old_zoom) return;
     const auto [target_x, target_y] = pointer_grid(
         state, config, viewport, mouse_x, mouse_y);
@@ -105,8 +113,10 @@ void zoom_at_pointer(SharedState& state, const SimulationConfig& config,
                                     0, static_cast<int>(viewport_width - 1u));
     const auto local_y = std::clamp(mouse_y - static_cast<int>(viewport.rect.position.y),
                                     0, static_cast<int>(viewport_height - 1u));
-    const auto new_width = (std::max)(8u, config.grid_width / new_zoom);
-    const auto new_height = (std::max)(8u, config.grid_height / new_zoom);
+    const auto new_width = (std::min)(config.grid_width, map_view
+        ? map_view_width(config.grid_width, new_zoom) : camera_view_width(new_zoom));
+    const auto new_height = (std::min)(config.grid_height, map_view
+        ? map_view_height(config.grid_height, new_zoom) : camera_view_height(new_zoom));
     const auto desired_origin_x = target_x - static_cast<int>(
         static_cast<std::uint64_t>(local_x) * new_width / viewport_width);
     const auto desired_origin_y = target_y - static_cast<int>(
@@ -154,8 +164,10 @@ void pan_camera_cells(SharedState& state, const SimulationConfig& config,
 }
 
 void reset_camera_to_zero(SharedState& state, const SimulationConfig& config) noexcept {
-    const auto visible_width = (std::max)(8u, config.grid_width / camera_zoom_default);
-    const auto visible_height = (std::max)(8u, config.grid_height / camera_zoom_default);
+    const auto visible_width = (std::min)(config.grid_width,
+        camera_view_width(camera_zoom_default));
+    const auto visible_height = (std::min)(config.grid_height,
+        camera_view_height(camera_zoom_default));
     const auto map_origin_x = authored_scene_origin_x(config.grid_width);
     const auto map_origin_y = authored_scene_origin_y(config.grid_height);
     state.camera_zoom.store(camera_zoom_default, std::memory_order_relaxed);
@@ -166,10 +178,10 @@ void reset_camera_to_zero(SharedState& state, const SimulationConfig& config) no
 }
 
 void reset_map_view(SharedState& state, const SimulationConfig& config) noexcept {
-    state.map_zoom.store(camera_zoom_min, std::memory_order_relaxed);
+    state.map_zoom.store(map_zoom_default, std::memory_order_relaxed);
     const auto view = camera_view_from(
-        config, camera_zoom_min, static_cast<int>(config.grid_width / 2u),
-        static_cast<int>(config.grid_height / 2u));
+        config, map_zoom_default, static_cast<int>(config.grid_width / 2u),
+        static_cast<int>(config.grid_height / 2u), true);
     set_camera_center_clamped(state.map_center_x, state.map_center_y, config, view,
                               static_cast<int>(config.grid_width / 2u),
                               static_cast<int>(config.grid_height / 2u));
@@ -400,14 +412,20 @@ int run_application() {
             static_cast<std::uint32_t>(section_schedule.worker_count), std::memory_order_relaxed);
         shared_state.active_section_count.store(
             static_cast<std::uint32_t>(section_schedule.assignment_count), std::memory_order_relaxed);
+        shared_state.active_window_origin_x.store(
+            section_schedule.origin.x, std::memory_order_relaxed);
+        shared_state.active_window_origin_y.store(
+            section_schedule.origin.y, std::memory_order_relaxed);
         shared_state.active_scope_mode.store(1u, std::memory_order_relaxed);
 
         const auto adjust_zoom_centered = [&shared_state, map_view_enabled](const int delta) {
             auto& zoom_state = map_view_enabled ? shared_state.map_zoom : shared_state.camera_zoom;
+            const auto minimum_zoom = map_view_enabled ? map_zoom_min : camera_zoom_min;
+            const auto maximum_zoom = map_view_enabled ? map_zoom_max : camera_zoom_max;
             const auto current = static_cast<int>(zoom_state.load(std::memory_order_relaxed));
             zoom_state.store(static_cast<std::uint32_t>(std::clamp(
-                current + delta, static_cast<int>(camera_zoom_min),
-                static_cast<int>(camera_zoom_max))), std::memory_order_relaxed);
+                current + delta, static_cast<int>(minimum_zoom),
+                static_cast<int>(maximum_zoom))), std::memory_order_relaxed);
         };
 
         const auto hovered_group = ui::group_at(layout, pointer);

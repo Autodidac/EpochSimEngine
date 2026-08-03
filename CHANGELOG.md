@@ -2,6 +2,9 @@
 
 ## 2.5.6
 
+- Reshaped the 64-footprint world from 8x8/4x4 assumptions into a resident 16x4, 10240x1440 world extended to the right while preserving the authored scene origin at (960,720).
+- Replaced the sparse 17-region starburst with a contiguous clipped 4x4 camera active window of at most 16 complete 640x360 regions.
+- Updated generated scenes, saved-scene offsets, bee homes, camera reset, full-world map framing, and all player spawns to the preserved scene coordinate system.
 - Fixed Half Water horizontal crawling and tightened ledge splitting to require a supported three-cell water supply.
 - Made exposed full Water/Atmosphere packets perform one fine handoff and then sleep immediately when unchanged, eliminating long-lived 8x8 checkerboard activity.
 - Smoothed balanced Atmosphere rendering and reduced medium debug/map overlays to restrained edge markers so Water, Half Water, and air remain visible.

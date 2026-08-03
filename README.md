@@ -239,7 +239,7 @@ The Windows package includes `run.bat` at its root. It locates `sandhybrid.exe` 
 - machine work restricted to valid controller/output locations
 - paused state performs no continuous simulation ticks
 
-The logical world is 5120x2880 cells, while the current bounded resident GPU window is 2560x1440 cells until deterministic far-section streaming is complete. Authored 640x360 scene content is horizontally centered in the third resident row at world Y=720, where the crystal camera marker sits; the two complete rows above are sky. The active simulation gate uses map-footprint-sized 640x360 regions in a 17-position starburst around the camera; everything outside the active set is rejected by simulation shaders. Stable regions still exit before expensive chemistry, neighborhood, and movement work. Sparse far-region streaming remains an open mission in `missioncache.md`.
+The resident world is 10240x1440 cells: 16 authored-map footprints wide by 4 high. It preserves the former 64-footprint total while extending only to the right. Authored 640x360 scene content remains at its original world origin (960,720), with the two complete rows above kept as sky. The active simulation gate is one contiguous clipped 4x4 window of complete 640x360 map-footprint regions around the camera; everything outside it is rejected by simulation shaders. Stable regions still exit before expensive chemistry, neighborhood, and movement work. Sparse far-region streaming remains an open mission in `missioncache.md`.
 
 ## Windows build
 

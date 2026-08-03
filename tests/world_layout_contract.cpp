@@ -6,6 +6,10 @@
 
 using namespace sandhybrid;
 
+static_assert(resident_world_width == 10240u);
+static_assert(resident_world_height == 1440u);
+static_assert(resident_world_footprint_columns == 16u);
+static_assert(resident_world_footprint_rows == 4u);
 static_assert(authored_scene_origin_x(resident_world_width) == 960u);
 static_assert(authored_scene_origin_y(resident_world_height) == 720u);
 static_assert(authored_scene_sky_footprint_rows == 2u);

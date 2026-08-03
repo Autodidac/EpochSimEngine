@@ -368,7 +368,8 @@ void updateBreathing(inout ActorState state) {
 void resetActor(inout ActorState state) {
     state = ActorState(0, 0, 0, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
                        255u, 255u, 0, 0, actorPc.scene, 0u, 0u, 0u, 0u, 1u);
-    int authoredOriginX = max((int(actorPc.width) - 640) / 2, 0);
+    int authoredOriginX = int(actorPc.width) >= 1600 ? 960 :
+        max((int(actorPc.width) - 640) / 2, 0);
     int authoredOriginY = int(actorPc.height) >= 1080 ? 720 : 0;
     if (actorPc.scene == SCENE_GOLD_MINE) {
         state.x = authoredOriginX + 78;

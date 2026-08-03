@@ -21,7 +21,8 @@ const int BRICK_SIZE = 8;
 const ivec2 AUTHORED_WORLD_CELLS = ivec2(640, 360);
 
 ivec2 authoredWorldOrigin() {
-    int x = max((int(pc.width) - AUTHORED_WORLD_CELLS.x) / 2, 0);
+    int x = int(pc.width) >= 1600 ? 960 :
+        max((int(pc.width) - AUTHORED_WORLD_CELLS.x) / 2, 0);
     int skyHeight = int(pc.height) >= AUTHORED_WORLD_CELLS.y * 3
         ? AUTHORED_WORLD_CELLS.y * 2
         : 0;

@@ -1748,10 +1748,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     [[nodiscard]] GridView grid_view_from(
         const std::uint32_t requested_zoom,
         const int requested_center_x,
-        const int requested_center_y) const {
-        const auto zoom = std::clamp(requested_zoom, camera_zoom_min, camera_zoom_max);
-        const auto visible_width = (std::max)(8u, config.grid_width / zoom);
-        const auto visible_height = (std::max)(8u, config.grid_height / zoom);
+        const int requested_center_y,
+        const bool map_view) const {
+        const auto zoom = map_view
+            ? std::clamp(requested_zoom, map_zoom_min, map_zoom_max)
+            : std::clamp(requested_zoom, camera_zoom_min, camera_zoom_max);
+        const auto visible_width = (std::min)(config.grid_width, map_view
+            ? map_view_width(config.grid_width, zoom) : camera_view_width(zoom));
+        const auto visible_height = (std::min)(config.grid_height, map_view
+            ? map_view_height(config.grid_height, zoom) : camera_view_height(zoom));
         const auto center_x = std::clamp(
             requested_center_x, 0, static_cast<int>(config.grid_width - 1u));
         const auto center_y = std::clamp(
@@ -1769,7 +1774,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         return grid_view_from(
             state.camera_zoom.load(std::memory_order_relaxed),
             state.camera_center_x.load(std::memory_order_relaxed),
-            state.camera_center_y.load(std::memory_order_relaxed));
+            state.camera_center_y.load(std::memory_order_relaxed), false);
     }
 
     [[nodiscard]] GridView render_grid_view(const SharedState& state) const {
@@ -1777,7 +1782,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             return grid_view_from(
                 state.map_zoom.load(std::memory_order_relaxed),
                 state.map_center_x.load(std::memory_order_relaxed),
-                state.map_center_y.load(std::memory_order_relaxed));
+                state.map_center_y.load(std::memory_order_relaxed), true);
         }
         return camera_grid_view(state);
     }
@@ -1862,10 +1867,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .seed = random_seed,
             .radius = movement_pair_tests,
             .material = state.selected_material.load(std::memory_order_relaxed),
-            .active_section_x = state.camera_center_x.load(std::memory_order_relaxed) /
-                                active_region_width_cells,
-            .active_section_y = state.camera_center_y.load(std::memory_order_relaxed) /
-                                active_region_height_cells,
+            .active_section_x = state.active_window_origin_x.load(std::memory_order_relaxed),
+            .active_section_y = state.active_window_origin_y.load(std::memory_order_relaxed),
             .active_mode = 1u,
             .reserved = 1u,
         };
@@ -1882,8 +1885,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     void record_simulation_step(const VkCommandBuffer command_buffer,
                                 const SharedState& state,
                                 const bool collect_debug_stats) {
-        const auto active_section_x = state.camera_center_x.load(std::memory_order_relaxed) / active_region_width_cells;
-        const auto active_section_y = state.camera_center_y.load(std::memory_order_relaxed) / active_region_height_cells;
+        const auto active_section_x = state.active_window_origin_x.load(std::memory_order_relaxed);
+        const auto active_section_y = state.active_window_origin_y.load(std::memory_order_relaxed);
         SimulationPush simulation_push{
             .width = config.grid_width,
             .height = config.grid_height,
@@ -2076,8 +2079,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .scene = state.selected_scene.load(std::memory_order_relaxed) % scene_count,
             .deposit = deposit ? 1u : 0u,
             .simulate = simulate_actor ? 1u : 0u,
-            .active_section_x = state.camera_center_x.load(std::memory_order_relaxed) / active_region_width_cells,
-            .active_section_y = state.camera_center_y.load(std::memory_order_relaxed) / active_region_height_cells,
+            .active_section_x = state.active_window_origin_x.load(std::memory_order_relaxed),
+            .active_section_y = state.active_window_origin_y.load(std::memory_order_relaxed),
             .active_mode = 1u,
             .inventory_slot = state.selected_inventory_slot.load(std::memory_order_relaxed) %
                               player_inventory_slot_count,
@@ -2235,10 +2238,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 ? 1u : state.brush_shape.load(std::memory_order_relaxed) % 4u,
             .placement_mode = state.placement_mode.load(std::memory_order_relaxed) != 0u ? 1u : 0u,
             .active_area_count = state.active_section_count.load(std::memory_order_relaxed),
-            .active_area_x = state.camera_center_x.load(std::memory_order_relaxed) /
-                             active_region_width_cells,
-            .active_area_y = state.camera_center_y.load(std::memory_order_relaxed) /
-                             active_region_height_cells,
+            .active_area_x = state.active_window_origin_x.load(std::memory_order_relaxed),
+            .active_area_y = state.active_window_origin_y.load(std::memory_order_relaxed),
             .active_scope_mode = state.active_scope_mode.load(std::memory_order_relaxed),
             .camera_controls = state.camera_controls.load(std::memory_order_relaxed) ? 1u : 0u,
             .map_mode = state.map_view.load(std::memory_order_relaxed) ? 1u : 0u,

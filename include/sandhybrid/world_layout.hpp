@@ -14,7 +14,7 @@ inline constexpr std::uint32_t resident_world_lava_cells = 16u;
 inline constexpr std::uint32_t resident_world_geology_patch_cells = 64u;
 inline constexpr std::uint32_t authored_scene_sky_footprint_rows = 2u;
 inline constexpr std::uint32_t subterranean_zone_count =
-    resident_world_dimension_scale - 1u;
+    resident_world_footprint_rows - 1u;
 
 static_assert(subterranean_zone_count == 3u);
 static_assert(authored_scene_foundation_cells == 8u);
@@ -23,9 +23,13 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
 
 [[nodiscard]] constexpr std::uint32_t authored_scene_origin_x(
     const std::uint32_t world_width) noexcept {
-    return world_width > pre_expansion_world_width
-        ? (world_width - pre_expansion_world_width) / 2u
-        : 0u;
+    // Preserve the original 4x4-world scene coordinate while the world grows
+    // only to the right. Smaller compatibility worlds remain centered.
+    constexpr auto preserved_origin = pre_expansion_world_width * 3u / 2u;
+    return world_width >= preserved_origin + pre_expansion_world_width
+        ? preserved_origin
+        : (world_width > pre_expansion_world_width
+            ? (world_width - pre_expansion_world_width) / 2u : 0u);
 }
 
 [[nodiscard]] constexpr std::uint32_t authored_scene_origin_y(

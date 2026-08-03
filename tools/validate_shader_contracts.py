@@ -373,6 +373,30 @@ def main() -> int:
     move_comp = (SHADERS / "move.comp").read_text(encoding="utf-8")
     chemistry_comp = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
     reset_comp = (SHADERS / "reset.comp").read_text(encoding="utf-8")
+
+    camera_policy = (ROOT / "include/sandhybrid/camera_policy.hpp").read_text(encoding="utf-8")
+    scheduler_hpp = (ROOT / "include/sandhybrid/section_scheduler.hpp").read_text(encoding="utf-8")
+    scheduler_cpp = (ROOT / "src/section_scheduler.cpp").read_text(encoding="utf-8")
+    chunks_glsl = (SHADERS / "chunks.glsl").read_text(encoding="utf-8")
+    for token in ("resident_world_footprint_columns = 16u",
+                  "resident_world_footprint_rows = 4u",
+                  "resident_world_footprint_count == 64u",
+                  "map_view_width", "map_view_height"):
+        if token not in camera_policy:
+            errors.append(f"16x4 world/camera contract missing {token!r}")
+    for token in ("active_window_columns = 4", "active_window_rows = 4",
+                  "active_window_section_capacity", "active_window_origin",
+                  "section_in_active_window"):
+        if token not in scheduler_hpp + scheduler_cpp:
+            errors.append(f"4x4 active-window scheduler contract missing {token!r}")
+    for token in ("ACTIVE_WINDOW_REGIONS = ivec2(4, 4)",
+                  "sectionCoordinateActive(ivec2 candidate, ivec2 origin)"):
+        if token not in chunks_glsl:
+            errors.append(f"4x4 active-window shader contract missing {token!r}")
+    for source_name, source in (("reset", reset_comp), ("actor", actor_comp),
+                                ("bee", (SHADERS / "bee_swarm.glsl").read_text(encoding="utf-8"))):
+        if "960" not in source:
+            errors.append(f"preserved authored x-origin missing from {source_name}")
     app_cpp = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
     input_routing_hpp = (ROOT / "include/sandhybrid/input_routing.hpp").read_text(encoding="utf-8")
     window_hpp = (ROOT / "include/sandhybrid/window.hpp").read_text(encoding="utf-8")
@@ -675,10 +699,10 @@ def main() -> int:
     debug_stats_contract = (SHADERS / "debug_stats.glsl").read_text(encoding="utf-8")
 
     for token in (
-        "resident_world_dimension_scale = 4u", "logical_world_dimension_scale = 8u",
-        "camera_zoom_min = resident_world_dimension_scale / 2u",
-        "camera_zoom_default = resident_world_dimension_scale",
-        "camera_zoom_max = resident_world_dimension_scale * 8u",
+        "resident_world_footprint_columns = 16u", "resident_world_footprint_rows = 4u",
+        "resident_world_footprint_count", "camera_zoom_min = 2u",
+        "camera_zoom_default = 4u", "camera_zoom_max = 32u",
+        "map_zoom_default = 1u",
         "camera_view_width(camera_zoom_min) == 1280u", "camera_view_height(camera_zoom_min) == 720u",
         "camera_view_width(camera_zoom_default) == 640u", "camera_view_height(camera_zoom_default) == 360u",
     ):
@@ -708,7 +732,7 @@ def main() -> int:
         if token not in paint:
             errors.append(f"universal cell/tile placement contract missing {token!r}")
     for token in (
-        "int x = max((int(pc.width) - AUTHORED_WORLD_CELLS.x) / 2, 0);",
+        "int x = int(pc.width) >= 1600 ? 960 :",
         "int skyHeight = int(pc.height) >= AUTHORED_WORLD_CELLS.y * 3",
         "? AUTHORED_WORLD_CELLS.y * 2",
         "return ivec2(x, skyHeight);",
@@ -722,7 +746,7 @@ def main() -> int:
             errors.append(f"crystal-row scene/geology shader contract missing {token!r}")
     for token in (
         "subterranean_zone_count =",
-        "resident_world_dimension_scale - 1u",
+        "resident_world_footprint_rows - 1u",
         "resident_world_lava_cells = 16u",
         "authored_scene_origin_y",
         "authored_scene_sky_footprint_rows = 2u",
