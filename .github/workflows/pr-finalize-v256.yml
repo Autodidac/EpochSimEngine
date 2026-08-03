@@ -1,0 +1,54 @@
+name: PR finalize v2.5.6
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr-finalize-v256-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.head_ref == 'agent/debug-map-inventory-v256'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/debug-map-inventory-v256
+
+      - name: Reconstruct and apply v2.5.6 source pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat tools/v256part*.b64 | base64 --decode | gzip --decompress > /tmp/finalize_v256.py
+          python3 /tmp/finalize_v256.py
+
+      - name: Validate source contracts
+        run: |
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+
+      - name: Build and test headless C++23 core
+        run: |
+          cmake -S . -B build/cache -G Ninja -DCMAKE_BUILD_TYPE=Release -DSANDHYBRID_BUILD_APP=OFF -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF -DSANDHYBRID_WARNINGS_AS_ERRORS=ON -DBUILD_TESTING=ON
+          cmake --build build/cache --parallel
+          ctest --test-dir build/cache --output-on-failure
+
+      - name: Commit validated permanent source
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm -f tools/v256part*.b64
+          git add -A
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Finalize SandHybrid v2.5.6 runtime controls"
+          git push origin HEAD:agent/debug-map-inventory-v256
