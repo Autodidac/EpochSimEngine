@@ -1,0 +1,83 @@
+name: Finalize v2.5.6 runtime warning fix
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-v256-unused-secondary-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.head_ref == 'agent/debug-map-inventory-v256'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/debug-map-inventory-v256
+          fetch-depth: 0
+
+      - name: Remove stale right-click press latch local
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          app = Path('src/app.cpp')
+          text = app.read_text(encoding='utf-8')
+          old = '        const bool secondary_pressed = input.secondary_pressed;\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one stale secondary_pressed local, found {text.count(old)}')
+          app.write_text(text.replace(old, '', 1), encoding='utf-8')
+
+          validator = Path('tools/validate_shader_contracts.py')
+          text = validator.read_text(encoding='utf-8')
+          marker = '    if "input.primary_pressed" not in app_cpp or "input.secondary_pressed" not in app_cpp:\n        errors.append("app does not consume native press-edge latches")\n'
+          replacement = '    if "input.primary_pressed" not in app_cpp:\n        errors.append("app does not consume the native primary press-edge latch")\n    if "const bool secondary_pressed = input.secondary_pressed;" in app_cpp:\n        errors.append("obsolete unused secondary press-edge local remains")\n'
+          if marker not in text:
+              raise SystemExit('press-edge validator marker missing')
+          validator.write_text(text.replace(marker, replacement, 1), encoding='utf-8')
+
+          changelog = Path('CHANGELOG.md')
+          text = changelog.read_text(encoding='utf-8')
+          note = '- Removed the stale unused secondary-button press local after right-click became camera-only, restoring warnings-as-errors runtime builds.\n'
+          release = '## 2.5.6\n\n'
+          if note not in text:
+              text = text.replace(release, release + note, 1)
+          changelog.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Validate permanent source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/validate_shader_contracts.py
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+          ! grep -n 'const bool secondary_pressed = input.secondary_pressed' src/app.cpp
+          cmake -S . -B build/warning-fix -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build/warning-fix --parallel
+          ctest --test-dir build/warning-fix --output-on-failure
+
+      - name: Commit permanent fix and remove workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm -f .github/workflows/finalize-v256-unused-secondary.yml
+          git add src/app.cpp tools/validate_shader_contracts.py CHANGELOG.md
+          git commit -m 'Remove stale secondary press local'
+          git push origin HEAD:agent/debug-map-inventory-v256
