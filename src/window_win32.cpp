@@ -54,7 +54,7 @@ struct NativeWindow::Impl final {
     bool single_step{};
     bool reset{};
     bool reset_camera{};
-    bool fill{};
+    bool fill_modifier{};
     bool save_scene{};
     bool load_scene{};
     bool next_scene{};
@@ -67,6 +67,7 @@ struct NativeWindow::Impl final {
     bool toggle_mining{};
     bool inspect_material{};
     bool toggle_debug{};
+    bool toggle_map{};
 
     static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
         auto* self = reinterpret_cast<Impl*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
@@ -179,6 +180,7 @@ struct NativeWindow::Impl final {
             self->move_down = false;
             self->jump = false;
             self->inspect_material = false;
+            self->fill_modifier = false;
             return 0;
         case WM_SYSKEYDOWN:
         case WM_KEYDOWN:
@@ -191,6 +193,9 @@ struct NativeWindow::Impl final {
                 return 0;
             case VK_F3:
                 self->toggle_debug = true;
+                return 0;
+            case VK_F4:
+                self->toggle_map = true;
                 return 0;
             case VK_F5:
                 self->save_scene = true;
@@ -218,7 +223,7 @@ struct NativeWindow::Impl final {
                 self->reset_camera = true;
                 return 0;
             case 'F':
-                self->fill = true;
+                self->fill_modifier = true;
                 return 0;
             case VK_OEM_6:
                 self->next_scene = true;
@@ -239,6 +244,7 @@ struct NativeWindow::Impl final {
         case WM_KEYUP:
             switch (wparam) {
             case VK_MENU: self->inspect_material = false; return 0;
+            case 'F': self->fill_modifier = false; return 0;
             case 'A': self->move_left = false; return 0;
             case 'D': self->move_right = false; return 0;
             case VK_SPACE: self->jump = false; return 0;
@@ -320,13 +326,13 @@ bool NativeWindow::poll(WindowInput& input) {
     impl_->single_step = false;
     impl_->reset = false;
     impl_->reset_camera = false;
-    impl_->fill = false;
     impl_->save_scene = false;
     impl_->load_scene = false;
     impl_->next_scene = false;
     impl_->previous_scene = false;
     impl_->toggle_mining = false;
     impl_->toggle_debug = false;
+    impl_->toggle_map = false;
 
     MSG message{};
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE) != FALSE) {
@@ -349,6 +355,7 @@ bool NativeWindow::poll(WindowInput& input) {
     impl_->move_up = key_down('W') || key_down(VK_UP);
     impl_->move_down = key_down('S') || key_down(VK_DOWN);
     impl_->jump = key_down(VK_SPACE);
+    impl_->fill_modifier = key_down('F');
 
     input = WindowInput{
         .width = impl_->width,
@@ -368,7 +375,7 @@ bool NativeWindow::poll(WindowInput& input) {
         .single_step = impl_->single_step,
         .reset = impl_->reset,
         .reset_camera = impl_->reset_camera,
-        .fill = impl_->fill,
+        .fill_modifier = impl_->fill_modifier,
         .save_scene = impl_->save_scene,
         .load_scene = impl_->load_scene,
         .next_scene = impl_->next_scene,
@@ -381,6 +388,7 @@ bool NativeWindow::poll(WindowInput& input) {
         .toggle_mining = impl_->toggle_mining,
         .inspect_material = impl_->inspect_material,
         .toggle_debug = impl_->toggle_debug,
+        .toggle_map = impl_->toggle_map,
     };
     return !impl_->close_requested;
 }

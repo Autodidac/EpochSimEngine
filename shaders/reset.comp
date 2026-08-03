@@ -73,14 +73,41 @@ bool residentGroundHostMaterial(uint material) {
  material == MAT_STONE;
 }
 
+int residentGroundBoundaryOffset(int x, uint salt, int amplitude) {
+    uint coarse = residentGroundHash(ivec2(x / 24, int(salt))) % uint(amplitude * 2 + 1);
+    uint fine = residentGroundHash(ivec2(x / 7, int(salt ^ 0x51f2a3b7u))) % 7u;
+    return int(coarse) - amplitude + int(fine) - 3;
+}
+
+bool residentGroundRoughEdgeCell(ivec2 position, uint salt) {
+    return (residentGroundHash(ivec2(position.x / 3, position.y / 3 + int(salt))) & 15u) == 0u;
+}
+
 uint residentGroundDepositMaterial(uint baseMaterial, ivec2 position, int depth) {
     if (!residentGroundHostMaterial(baseMaterial)) return baseMaterial;
-    uint roll = residentGroundHash(position) & 4095u;
-    if (roll < 24u) return MAT_IRON_ORE;
-    if (roll < 32u) return MAT_COPPER;
-    if (roll < 38u) return MAT_ALUMINUM;
-    if (depth >= 160 && roll < 41u) return MAT_URANIUM;
-    return baseMaterial;
+    const ivec2 clusterSize = ivec2(32, 24);
+    ivec2 cluster = position / clusterSize;
+    uint seed = residentGroundHash(cluster);
+    uint roll = seed & 2047u;
+
+    uint deposit = MAT_EMPTY;
+    if (depth >= 160 && roll < 8u) deposit = MAT_URANIUM;
+    else if (roll < 24u) deposit = MAT_ALUMINUM;
+    else if (roll < 52u) deposit = MAT_COPPER;
+    else if (roll < 132u) deposit = MAT_IRON_ORE;
+    if (deposit == MAT_EMPTY) return baseMaterial;
+
+    ivec2 local = position % clusterSize;
+    ivec2 center = ivec2(10 + int((seed >> 11u) % 13u),
+                         7 + int((seed >> 16u) % 9u));
+    ivec2 radius = ivec2(8 + int((seed >> 21u) % 6u),
+                         5 + int((seed >> 25u) % 4u));
+    ivec2 delta = local - center;
+    int roughness = int(residentGroundHash(position / 4) & 31u) - 15;
+    int lhs = delta.x * delta.x * radius.y * radius.y +
+              delta.y * delta.y * radius.x * radius.x;
+    int rhs = radius.x * radius.x * radius.y * radius.y + roughness * radius.x;
+    return lhs <= rhs ? deposit : baseMaterial;
 }
 
 // Every scene occupies the crystal-marker camera footprint: the third
@@ -95,7 +122,6 @@ uint residentWorldSubstrateMaterial(ivec2 worldPosition) {
     int horizontalShell = min(width, BRICK_SIZE);
     bool sideShell = worldPosition.x < horizontalShell ||
                      worldPosition.x >= width - horizontalShell;
-
     if (worldPosition.y < sceneTop) return MAT_EMPTY;
 
     int foundation = min(sceneBottom - sceneTop, BRICK_SIZE);
@@ -104,18 +130,15 @@ uint residentWorldSubstrateMaterial(ivec2 worldPosition) {
         if (worldPosition.y >= foundationStart || sideShell) return MAT_STONE;
         return MAT_EMPTY;
     }
-
     if (sideShell) return MAT_STONE;
 
     int bottomShell = min(height, BRICK_SIZE);
     int bottomShellStart = height - bottomShell;
     if (worldPosition.y >= bottomShellStart) return MAT_STONE;
-
     int lavaRoom = max(bottomShellStart - sceneBottom, 0);
     int lavaThickness = min(lavaRoom, BRICK_SIZE * 2);
     int lavaStart = bottomShellStart - lavaThickness;
     if (worldPosition.y >= lavaStart) return MAT_LAVA;
-
     int capRoom = max(lavaStart - sceneBottom, 0);
     int capThickness = min(capRoom, BRICK_SIZE);
     int lavaCapStart = lavaStart - capThickness;
@@ -124,30 +147,28 @@ uint residentWorldSubstrateMaterial(ivec2 worldPosition) {
     int depth = worldPosition.y - sceneBottom;
     int zone = min(depth / AUTHORED_WORLD_CELLS.y, 2);
     int localY = depth % AUTHORED_WORLD_CELLS.y;
-    ivec2 geologyPatch = worldPosition / 64;
+    int boundaryA = 106 + residentGroundBoundaryOffset(worldPosition.x, uint(zone * 17 + 3), 18);
+    int boundaryB = 232 + residentGroundBoundaryOffset(worldPosition.x, uint(zone * 19 + 7), 24);
+    int boundaryC = 304 + residentGroundBoundaryOffset(worldPosition.x, uint(zone * 23 + 11), 16);
 
     uint geology = MAT_STONE;
-    if (zone == 0) {
-    if (localY < 96) geology = MAT_SAND;
-    else if (localY < 232) geology = MAT_DIRT;
-    else if (((geologyPatch.x + geologyPatch.y * 3) % 11) == 0) geology = MAT_MUD;
-    else geology = MAT_SILT;
-} else if (zone == 1) {
-    if (localY < 104) geology = MAT_DIRT;
-    else if (localY < 248)
-        geology = ((geologyPatch.x * 5 + geologyPatch.y) % 13) == 0
-            ? MAT_MUD : MAT_SILT;
-    else
-        geology = ((geologyPatch.x + geologyPatch.y) % 7) == 0
-            ? MAT_STONE : MAT_SAND;
-} else if (localY < 80) {
-    geology = ((geologyPatch.x * 3 + geologyPatch.y) % 9) == 0
-        ? MAT_MUD : MAT_SILT;
-} else if (localY < 176) {
-    geology = MAT_DIRT;
-} else if (localY < 224 && ((geologyPatch.x + geologyPatch.y * 2) % 5) == 0) {
-    geology = MAT_SAND;
-}
+    if (zone == 0) geology = localY < boundaryA ? MAT_DIRT : (localY < boundaryB ? MAT_SAND : MAT_SILT);
+    else if (zone == 1) geology = localY < boundaryA ? MAT_SAND : (localY < boundaryB ? MAT_SILT : MAT_DIRT);
+    else geology = localY < boundaryA ? MAT_SILT : (localY < boundaryB ? MAT_DIRT : MAT_STONE);
+
+    int nearest = min(abs(localY - boundaryA), min(abs(localY - boundaryB), abs(localY - boundaryC)));
+    if (nearest <= 7 && residentGroundRoughEdgeCell(worldPosition, uint(zone * 31 + 13))) {
+        if (geology == MAT_DIRT) geology = MAT_SAND;
+        else if (geology == MAT_SAND) geology = MAT_SILT;
+        else if (geology == MAT_SILT) geology = MAT_DIRT;
+    }
+
+    uint mudSeed = residentGroundHash(ivec2(worldPosition.x / 24, worldPosition.y / 18 + zone * 97));
+    ivec2 mudLocal = ivec2(worldPosition.x % 24 - 12, worldPosition.y % 18 - 9);
+    if ((mudSeed & 31u) == 0u &&
+        mudLocal.x * mudLocal.x * 9 + mudLocal.y * mudLocal.y * 16 < 900) {
+        geology = MAT_MUD;
+    }
     return residentGroundDepositMaterial(geology, worldPosition, depth);
 }
 

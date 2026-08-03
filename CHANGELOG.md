@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.5.6
+
+- Replaced scattered per-cell mineral noise with dense deterministic ore veins that preserve rough natural edges while greatly reducing mixed/broken terrain tiles.
+- Added MC-121 for a versioned editable selection-blueprint copy/paste system.
+- Fixed expanded-world actor spawning to use the same authored scene origin as scene generation and saved-scene loading.
+- Added a compact clickable four-slot player inventory; BUILD mode now places the selected owned resource with left click and decrements its count.
+- Added an independent slow-refresh full-world debug map with separate camera state, active/inactive region visualization, and the live simulation-camera rectangle.
+- Restored camera edge panning only while right-click is held, made right-click camera-only, removed middle-mouse camera behavior, and hardened WASD routing.
+- Changed `F` into a held fill modifier that requires a left click inside the simulation viewport.
+- Swapped the upper soil/sand geology order and replaced ruler-straight layer and mud boundaries with deterministic cell-scale variation.
+- Revised the canonical mission cache and advanced Windows/Linux release automation to v2.5.6.
+
 ## 2.5.5
 
 - Added a platform-neutral fixed-capacity packed Atmosphere model for N2, O2, Ar, CO2, Ne, H2, He, water vapor, and contaminants with exact conserved transfer, enrichment, respiration, and oxygen-percentage contracts.

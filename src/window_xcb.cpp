@@ -50,6 +50,7 @@ constexpr std::uint32_t keysym_upper_m = 0x004du;
 constexpr std::uint32_t keysym_alt_l = 0xFFE9u;
 constexpr std::uint32_t keysym_alt_r = 0xFFEAu;
 constexpr std::uint32_t keysym_f3 = 0xFFC0u;
+constexpr std::uint32_t keysym_f4 = 0xFFC1u;
 constexpr std::uint32_t keysym_f5 = 0xFFC2u;
 constexpr std::uint32_t keysym_f9 = 0xFFC6u;
 
@@ -100,7 +101,7 @@ struct NativeWindow::Impl final {
     bool single_step{};
     bool reset{};
     bool reset_camera{};
-    bool fill{};
+    bool fill_modifier{};
     bool save_scene{};
     bool load_scene{};
     bool next_scene{};
@@ -113,6 +114,7 @@ struct NativeWindow::Impl final {
     bool toggle_mining{};
     bool inspect_material{};
     bool toggle_debug{};
+    bool toggle_map{};
 
     void draw_startup_message() {
         if (connection == nullptr || window == 0 || startup_gc == 0 || startup_message.empty()) return;
@@ -240,13 +242,13 @@ bool NativeWindow::poll(WindowInput& input) {
     impl_->single_step = false;
     impl_->reset = false;
     impl_->reset_camera = false;
-    impl_->fill = false;
     impl_->save_scene = false;
     impl_->load_scene = false;
     impl_->next_scene = false;
     impl_->previous_scene = false;
     impl_->toggle_mining = false;
     impl_->toggle_debug = false;
+    impl_->toggle_map = false;
 
     while (xcb_generic_event_t* event = xcb_poll_for_event(impl_->connection)) {
         const auto type = static_cast<std::uint8_t>(event->response_type & ~0x80u);
@@ -319,6 +321,7 @@ bool NativeWindow::poll(WindowInput& input) {
             impl_->move_down = false;
             impl_->jump = false;
             impl_->inspect_material = false;
+            impl_->fill_modifier = false;
             break;
         case XCB_KEY_PRESS: {
             const auto* key = reinterpret_cast<xcb_key_press_event_t*>(event);
@@ -327,6 +330,8 @@ bool NativeWindow::poll(WindowInput& input) {
                 impl_->inspect_material = true;
             } else if (keysym == keysym_f3) {
                 impl_->toggle_debug = true;
+            } else if (keysym == keysym_f4) {
+                impl_->toggle_map = true;
             } else if (keysym == keysym_f5) {
                 impl_->save_scene = true;
             } else if (keysym == keysym_f9) {
@@ -344,7 +349,7 @@ bool NativeWindow::poll(WindowInput& input) {
             } else if (keysym == keysym_0 || keysym == keysym_home) {
                 impl_->reset_camera = true;
             } else if (keysym == keysym_f || keysym == keysym_upper_f) {
-                impl_->fill = true;
+                impl_->fill_modifier = true;
             } else if (keysym == keysym_right_bracket) {
                 impl_->next_scene = true;
             } else if (keysym == keysym_left_bracket) {
@@ -366,6 +371,7 @@ bool NativeWindow::poll(WindowInput& input) {
             const auto* key = reinterpret_cast<xcb_key_release_event_t*>(event);
             const auto keysym = lookup_keysym(impl_->connection, key->detail);
             if (keysym == keysym_alt_l || keysym == keysym_alt_r) impl_->inspect_material = false;
+            else if (keysym == keysym_f || keysym == keysym_upper_f) impl_->fill_modifier = false;
             else if (keysym == keysym_a || keysym == keysym_upper_a) impl_->move_left = false;
             else if (keysym == keysym_d || keysym == keysym_upper_d) impl_->move_right = false;
             else if (keysym == keysym_space) impl_->jump = false;
@@ -401,7 +407,7 @@ bool NativeWindow::poll(WindowInput& input) {
         .single_step = impl_->single_step,
         .reset = impl_->reset,
         .reset_camera = impl_->reset_camera,
-        .fill = impl_->fill,
+        .fill_modifier = impl_->fill_modifier,
         .save_scene = impl_->save_scene,
         .load_scene = impl_->load_scene,
         .next_scene = impl_->next_scene,
@@ -414,6 +420,7 @@ bool NativeWindow::poll(WindowInput& input) {
         .toggle_mining = impl_->toggle_mining,
         .inspect_material = impl_->inspect_material,
         .toggle_debug = impl_->toggle_debug,
+        .toggle_map = impl_->toggle_map,
     };
     return !impl_->close_requested;
 }

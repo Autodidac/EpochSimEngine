@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SandHybrid VERSION 2.5.5 LANGUAGES CXX)
+project(SandHybrid VERSION 2.5.6 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -260,6 +260,7 @@ set(SANDHYBRID_CORE_PUBLIC_HEADERS
     include/sandhybrid/material.hpp
     include/sandhybrid/material_color.hpp
     include/sandhybrid/scene.hpp
+    include/sandhybrid/scene_spawn.hpp
     include/sandhybrid/scene_image.hpp
     include/sandhybrid/section_grid.hpp
     include/sandhybrid/section_scheduler.hpp
@@ -321,6 +322,12 @@ if(BUILD_TESTING)
     target_compile_features(sandhybrid_behavior_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_behavior_contract)
     add_test(NAME sandhybrid_behavior_contract COMMAND sandhybrid_behavior_contract)
+
+    add_executable(sandhybrid_scene_spawn_contract tests/scene_spawn_contract.cpp)
+    target_link_libraries(sandhybrid_scene_spawn_contract PRIVATE SandHybrid::SandHybrid)
+    target_compile_features(sandhybrid_scene_spawn_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_scene_spawn_contract)
+    add_test(NAME sandhybrid_scene_spawn_contract COMMAND sandhybrid_scene_spawn_contract)
 
     add_executable(sandhybrid_scene_image_contract tests/scene_image_contract.cpp)
     target_link_libraries(sandhybrid_scene_image_contract PRIVATE SandHybrid)

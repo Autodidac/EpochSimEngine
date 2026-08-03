@@ -15,6 +15,7 @@ layout(std430, binding = 3) readonly buffer ActorBuffer { ActorState actor; };
 layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
 layout(std430, binding = 5) readonly buffer DebugStatsBuffer { uint debugStats[]; };
 layout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };
+layout(std430, binding = 8) readonly buffer MapCells { Cell mapCells[]; };
 
 layout(push_constant) uniform RenderPush {
     uint gridWidth;
@@ -59,6 +60,12 @@ layout(push_constant) uniform RenderPush {
     int activeAreaY;
     uint activeScopeMode;
     uint cameraControls;
+    uint mapMode;
+    uint cameraOriginX;
+    uint cameraOriginY;
+    uint cameraViewWidth;
+    uint cameraViewHeight;
+    uint selectedInventorySlot;
 } renderPc;
 
 uint glyphRow(uint code, uint row) {
@@ -306,7 +313,8 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
 
 Cell cellAt(ivec2 p) {
     p = clamp(p, ivec2(0), ivec2(int(renderPc.gridWidth) - 1, int(renderPc.gridHeight) - 1));
-    return cells[uint(p.y) * renderPc.gridWidth + uint(p.x)];
+    uint index = uint(p.y) * renderPc.gridWidth + uint(p.x);
+    return renderPc.mapMode != 0u ? mapCells[index] : cells[index];
 }
 TileState tileAt(ivec2 p) { return tiles[tileIndex(p, renderPc.gridWidth)]; }
 ChunkState chunkAt(ivec2 p) { return chunks[chunkIndex(p, renderPc.gridWidth)]; }
@@ -472,37 +480,46 @@ void main() {
 
         uint controlGap = 3u;
         uint controlLeft = sidebarLeft + 8u;
-        uint controlWidth = max(1u, (sidebarWidth - 16u - controlGap * 3u) / 4u);
-        uint controlLefts[4] = uint[4](
-  controlLeft,
-  controlLeft + controlWidth + controlGap,
-  controlLeft + (controlWidth + controlGap) * 2u,
-  controlLeft + (controlWidth + controlGap) * 3u);
+        uint controlWidth = max(1u, (sidebarWidth - 16u - controlGap * 4u) / 5u);
         bool playerScene = renderPc.selectedScene == 6u ||
                  renderPc.selectedScene == 7u ||
                  renderPc.selectedScene == 8u;
-        uint controlIds[4] = uint[4](
+        uint controlIds[5] = uint[5](
   renderPc.miningMode != 0u ? 8u : 7u,
   renderPc.paused != 0u ? 3u : 2u,
   playerScene && renderPc.cameraControls == 0u ? 141u : 140u,
+  0u,
   9u);
-        for (uint control = 0u; control < 4u; ++control) {
-  uint left = controlLefts[control];
-  uint right = control == 3u ? renderPc.windowWidth - 8u : left + controlWidth;
+        for (uint control = 0u; control < 5u; ++control) {
+  uint left = controlLeft + control * (controlWidth + controlGap);
+  uint right = control == 4u ? renderPc.windowWidth - 8u : left + controlWidth;
   if (x >= left && x < right && y >= 100u && y < 122u) {
       bool enabled = (control == 1u && renderPc.paused != 0u) ||
                      (control == 2u && renderPc.cameraControls != 0u) ||
-                     (control == 3u && renderPc.debugMode != 0u);
+                     (control == 3u && renderPc.mapMode != 0u) ||
+                     (control == 4u && renderPc.debugMode != 0u);
       color = enabled ? vec3(0.20, 0.38, 0.20) : vec3(0.075, 0.105, 0.145);
       if (borderPixel(x, y, left, 100u, right, 122u)) color *= 0.55;
   }
-  uint length = fixedTextLength(controlIds[control]);
-  int labelScale = int(right - left) >= int(length * 12u + 6u) ? 2 : 1;
-  int labelWidth = int(length) * 6 * labelScale - labelScale;
-  if (fixedPixel(pixel,
-      ivec2(int(left + right) / 2 - labelWidth / 2,
-            111 - (7 * labelScale) / 2),
-      labelScale, controlIds[control])) {
+  bool labelHit = false;
+  if (control == 3u) {
+      int scale = int(right - left) >= 42 ? 2 : 1;
+      int labelWidth = 17 * scale;
+      ivec2 origin = ivec2(int(left + right) / 2 - labelWidth / 2,
+                           111 - (7 * scale) / 2);
+      labelHit = glyphPixel(pixel, origin, scale, 77u) ||
+                 glyphPixel(pixel, origin + ivec2(6 * scale, 0), scale, 65u) ||
+                 glyphPixel(pixel, origin + ivec2(12 * scale, 0), scale, 80u);
+  } else {
+      uint length = fixedTextLength(controlIds[control]);
+      int labelScale = int(right - left) >= int(length * 12u + 6u) ? 2 : 1;
+      int labelWidth = int(length) * 6 * labelScale - labelScale;
+      labelHit = fixedPixel(pixel,
+          ivec2(int(left + right) / 2 - labelWidth / 2,
+                111 - (7 * labelScale) / 2),
+          labelScale, controlIds[control]);
+  }
+  if (labelHit) {
       text = true;
       color = vec3(0.95);
   }
@@ -704,7 +721,7 @@ void main() {
         }
 
         uint cardTop = cursorBottom + 3u;
-        uint actorPanel = actor.enabled != 0u ? 102u : 5u;
+        uint actorPanel = actor.enabled != 0u ? 106u : 5u;
         uint cardBottom = renderPc.windowHeight > actorPanel + 5u
             ? renderPc.windowHeight - actorPanel - 5u : renderPc.windowHeight;
         ivec2 cursor = clamp(ivec2(renderPc.cursorX, renderPc.cursorY), ivec2(0),
@@ -748,14 +765,38 @@ void main() {
             uint top = cardBottom + 3u;
             if (y >= top) {
                 color = vec3(0.032, 0.043, 0.058);
-                bool actorText = fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(top + 8u)), 2, 45u) ||
-                    numberPixel(pixel, ivec2(int(contentLeft + 48u), int(top + 8u)), 2, actor.health) ||
-                    fixedPixel(pixel, ivec2(int(contentLeft + 116u), int(top + 8u)), 2, 46u) ||
-                    numberPixel(pixel, ivec2(int(contentLeft + 156u), int(top + 8u)), 2, actor.oxygen) ||
-                    fixedPixel(pixel, ivec2(int(contentLeft + 224u), int(top + 8u)), 2, 47u) ||
-                    numberPixel(pixel, ivec2(int(contentLeft + 286u), int(top + 8u)), 2, actor.ammo) ||
-                    fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(top + 34u)), 2, 60u) ||
-                    fixedPixel(pixel, ivec2(int(contentLeft + 174u), int(top + 34u)), 2, 61u);
+                bool actorText = fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(top + 5u)), 1, 45u) ||
+                    numberPixel(pixel, ivec2(int(contentLeft + 34u), int(top + 5u)), 1, actor.health) ||
+                    fixedPixel(pixel, ivec2(int(contentLeft + 82u), int(top + 5u)), 1, 46u) ||
+                    numberPixel(pixel, ivec2(int(contentLeft + 112u), int(top + 5u)), 1, actor.oxygen) ||
+                    fixedPixel(pixel, ivec2(int(contentLeft + 164u), int(top + 5u)), 1, 47u) ||
+                    numberPixel(pixel, ivec2(int(contentLeft + 200u), int(top + 5u)), 1, actor.ammo);
+
+                uint inventoryTop = top + 20u;
+                uint slotGap = 3u;
+                uint slotWidth = max((contentWidth - slotGap) / 2u, 1u);
+                uint slotHeight = 37u;
+                uint materials[4] = uint[4](MAT_IRON, MAT_GOLD, MAT_COPPER, MAT_ALUMINUM);
+                uint counts[4] = uint[4](actor.iron, actor.gold, actor.copper, actor.aluminum);
+                for (uint slot = 0u; slot < 4u; ++slot) {
+                    uint column = slot % 2u;
+                    uint row = slot / 2u;
+                    uint left = contentLeft + column * (slotWidth + slotGap);
+                    uint right = column == 1u ? contentLeft + contentWidth : left + slotWidth;
+                    uint slotTop = inventoryTop + row * (slotHeight + slotGap);
+                    uint slotBottom = slotTop + slotHeight;
+                    if (x >= left && x < right && y >= slotTop && y < slotBottom) {
+                        color = slot == renderPc.selectedInventorySlot
+                            ? vec3(0.14, 0.30, 0.45) : vec3(0.045, 0.062, 0.084);
+                        if (borderPixel(x, y, left, slotTop, right, slotBottom))
+                            color = slot == renderPc.selectedInventorySlot
+                                ? vec3(0.34, 0.78, 1.00) : vec3(0.12, 0.20, 0.28);
+                    }
+                    actorText = actorText || materialPixel(
+                        pixel, ivec2(int(left + 6u), int(slotTop + 6u)), 1, materials[slot]) ||
+                        numberPixel(pixel, ivec2(int(right - 46u), int(slotTop + 6u)),
+                                    2, counts[slot]);
+                }
                 if (actorText) color = vec3(0.94, 0.97, 1.0);
                 outColor = vec4(color, 1.0);
                 return;
@@ -787,10 +828,10 @@ void main() {
     Cell cell = cellAt(grid);
     vec4 color = worldColor(cell, grid);
 
-    if (renderPc.debugMode != 0u) {
+    if (renderPc.debugMode != 0u || renderPc.mapMode != 0u) {
         bool activeArea = sectionActiveAt(grid, renderPc.activeAreaX, renderPc.activeAreaY,
                                           renderPc.activeScopeMode);
-        if (!activeArea) color.rgb *= 0.28;
+        if (!activeArea) color.rgb *= renderPc.mapMode != 0u ? 0.38 : 0.28;
         ivec2 activeLocal = ivec2(grid.x % ACTIVE_REGION_WIDTH_CELLS,
                                   grid.y % ACTIVE_REGION_HEIGHT_CELLS);
         if (activeArea && (activeLocal.x == 0 || activeLocal.y == 0))
@@ -836,6 +877,17 @@ void main() {
             (chunkHas(chunk, CHUNK_SLEEPING) ? vec3(0.035, 0.10, 0.30)
                                              : vec3(0.05, 0.42, 0.90));
         color.rgb = mix(color.rgb, chunkOverlay, chunkHas(chunk, CHUNK_SLEEPING) ? 0.12 : 0.07);
+
+        if (renderPc.mapMode != 0u) {
+            uint cameraRight = renderPc.cameraOriginX + renderPc.cameraViewWidth;
+            uint cameraBottom = renderPc.cameraOriginY + renderPc.cameraViewHeight;
+            bool inCamera = gridX >= renderPc.cameraOriginX && gridX < cameraRight &&
+                            gridY >= renderPc.cameraOriginY && gridY < cameraBottom;
+            bool cameraEdge = inCamera &&
+                (gridX == renderPc.cameraOriginX || gridX + 1u == cameraRight ||
+                 gridY == renderPc.cameraOriginY || gridY + 1u == cameraBottom);
+            if (cameraEdge) color.rgb = vec3(1.00, 0.92, 0.18);
+        }
     }
 
 
@@ -859,7 +911,7 @@ void main() {
         if (body) color = visor ? vec4(0.20, 0.88, 1.0, 1.0) : vec4(0.82, 0.88, 0.94, 1.0);
     }
 
-    if (renderPc.inspectMode == 0u) {
+    if (renderPc.inspectMode == 0u && renderPc.mapMode == 0u) {
         ivec2 delta = grid - ivec2(renderPc.cursorX, renderPc.cursorY);
         int distanceSquared = delta.x * delta.x + delta.y * delta.y;
         if (renderPc.miningMode != 0u) {

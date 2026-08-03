@@ -21,7 +21,7 @@ inline constexpr float gap = 3.0f;
 struct Layout final {
     epochengine::gui_lib::Rect status{}, simulation{}, group_tabs{}, palette{};
     epochengine::gui_lib::Rect previous_scene{}, next_scene{}, reset_scene{}, save_scene{}, load_scene{};
-    epochengine::gui_lib::Rect mode_toggle{}, pause_toggle{}, camera_controls_toggle{}, debug_toggle{};
+    epochengine::gui_lib::Rect mode_toggle{}, pause_toggle{}, camera_controls_toggle{}, map_toggle{}, debug_toggle{};
     epochengine::gui_lib::Rect atmosphere{}, fill{}, eraser{}, keymap{}, cursor_editor{}, material_card{};
     epochengine::gui_lib::Rect placement_cells{}, placement_tiles{};
     epochengine::gui_lib::Rect cursor_circle{}, cursor_square{}, cursor_horizontal{}, cursor_vertical{};
@@ -76,15 +76,17 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
 
     const float top_control_gap = 3.0f;
     const float top_control_width = (std::max)(
-        1.0f, (side - 16.0f - top_control_gap * 3.0f) / 4.0f);
+        1.0f, (side - 16.0f - top_control_gap * 4.0f) / 5.0f);
     layout.mode_toggle = {{left + 8.0f, 100.0f}, {top_control_width, 22.0f}};
     layout.pause_toggle = {{layout.mode_toggle.position.x + top_control_width + top_control_gap, 100.0f},
                            {top_control_width, 22.0f}};
     layout.camera_controls_toggle = {{layout.pause_toggle.position.x + top_control_width + top_control_gap, 100.0f},
                                     {top_control_width, 22.0f}};
-    layout.debug_toggle = {{layout.camera_controls_toggle.position.x + top_control_width + top_control_gap, 100.0f},
+    layout.map_toggle = {{layout.camera_controls_toggle.position.x + top_control_width + top_control_gap, 100.0f},
+                         {top_control_width, 22.0f}};
+    layout.debug_toggle = {{layout.map_toggle.position.x + top_control_width + top_control_gap, 100.0f},
                            {(std::max)(1.0f, left + side - 8.0f -
-                               (layout.camera_controls_toggle.position.x + top_control_width + top_control_gap)), 22.0f}};
+                               (layout.map_toggle.position.x + top_control_width + top_control_gap)), 22.0f}};
 
     const float content_left = left + margin;
     const float content_width = (std::max)(1.0f, side - margin * 2.0f);
@@ -176,5 +178,30 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
     const Layout& layout, MaterialGroup group, epochengine::gui_lib::Vec2 point) noexcept {
     const auto slot = palette_slot_at(layout, group, point);
     return slot < material_group_size(group) ? grouped_material(group, slot) : Material::count;
+}
+
+[[nodiscard]] inline epochengine::gui_lib::Rect inventory_slot_rect(
+    const Layout& layout, const std::uint32_t window_height,
+    const std::uint32_t index) noexcept {
+    constexpr float slot_gap = 3.0f;
+    constexpr float slot_height = 37.0f;
+    const float left = layout.status.position.x + margin;
+    const float width = (std::max)(1.0f, layout.status.size.x - margin * 2.0f);
+    const float top = (std::max)(0.0f, static_cast<float>(window_height) - 88.0f);
+    const float slot_width = (width - slot_gap) * 0.5f;
+    const auto column = index % 2u;
+    const auto row = index / 2u;
+    return {{left + static_cast<float>(column) * (slot_width + slot_gap),
+             top + static_cast<float>(row) * (slot_height + slot_gap)},
+            {slot_width, slot_height}};
+}
+
+[[nodiscard]] inline std::uint32_t inventory_slot_at(
+    const Layout& layout, const std::uint32_t window_height,
+    const epochengine::gui_lib::Vec2 point) noexcept {
+    for (std::uint32_t index = 0u; index < 4u; ++index)
+        if (epochengine::gui_lib::contains(inventory_slot_rect(layout, window_height, index), point))
+            return index;
+    return 4u;
 }
 } // namespace sandhybrid::ui
