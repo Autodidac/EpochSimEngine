@@ -149,3 +149,8 @@ Acceptance requires integrating the grid with simulation dispatch so clean secti
 ## Release policy
 
 A release may include rewrite foundations before full cutover, but release notes and `missioncache.md` must state exactly which migration stage is active. Compilation or static contracts never close runtime missions. Failed, deferred, or unverified behavior remains in the canonical mission cache.
+
+## R2 deterministic state and transaction foundations
+
+The reusable core now owns deterministic contracts for packed Atmosphere, conserved packet movement, actor/medium overlap, bounded impulses, atomic directional machinery, sluicing, and explicit insect habitats. These foundations are platform-neutral and installed as API v3 headers. R2 remains active until the Vulkan runtime, saves, shaders, UI, and authored scenes use the same canonical state and parity tests pass against the legacy runtime.
+

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SandHybrid VERSION 2.5.4 LANGUAGES CXX)
+project(SandHybrid VERSION 2.5.5 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -249,7 +249,12 @@ install(TARGETS SandHybrid
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 set(SANDHYBRID_CORE_PUBLIC_HEADERS
+    include/sandhybrid/actor_medium.hpp
+    include/sandhybrid/atmosphere.hpp
     include/sandhybrid/camera_policy.hpp
+    include/sandhybrid/inventory.hpp
+    include/sandhybrid/machinery.hpp
+    include/sandhybrid/packet_transaction.hpp
     include/sandhybrid/input_routing.hpp
     include/sandhybrid/library.hpp
     include/sandhybrid/material.hpp
@@ -346,6 +351,31 @@ if(BUILD_TESTING)
     target_compile_features(sandhybrid_world_layout_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_world_layout_contract)
     add_test(NAME sandhybrid_world_layout_contract COMMAND sandhybrid_world_layout_contract)
+
+
+    add_executable(sandhybrid_atmosphere_contract tests/atmosphere_contract.cpp)
+    target_link_libraries(sandhybrid_atmosphere_contract PRIVATE SandHybrid::SandHybrid)
+    target_compile_features(sandhybrid_atmosphere_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_atmosphere_contract)
+    add_test(NAME sandhybrid_atmosphere_contract COMMAND sandhybrid_atmosphere_contract)
+
+    add_executable(sandhybrid_packet_transaction_contract tests/packet_transaction_contract.cpp)
+    target_link_libraries(sandhybrid_packet_transaction_contract PRIVATE SandHybrid::SandHybrid)
+    target_compile_features(sandhybrid_packet_transaction_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_packet_transaction_contract)
+    add_test(NAME sandhybrid_packet_transaction_contract COMMAND sandhybrid_packet_transaction_contract)
+
+    add_executable(sandhybrid_actor_medium_contract tests/actor_medium_contract.cpp)
+    target_link_libraries(sandhybrid_actor_medium_contract PRIVATE SandHybrid::SandHybrid)
+    target_compile_features(sandhybrid_actor_medium_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_actor_medium_contract)
+    add_test(NAME sandhybrid_actor_medium_contract COMMAND sandhybrid_actor_medium_contract)
+
+    add_executable(sandhybrid_machinery_contract tests/machinery_contract.cpp)
+    target_link_libraries(sandhybrid_machinery_contract PRIVATE SandHybrid::SandHybrid)
+    target_compile_features(sandhybrid_machinery_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_machinery_contract)
+    add_test(NAME sandhybrid_machinery_contract COMMAND sandhybrid_machinery_contract)
 
     if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         add_executable(sandhybrid_ui_layout_contract tests/ui_layout_contract.cpp)

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.5.5
+
+- Added a platform-neutral fixed-capacity packed Atmosphere model for N2, O2, Ar, CO2, Ne, H2, He, water vapor, and contaminants with exact conserved transfer, enrichment, respiration, and oxygen-percentage contracts.
+- Added exact all-or-fallback material packet transactions and proved a complete 8x8 Water packet matches represented fine-unit transfer without partial mutation.
+- Separated actor occupancy from gas/liquid state and added conserved respiration, drowning/suffocation evaluation, and bounded medium impulses.
+- Added atomic directional machine recipes, deterministic seeded sluice transactions with separate solid/Water outputs, and explicit Ant/Beetle habitat policy.
+- Advanced the reusable core API to version 3, installed the new headers, added four cross-platform contracts, and reconciled every active mission without falsely closing runtime-only work.
+- Advanced Windows and Linux packages and release automation to v2.5.5.
+
 ## 2.5.4
 
 - Prevented freshly reset enclosed Atmosphere/Oxygen tiles from blanket activation; `ACTIVE TILES` now excludes clean enclosed air.
