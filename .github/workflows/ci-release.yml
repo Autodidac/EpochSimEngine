@@ -15,72 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  prepare:
-    runs-on: ubuntu-24.04
-    outputs:
-      needs_patch: ${{ steps.payload.outputs.needs_patch }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: payload
-        name: Detect runtime evidence payload
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -f tools/v256_runtime_patch.part0 && -f tools/v256_runtime_patch.part1 && -f tools/v256_runtime_patch.part2 && -f tools/v256_runtime_patch.part3 ]]; then
-            echo 'needs_patch=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'needs_patch=false' >> "$GITHUB_OUTPUT"
-          fi
-
-  apply-evidence:
-    needs: prepare
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.head_ref == 'agent/debug-map-inventory-v256' &&
-      needs.prepare.outputs.needs_patch == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/debug-map-inventory-v256
-          fetch-depth: 0
-
-      - name: Apply screenshot-derived runtime fixes
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat tools/v256_runtime_patch.part0 tools/v256_runtime_patch.part1 tools/v256_runtime_patch.part2 tools/v256_runtime_patch.part3 | base64 --decode | gzip --decompress > /tmp/v256-runtime.patch
-          git apply --check /tmp/v256-runtime.patch
-          git apply /tmp/v256-runtime.patch
-
-      - name: Validate runtime, cache, and propagation contracts
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m py_compile tools/validate_shader_contracts.py
-          python3 tools/validate_shader_contracts.py
-          python3 tools/validate_mission_cache.py
-          python3 tools/validate_no_simulation_coroutines.py
-          python3 tools/validate_project_branding.py
-          cmake -S . -B build/runtime-evidence -G Ninja -DCMAKE_BUILD_TYPE=Release -DSANDHYBRID_BUILD_APP=OFF -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF -DSANDHYBRID_WARNINGS_AS_ERRORS=ON -DBUILD_TESTING=ON
-          cmake --build build/runtime-evidence --parallel
-          ctest --test-dir build/runtime-evidence --output-on-failure
-
-      - name: Commit permanent fixes and clean payloads
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          rm -f tools/v256_scene_evidence_patch.gz.b64 tools/v256_runtime_patch.part0 tools/v256_runtime_patch.part1 tools/v256_runtime_patch.part2 tools/v256_runtime_patch.part3
-          git add -A
-          git commit -m 'Fix v2.5.6 load volcano ash and motion regressions'
-          git push origin HEAD:agent/debug-map-inventory-v256
-
   build:
-    needs: prepare
-    if: needs.prepare.outputs.needs_patch != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -181,7 +116,7 @@ jobs:
 
       - name: Add package documentation
         shell: bash
-        run: cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md CHANGELOG.md "dist/${{ matrix.artifact }}/"
+        run: cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md CHANGELOG.md MAP_VIEW.md SCENE_LAYOUT.md RELEASE_NOTES_v2.5.6.md "dist/${{ matrix.artifact }}/"
 
       - name: Archive Windows package
         if: runner.os == 'Windows'
