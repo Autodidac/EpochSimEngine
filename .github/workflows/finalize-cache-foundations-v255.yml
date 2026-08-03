@@ -1,0 +1,179 @@
+name: Finalize v2.5.5 cache release
+
+on:
+  push:
+    branches: [agent/cache-foundations-v255]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-cache-foundations-v255
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/cache-foundations-v255
+
+      - name: Reconcile build, documentation, release, and cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          cmake = Path('CMakeLists.txt')
+          text = cmake.read_text(encoding='utf-8')
+          text = text.replace(
+              'project(SandHybrid VERSION 2.5.4 LANGUAGES CXX)',
+              'project(SandHybrid VERSION 2.5.5 LANGUAGES CXX)',
+              1)
+          header_anchor = '    include/sandhybrid/camera_policy.hpp\n'
+          header_insert = (
+              '    include/sandhybrid/actor_medium.hpp\n'
+              '    include/sandhybrid/atmosphere.hpp\n'
+              '    include/sandhybrid/camera_policy.hpp\n'
+              '    include/sandhybrid/inventory.hpp\n'
+              '    include/sandhybrid/machinery.hpp\n'
+              '    include/sandhybrid/packet_transaction.hpp\n'
+          )
+          if 'include/sandhybrid/atmosphere.hpp' not in text:
+              if header_anchor not in text:
+                  raise SystemExit('CMake public-header anchor missing')
+              text = text.replace(header_anchor, header_insert, 1)
+          test_anchor = '    if(SANDHYBRID_BUILD_VULKAN_RUNTIME)\n'
+          test_block = '\n    add_executable(sandhybrid_atmosphere_contract tests/atmosphere_contract.cpp)\n    target_link_libraries(sandhybrid_atmosphere_contract PRIVATE SandHybrid::SandHybrid)\n    target_compile_features(sandhybrid_atmosphere_contract PRIVATE cxx_std_23)\n    sandhybrid_configure_warnings(sandhybrid_atmosphere_contract)\n    add_test(NAME sandhybrid_atmosphere_contract COMMAND sandhybrid_atmosphere_contract)\n\n    add_executable(sandhybrid_packet_transaction_contract tests/packet_transaction_contract.cpp)\n    target_link_libraries(sandhybrid_packet_transaction_contract PRIVATE SandHybrid::SandHybrid)\n    target_compile_features(sandhybrid_packet_transaction_contract PRIVATE cxx_std_23)\n    sandhybrid_configure_warnings(sandhybrid_packet_transaction_contract)\n    add_test(NAME sandhybrid_packet_transaction_contract COMMAND sandhybrid_packet_transaction_contract)\n\n    add_executable(sandhybrid_actor_medium_contract tests/actor_medium_contract.cpp)\n    target_link_libraries(sandhybrid_actor_medium_contract PRIVATE SandHybrid::SandHybrid)\n    target_compile_features(sandhybrid_actor_medium_contract PRIVATE cxx_std_23)\n    sandhybrid_configure_warnings(sandhybrid_actor_medium_contract)\n    add_test(NAME sandhybrid_actor_medium_contract COMMAND sandhybrid_actor_medium_contract)\n\n    add_executable(sandhybrid_machinery_contract tests/machinery_contract.cpp)\n    target_link_libraries(sandhybrid_machinery_contract PRIVATE SandHybrid::SandHybrid)\n    target_compile_features(sandhybrid_machinery_contract PRIVATE cxx_std_23)\n    sandhybrid_configure_warnings(sandhybrid_machinery_contract)\n    add_test(NAME sandhybrid_machinery_contract COMMAND sandhybrid_machinery_contract)\n\n'
+          if 'sandhybrid_atmosphere_contract' not in text:
+              if test_anchor not in text:
+                  raise SystemExit('CMake test anchor missing')
+              text = text.replace(test_anchor, test_block + test_anchor, 1)
+          cmake.write_text(text, encoding='utf-8')
+
+          changelog = Path('CHANGELOG.md')
+          text = changelog.read_text(encoding='utf-8')
+          section = '## 2.5.5\n\n- Added a platform-neutral fixed-capacity packed Atmosphere model for N2, O2, Ar, CO2, Ne, H2, He, water vapor, and contaminants with exact conserved transfer, enrichment, respiration, and oxygen-percentage contracts.\n- Added exact all-or-fallback material packet transactions and proved a complete 8x8 Water packet matches represented fine-unit transfer without partial mutation.\n- Separated actor occupancy from gas/liquid state and added conserved respiration, drowning/suffocation evaluation, and bounded medium impulses.\n- Added atomic directional machine recipes, deterministic seeded sluice transactions with separate solid/Water outputs, and explicit Ant/Beetle habitat policy.\n- Advanced the reusable core API to version 3, installed the new headers, added four cross-platform contracts, and reconciled every active mission without falsely closing runtime-only work.\n- Advanced Windows and Linux packages and release automation to v2.5.5.\n\n'
+          if '## 2.5.5' not in text:
+              text = text.replace('# Changelog\n\n', '# Changelog\n\n' + section, 1)
+          changelog.write_text(text, encoding='utf-8')
+
+          for document_name, section in (
+              ('README.md', '## Deterministic core state contracts\n\nSandHybrid API v3 exposes platform-neutral foundations for the replacement runtime:\n\n- packed Atmosphere composition with exact pressure/component conservation;\n- atomic all-or-fallback represented-material packet transfers;\n- actor occupancy and medium impulses without encoding actors as material cells;\n- atomic directional machine and sluice transactions;\n- explicit Ant/Beetle habitat capacity, inputs, outputs, and cadence.\n\nThese APIs are deterministic and covered by Windows/Linux contracts. The Vulkan runtime is being migrated onto them incrementally; `missioncache.md` retains every production and packaged-observation requirement until it passes.\n\n'),
+              ('LIBRARY.md', '## Deterministic core state contracts\n\nSandHybrid API v3 exposes platform-neutral foundations for the replacement runtime:\n\n- packed Atmosphere composition with exact pressure/component conservation;\n- atomic all-or-fallback represented-material packet transfers;\n- actor occupancy and medium impulses without encoding actors as material cells;\n- atomic directional machine and sluice transactions;\n- explicit Ant/Beetle habitat capacity, inputs, outputs, and cadence.\n\nThese APIs are deterministic and covered by Windows/Linux contracts. The Vulkan runtime is being migrated onto them incrementally; `missioncache.md` retains every production and packaged-observation requirement until it passes.\n\n'),
+              ('REWRITE_PLAN.md', '## R2 deterministic state and transaction foundations\n\nThe reusable core now owns deterministic contracts for packed Atmosphere, conserved packet movement, actor/medium overlap, bounded impulses, atomic directional machinery, sluicing, and explicit insect habitats. These foundations are platform-neutral and installed as API v3 headers. R2 remains active until the Vulkan runtime, saves, shaders, UI, and authored scenes use the same canonical state and parity tests pass against the legacy runtime.\n\n'),
+          ):
+              document = Path(document_name)
+              text = document.read_text(encoding='utf-8')
+              heading = section.splitlines()[0]
+              if heading not in text:
+                  text = text.rstrip() + '\n\n' + section
+              document.write_text(text, encoding='utf-8')
+
+          release = Path('.github/workflows/ci-release.yml')
+          text = release.read_text(encoding='utf-8')
+          text = text.replace('sandhybrid-v254-', 'sandhybrid-v255-')
+          text = text.replace('v2.5.4', 'v2.5.5')
+          cleanup_anchor = (
+              '          git push origin --delete '
+              'agent/durable-structural-ground-deposits-v254 || true\n'
+          )
+          cleanup_line = (
+              '          git push origin --delete '
+              'agent/cache-foundations-v255 || true\n'
+          )
+          if cleanup_line not in text:
+              if cleanup_anchor not in text:
+                  raise SystemExit('release cleanup anchor missing')
+              text = text.replace(cleanup_anchor, cleanup_anchor + cleanup_line, 1)
+          release.write_text(text, encoding='utf-8')
+
+          cache = Path('missioncache.md')
+          text = cache.read_text(encoding='utf-8')
+          text = text.replace(
+              '8. This v2.5.4 pass reviewed every active row. Work without implementation or packaged runtime evidence remains `OPEN`, `PARTIAL`, `REGRESSION`, or `DEFERRED`; no item is silently omitted or falsely closed.',
+              '8. This v2.5.5 broad pass reviewed and attempted every active row. Deterministic core foundations were implemented where acceptance could be proved without a packaged interactive runtime. Work without production integration or packaged runtime evidence remains `OPEN`, `PARTIAL`, `REGRESSION`, or `DEFERRED`; no item is silently omitted or falsely closed.',
+              1)
+          lines = text.splitlines()
+          replacements = {
+              'MC-101': '| MC-101 | PARTIAL | Execute the production rewrite program | `REWRITE_PLAN.md` remains authoritative. R1 is complete. R2 now includes platform-neutral packed Atmosphere, exact conserved packet transactions, actor/medium separation, bounded impulses, deterministic machine/sluice transactions, and explicit habitat policy behind cross-platform contracts. Production Vulkan integration, parity capture, and old-runtime cutover remain active. |',
+              'MC-104': '| MC-104 | PARTIAL | Transactional liquid and gas packet acceleration | `packet_transaction.hpp` provides exact all-or-fallback represented-material packet commits with no partial mutation, and the contract compares a complete 8x8 Water packet against unit fine transfer. Production eligibility, scratch validation, boundary exchange, and same-tick fine fallback integration remain required. |',
+              'MC-106': '| MC-106 | PARTIAL | Canonical packed atmosphere | `PackedAtmosphere` now stores N2/O2/Ar/CO2/Ne/H2/He/vapor/contaminants plus temperature in the platform-neutral core. Exact-capacity Earth baseline, proportional conserved transfer, enrichment, oxygen percentage, respiration, and component conservation contracts pass. Production cell storage, pressure transport, save versioning, rendering, and shader integration remain required. |',
+              'MC-111': '| MC-111 | PARTIAL | Selectable atmosphere component gases | The public packed-atmosphere API defines Nitrogen, Oxygen, Argon, Carbon Dioxide, Neon, Hydrogen, Helium, water vapor, and contaminants without renumbering material IDs. Existing Oxygen, CO2, Hydrogen, Steam/Dirty Steam, and Smoke map to components. Palette tools for N2/Ar/Ne/He and production composition painting remain required. |',
+              'MC-113': '| MC-113 | PARTIAL | Exact directional production transactions | `machinery.hpp` defines validated recipes, power/medium gates, explicit output direction, blocked-output rejection, and atomic consume/produce behavior. Deterministic contracts prove blocked output consumes nothing. Production conveyors, machine components, latency, ports, UI switching, and debug binding remain required. |',
+              'MC-107': '| MC-107 | PARTIAL | Component actors and directional machinery | The core now exposes actor occupancy independent of material identity, medium interaction state, switchable directional machine ports, exact transactions, deterministic sluicing, and explicit insect-habitat policy. Vulkan actor extraction, scene migration, machine components, and runtime counters remain required. |',
+              'MC-018': '| MC-018 | PARTIAL | Bulk/fine parity tests | A deterministic contract proves one complete 8x8 Water packet transaction produces the exact same source/destination inventories as 16,320 represented unit transfers and proves blocked packet commits leave both sides unchanged. Atmosphere, mud erosion, boundary flow, and production-dispatch parity remain required. |',
+              'MC-022': '| MC-022 | PARTIAL | Absorb all true gases into air | `enrich_atmosphere` changes one packed component while retaining every other component and preserving pressure in a full cell; component mapping covers current O2/CO2/H2/vapor/contaminant materials. Production painting/emission paths must now use this API rather than replace cells. |',
+              'MC-026': '| MC-026 | PARTIAL | Closed-box conservation tests | The packed-atmosphere contract proves exact total pressure and per-component conservation across proportional source/destination transfer, exact O2-to-CO2 respiration replacement, and pressure-preserving enrichment. Multi-cell wall-following, paused-boundary, excess transport, and production shader tests remain required. |',
+              'MC-031': '| MC-031 | PARTIAL | Actor occupancy and medium overlap | `ActorOccupancy` and `MediumState` keep actor coverage separate from packed gas and liquid state. Contracts prove respiration changes O2 to equal CO2 without deleting pressure, actor impulses do not delete liquid, and drowning/suffocation are derived from medium state. Production actor-buffer integration remains required. |',
+              'MC-039': '| MC-039 | PARTIAL | Player-medium impulses | The platform-neutral actor/medium contract applies signed bounded impulses while preserving gas pressure and liquid representation, and clamps accumulated impulse deterministically. Runtime player collision sampling, section wakeup, directional transfer, and visual settling acceptance remain required. |',
+              'MC-036': '| MC-036 | PARTIAL | Define or remove insect habitat | `InsectHabitatPolicy` now explicitly supports Ant or Beetle species, capacity, food and water per birth, waste output, and spawn interval; unsupported generic Bee spawning is rejected by contract. The production habitat controller, UI card, scene wiring, and lifecycle counters remain required. |',
+              'MC-020': '| MC-020 | REGRESSION | Composite Atmosphere | The platform-neutral core now has a canonical component-packed Atmosphere with exact capacity, Earth baseline, conservation, enrichment, respiration, and material-component mapping. The production GPU cell remains the append-only Atmosphere material until packed storage, pressure exchange, shaders, saves, and rendering are integrated; runtime regression status therefore remains active. |',
+              'MC-021': '| MC-021 | PARTIAL | Earth-air baseline | `make_earth_atmosphere` produces an exact 65,535-unit packed baseline with 54/255 Oxygen, approximately 0.9% Argon, trace CO2 and Neon, and Nitrogen remainder. Authored air and the current Atmosphere material still require production packed-state initialization and runtime inspection. |',
+              'MC-025': '| MC-025 | PARTIAL | Respiration and combustion | Core respiration now converts available packed O2 to exactly equal packed CO2 without changing total pressure, and actor-medium contracts derive suffocation from breathable fraction and demand. Production life/combustion rates, heat, smoke, and actor integration remain required. |',
+              'MC-029': '| MC-029 | PARTIAL | Atmosphere inspection/tools | The core now reports exact pressure units and integer oxygen-per-mille and maps current gas/vapor/contaminant materials to packed components. The large Atmosphere action, Oxygen, and Eraser remain distinct. UI pressure/component percentages and production composition painting remain required. |',
+              'MC-053': '| MC-053 | PARTIAL | Transient gas/liquid tile packets | Exact all-or-fallback represented-material packet transactions and full-packet/fine parity contracts now exist in the core. Production gas/liquid ownership classification, perimeter rules, same-tick fallback, moving packet observation, exposed breakup, and stable zero-motion acceptance remain required. |',
+              'MC-082': '| MC-082 | PARTIAL | Functional industrial machinery | Core machine transactions now validate recipes, power/medium, input, output capacity, direction, and atomic conservation; blocked output consumes nothing. Core sluicing separates solid and Water outputs with distinct switchable directions. Production conveyor/machine execution, visible movement, ports, latency, habitat processing, and debug counters remain required. |',
+              'MC-088': '| MC-088 | REGRESSION | Vertical wet-feed sluice output | `transact_sluice` now rejects dry/invalid feed, requires one Sand/Silt and one Water, uses a deterministic seeded 10% gold roll, emits exactly one solid and one Water to distinct switchable directions, and commits nothing when either output is blocked. Production vertical Sluice Box wiring and packaged observation remain regressed/unverified. |',
+              'MC-072': '| MC-072 | PARTIAL | Optional subsystems | Pure headless builds still exclude Vulkan, EpochGui, shaders, windowing, and native event sources. Packed Atmosphere, inventories, packet transactions, actor-medium contracts, and machinery policies are platform-neutral installed headers with no optional dependency leakage. Independent build switches for streaming, debug, UI, actors, ecology, and factories remain open. |'
+          }
+          found = set()
+          for index, line in enumerate(lines):
+              for mission_id, replacement in replacements.items():
+                  if line.startswith(f'| {mission_id} |'):
+                      lines[index] = replacement
+                      found.add(mission_id)
+                      break
+          missing = sorted(set(replacements) - found)
+          if missing:
+              raise SystemExit(f'mission rows not found: {missing}')
+
+          p0 = (
+              '- **P0 / primary release gate:** MC-012, MC-013, MC-017, MC-018, '
+              'MC-026, MC-031, MC-032, MC-038, MC-039, MC-068, MC-074, MC-079, '
+              'MC-084, MC-097, MC-104, MC-105, MC-106, MC-107, MC-112, MC-113, '
+              'MC-114, MC-115, MC-116, MC-118, MC-119, and MC-120. These are the '
+              'current release blockers and must pass deterministic contracts plus '
+              'Windows/Linux Release packaging before publication.'
+          )
+          for index, line in enumerate(lines):
+              if line.startswith('- **P0 / primary release gate:**'):
+                  lines[index] = p0
+                  break
+          else:
+              raise SystemExit('P0 lane not found')
+          cache.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+
+      - name: Validate source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+
+      - name: Build and test headless C++23 core
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build/cache -G Ninja -DCMAKE_BUILD_TYPE=Release -DSANDHYBRID_BUILD_APP=OFF -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF -DSANDHYBRID_WARNINGS_AS_ERRORS=ON -DBUILD_TESTING=ON
+          cmake --build build/cache --parallel
+          ctest --test-dir build/cache --output-on-failure
+
+      - name: Commit completed source and remove applicator
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Finalize v2.5.5 cache foundations"
+          git push origin HEAD:agent/cache-foundations-v255
+          git rm .github/workflows/finalize-cache-foundations-v255.yml
+          git commit -m "Remove completed v2.5.5 finalizer"
+          git push origin HEAD:agent/cache-foundations-v255
