@@ -25,8 +25,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/app.cpp')
+          text = path.read_text(encoding='utf-8')
+          old = '        if (input.toggle_mining) {'
+          marker = '        if (input.toggle_mining /* preserve-v256-input-loop */) {'
+          if old not in text:
+              raise SystemExit('early mining-toggle anchor missing')
+          text = text.replace(old, marker, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
           cat tools/v256part*.b64 | base64 --decode | gzip --decompress > /tmp/finalize_v256.py
           python3 /tmp/finalize_v256.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/app.cpp')
+          text = path.read_text(encoding='utf-8')
+          marker = '        if (input.toggle_mining /* preserve-v256-input-loop */) {'
+          if marker not in text:
+              raise SystemExit('preserved mining-toggle marker missing after finalizer')
+          path.write_text(text.replace(marker, '        if (input.toggle_mining) {', 1), encoding='utf-8')
+          PY
+          python3 tools/v256_hotfix.py
 
       - name: Validate source contracts
         run: |
@@ -45,7 +66,7 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git rm -f tools/v256part*.b64
+          git rm -f tools/v256part*.b64 tools/v256_hotfix.py
           git add -A
           if git diff --cached --quiet; then
             exit 0
