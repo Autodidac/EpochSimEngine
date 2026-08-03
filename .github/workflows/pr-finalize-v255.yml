@@ -1,0 +1,49 @@
+name: PR finalize v2.5.5
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr-finalize-v255-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.head_ref == 'agent/cache-foundations-v255'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/cache-foundations-v255
+
+      - name: Apply v2.5.5 release metadata and cache evidence
+        run: python3 tools/finalize_v255.py
+
+      - name: Validate source contracts
+        run: |
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+
+      - name: Build and test headless C++23 core
+        run: |
+          cmake -S . -B build/cache -G Ninja -DCMAKE_BUILD_TYPE=Release -DSANDHYBRID_BUILD_APP=OFF -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF -DSANDHYBRID_WARNINGS_AS_ERRORS=ON -DBUILD_TESTING=ON
+          cmake --build build/cache --parallel
+          ctest --test-dir build/cache --output-on-failure
+
+      - name: Commit validated source and remove temporary machinery
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm -f --ignore-unmatch tools/finalize_v255.py
+          git rm -f --ignore-unmatch .github/workflows/finalize-cache-foundations-v255.yml
+          git rm -f --ignore-unmatch .github/workflows/pr-finalize-v255.yml
+          git add -A
+          git commit -m "Finalize SandHybrid v2.5.5 cache foundations"
+          git push origin HEAD:agent/cache-foundations-v255
