@@ -7,3 +7,4 @@
 - The authored foundation continues horizontally across the full resident world.
 - Structural containment exists only on the outer resident-world perimeter.
 - Runtime screenshot contradictions and propagation requirements are release-blocking evidence in `missioncache.md`.
+- The evidence ledger is authoritative for the v2.5.6 release gate.
