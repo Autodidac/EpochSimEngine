@@ -1,0 +1,63 @@
+name: Apply v2.5.6 screenshot evidence finalizer
+
+on:
+  push:
+    branches: [agent/debug-map-inventory-v256]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-v256-scene-evidence
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Trigger v2.5.6 screenshot evidence finalizer'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/debug-map-inventory-v256
+          fetch-depth: 0
+
+      - name: Reconstruct and apply validated patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode tools/v256_scene_evidence_patch.gz.b64 \
+            | gzip --decompress > /tmp/apply_scene_evidence.py
+          python3 /tmp/apply_scene_evidence.py
+
+      - name: Validate screenshot propagation contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/validate_shader_contracts.py
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+          cmake -S . -B build/scene-evidence -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build/scene-evidence --parallel
+          ctest --test-dir build/scene-evidence --output-on-failure
+
+      - name: Commit permanent source and remove finalizer payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm -f \
+            .github/workflows/apply-v256-scene-evidence.yml \
+            .github/workflows/finalize-v256-scene-perimeter-map.yml \
+            tools/v256_scene_evidence_patch.gz.b64
+          git add -A
+          git commit -m 'Align scenes and record runtime screenshot evidence'
+          git push origin HEAD:agent/debug-map-inventory-v256
