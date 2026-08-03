@@ -7,6 +7,7 @@
 - Smoothed balanced Atmosphere rendering and reduced medium debug/map overlays to restrained edge markers so Water, Half Water, and air remain visible.
 - Stabilized resident mud and ore veins as authored structural geology so they no longer collapse into false voids that wake Atmosphere and liquids.
 - Redesigned the sidebar into explicit Scene, Simulation, View, and Tool rows; Reset and Pause are paired, and Atmosphere/Erase/Fill remain large and visible.
+- Synchronized shader-rendered sidebar geometry with the C++ hitboxes so the redesigned controls and lower panels remain aligned.
 - Changed debug/map hierarchy visualization to preserve Atmosphere, Water, and Half Water colors while showing state through restrained tile edges and markers.
 - Replaced scattered per-cell mineral noise with dense deterministic ore veins that preserve rough natural edges while greatly reducing mixed/broken terrain tiles.
 - Added MC-121 for a versioned editable selection-blueprint copy/paste system.
