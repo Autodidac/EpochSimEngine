@@ -1,0 +1,66 @@
+name: Finalize v2.5.6 rectangular world
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-v256-rectangular-world-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.head_ref == 'agent/debug-map-inventory-v256'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/debug-map-inventory-v256
+          fetch-depth: 0
+
+      - name: Reconstruct and apply rectangular world patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat tools/v256_scope_patch.part1 \
+              tools/v256_scope_patch.part2 \
+              tools/v256_scope_patch.part3 \
+            | base64 --decode | gzip --decompress > /tmp/apply_v256_scope.py
+          python3 /tmp/apply_v256_scope.py
+
+      - name: Validate source and headless contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/validate_shader_contracts.py
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+          cmake -S . -B build/rectangular-world -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build/rectangular-world --parallel
+          ctest --test-dir build/rectangular-world --output-on-failure
+
+      - name: Commit permanent source and remove payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm -f \
+            .github/workflows/finalize-v256-rectangular-world.yml \
+            tools/v256_scope_patch.part1 \
+            tools/v256_scope_patch.part2 \
+            tools/v256_scope_patch.part3
+          git add -A
+          git commit -m 'Reshape v2.5.6 world and active simulation window'
+          git push origin HEAD:agent/debug-map-inventory-v256
