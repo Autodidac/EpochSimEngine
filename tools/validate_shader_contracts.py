@@ -229,7 +229,7 @@ def main() -> int:
     for token in ("bool settledHalfWater = halfWater && !moving",
                   "!macroMovable && !settledHalfWater",
                   "settledMedium || settledFineMedium || settledHalfWater",
-                  "!mediumBreakup;"):
+                  "!mediumBreakup && !productiveMediumMove"):
         if token not in tiles:
             errors.append(f"stable fine-medium contract missing {token!r}")
     for token in ("cell.material == MAT_ATMOSPHERE || cell.material == MAT_OXYGEN",
@@ -253,7 +253,7 @@ def main() -> int:
         "ventOutletMedium",
         "MAT_ASH : (ejecta == 1u ? MAT_SMOKE : MAT_STEAM)",
         "pressure = min(255u, pressure + recharge)",
-        "if (cell.material == MAT_ASH) return (randomValue & 3u) != 0u;",
+        "if (cell.material == MAT_ASH) return (randomValue % 5u) != 0u;",
         "chunkPairSleeping(a, b) && sleepSafe(a, firstCell) && sleepSafe(b, secondCell)",
         "renderPc.debugMode != 0u && renderPc.mapMode == 0u",
     ):
@@ -304,9 +304,8 @@ def main() -> int:
         if token not in fullscreen:
             errors.append(f"medium-preserving debug/interface contract missing {token!r}")
     reset_shader = (SHADERS / "reset.comp").read_text(encoding="utf-8")
-    for token in ("residentGroundHostMaterial(material)", "material == MAT_IRON_ORE",
-                  "material == MAT_COPPER", "material == MAT_ALUMINUM",
-                  "material == MAT_URANIUM"):
+    for token in ("terrainSample", "TERRAIN_FLAG_STRUCTURAL",
+                  "residentSubstrateStructural(substrateSample)"):
         if token not in reset_shader:
             errors.append(f"resident structural deposit contract missing {token!r}")
     if "std::atomic_bool camera_controls{false};" not in shared_state_hpp:
@@ -467,14 +466,44 @@ def main() -> int:
             errors.append(f"fullscreen tile-aligned viewport missing {token!r}")
     for token in (
         "mediumBoundaryEnclosed",
-        "fullLiquid && (moving || liquidEnclosed)",
-        "fullGas && (moving || gasEnclosed)",
+        "fullLiquid && liquidEnclosed && !moving",
+        "fullGas && gasEnclosed && !moving",
         "mediumBreakup",
         "TILE_MEDIUM_ENCLOSED",
         "TILE_MEDIUM_BREAKUP",
     ):
         if token not in tiles_comp:
             errors.append(f"transient medium-tile contract missing {token!r}")
+    terrain_glsl = (SHADERS / "terrain_generation.glsl").read_text(encoding="utf-8")
+    terrain_hpp = (ROOT / "include/sandhybrid/terrain_generation.hpp").read_text(encoding="utf-8")
+    chemistry_comp = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
+    chunks_comp = (SHADERS / "chunks.comp").read_text(encoding="utf-8")
+    material_physics = (SHADERS / "material_physics.glsl").read_text(encoding="utf-8")
+    for token in (
+        "terrainVeinCoreTile", "terrainLooseInclusion", "terrainTrapSelected",
+        "TERRAIN_FLAG_STRUCTURAL", "TERRAIN_FLAG_SAND_TRAP",
+    ):
+        if token not in terrain_glsl:
+            errors.append(f"shader terrain-generation contract missing {token!r}")
+    for token in ("vein_core_tile", "loose_inclusion_cell", "trap_selected", "struct Sample"):
+        if token not in terrain_hpp:
+            errors.append(f"library terrain-generation contract missing {token!r}")
+    for token in (
+        "case 12u: return 205u", "case 12u: return PHASE_POWDER",
+        "if (cell.material == MAT_LAVA) return (randomValue % 7u) == 0u",
+        "isOpenGas(target)", "lavaNeighborCount", "ventOutletBlockedBySolid",
+        "setStateValue(result, 255u)",
+    ):
+        if token not in material_physics + move_comp + chemistry_comp:
+            errors.append(f"lava semi-solid/vent contract missing {token!r}")
+    if "CHUNK_SLEEPING) && !chunkHas" in chunks_comp + tiles_comp:
+        errors.append("stale sleeping metadata can still suppress active-section classification")
+    for token in ("productiveMediumMove", "!productiveMediumMove",
+                  "fullLiquid && liquidEnclosed && !moving",
+                  "fullGas && gasEnclosed && !moving"):
+        if token not in tiles_comp:
+            errors.append(f"fine Water/Atmosphere equilibrium contract missing {token!r}")
+
     for token in (
         "STAT_MACRO_GAS_TILES",
         "STAT_MACRO_LIQUID_TILES",
@@ -503,7 +532,7 @@ def main() -> int:
         errors.append("app does not consume the native primary press-edge latch")
     if "const bool secondary_pressed = input.secondary_pressed;" in app_cpp:
         errors.append("obsolete unused secondary press-edge local remains")
-    for token in ("looseAuthoredTerrain", "material == MAT_DIRT", "material == MAT_GRASS", "residentGroundDepositMaterial"):
+    for token in ("looseAuthoredTerrain", "material == MAT_DIRT", "material == MAT_GRASS", "residentGroundSample"):
         if token not in reset_comp:
             errors.append(f"authored terrain stability contract missing {token!r}")
     for token in (
@@ -767,11 +796,11 @@ def main() -> int:
         "int skyHeight = int(pc.height) >= AUTHORED_WORLD_CELLS.y * 3",
         "? AUTHORED_WORLD_CELLS.y * 2",
         "return ivec2(x, skyHeight);",
-        "if (worldPosition.y < sceneTop) return MAT_EMPTY;",
-        "residentWorldSubstrateMaterial",
+        "if (worldPosition.y < sceneTop) return uvec2(MAT_EMPTY, 0u);",
+        "residentWorldSubstrateSample",
         "int lavaThickness = min(lavaRoom, BRICK_SIZE * 2);",
         "residentSubstrateStructural",
-        "bool substrateCell = substrateMaterial != MAT_EMPTY;",
+        "bool substrateCell = substrateMaterial != MAT_EMPTY ||",
     ):
         if token not in reset:
             errors.append(f"crystal-row scene/geology shader contract missing {token!r}")
@@ -783,7 +812,7 @@ def main() -> int:
         "authored_scene_sky_footprint_rows = 2u",
         "sky_height = pre_expansion_world_height * authored_scene_sky_footprint_rows",
         "return world_height >= sky_height + pre_expansion_world_height ? sky_height : 0u;",
-        "if (y < scene_top) return Material::empty;",
+        "if (y < scene_top) return {Material::empty, false, false, false};",
         "resident_substrate_material",
     ):
         if token not in world_layout:
@@ -830,27 +859,19 @@ def main() -> int:
             errors.append(f"latched player action contract missing {token!r}")
     if "segmentDistance" not in renderer or "actor.hitX" not in renderer or "actor.hitY" not in renderer:
         errors.append("tool beam/impact feedback is missing from the renderer")
+    terrain_glsl_contract = (SHADERS / "terrain_generation.glsl").read_text(encoding="utf-8")
+    terrain_hpp_contract = (ROOT / "include/sandhybrid/terrain_generation.hpp").read_text(encoding="utf-8")
     for token in (
-        "residentGroundHash",
-        "residentGroundDepositMaterial",
-        "clusterSize = ivec2(32, 24)",
-        "roll < 132u) deposit = MAT_IRON_ORE",
-        "roll < 52u) deposit = MAT_COPPER",
-        "roll < 24u) deposit = MAT_ALUMINUM",
-        "depth >= 160 && roll < 8u) deposit = MAT_URANIUM",
+        "terrainClusterDeposit", "terrainVeinCoreTile", "terrainLooseInclusion",
+        "terrainTrapSelected", "TERRAIN_FLAG_STRUCTURAL",
     ):
-        if token not in reset:
+        if token not in terrain_glsl_contract:
             errors.append(f"resident ground deposit contract missing {token!r}")
     for token in (
-        "resident_ground_hash",
-        "resident_ground_deposit_material",
-        "cluster_width = 32u",
-        "roll < 132u) deposit = Material::iron_ore",
-        "roll < 52u) deposit = Material::copper",
-        "roll < 24u) deposit = Material::aluminum",
-        "depth >= 160u && roll < 8u) deposit = Material::uranium",
+        "cluster_deposit", "vein_core_tile", "loose_inclusion_cell",
+        "trap_selected", "struct Sample",
     ):
-        if token not in world_layout:
+        if token not in terrain_hpp_contract:
             errors.append(f"CPU resident ground deposit contract missing {token!r}")
     for token in (
         "bool durableStructural = isStructural(source) && isBlockCapable(source.material);",
@@ -864,7 +885,7 @@ def main() -> int:
     for token in ("authoredStructuralCell", "looseAuthoredCargo", "Large upper reservoir", "real sediment sifter"):
         if token not in reset:
             errors.append(f"authored scene contract missing {token!r}")
-    for token in ("residentWorldSubstrateMaterial", "residentSubstrateStructural", "Paired compost experiment", "aperture so diffusion", "Scientific wet-separation station"):
+    for token in ("residentWorldSubstrateSample", "residentSubstrateStructural", "Paired compost experiment", "aperture so diffusion", "Scientific wet-separation station"):
         if token not in reset:
             errors.append(f"resident/scientific scene contract missing {token!r}")
     for token in ("compostFeedReady", "compostWaterReady", "compostPairEvent", "compostIngredientsPresent", "MAT_DIRTY_WATER", "result = makeCell(MAT_FERTILIZER)", "result = makeCell(MAT_WATER)"):
@@ -886,7 +907,7 @@ def main() -> int:
     for token in ("if (!tileInside(p)) continue;", "supportedStructural > 0u", "STAT_STRUCTURAL_COLLAPSES", "STAT_GAS_EDGE_ACTIVE_TILES"):
         if token not in tiles: errors.append(f"structure/atmosphere regression contract missing {token!r}")
     if re.search(r"for \(int x = 0; x < int\(TILE_SIZE\); \+\+x\) \{\s*for \(int x = 0;", tiles): errors.append("tile support sampling contains a duplicated nested x loop")
-    for token in ("activeStructuralProcess(source.material)", "machineAcceptsResource(resourcePosition, controller, resourceCell)", "machineInputRank", "currentInventory", "machineWaterFlowNear", "MAT_SLUICE_BOX", "MAT_SMELTER", "MAT_ASSEMBLER", "ventEmissionKind", "pressure > 96u ? pressure - 96u : 0u", "pressure > 24u ? pressure - 24u : 0u", "STAT_MACHINE_INPUTS", "STAT_MACHINE_OUTPUTS", "STAT_VOLCANO_LAVA_OUTPUTS", "STAT_VOLCANO_GAS_OUTPUTS"):
+    for token in ("activeStructuralProcess(source.material)", "machineAcceptsResource(resourcePosition, controller, resourceCell)", "machineInputRank", "currentInventory", "machineWaterFlowNear", "MAT_SLUICE_BOX", "MAT_SMELTER", "MAT_ASSEMBLER", "ventEmissionKind", "pressure > 32u ? pressure - 32u : 0u", "pressure > 12u ? pressure - 12u : 0u", "STAT_MACHINE_INPUTS", "STAT_MACHINE_OUTPUTS", "STAT_VOLCANO_LAVA_OUTPUTS", "STAT_VOLCANO_GAS_OUTPUTS"):
         if token not in chemistry: errors.append(f"industry/volcano regression contract missing {token!r}")
     for token in ("Functional industrial line", "material = MAT_CONVEYOR", "material = MAT_SLUICE_BOX", "material = MAT_WATER"):
         if token not in reset: errors.append(f"engineering industry scene contract missing {token!r}")

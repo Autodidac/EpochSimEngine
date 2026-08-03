@@ -61,7 +61,7 @@ bool macroSourceAllows(TileState state, Cell representative, uint randomValue) {
     if (state.material != representative.material || tileOccupancy(state) != TILE_CELL_COUNT) return false;
     if ((representative.aux & AUX_MOVED) != 0u || isStructural(representative)) return false;
     if (representative.material == MAT_HONEY) return (randomValue & 3u) == 0u;
-    if (representative.material == MAT_LAVA) return stateValue(representative) >= 160u || (randomValue & 1u) == 0u;
+    if (representative.material == MAT_LAVA) return (randomValue % 6u) == 0u;
     return true;
 }
 

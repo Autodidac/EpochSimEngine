@@ -75,7 +75,13 @@ int main() {
                 default: break;
             }
             if (deposit_index == 4u) continue;
-            if (!resident_substrate_is_structural(material)) return 7;
+            const auto sample = resident_substrate_sample(
+                resident_world_width, resident_world_height, x, y);
+            if (sample.structural && (x % 8u != 0u || y % 8u != 0u)) {
+                const auto tile_origin = resident_substrate_sample(
+                    resident_world_width, resident_world_height, x - x % 8u, y - y % 8u);
+                if (tile_origin.material != material || !tile_origin.structural) return 7;
+            }
             ++deposits[deposit_index];
             ++deposit_cells;
             const auto tile_x = x / 8u;
@@ -97,5 +103,18 @@ int main() {
         depth_totals[0] / depth_counts[0] >= depth_totals[1] / depth_counts[1]) return 4;
     if (varied_boundaries < 100u) return 5;
     if (deposit_cells == 0u || adjacent_deposit_cells * 4u < deposit_cells * 3u) return 6;
+    std::size_t loose_resource_cells = 0u;
+    std::size_t trap_cells = 0u;
+    for (std::uint32_t y = scene_bottom; y < geology_end; ++y) {
+        for (std::uint32_t x = resident_world_shell_cells;
+             x < resident_world_width - resident_world_shell_cells; ++x) {
+            const auto sample = resident_substrate_sample(
+                resident_world_width, resident_world_height, x, y);
+            if (sample.deliberate_loose && sample.material != Material::sand) ++loose_resource_cells;
+            if (sample.sand_trap) ++trap_cells;
+        }
+    }
+    if (loose_resource_cells == 0u) return 8;
+    if (trap_cells == 0u) return 9;
     return 0;
 }

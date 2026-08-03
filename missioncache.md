@@ -237,3 +237,12 @@ Every P0 mission is attempted in the current release. Every P1/P2 row is reviewe
 | MC-117 | Protected handoff `agent/nonoverlap-core-hygiene` at `bf2d052a9dbd275ce968cab9453b70b26b6a2771` was reconciled onto current `main` without dropping later mission-cache work. Adam explicitly required the source branch to remain preserved. | PR #45 validation history; PR #46 integration history; Windows/Linux v2.5.3 Release CI. |
 
 Detailed release history belongs only in `CHANGELOG.md`. Completed source branches and one-shot patch machinery are deleted after publication.
+
+### v2.5.7 runtime evidence
+
+- `EV-257-001` — Water/Air: exposed media must remain fine-grained; no moving 8x8 checkerboard packets and no sleeping while a productive move exists. Links: MC-013, MC-017, MC-020, MC-124.
+- `EV-257-002` — Lava: connected Lava remains Lava, slumps as a dense semi-solid, and is never floaty like Ash/Silt. Links: MC-125.
+- `EV-257-003` — Vent: a Magma Vent produces into any non-solid outlet, pressurizes existing Lava, and stops only against solid blockage. Links: MC-125, MC-128.
+- `EV-257-004` — Geology: metal deposits begin as full structural tiles; nearby Sand retains sparse loose resource cells. Links: MC-126.
+- `EV-257-005` — Terrain generation: broken zones are minimized by construction; deliberate loose roofs are reserved for recognizable sand traps. Links: MC-126, MC-127.
+- `EV-257-006` — Volcano screenshot: MAP and normal view must show a map-scale volcano and lake, not a tiny isolated apparatus. Links: MC-128.

@@ -249,8 +249,7 @@ bool isBaseGas(uint material) { return isStoredGasMaterial(material); }
 
 bool isBaseLiquid(uint material) {
     return material == MAT_WATER || material == MAT_SALTWATER || material == MAT_DIRTY_WATER ||
-           material == MAT_ACID || material == MAT_LAVA || material == MAT_OIL ||
-           material == MAT_HONEY;
+           material == MAT_ACID || material == MAT_OIL || material == MAT_HONEY;
 }
 
 bool isPowderCellMaterial(uint material) {
@@ -258,7 +257,7 @@ bool isPowderCellMaterial(uint material) {
            material == MAT_SALT || material == MAT_ASH || material == MAT_EMBER ||
            material == MAT_GUNPOWDER || material == MAT_SNOW || material == MAT_SEED ||
            material == MAT_POLLEN || material == MAT_SILT || material == MAT_FERTILIZER ||
-           material == MAT_FOOD || material == MAT_WASTE ||
+           material == MAT_FOOD || material == MAT_WASTE || material == MAT_LAVA ||
            material == MAT_ALUMINUM_SHAVINGS || material == MAT_IRON_ORE;
 }
 
@@ -436,7 +435,8 @@ bool movementAllows(Cell cell, uint randomValue) {
         return interval <= 1u || (randomValue % interval) == 0u;
     }
     if (cell.material == MAT_SALT) return (randomValue & 3u) != 0u;
-    if (cell.material == MAT_ASH) return (randomValue & 3u) != 0u;
+    if (cell.material == MAT_ASH) return (randomValue % 5u) != 0u;
+    if (cell.material == MAT_LAVA) return (randomValue % 7u) == 0u;
     if (cell.material == MAT_POLLEN) return (randomValue % 6u) == 0u;
     if (cell.material == MAT_GUNPOWDER || cell.material == MAT_SEED) return (randomValue & 1u) == 0u;
     if (cell.material == MAT_SNOW) return (randomValue % 3u) == 0u;
@@ -944,8 +944,8 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
         return;
     }
 
-    if (upward && source.material == MAT_LAVA && stateValue(source) >= 220u &&
-        target.material == MAT_EMPTY && (randomValue & 3u) == 0u) {
+    if (upward && source.material == MAT_LAVA && stateValue(source) >= 192u &&
+        isOpenGas(target) && (randomValue & 1u) == 0u) {
         Cell pressured = source;
         setStateValue(pressured, stateValue(source) - 48u);
         cells[moveIndex(sourcePosition)] = target;
