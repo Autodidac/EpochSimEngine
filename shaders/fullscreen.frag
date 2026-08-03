@@ -621,7 +621,11 @@ void main() {
 
         uint paletteTop = groupTop + renderPc.groupTabsHeight + 3u;
         const uint palettePanelHeight = 124u;
-        uint slotCount = max(groupMaterialCount(renderPc.selectedGroup), 1u);
+        const uint igniteAirGroup = 4u;
+        const uint igniteAirTextId = 165u;
+        uint materialSlotCount = groupMaterialCount(renderPc.selectedGroup);
+        uint slotCount = max(materialSlotCount +
+            (renderPc.selectedGroup == igniteAirGroup ? 1u : 0u), 1u);
         uint slotRows = max((slotCount + 1u) / 2u, 1u);
         uint cellWidth = max(contentWidth / 2u, 1u);
         uint cellHeight = max(palettePanelHeight / slotRows, 1u);
@@ -631,28 +635,41 @@ void main() {
             uint row = min((y - paletteTop) / cellHeight, slotRows - 1u);
             uint slot = row * 2u + column;
             if (slot < slotCount) {
-                uint material = groupMaterial(renderPc.selectedGroup, slot);
+                bool igniteAirAction = renderPc.selectedGroup == igniteAirGroup &&
+                                       slot == materialSlotCount;
                 uint left = contentLeft + column * cellWidth;
                 uint right = column == 1u ? contentLeft + contentWidth : left + cellWidth;
                 uint top = paletteTop + row * cellHeight;
                 uint bottom = min(paletteTop + palettePanelHeight, top + cellHeight);
-                color = materialColor(material, 0u, material * 1299721u,
-                                      ivec2(int(slot), int(renderPc.selectedGroup))).rgb * 0.62;
-                if (material == renderPc.selectedMaterial) color = min(color * 1.10 + vec3(0.13), vec3(1.0));
-                if (material == renderPc.hoveredMaterial) color = min(color + vec3(0.09), vec3(1.0));
-                if (borderPixel(x, y, left, top, right, bottom)) color *= 0.5;
-                int scale = int(right - left) >= int(materialTextLength(material)) * 12 + 8 ? 2 : 1;
-                int width = int(materialTextLength(material)) * 6 * scale - scale;
-                if (materialPixel(pixel, ivec2(int(left + right) / 2 - width / 2,
-                                               int(top + bottom) / 2 - (7 * scale) / 2), scale, material))
-                    color = dot(color, vec3(0.299, 0.587, 0.114)) > 0.55 ? vec3(0.02) : vec3(0.97);
+                if (igniteAirAction) {
+                    color = vec3(0.48, 0.16, 0.035);
+                    if (borderPixel(x, y, left, top, right, bottom)) color *= 0.5;
+                    uint length = fixedTextLength(igniteAirTextId);
+                    int scale = int(right - left) >= int(length * 12u + 8u) ? 2 : 1;
+                    int width = int(length) * 6 * scale - scale;
+                    if (fixedPixel(pixel, ivec2(int(left + right) / 2 - width / 2,
+                                                int(top + bottom) / 2 - (7 * scale) / 2),
+                                   scale, igniteAirTextId)) color = vec3(1.0, 0.92, 0.72);
+                } else {
+                    uint material = groupMaterial(renderPc.selectedGroup, slot);
+                    color = materialColor(material, 0u, material * 1299721u,
+                                          ivec2(int(slot), int(renderPc.selectedGroup))).rgb * 0.62;
+                    if (material == renderPc.selectedMaterial) color = min(color * 1.10 + vec3(0.13), vec3(1.0));
+                    if (material == renderPc.hoveredMaterial) color = min(color + vec3(0.09), vec3(1.0));
+                    if (borderPixel(x, y, left, top, right, bottom)) color *= 0.5;
+                    int scale = int(right - left) >= int(materialTextLength(material)) * 12 + 8 ? 2 : 1;
+                    int width = int(materialTextLength(material)) * 6 * scale - scale;
+                    if (materialPixel(pixel, ivec2(int(left + right) / 2 - width / 2,
+                                                   int(top + bottom) / 2 - (7 * scale) / 2), scale, material))
+                        color = dot(color, vec3(0.299, 0.587, 0.114)) > 0.55 ? vec3(0.02) : vec3(0.97);
+                }
             }
             outColor = vec4(color, 1.0);
             return;
         }
 
         uint keymapTop = paletteTop + palettePanelHeight + 3u;
-        uint keymapBottom = keymapTop + 98u;
+        uint keymapBottom = keymapTop + 124u;
         if (y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {
             color = vec3(0.035, 0.047, 0.064);
             if (borderPixel(x, y, contentLeft, keymapTop, contentLeft + contentWidth, keymapBottom))

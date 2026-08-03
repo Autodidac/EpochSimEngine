@@ -153,7 +153,10 @@ void clearHalfMedium(inout Cell cell) {
 
 void setHalfMedium(inout Cell cell, uint material, uint volume) {
     clearHalfMedium(cell);
-    if (volume == 0u || material == MAT_EMPTY) return;
+    if (material == MAT_EMPTY) return;
+    // Balanced Air is an ambient marker, not hidden pressure inside Half Water.
+    // It restores to the canonical Air state when two halves consolidate.
+    if (volume == 0u && material != MAT_ATMOSPHERE) return;
     cell.aux |= ((material & 0x7fu) << AUX_HALF_MEDIUM_MATERIAL_SHIFT) |
                 ((min(volume, 255u) & 0xffu) << AUX_HALF_MEDIUM_VOLUME_SHIFT);
 }
@@ -165,22 +168,32 @@ uint representedGasVolume(Cell cell) {
 }
 
 Cell restoredMediumFrom(Cell source, uint material, uint volume) {
-    if (material == MAT_EMPTY || volume == 0u) return Cell(MAT_EMPTY, 0u, 20, 0u);
+    if (material == MAT_EMPTY) return Cell(MAT_EMPTY, 0u, 20, 0u);
+    if (volume == 0u && material != MAT_ATMOSPHERE)
+        return Cell(MAT_EMPTY, 0u, 20, 0u);
     source.material = material;
     source.age = 0u;
     source.temperature = 20;
     source.aux &= ~(AUX_WATER_HALF | AUX_MOVED | AUX_STATE_MASK |
                     AUX_HALF_MEDIUM_MATERIAL_MASK | AUX_HALF_MEDIUM_VOLUME_MASK);
-    setStateValue(source, volume);
+    setStateValue(source, material == MAT_ATMOSPHERE && volume == 0u ? 220u : volume);
     return source;
 }
 
 bool halfWaterMergeCompatible(Cell first, Cell second) {
     uint firstVolume = halfMediumVolume(first);
     uint secondVolume = halfMediumVolume(second);
-    if (firstVolume == 0u || secondVolume == 0u) return firstVolume + secondVolume <= 255u;
-    return halfMediumMaterial(first) == halfMediumMaterial(second) &&
-           firstVolume + secondVolume <= 255u;
+    uint firstMaterial = halfMediumMaterial(first);
+    uint secondMaterial = halfMediumMaterial(second);
+    if (firstVolume == 0u && secondVolume == 0u)
+        return firstMaterial == secondMaterial;
+    if (firstVolume == 0u)
+        return (firstMaterial == MAT_EMPTY || firstMaterial == secondMaterial) &&
+               secondVolume <= 255u;
+    if (secondVolume == 0u)
+        return (secondMaterial == MAT_EMPTY || firstMaterial == secondMaterial) &&
+               firstVolume <= 255u;
+    return firstMaterial == secondMaterial && firstVolume + secondVolume <= 255u;
 }
 
 bool mergeHalfWaterPair(ivec2 keepPosition, ivec2 releasePosition, Cell keep, Cell released) {
@@ -203,8 +216,9 @@ bool mergeHalfWaterPair(ivec2 keepPosition, ivec2 releasePosition, Cell keep, Ce
 }
 
 void splitFullWaterPair(ivec2 sourcePosition, ivec2 targetPosition, Cell source, Cell target) {
+    bool ambientAir = target.material == MAT_ATMOSPHERE;
     uint mediumMaterial = isStoredGasMaterial(target.material) ? target.material : MAT_EMPTY;
-    uint mediumVolume = representedGasVolume(target);
+    uint mediumVolume = ambientAir ? 0u : representedGasVolume(target);
     uint sourceMediumVolume = mediumVolume / 2u;
     uint targetMediumVolume = mediumVolume - sourceMediumVolume;
 

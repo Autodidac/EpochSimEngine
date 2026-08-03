@@ -18,3 +18,7 @@ All other material behavior remains unchanged.
 ## v2.4.0 settling
 
 Equal-level random water hopping is removed. Half cells retain conserved displaced gas, merge when adjacent, and use stronger presentation coverage without changing represented volume. They do not chase one another across exposed surfaces. Full uniform liquid regions are decided by the 8x8 macro hierarchy; mixed edges are repaired periodically by the fine pass.
+## Ambient Air isolation
+
+When Water splits into two Half Water ledge cells against balanced Air, the Air is represented only by a zero-pressure marker. It does not occupy Half Water pressure/state bits, cannot displace the Half Water, and restores as canonical Air when the halves consolidate. Non-Air excess gases retain their represented volume.
+

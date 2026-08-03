@@ -40,6 +40,10 @@ int main() {
     if (layout.atmosphere.position.x + layout.atmosphere.size.x > layout.eraser.position.x ||
         layout.eraser.position.x + layout.eraser.size.x > layout.fill.position.x ||
         layout.group_tabs.position.y < layout.fill.position.y + layout.fill.size.y) return 6;
+    if (layout.status.size.x < 420.0f ||
+        layout.cursor_editor.position.y < layout.keymap.position.y + layout.keymap.size.y ||
+        layout.material_card.position.y <
+            layout.cursor_editor.position.y + layout.cursor_editor.size.y) return 15;
 
     const auto viewport = sandhybrid::ui::make_simulation_viewport(layout, 640u, 360u);
     if (static_cast<std::uint32_t>(viewport.rect.size.x) % 80u != 0u ||
@@ -50,8 +54,8 @@ int main() {
 
     const auto wide_map = sandhybrid::ui::make_simulation_viewport(
         layout, sandhybrid::resident_world_width, sandhybrid::resident_world_height);
-    if (static_cast<std::uint32_t>(wide_map.rect.size.x) != 896u ||
-        static_cast<std::uint32_t>(wide_map.rect.size.y) != 126u ||
+    if (static_cast<std::uint32_t>(wide_map.rect.size.x) != 856u ||
+        static_cast<std::uint32_t>(wide_map.rect.size.y) != 120u ||
         wide_map.tile_pixel_size != 0u) return 14;
 
     const auto compact = sandhybrid::ui::make_layout(480u, 320u);
@@ -65,6 +69,18 @@ int main() {
         compact.map_toggle.position.x < compact.simulation.size.x ||
         compact.debug_toggle.position.x < compact.simulation.size.x ||
         compact.material_card.position.x < compact.simulation.size.x) return 12;
+
+    if (sandhybrid::ui::palette_item_count(MaterialGroup::fire_chemistry) !=
+            sandhybrid::material_group_size(MaterialGroup::fire_chemistry) + 1u ||
+        sandhybrid::ui::palette_item_count(MaterialGroup::ground) !=
+            sandhybrid::material_group_size(MaterialGroup::ground)) return 16;
+    const auto ignite_slot = sandhybrid::ui::palette_item_rect(
+        layout, MaterialGroup::fire_chemistry,
+        sandhybrid::material_group_size(MaterialGroup::fire_chemistry));
+    if (!sandhybrid::ui::ignite_air_action_at(
+            layout, MaterialGroup::fire_chemistry,
+            {ignite_slot.position.x + ignite_slot.size.x * 0.5f,
+             ignite_slot.position.y + ignite_slot.size.y * 0.5f})) return 17;
 
     for (std::uint32_t slot = 0u; slot < 4u; ++slot) {
         const auto rect = sandhybrid::ui::inventory_slot_rect(layout, 720u, slot);

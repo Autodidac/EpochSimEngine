@@ -21,6 +21,7 @@ struct SharedState final {
     std::atomic_bool save_scene_image{false};
     std::atomic_bool load_scene_image{false};
     std::atomic_bool fill_region{false};
+    std::atomic_bool ignite_air{false};
 
     std::atomic_uint32_t window_width{1280};
     std::atomic_uint32_t window_height{720};

@@ -1,3 +1,12 @@
+# Changelog
+
+## 2.5.8
+
+- Split cursor Air flood fill from the new Heat-category `IGNITE AIR` world action.
+- Renamed the visible Atmosphere utility control to Air while retaining the Atmosphere material-card identity.
+- Isolated Half Water from ambient-Air pressure bookkeeping and restored canonical Air after consolidation.
+- Widened the sidebar and moved the Cursor/card stack below the complete keymap to remove overlap.
+
 ## 2.5.7
 
 - Keeps exposed Water and Atmosphere fine-grained while retaining enclosed-medium sleep metadata.

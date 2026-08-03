@@ -12,7 +12,7 @@ MATERIALS = [
     ('smoke', 'Smoke', 4, 0, 500, 255, 'STRONG: HEAT CARRIER', 'WEAK: STEAM / PLANTS', 'TO: DIRTY STEAM / CO2', 'ROLE: CARBON TRANSPORT', 'DANGER: SUFFOCATION'),
     ('steam', 'Steam', 5, 0, 600, 255, 'STRONG: PRESSURE / HEAT', 'WEAK: COLD SURFACES', 'TO: WATER / DIRTY STEAM', 'ROLE: WATER VAPOR', 'DANGER: BURNS / PRESSURE'),
     ('fire', 'Fire', 2, 0, 0, 255, 'STRONG: IGNITION / HEAT', 'WEAK: WATER / OXYGEN LOSS', 'TO: SMOKE / EMBER / STEAM', 'ROLE: COMBUSTION ENERGY', 'DANGER: EXTREME FIRE'),
-    ('lava', 'Lava', 72, 0, 900, 255, 'STRONG: HEAT / FLOW', 'WEAK: WATER COOLING', 'TO: STONE / STEAM', 'ROLE: GEOLOGIC HEAT', 'DANGER: MELTING / FIRE'),
+    ('lava', 'Lava', 205, 0, 900, 255, 'STRONG: HEAT / SEMI-SOLID SLUMP', 'WEAK: ISOLATED WATER COOLING', 'TO: STONE / STEAM', 'ROLE: DENSE GEOLOGIC SEMI-SOLID', 'DANGER: ENTOMBMENT / FIRE'),
     ('oil', 'Oil', 25, 0, 240, 205, 'STRONG: ENERGY DENSE', 'WEAK: FIRE / ACID', 'TO: FIRE / SMOKE / CO2', 'ROLE: FUEL FEEDSTOCK', 'DANGER: FLAMMABLE FLOOD'),
     ('wood', 'Wood', 170, 145, 220, 220, 'STRONG: LIGHT SUPPORT', 'WEAK: FIRE / ROT', 'TO: EMBER / ASH / SILT', 'ROLE: RENEWABLE STRUCTURE', 'DANGER: STRUCTURE FIRE'),
     ('plastic', 'Plastic', 160, 150, 180, 238, 'STRONG: LIGHT / WATERPROOF', 'WEAK: HEAT / ACID', 'TO: OIL / SMOKE / WASTE', 'ROLE: POLYMER PART', 'DANGER: TOXIC SMOKE'),
@@ -96,12 +96,12 @@ PHASE_LIQUID = 3
 PHASE_GAS = 4
 PHASE_PLASMA = 5
 
-_BASE_LIQUIDS = {'water', 'acid', 'lava', 'oil', 'honey', 'saltwater', 'dirty_water'}
+_BASE_LIQUIDS = {'water', 'acid', 'oil', 'honey', 'saltwater', 'dirty_water'}
 _BASE_GASES = {'smoke', 'steam', 'dirty_steam', 'oxygen', 'carbon_dioxide', 'radiation', 'hydrogen', 'atmosphere'}
 _BASE_PLASMA = {'fire', 'lightning', 'plasma_bolt'}
 _BASE_POWDERS = {
     'sand', 'dirt', 'mud', 'salt', 'ash', 'gunpowder', 'snow', 'seed', 'pollen',
-    'silt', 'fertilizer', 'food', 'waste', 'ember', 'aluminum_shavings', 'iron_ore'
+    'silt', 'fertilizer', 'food', 'waste', 'ember', 'aluminum_shavings', 'iron_ore', 'lava'
 }
 
 # density, softening, melting, boiling, vaporization, ignition, conductivity
@@ -118,7 +118,7 @@ PHYSICS_OVERRIDES = {
     'smoke': (4, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, 8),
     'steam': (5, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, 12),
     'fire': (2, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, 4),
-    'lava': (72, NO_TEMPERATURE, 700, 2600, 2600, NO_TEMPERATURE, 115),
+    'lava': (205, NO_TEMPERATURE, 700, 2600, 2600, NO_TEMPERATURE, 115),
     'oil': (25, NO_TEMPERATURE, -40, 300, 420, 220, 24),
     'wood': (170, 180, NO_TEMPERATURE, NO_TEMPERATURE, 600, 300, 16),
     'plastic': (160, 105, 165, 320, 450, 360, 10),
