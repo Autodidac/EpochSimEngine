@@ -1,0 +1,76 @@
+name: Finalize SandHybrid v2.5.7 GLSL keyword fix
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-v257-glsl-keyword-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.head_ref == 'agent/v257-air-water-equilibrium'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/v257-air-water-equilibrium
+          fetch-depth: 0
+
+      - name: Rename reserved GLSL parameter
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('shaders/reset.comp')
+          text = path.read_text(encoding='utf-8')
+          old = '''bool residentSubstrateStructural(uvec2 sample) {
+    return (sample.y & TERRAIN_FLAG_STRUCTURAL) != 0u;
+}
+'''
+          new = '''bool residentSubstrateStructural(uvec2 terrainResult) {
+    return (terrainResult.y & TERRAIN_FLAG_STRUCTURAL) != 0u;
+}
+'''
+          if old not in text:
+              if new in text:
+                  raise SystemExit(0)
+              raise SystemExit('reserved GLSL parameter marker missing')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Validate source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+          cmake -S . -B build/v257-keyword -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build/v257-keyword --parallel
+          ctest --test-dir build/v257-keyword --output-on-failure
+
+      - name: Commit permanent source fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- shaders/reset.comp; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add shaders/reset.comp
+          git commit -m 'Rename reserved GLSL sample parameter'
+          git push origin HEAD:agent/v257-air-water-equilibrium
