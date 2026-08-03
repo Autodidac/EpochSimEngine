@@ -429,9 +429,10 @@ void main() {
     if (renderPc.debugMode != 0u && sidebarWidth >= 300u && x >= sidebarLeft &&
         y >= renderPc.statusHeight) {
         vec3 debugColor = vec3(0.006, 0.010, 0.018);
+        int debugScale = renderPc.windowHeight > renderPc.statusHeight + 560u ? 2 : 1;
         debugPanelPixel(pixel, x, y, sidebarLeft + 4u, renderPc.statusHeight + 4u,
                         renderPc.windowWidth - 4u, renderPc.windowHeight - 4u,
-                        2, debugColor);
+                        debugScale, debugColor);
         outColor = vec4(debugColor, 1.0);
         return;
     }
@@ -454,75 +455,111 @@ void main() {
                numberPixel(pixel, ivec2(int(sidebarLeft + 274u), 51), 1,
                            renderPc.activeAreaCount);
 
-        // A small divider separates scene/navigation controls from editing
-        // controls without consuming another boxed panel.
-        if (y >= 97u && y < 98u && x >= sidebarLeft + 8u && x < renderPc.windowWidth - 8u)
-            color = vec3(0.10, 0.21, 0.30);
-
-        uint sceneGap = 3u;
-        uint sceneLeft = sidebarLeft + 8u;
-        uint sceneWidth = max(1u, (sidebarWidth - 16u - sceneGap * 4u) / 5u);
-        uint sceneIds[5] = uint[5](41u, 42u, 6u, 65u, 66u);
-        for (uint i = 0u; i < 5u; ++i) {
-            uint left = sceneLeft + i * (sceneWidth + sceneGap);
-            uint right = left + sceneWidth;
-            if (x >= left && x < right && y >= 70u && y < 96u) {
+        // Scene files/navigation.
+        uint rowGap = 4u;
+        uint rowLeft = sidebarLeft + 8u;
+        uint rowWidth = max(sidebarWidth - 16u, 1u);
+        uint sceneWidth = max((rowWidth - rowGap * 3u) / 4u, 1u);
+        uint sceneIds[4] = uint[4](41u, 42u, 65u, 66u);
+        for (uint i = 0u; i < 4u; ++i) {
+            uint left = rowLeft + i * (sceneWidth + rowGap);
+            uint right = i == 3u ? sidebarLeft + sidebarWidth - 8u : left + sceneWidth;
+            if (x >= left && x < right && y >= 70u && y < 98u) {
                 color = vec3(0.075, 0.105, 0.145);
-                if (borderPixel(x, y, left, 70u, right, 96u)) color *= 0.55;
+                if (borderPixel(x, y, left, 70u, right, 98u)) color *= 0.55;
                 uint length = fixedTextLength(sceneIds[i]);
-                int scale = int(sceneWidth) >= int(length * 12u + 6u) ? 2 : 1;
-                int width = int(length) * 6 * scale - scale;
-                if (fixedPixel(pixel, ivec2(int(left + right) / 2 - width / 2,
-                                             83 - (7 * scale) / 2), scale, sceneIds[i]))
-                    color = vec3(0.95);
+                int scale = int(right - left) >= int(length * 12u + 6u) ? 2 : 1;
+                int labelWidth = int(length) * 6 * scale - scale;
+                if (fixedPixel(pixel, ivec2(int(left + right) / 2 - labelWidth / 2,
+                                             84 - (7 * scale) / 2), scale, sceneIds[i]))
+                    color = vec3(0.96);
             }
         }
 
-        uint controlGap = 3u;
-        uint controlLeft = sidebarLeft + 8u;
-        uint controlWidth = max(1u, (sidebarWidth - 16u - controlGap * 4u) / 5u);
+        // Simulation actions: RESET and PAUSE/RUN are equal-size neighbors.
+        uint actionWidth = max((rowWidth - rowGap) / 2u, 1u);
+        uint actionIds[2] = uint[2](6u, renderPc.paused != 0u ? 3u : 2u);
+        for (uint action = 0u; action < 2u; ++action) {
+            uint left = rowLeft + action * (actionWidth + rowGap);
+            uint right = action == 1u ? sidebarLeft + sidebarWidth - 8u : left + actionWidth;
+            if (x >= left && x < right && y >= 102u && y < 132u) {
+                bool enabled = action == 1u && renderPc.paused != 0u;
+                color = enabled ? vec3(0.20, 0.38, 0.20) :
+                    (action == 0u ? vec3(0.32, 0.16, 0.08) : vec3(0.075, 0.105, 0.145));
+                if (borderPixel(x, y, left, 102u, right, 132u)) color *= 0.55;
+                uint length = fixedTextLength(actionIds[action]);
+                int scale = int(right - left) >= int(length * 12u + 6u) ? 2 : 1;
+                int labelWidth = int(length) * 6 * scale - scale;
+                if (fixedPixel(pixel, ivec2(int(left + right) / 2 - labelWidth / 2,
+                                             117 - (7 * scale) / 2), scale,
+                               actionIds[action])) color = vec3(0.97);
+            }
+        }
+
+        // View/input modes.
+        uint viewWidth = max((rowWidth - rowGap * 3u) / 4u, 1u);
         bool playerScene = renderPc.selectedScene == 6u ||
-                 renderPc.selectedScene == 7u ||
-                 renderPc.selectedScene == 8u;
-        uint controlIds[5] = uint[5](
-  renderPc.miningMode != 0u ? 8u : 7u,
-  renderPc.paused != 0u ? 3u : 2u,
-  playerScene && renderPc.cameraControls == 0u ? 141u : 140u,
-  0u,
-  9u);
-        for (uint control = 0u; control < 5u; ++control) {
-  uint left = controlLeft + control * (controlWidth + controlGap);
-  uint right = control == 4u ? renderPc.windowWidth - 8u : left + controlWidth;
-  if (x >= left && x < right && y >= 100u && y < 122u) {
-      bool enabled = (control == 1u && renderPc.paused != 0u) ||
-                     (control == 2u && renderPc.cameraControls != 0u) ||
-                     (control == 3u && renderPc.mapMode != 0u) ||
-                     (control == 4u && renderPc.debugMode != 0u);
-      color = enabled ? vec3(0.20, 0.38, 0.20) : vec3(0.075, 0.105, 0.145);
-      if (borderPixel(x, y, left, 100u, right, 122u)) color *= 0.55;
-  }
-  bool labelHit = false;
-  if (control == 3u) {
-      int scale = int(right - left) >= 42 ? 2 : 1;
-      int labelWidth = 17 * scale;
-      ivec2 origin = ivec2(int(left + right) / 2 - labelWidth / 2,
-                           111 - (7 * scale) / 2);
-      labelHit = glyphPixel(pixel, origin, scale, 77u) ||
-                 glyphPixel(pixel, origin + ivec2(6 * scale, 0), scale, 65u) ||
-                 glyphPixel(pixel, origin + ivec2(12 * scale, 0), scale, 80u);
-  } else {
-      uint length = fixedTextLength(controlIds[control]);
-      int labelScale = int(right - left) >= int(length * 12u + 6u) ? 2 : 1;
-      int labelWidth = int(length) * 6 * labelScale - labelScale;
-      labelHit = fixedPixel(pixel,
-          ivec2(int(left + right) / 2 - labelWidth / 2,
-                111 - (7 * labelScale) / 2),
-          labelScale, controlIds[control]);
-  }
-  if (labelHit) {
-      text = true;
-      color = vec3(0.95);
-  }
+                           renderPc.selectedScene == 7u ||
+                           renderPc.selectedScene == 8u;
+        uint viewIds[4] = uint[4](
+            renderPc.miningMode != 0u ? 8u : 7u,
+            playerScene && renderPc.cameraControls == 0u ? 141u : 140u,
+            0u,
+            9u);
+        for (uint control = 0u; control < 4u; ++control) {
+            uint left = rowLeft + control * (viewWidth + rowGap);
+            uint right = control == 3u ? sidebarLeft + sidebarWidth - 8u : left + viewWidth;
+            if (x >= left && x < right && y >= 136u && y < 164u) {
+                bool enabled = (control == 1u && renderPc.cameraControls != 0u) ||
+                               (control == 2u && renderPc.mapMode != 0u) ||
+                               (control == 3u && renderPc.debugMode != 0u);
+                color = enabled ? vec3(0.14, 0.31, 0.45) : vec3(0.075, 0.105, 0.145);
+                if (borderPixel(x, y, left, 136u, right, 164u)) color *= 0.55;
+            }
+            bool labelHit = false;
+            if (control == 2u) {
+                int scale = int(right - left) >= 42 ? 2 : 1;
+                int labelWidth = 17 * scale;
+                ivec2 origin = ivec2(int(left + right) / 2 - labelWidth / 2,
+                                     150 - (7 * scale) / 2);
+                labelHit = glyphPixel(pixel, origin, scale, 77u) ||
+                           glyphPixel(pixel, origin + ivec2(6 * scale, 0), scale, 65u) ||
+                           glyphPixel(pixel, origin + ivec2(12 * scale, 0), scale, 80u);
+            } else {
+                uint length = fixedTextLength(viewIds[control]);
+                int scale = int(right - left) >= int(length * 12u + 6u) ? 2 : 1;
+                int labelWidth = int(length) * 6 * scale - scale;
+                labelHit = fixedPixel(pixel,
+                    ivec2(int(left + right) / 2 - labelWidth / 2,
+                          150 - (7 * scale) / 2), scale, viewIds[control]);
+            }
+            if (labelHit) color = vec3(0.97);
+        }
+
+        // Primary tools are always visible and strongly differentiated.
+        uint utilityWidth = max((rowWidth - rowGap * 2u) / 3u, 1u);
+        uint utilityLabels[3] = uint[3](67u, 159u, 108u);
+        for (uint button = 0u; button < 3u; ++button) {
+            uint left = rowLeft + button * (utilityWidth + rowGap);
+            uint right = button == 2u ? sidebarLeft + sidebarWidth - 8u : left + utilityWidth;
+            if (x >= left && x < right && y >= 168u && y < 202u) {
+                if (button == 0u) {
+                    color = renderPc.selectedMaterial == MAT_ATMOSPHERE
+                        ? vec3(0.10, 0.50, 0.76) : vec3(0.07, 0.25, 0.38);
+                } else if (button == 1u) {
+                    color = renderPc.selectedMaterial == MAT_EMPTY
+                        ? vec3(0.72, 0.14, 0.18) : vec3(0.30, 0.055, 0.07);
+                } else {
+                    color = vec3(0.10, 0.42, 0.20);
+                }
+                if (borderPixel(x, y, left, 168u, right, 202u)) color *= 0.55;
+                uint length = fixedTextLength(utilityLabels[button]);
+                int scale = int(right - left) >= int(length * 12u + 6u) ? 2 : 1;
+                int labelWidth = int(length) * 6 * scale - scale;
+                if (fixedPixel(pixel, ivec2(int(left + right) / 2 - labelWidth / 2,
+                                             185 - (7 * scale) / 2), scale,
+                               utilityLabels[button])) color = vec3(1.0);
+            }
         }
 
         uint contentLeft = sidebarLeft + 5u;
@@ -586,50 +623,7 @@ void main() {
             return;
         }
 
-        uint eraserTop = paletteTop + palettePanelHeight + 3u;
-        uint eraserBottom = eraserTop + 24u;
-        uint utilityGap = 4u;
-        uint utilityWidth = max((contentWidth - utilityGap * 2u) / 3u, 1u);
-        uint utilityLefts[3] = uint[3](
-            contentLeft,
-            contentLeft + utilityWidth + utilityGap,
-            contentLeft + (utilityWidth + utilityGap) * 2u);
-        uint utilityRights[3] = uint[3](
-            contentLeft + utilityWidth,
-            contentLeft + utilityWidth * 2u + utilityGap,
-            contentLeft + contentWidth);
-        uint utilityLabels[3] = uint[3](67u, 108u, 159u);
-        if (y >= eraserTop && y < eraserBottom && x >= contentLeft && x < contentLeft + contentWidth) {
-            for (uint button = 0u; button < 3u; ++button) {
-                uint left = utilityLefts[button];
-                uint right = utilityRights[button];
-                if (x < left || x >= right) continue;
-                if (button == 0u) {
-                    color = renderPc.selectedMaterial == MAT_ATMOSPHERE
-                        ? vec3(0.10, 0.46, 0.68) : vec3(0.08, 0.30, 0.46);
-                } else if (button == 1u) {
-                    color = vec3(0.10, 0.38, 0.20);
-                } else {
-                    color = renderPc.selectedMaterial == MAT_EMPTY
-                        ? vec3(0.62, 0.12, 0.16) : vec3(0.22, 0.055, 0.07);
-                }
-                if (borderPixel(x, y, left, eraserTop, right, eraserBottom)) color *= 0.55;
-                uint label = utilityLabels[button];
-                uint length = fixedTextLength(label);
-                int scale = int(right - left) >= int(length) * 12 + 4 ? 2 : 1;
-                int width = int(length) * 6 * scale - scale;
-                if (fixedPixel(pixel, ivec2(int(left + (right - left) / 2u) - width / 2,
-                                            int(eraserTop + (24u - uint(7 * scale)) / 2u)),
-                               scale, label))
-                    color = vec3(1.0, 0.94, 0.94);
-                outColor = vec4(color, 1.0);
-                return;
-            }
-            outColor = vec4(vec3(0.015, 0.022, 0.032), 1.0);
-            return;
-        }
-
-        uint keymapTop = eraserBottom + 3u;
+        uint keymapTop = paletteTop + palettePanelHeight + 3u;
         uint keymapBottom = keymapTop + 126u;
         if (y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {
             color = vec3(0.035, 0.047, 0.064);
@@ -831,7 +825,8 @@ void main() {
     if (renderPc.debugMode != 0u || renderPc.mapMode != 0u) {
         bool activeArea = sectionActiveAt(grid, renderPc.activeAreaX, renderPc.activeAreaY,
                                           renderPc.activeScopeMode);
-        if (!activeArea) color.rgb *= renderPc.mapMode != 0u ? 0.38 : 0.28;
+        bool mediumCell = isCellGas(cell) || isCellLiquid(cell) || isHalfWater(cell);
+        if (!activeArea) color.rgb *= renderPc.mapMode != 0u ? 0.62 : 0.52;
         ivec2 activeLocal = ivec2(grid.x % ACTIVE_REGION_WIDTH_CELLS,
                                   grid.y % ACTIVE_REGION_HEIGHT_CELLS);
         if (activeArea && (activeLocal.x == 0 || activeLocal.y == 0))
@@ -870,13 +865,23 @@ void main() {
         } else if (tileHas(tile, TILE_ACTIVE)) {
             overlay = debugKeyColor(7u); alpha = 0.34;
         }
+        bool stateEdge = local.x <= 1 || local.y <= 1 || local.x >= 6 || local.y >= 6;
+        if (renderPc.mapMode != 0u) {
+            alpha *= mediumCell ? 0.12 : 0.30;
+            if (!stateEdge) alpha *= 0.16;
+        } else if (mediumCell) {
+            alpha *= stateEdge ? 0.28 : 0.06;
+        }
         float occupancyAlpha = max(0.28, float(tileOccupancy(tile)) / 64.0);
         color.rgb = mix(color.rgb, overlay, alpha * occupancyAlpha);
 
         vec3 chunkOverlay = chunkHas(chunk, CHUNK_DIRTY) ? vec3(1.00, 0.10, 0.04) :
             (chunkHas(chunk, CHUNK_SLEEPING) ? vec3(0.035, 0.10, 0.30)
                                              : vec3(0.05, 0.42, 0.90));
-        color.rgb = mix(color.rgb, chunkOverlay, chunkHas(chunk, CHUNK_SLEEPING) ? 0.12 : 0.07);
+        float chunkAlpha = renderPc.mapMode != 0u
+            ? (mediumCell ? 0.015 : 0.045)
+            : (mediumCell ? 0.025 : (chunkHas(chunk, CHUNK_SLEEPING) ? 0.10 : 0.06));
+        color.rgb = mix(color.rgb, chunkOverlay, chunkAlpha);
 
         if (renderPc.mapMode != 0u) {
             uint cameraRight = renderPc.cameraOriginX + renderPc.cameraViewWidth;

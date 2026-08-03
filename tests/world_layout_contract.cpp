@@ -12,6 +12,11 @@ static_assert(authored_scene_sky_footprint_rows == 2u);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 0u) == Material::empty);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1416u) == Material::lava);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1432u) == Material::stone);
+static_assert(resident_substrate_is_structural(Material::mud));
+static_assert(resident_substrate_is_structural(Material::iron_ore));
+static_assert(resident_substrate_is_structural(Material::copper));
+static_assert(resident_substrate_is_structural(Material::aluminum));
+static_assert(resident_substrate_is_structural(Material::uranium));
 
 int main() {
     constexpr auto scene_bottom = 1080u;
@@ -62,6 +67,7 @@ int main() {
                 default: break;
             }
             if (deposit_index == 4u) continue;
+            if (!resident_substrate_is_structural(material)) return 7;
             ++deposits[deposit_index];
             ++deposit_cells;
             const auto tile_x = x / 8u;

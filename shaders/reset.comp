@@ -173,8 +173,9 @@ uint residentWorldSubstrateMaterial(ivec2 worldPosition) {
 }
 
 bool residentSubstrateStructural(uint material) {
-    return material == MAT_STONE || material == MAT_DIRT ||
-           material == MAT_SAND || material == MAT_SILT;
+    return residentGroundHostMaterial(material) ||
+           material == MAT_IRON_ORE || material == MAT_COPPER ||
+           material == MAT_ALUMINUM || material == MAT_URANIUM;
 }
 
 bool brickRect(ivec2 p, ivec2 minimumBrick, ivec2 maximumBrick) {

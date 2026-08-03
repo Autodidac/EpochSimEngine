@@ -251,6 +251,21 @@ def main() -> int:
     for token in ("pause_toggle", "camera_controls_toggle", "top_control_width"):
         if token not in ui_layout_hpp:
             errors.append(f"camera/pause layout contract missing {token!r}")
+    for token in ("action_width", "layout.reset_scene", "layout.pause_toggle",
+                  "layout.atmosphere", "layout.eraser", "layout.fill"):
+        if token not in ui_layout_hpp:
+            errors.append(f"grouped editor layout contract missing {token!r}")
+    fullscreen = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
+    for token in ("mediumCell", "stateEdge", "utilityLabels[3] = uint[3](67u, 159u, 108u)",
+                  "debugScale"):
+        if token not in fullscreen:
+            errors.append(f"medium-preserving debug/interface contract missing {token!r}")
+    reset_shader = (SHADERS / "reset.comp").read_text(encoding="utf-8")
+    for token in ("residentGroundHostMaterial(material)", "material == MAT_IRON_ORE",
+                  "material == MAT_COPPER", "material == MAT_ALUMINUM",
+                  "material == MAT_URANIUM"):
+        if token not in reset_shader:
+            errors.append(f"resident structural deposit contract missing {token!r}")
     if "std::atomic_bool camera_controls{false};" not in shared_state_hpp:
         errors.append("shared camera-control mode state is missing")
     if "camera_controls = state.camera_controls.load" not in renderer_cpp:
@@ -424,9 +439,9 @@ def main() -> int:
             errors.append(f"authored terrain stability contract missing {token!r}")
     for token in (
         "preferred_sidebar_width = 384u",
-        "status_height = 126u",
-        "group_tabs_height = 112u",
-        "palette_items_height = 136u",
+        "status_height = 208u",
+        "group_tabs_height = 96u",
+        "palette_items_height = 124u",
         "material_card",
     ):
         if token not in ui_layout:

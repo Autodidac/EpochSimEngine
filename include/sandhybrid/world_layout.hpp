@@ -34,12 +34,6 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
     return world_height >= sky_height + pre_expansion_world_height ? sky_height : 0u;
 }
 
-[[nodiscard]] constexpr bool resident_substrate_is_structural(
-    const Material material) noexcept {
-    return material == Material::stone || material == Material::dirt ||
-           material == Material::sand || material == Material::silt;
-}
-
 [[nodiscard]] constexpr std::uint32_t resident_ground_hash(
     const std::uint32_t x, const std::uint32_t y) noexcept {
     auto value = x * 0x9e3779b9u ^ y * 0x85ebca6bu ^ 0xc2b2ae35u;
@@ -56,6 +50,13 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
     return material == Material::sand || material == Material::dirt ||
            material == Material::silt || material == Material::mud ||
            material == Material::stone;
+}
+
+[[nodiscard]] constexpr bool resident_substrate_is_structural(
+    const Material material) noexcept {
+    return resident_ground_host_material(material) ||
+           material == Material::iron_ore || material == Material::copper ||
+           material == Material::aluminum || material == Material::uranium;
 }
 
 [[nodiscard]] constexpr std::int32_t resident_ground_boundary_offset(
