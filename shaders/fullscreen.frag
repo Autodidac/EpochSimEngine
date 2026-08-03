@@ -173,16 +173,16 @@ vec3 debugStatColor(uint stat) {
 }
 
 vec3 debugKeyColor(uint key) {
-    if (key == 0u) return vec3(1.00, 0.08, 0.05);       // damaged/collapsing
-    if (key == 1u) return vec3(1.00, 0.88, 0.08);       // stable/candidate
-    if (key == 2u) return vec3(1.00, 0.42, 0.04);       // bulk moved
-    if (key == 3u) return vec3(1.00, 0.10, 0.72);       // fine active: vivid hot state
-    if (key == 4u) return vec3(0.58, 0.20, 1.00);       // bulk ready: vivid violet
-    if (key == 5u) return vec3(0.08, 0.96, 0.28);       // settled medium: vivid green
-    if (key == 6u) return vec3(0.035, 0.10, 0.30);      // sleeping: dark cool state
-    if (key == 7u) return vec3(0.04, 0.52, 1.00);       // active
-    if (key == 8u) return vec3(0.12, 0.72, 0.94);       // enclosed medium
-    return vec3(1.00, 0.10, 0.56);                      // breakup
+    if (key == 0u) return vec3(1.00, 0.06, 0.04);       // damaged / collapsing
+    if (key == 1u) return vec3(0.05, 0.78, 1.00);       // active
+    if (key == 2u) return vec3(1.00, 0.08, 0.72);       // fine active
+    if (key == 3u) return vec3(1.00, 0.45, 0.03);       // bulk moved
+    if (key == 4u) return vec3(0.62, 0.18, 1.00);       // bulk ready
+    if (key == 5u) return vec3(1.00, 0.88, 0.04);       // breakup to fine
+    if (key == 6u) return vec3(0.08, 0.94, 0.30);       // settled
+    if (key == 7u) return vec3(0.06, 0.74, 0.62);       // enclosed medium
+    if (key == 8u) return vec3(0.025, 0.075, 0.22);     // sleeping
+    return vec3(0.82, 0.88, 0.96);                      // stable / candidate
 }
 
 bool borderPixel(uint x, uint y, uint left, uint top, uint right, uint bottom) {
@@ -296,10 +296,11 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
         textColor = vec3(1.00);
     }
     const uint keyCount = 10u;
+    // Legend order matches the state precedence used by the world overlay.
     uint keyLabels[keyCount] = uint[keyCount](
-        128u, 130u, 131u, 29u, 132u, 135u, 133u, 134u, 28u, 129u);
+        128u, 29u, 131u, 130u, 132u, 135u, 133u, 134u, 28u, 129u);
     uint keyColorMap[keyCount] = uint[keyCount](
-        0u, 2u, 3u, 7u, 4u, 9u, 5u, 8u, 6u, 1u);
+        0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u);
     uint keyColumns = panelRight - panelLeft >= 330u ? 2u : 1u;
     uint keyColumnWidth = max((panelRight - panelLeft - 20u) / keyColumns, 1u);
     uint swatchSize = textScale == 2 ? 24u : 18u;
@@ -893,33 +894,36 @@ void main() {
             vec3 overlay = vec3(0.0);
             float alpha = 0.0;
             if (tileHas(tile, TILE_COLLAPSING) || tileHas(tile, TILE_DAMAGED)) {
-                overlay = debugKeyColor(0u); alpha = 0.62;
+                overlay = debugKeyColor(0u); alpha = 0.72;
+            } else if (tileHas(tile, TILE_FINE_ACTIVE)) {
+                overlay = debugKeyColor(2u); alpha = 0.64;
+            } else if (tileHas(tile, TILE_MACRO_MOVED)) {
+                overlay = debugKeyColor(3u); alpha = 0.62;
             } else if (tileHas(tile, TILE_MEDIUM_BREAKUP) &&
                        !tileHas(tile, TILE_SLEEPING)) {
-                overlay = debugKeyColor(9u); alpha = 0.58;
-            } else if (tileHas(tile, TILE_MACRO_MOVED)) {
-                overlay = debugKeyColor(2u); alpha = 0.56;
-            } else if (tileHas(tile, TILE_FINE_ACTIVE)) {
-                overlay = debugKeyColor(3u); alpha = 0.48;
-            } else if (tileHas(tile, TILE_STABLE) || tileHas(tile, TILE_CANDIDATE)) {
-                overlay = debugKeyColor(1u); alpha = 0.50;
-            } else if (tileHas(tile, TILE_SETTLED_MEDIUM)) {
-                overlay = debugKeyColor(5u); alpha = 0.46;
+                overlay = debugKeyColor(5u); alpha = 0.60;
             } else if (tileHas(tile, TILE_BULK_READY) || tileHas(tile, TILE_MACRO_MOVABLE)) {
-                overlay = debugKeyColor(4u); alpha = 0.44;
+                overlay = debugKeyColor(4u); alpha = 0.56;
+            } else if (tileHas(tile, TILE_SETTLED_MEDIUM)) {
+                overlay = debugKeyColor(6u); alpha = 0.52;
             } else if (tileHas(tile, TILE_MEDIUM_ENCLOSED)) {
-                overlay = debugKeyColor(8u); alpha = 0.40;
+                overlay = debugKeyColor(7u); alpha = 0.48;
             } else if (tileHas(tile, TILE_SLEEPING)) {
-                overlay = debugKeyColor(6u); alpha = 0.36;
+                overlay = debugKeyColor(8u); alpha = 0.46;
             } else if (tileHas(tile, TILE_ACTIVE)) {
-                overlay = debugKeyColor(7u); alpha = 0.34;
+                overlay = debugKeyColor(1u); alpha = 0.44;
+            } else if (tileHas(tile, TILE_STABLE) || tileHas(tile, TILE_CANDIDATE)) {
+                overlay = debugKeyColor(9u); alpha = 0.38;
             }
             bool stateEdge = local.x <= 1 || local.y <= 1 || local.x >= 6 || local.y >= 6;
             if (renderPc.mapMode != 0u) {
                 alpha *= mediumCell ? (stateEdge ? 0.055 : 0.0) : 0.30;
                 if (!mediumCell && !stateEdge) alpha *= 0.16;
             } else if (mediumCell) {
-                alpha *= stateEdge ? 0.10 : 0.0;
+                alpha *= stateEdge ? 0.16 : 0.0;
+            } else {
+                // Preserve the actual material identity; hierarchy state is an edge key.
+                alpha *= stateEdge ? 0.82 : 0.08;
             }
             float occupancyAlpha = max(0.28, float(tileOccupancy(tile)) / 64.0);
             color.rgb = mix(color.rgb, overlay, alpha * occupancyAlpha);

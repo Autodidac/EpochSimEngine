@@ -23,7 +23,7 @@ uint materialDensity(uint material) {
     case 6u: return 68u;
     case 7u: return 48u;
     case 8u: return 64u;
-    case 9u: return 4u;
+    case 9u: return 1u;
     case 10u: return 5u;
     case 11u: return 2u;
     case 12u: return 205u;
