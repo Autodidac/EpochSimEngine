@@ -224,8 +224,13 @@ void main() {
                            (macroGas && gasEnclosed)) &&
                           !moving && minimumAge >= 30u) ||
                          balancedAtmosphereTile;
-    bool settledFineMedium = boundaryFineMedium && minimumAge >= 48u;
-    bool fineActive = represented != 0u && !macroMovable &&
+    // Exposed packets hand ownership to fine cells once, then sleep on the
+    // next unchanged pass instead of cycling through breakup for 48 frames.
+    bool settledFineMedium = boundaryFineMedium && !moving && !reacting && !hot &&
+                             !mediumBreakup;
+    bool settledHalfWater = halfWater && !moving && !reacting && !hot &&
+                            minimumAge >= 12u;
+    bool fineActive = represented != 0u && !macroMovable && !settledHalfWater &&
                       (activeAgent || moving || reacting || hot || mediumBreakup ||
                        !uniformMaterial || represented < TILE_CELL_COUNT);
 
@@ -259,7 +264,7 @@ void main() {
                            !moving && !hot && !reacting && !activeAgent && !activeContent;
     bool sleepingAtmosphere = represented == 0u;
     bool sleeping = sleepingTerrain || sleepingAtmosphere ||
-                    settledMedium || settledFineMedium;
+                    settledMedium || settledFineMedium || settledHalfWater;
     if (sleeping) flags |= TILE_SLEEPING;
     else flags |= TILE_ACTIVE;
 

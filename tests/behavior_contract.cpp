@@ -161,19 +161,22 @@ static_assert(sandhybrid::policy::water_half_horizontal_passes ==
               sandhybrid::policy::water_full_horizontal_passes * 2u);
 static_assert(sandhybrid::policy::vent_eruption_pressure > sandhybrid::policy::vent_gas_release_pressure);
 static_assert(sandhybrid::policy::restabilization_cooldown_ticks > sandhybrid::policy::stability_ticks);
-static_assert(sandhybrid::resident_world_dimension_scale == 4u);
-static_assert(sandhybrid::logical_world_dimension_scale == 8u);
+static_assert(sandhybrid::resident_world_footprint_columns == 16u);
+static_assert(sandhybrid::resident_world_footprint_rows == 4u);
+static_assert(sandhybrid::resident_world_footprint_count == 64u);
+static_assert(sandhybrid::resident_world_width == 10240u);
+static_assert(sandhybrid::resident_world_height == 1440u);
 static_assert(sandhybrid::camera_zoom_min == 2u);
 static_assert(sandhybrid::camera_zoom_default == 4u);
 static_assert(sandhybrid::camera_zoom_max == 32u);
-static_assert((sandhybrid::pre_expansion_world_width * sandhybrid::resident_world_dimension_scale) /
-                  sandhybrid::camera_zoom_min == 1280u);
-static_assert((sandhybrid::pre_expansion_world_height * sandhybrid::resident_world_dimension_scale) /
-                  sandhybrid::camera_zoom_min == 720u);
-static_assert((sandhybrid::pre_expansion_world_width * sandhybrid::resident_world_dimension_scale) /
-                  sandhybrid::camera_zoom_default == 640u);
-static_assert((sandhybrid::pre_expansion_world_height * sandhybrid::resident_world_dimension_scale) /
-                  sandhybrid::camera_zoom_default == 360u);
+static_assert(sandhybrid::camera_view_width(sandhybrid::camera_zoom_min) == 1280u);
+static_assert(sandhybrid::camera_view_height(sandhybrid::camera_zoom_min) == 720u);
+static_assert(sandhybrid::camera_view_width(sandhybrid::camera_zoom_default) == 640u);
+static_assert(sandhybrid::camera_view_height(sandhybrid::camera_zoom_default) == 360u);
+static_assert(sandhybrid::map_view_width(sandhybrid::resident_world_width,
+                                         sandhybrid::map_zoom_default) == 10240u);
+static_assert(sandhybrid::map_view_height(sandhybrid::resident_world_height,
+                                          sandhybrid::map_zoom_default) == 1440u);
 static_assert(sandhybrid::policy::vent_emission(220u, 0u) ==
               sandhybrid::policy::VentEmission::lava);
 static_assert(sandhybrid::policy::consume_vent_pressure(

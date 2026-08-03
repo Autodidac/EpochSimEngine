@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.5.6
+
+- Aligned the complete authored scene to region origin `(1280,720)` and propagated that origin to reset, load/save, actor reset, player spawns, bee homes, camera home, metadata, and contracts.
+- Removed generic internal scene side walls, kept a continuous full-width foundation, and limited structural containment to the outer resident-world perimeter.
+- Migrated legacy boundary-connected Empty sky to Atmosphere on Load while preserving sealed vacuum pockets.
+- Rebuilt Volcano as a Lava chamber with local pressure-backed crater/floor vents that emit Lava or hot Ash/Smoke/Steam into Atmosphere and recharge instead of silently stopping.
+- Made Ash settle as particulate powder and prevented failed macro candidates or stale sleeping chunks from freezing productive fine movement.
+- Removed per-tile/per-chunk checkerboard paint from MAP and added an explicit screenshot-evidence release ledger to `missioncache.md`.
+- Removed the stale unused secondary-button press local after right-click became camera-only, restoring warnings-as-errors runtime builds.
+- Aspect-fitted both the live camera and full-world map view from their actual visible dimensions; the 16x4 map now renders at its true 64:9 shape instead of stretching to the simulation panel.
+- Reshaped the 64-footprint world from 8x8/4x4 assumptions into a resident 16x4, 10240x1440 world extended to the right while placing the complete authored scene at aligned region origin (1280,720).
+- Replaced the sparse 17-region starburst with a contiguous clipped 4x4 camera active window of at most 16 complete 640x360 regions.
+- Updated generated scenes, saved-scene offsets, bee homes, camera reset, full-world map framing, and all player spawns to the preserved scene coordinate system.
+- Fixed Half Water horizontal crawling and tightened ledge splitting to require a supported three-cell water supply.
+- Made exposed full Water/Atmosphere packets perform one fine handoff and then sleep immediately when unchanged, eliminating long-lived 8x8 checkerboard activity.
+- Smoothed balanced Atmosphere rendering and reduced medium debug/map overlays to restrained edge markers so Water, Half Water, and air remain visible.
+- Stabilized resident mud and ore veins as authored structural geology so they no longer collapse into false voids that wake Atmosphere and liquids.
+- Redesigned the sidebar into explicit Scene, Simulation, View, and Tool rows; Reset and Pause are paired, and Atmosphere/Erase/Fill remain large and visible.
+- Synchronized shader-rendered sidebar geometry with the C++ hitboxes so the redesigned controls and lower panels remain aligned.
+- Changed debug/map hierarchy visualization to preserve Atmosphere, Water, and Half Water colors while showing state through restrained tile edges and markers.
+- Replaced scattered per-cell mineral noise with dense deterministic ore veins that preserve rough natural edges while greatly reducing mixed/broken terrain tiles.
+- Added MC-121 for a versioned editable selection-blueprint copy/paste system.
+- Fixed expanded-world actor spawning to use the same authored scene origin as scene generation and saved-scene loading.
+- Added a compact clickable four-slot player inventory; BUILD mode now places the selected owned resource with left click and decrements its count.
+- Added an independent slow-refresh full-world debug map with separate camera state, active/inactive region visualization, and the live simulation-camera rectangle.
+- Restored camera edge panning only while right-click is held, made right-click camera-only, removed middle-mouse camera behavior, and hardened WASD routing.
+- Changed `F` into a held fill modifier that requires a left click inside the simulation viewport.
+- Swapped the upper soil/sand geology order and replaced ruler-straight layer and mud boundaries with deterministic cell-scale variation.
+- Revised the canonical mission cache and advanced Windows/Linux release automation to v2.5.6.
+
 ## 2.5.5
 
 - Added a platform-neutral fixed-capacity packed Atmosphere model for N2, O2, Ar, CO2, Ne, H2, He, water vapor, and contaminants with exact conserved transfer, enrichment, respiration, and oxygen-percentage contracts.

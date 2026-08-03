@@ -1,5 +1,6 @@
 #pragma once
 
+#include "sandhybrid/camera_policy.hpp"
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/scene.hpp"
 
@@ -10,6 +11,7 @@ namespace sandhybrid {
 
 inline constexpr std::uint32_t default_brush_radius = 2u;
 inline constexpr std::uint32_t default_brush_shape = 1u; // square
+inline constexpr std::uint32_t player_inventory_slot_count = 4u;
 
 struct SharedState final {
     std::atomic_bool quit{false};
@@ -31,6 +33,7 @@ struct SharedState final {
     std::atomic_bool inspect_material{false};
     std::atomic_bool debug_visualization{false};
     std::atomic_bool camera_controls{false};
+    std::atomic_bool map_view{false};
 
     std::atomic_uint32_t selected_material{static_cast<std::uint32_t>(Material::sand)};
     std::atomic_uint32_t selected_group{static_cast<std::uint32_t>(MaterialGroup::ground)};
@@ -42,10 +45,16 @@ struct SharedState final {
     std::atomic_uint32_t placement_mode{0}; // 0 = cells, 1 = aligned 8x8 tile
     std::atomic_uint32_t camera_zoom{4};
     std::atomic_int camera_center_x{1280};
-    std::atomic_int camera_center_y{1260};
+    std::atomic_int camera_center_y{900};
+    std::atomic_uint32_t map_zoom{map_zoom_default};
+    std::atomic_int map_center_x{static_cast<int>(resident_world_width / 2u)};
+    std::atomic_int map_center_y{static_cast<int>(resident_world_height / 2u)};
+    std::atomic_uint32_t selected_inventory_slot{0};
     std::atomic_uint32_t section_worker_count{0};
     std::atomic_uint32_t active_section_count{0};
-    std::atomic_uint32_t active_scope_mode{1}; // 1 = 17 map-area starburst, 2 = camera-visible fallback
+    std::atomic_int active_window_origin_x{0};
+    std::atomic_int active_window_origin_y{0};
+    std::atomic_uint32_t active_scope_mode{1}; // 1 = contiguous 4x4 map-footprint window
     std::atomic_uint32_t steps_per_frame{1};
     std::atomic_uint32_t frames_per_second{0};
 

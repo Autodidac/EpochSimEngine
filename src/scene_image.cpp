@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <deque>
 #include <fstream>
 #include <limits>
 #include <exception>
@@ -134,6 +135,50 @@ void normalize_fix28_hives(std::vector<std::uint32_t>& materials,
       }
   }
         }
+    }
+}
+
+void normalize_legacy_open_air(std::vector<std::uint32_t>& materials,
+                               const std::uint32_t width,
+                               const std::uint32_t height) {
+    const auto empty_id = static_cast<std::uint32_t>(Material::empty);
+    const auto atmosphere_id = static_cast<std::uint32_t>(Material::atmosphere);
+    const auto oxygen_id = static_cast<std::uint32_t>(Material::oxygen);
+    std::size_t represented_air = 0u;
+    std::size_t empty_cells = 0u;
+    for (const auto material : materials) {
+        represented_air += material == atmosphere_id || material == oxygen_id ? 1u : 0u;
+        empty_cells += material == empty_id ? 1u : 0u;
+    }
+    if (represented_air != 0u || empty_cells < materials.size() / 8u) return;
+
+    std::vector<std::uint8_t> visited(materials.size(), 0u);
+    std::deque<std::size_t> queue;
+    const auto enqueue = [&](const std::uint32_t x, const std::uint32_t y) {
+        const auto index = static_cast<std::size_t>(y) * width + x;
+        if (visited[index] == 0u && materials[index] == empty_id) {
+            visited[index] = 1u;
+            queue.push_back(index);
+        }
+    };
+    for (std::uint32_t x = 0u; x < width; ++x) {
+        enqueue(x, 0u);
+        enqueue(x, height - 1u);
+    }
+    for (std::uint32_t y = 0u; y < height; ++y) {
+        enqueue(0u, y);
+        enqueue(width - 1u, y);
+    }
+    while (!queue.empty()) {
+        const auto index = queue.front();
+        queue.pop_front();
+        const auto x = static_cast<std::uint32_t>(index % width);
+        const auto y = static_cast<std::uint32_t>(index / width);
+        materials[index] = atmosphere_id;
+        if (x > 0u) enqueue(x - 1u, y);
+        if (x + 1u < width) enqueue(x + 1u, y);
+        if (y > 0u) enqueue(x, y - 1u);
+        if (y + 1u < height) enqueue(x, y + 1u);
     }
 }
 
@@ -323,6 +368,7 @@ bool load_scene_ppm(const std::filesystem::path& path,
     }
 
     normalize_fix28_hives(materials, width, height);
+    normalize_legacy_open_air(materials, width, height);
     std::fill(counts.begin(), counts.end(), std::uint16_t{0});
     for (std::uint32_t y = 0u; y < height; ++y) {
         for (std::uint32_t x = 0u; x < width; ++x) {

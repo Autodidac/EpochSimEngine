@@ -436,7 +436,7 @@ bool movementAllows(Cell cell, uint randomValue) {
         return interval <= 1u || (randomValue % interval) == 0u;
     }
     if (cell.material == MAT_SALT) return (randomValue & 3u) != 0u;
-    if (cell.material == MAT_ASH) return (randomValue % 10u) == 0u;
+    if (cell.material == MAT_ASH) return (randomValue & 3u) != 0u;
     if (cell.material == MAT_POLLEN) return (randomValue % 6u) == 0u;
     if (cell.material == MAT_GUNPOWDER || cell.material == MAT_SEED) return (randomValue & 1u) == 0u;
     if (cell.material == MAT_SNOW) return (randomValue % 3u) == 0u;
@@ -532,8 +532,11 @@ bool solidLedgePrecedesDrop(ivec2 position, int direction) {
 }
 
 bool fullWaterSplitSupplied(ivec2 sourcePosition, int direction) {
+    if (!solidSupportsWaterAt(sourcePosition)) return false;
     Cell trailing = sampleAt(sourcePosition - ivec2(direction, 0));
-    return trailing.material == MAT_WATER && !isHalfWaterCell(trailing);
+    Cell reserve = sampleAt(sourcePosition - ivec2(direction * 2, 0));
+    return trailing.material == MAT_WATER && !isHalfWaterCell(trailing) &&
+           reserve.material == MAT_WATER && !isHalfWaterCell(reserve);
 }
 
 bool isMovementHazard(uint material) {
@@ -799,14 +802,14 @@ bool pairSleeping(ivec2 a, ivec2 b) {
         return true;
     }
     bool finePair = tileNeedsFine(tileA) || tileNeedsFine(tileB);
-    if (!finePair && (tileIsMacro(tileA) || tileIsMacro(tileB) ||
-                      tileHas(tileA, TILE_SETTLED_MEDIUM) || tileHas(tileB, TILE_SETTLED_MEDIUM))) {
+    if (!finePair && (tileHas(tileA, TILE_SETTLED_MEDIUM) ||
+                      tileHas(tileB, TILE_SETTLED_MEDIUM))) {
         if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], 2u);
         return true;
     }
     if (tileHas(tileA, TILE_ACTIVE) || tileHas(tileB, TILE_ACTIVE) ||
         tileHas(tileA, TILE_HAS_BEES) || tileHas(tileB, TILE_HAS_BEES)) return false;
-    if (chunkPairSleeping(a, b)) {
+    if (chunkPairSleeping(a, b) && sleepSafe(a, firstCell) && sleepSafe(b, secondCell)) {
         if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], 2u);
         return true;
     }
@@ -1038,10 +1041,11 @@ void processHorizontal(ivec2 left, ivec2 right) {
                                keepLeft ? a : b, keepLeft ? b : a)) return;
     }
 
-    // Half-water is a pre-fall solid-ledge state only. It never hops along
-    // exposed water edges and never crawls after entering open air.
+    // Half-water is a supplied pre-fall ledge state only. Two halves may
+    // consolidate, but an isolated half never crawls horizontally or chases an edge.
+    if (isHalfWaterCell(a) || isHalfWaterCell(b)) return;
 
-    if ((movePc.reserved1 & 1u) != 0u && !isHalfWaterCell(a) && !isHalfWaterCell(b)) return;
+    if ((movePc.reserved1 & 1u) != 0u) return;
 
     if (isCellLiquid(a) && isOpenGas(b) && liquidCanSpread(left, right, a, randomValue)) {
         if (a.material == MAT_WATER && !isHalfWaterCell(a) &&

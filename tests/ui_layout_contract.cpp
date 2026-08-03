@@ -1,3 +1,4 @@
+#include "sandhybrid/camera_policy.hpp"
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/ui_layout.hpp"
 
@@ -22,31 +23,55 @@ int main() {
         {bot_slot.position.x + bot_slot.size.x * 0.5f,
          bot_slot.position.y + bot_slot.size.y * 0.5f});
     if (material != Material::factory_core) return 2;
-    if (layout.simulation.size.y <= 0.0f || layout.debug_toggle.size.x <= 0.0f ||
-        layout.pause_toggle.size.x <= 0.0f ||
-        layout.camera_controls_toggle.size.x <= 0.0f) return 3;
+
+    if (layout.reset_scene.position.y != layout.pause_toggle.position.y ||
+        layout.reset_scene.size.y != layout.pause_toggle.size.y ||
+        layout.reset_scene.position.x + layout.reset_scene.size.x >
+            layout.pause_toggle.position.x) return 3;
+    if (layout.previous_scene.position.x + layout.previous_scene.size.x > layout.next_scene.position.x ||
+        layout.next_scene.position.x + layout.next_scene.size.x > layout.save_scene.position.x ||
+        layout.save_scene.position.x + layout.save_scene.size.x > layout.load_scene.position.x) return 4;
     if (layout.mode_toggle.position.x + layout.mode_toggle.size.x >
-            layout.pause_toggle.position.x ||
-        layout.pause_toggle.position.x + layout.pause_toggle.size.x >
             layout.camera_controls_toggle.position.x ||
-        layout.camera_controls_toggle.position.x +
-            layout.camera_controls_toggle.size.x > layout.debug_toggle.position.x) return 10;
+        layout.camera_controls_toggle.position.x + layout.camera_controls_toggle.size.x >
+            layout.map_toggle.position.x ||
+        layout.map_toggle.position.x + layout.map_toggle.size.x >
+            layout.debug_toggle.position.x) return 5;
+    if (layout.atmosphere.position.x + layout.atmosphere.size.x > layout.eraser.position.x ||
+        layout.eraser.position.x + layout.eraser.size.x > layout.fill.position.x ||
+        layout.group_tabs.position.y < layout.fill.position.y + layout.fill.size.y) return 6;
 
     const auto viewport = sandhybrid::ui::make_simulation_viewport(layout, 640u, 360u);
     if (static_cast<std::uint32_t>(viewport.rect.size.x) % 80u != 0u ||
-        static_cast<std::uint32_t>(viewport.rect.size.y) % 45u != 0u) return 4;
-    if (viewport.rect.size.x / 80.0f != viewport.rect.size.y / 45.0f) return 5;
+        static_cast<std::uint32_t>(viewport.rect.size.y) % 45u != 0u) return 7;
+    if (viewport.rect.size.x / 80.0f != viewport.rect.size.y / 45.0f) return 8;
     if (viewport.rect.position.x < 0.0f ||
-        viewport.rect.position.y < layout.simulation.position.y) return 6;
+        viewport.rect.position.y < layout.simulation.position.y) return 9;
+
+    const auto wide_map = sandhybrid::ui::make_simulation_viewport(
+        layout, sandhybrid::resident_world_width, sandhybrid::resident_world_height);
+    if (static_cast<std::uint32_t>(wide_map.rect.size.x) != 896u ||
+        static_cast<std::uint32_t>(wide_map.rect.size.y) != 126u ||
+        wide_map.tile_pixel_size != 0u) return 14;
 
     const auto compact = sandhybrid::ui::make_layout(480u, 320u);
-    if (compact.simulation.size.y <= 0.0f || compact.status.size.x < 300.0f) return 7;
-    if (compact.previous_scene.size.x <= 0.0f || compact.next_scene.size.x <= 0.0f ||
-        compact.reset_scene.size.x <= 0.0f) return 8;
+    if (compact.simulation.size.y <= 0.0f || compact.status.size.x < 300.0f) return 10;
+    if (compact.reset_scene.size.x <= 0.0f || compact.pause_toggle.size.x <= 0.0f ||
+        compact.atmosphere.size.x <= 0.0f || compact.eraser.size.x <= 0.0f ||
+        compact.fill.size.x <= 0.0f) return 11;
     if (compact.mode_toggle.position.x < compact.simulation.size.x ||
         compact.pause_toggle.position.x < compact.simulation.size.x ||
         compact.camera_controls_toggle.position.x < compact.simulation.size.x ||
+        compact.map_toggle.position.x < compact.simulation.size.x ||
         compact.debug_toggle.position.x < compact.simulation.size.x ||
-        compact.material_card.position.x < compact.simulation.size.x) return 9;
+        compact.material_card.position.x < compact.simulation.size.x) return 12;
+
+    for (std::uint32_t slot = 0u; slot < 4u; ++slot) {
+        const auto rect = sandhybrid::ui::inventory_slot_rect(layout, 720u, slot);
+        const auto hit = sandhybrid::ui::inventory_slot_at(
+            layout, 720u, {rect.position.x + rect.size.x * 0.5f,
+                           rect.position.y + rect.size.y * 0.5f});
+        if (hit != slot) return 13;
+    }
     return 0;
 }

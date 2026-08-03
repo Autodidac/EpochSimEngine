@@ -593,8 +593,12 @@ bool machineWaterFlowNear(ivec2 p) {
 uint ventEmissionKind(ivec2 ventPosition, uint pressure) {
     uint roll = hash32(indexOf(ventPosition) ^ pc.step ^ 0x76e17u);
     if (pressure >= 220u && (roll & 3u) == 0u) return 2u;
-    if (pressure >= 72u && (roll & 15u) == 0u) return 1u;
+    if (pressure >= 72u && (roll & 7u) == 0u) return 1u;
     return 0u;
+}
+
+bool ventOutletMedium(Cell cell) {
+    return cell.material == MAT_EMPTY || isGas(cell.material);
 }
 
 bool lineHasMaterial(ivec2 p, int direction, uint material, int distance) {
@@ -913,29 +917,29 @@ void main() {
         result.temperature = max(source.temperature, 320);
     }
 
-    if (source.material == MAT_EMPTY) {
+    Cell belowSource = at(p + ivec2(0, 1));
+    if (ventOutletMedium(source) && belowSource.material == MAT_MAGMA_VENT) {
+        ivec2 ventPosition = p + ivec2(0, 1);
+        uint pressure = stateValue(belowSource);
+        uint emission = ventEmissionKind(ventPosition, pressure);
+        if (emission == 2u) {
+            result = makeCell(MAT_LAVA);
+            result.temperature = 1250;
+            if (pc.reserved != 0u) atomicAdd(debugStats[STAT_VOLCANO_LAVA_OUTPUTS], 1u);
+        } else if (emission == 1u) {
+            uint roll = hash32(indexOf(ventPosition) ^ pc.step ^ 0x9a551u);
+            uint ejecta = roll % 3u;
+            result = makeCell(ejecta == 0u ? MAT_ASH : (ejecta == 1u ? MAT_SMOKE : MAT_STEAM));
+            result.temperature = ejecta == 0u ? 180 : 240;
+            if (pc.reserved != 0u) atomicAdd(debugStats[STAT_VOLCANO_GAS_OUTPUTS], 1u);
+        }
+    } else if (source.material == MAT_EMPTY) {
         // Source materials create effects into empty space without racing a
         // neighbor write. Each destination cell decides its own transition.
-        Cell belowSource = at(p + ivec2(0, 1));
         if (dirtyWaterSeparationReady(p + ivec2(0, 1), belowSource)) {
             result = makeCell(MAT_WATER);
         } else if (fertilizerHarvestReady(p + ivec2(0, 1), belowSource)) {
             result = makeCell(MAT_FOOD);
-        } else if (at(p + ivec2(0, 1)).material == MAT_MAGMA_VENT) {
-            ivec2 ventPosition = p + ivec2(0, 1);
-            Cell vent = at(ventPosition);
-            uint pressure = stateValue(vent);
-            uint emission = ventEmissionKind(ventPosition, pressure);
-            if (emission == 2u) {
-                result = makeCell(MAT_LAVA);
-                setStateValue(result, pressure > 96u ? pressure - 96u : 0u);
-                if (pc.reserved != 0u) atomicAdd(debugStats[STAT_VOLCANO_LAVA_OUTPUTS], 1u);
-            } else if (emission == 1u) {
-                uint roll = hash32(indexOf(ventPosition) ^ pc.step ^ 0x9a551u);
-                result = makeCell((roll & 1u) == 0u ? MAT_SMOKE : MAT_STEAM);
-                result.temperature = 240;
-                if (pc.reserved != 0u) atomicAdd(debugStats[STAT_VOLCANO_GAS_OUTPUTS], 1u);
-            }
         } else if (burningOilBelow(p) && (randomValue & 3u) == 0u) {
             result = makeCell(MAT_SMOKE);
         } else if (hotWaterBelow(p, MAT_SALTWATER) && (randomValue & 7u) == 0u) {
@@ -1217,9 +1221,8 @@ void main() {
         uint emission = ventEmissionKind(p, pressure);
         if (emission == 2u) pressure = pressure > 96u ? pressure - 96u : 0u;
         else if (emission == 1u) pressure = pressure > 24u ? pressure - 24u : 0u;
-        else if (blocked) pressure = min(255u, pressure + 5u);
-        else if (openOutlet) pressure = pressure > 4u ? pressure - 4u : 0u;
-        else pressure = min(255u, pressure + 1u);
+        uint recharge = blocked ? 8u : (openOutlet ? 3u : 5u);
+        pressure = min(255u, pressure + recharge);
         setStateValue(result, pressure);
     }
 

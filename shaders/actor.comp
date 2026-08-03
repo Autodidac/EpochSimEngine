@@ -31,6 +31,7 @@ layout(push_constant) uniform ActorPush {
     int activeSectionX;
     int activeSectionY;
     uint activeMode;
+    uint inventorySlot;
 } actorPc;
 
 const uint SCENE_GOLD_MINE = 6u;
@@ -286,21 +287,24 @@ void depositResource(inout ActorState state) {
     ivec2 delta = target - ivec2(state.x, state.y - 4);
     if (delta.x * delta.x + delta.y * delta.y < 36) return;
 
-    // Resources remain ordinary world cells. The player empties mined inventory
-    // onto conveyors or beside a machine; the existing factory pass owns routing.
-    if (state.iron > 0u) {
-        atomicAdd(conservation[CONS_CONVERTED], 1u);
-        cells[actorIndex(target)] = makeCellWithEntropy(MAT_IRON, actorPc.seed, actorPc.step);
-        markActorChunkDirty(target);
-        state.iron -= 1u;
-        state.moveCooldown = 5u;
-    } else if (state.gold > 0u) {
-        atomicAdd(conservation[CONS_CONVERTED], 1u);
-        cells[actorIndex(target)] = makeCellWithEntropy(MAT_GOLD, actorPc.seed, actorPc.step);
-        markActorChunkDirty(target);
-        state.gold -= 1u;
-        state.moveCooldown = 5u;
-    }
+    // BUILD mode consumes the explicitly selected compact-inventory slot.
+    uint slot = actorPc.inventorySlot % 4u;
+    uint material = slot == 0u ? MAT_IRON :
+                    (slot == 1u ? MAT_GOLD :
+                    (slot == 2u ? MAT_COPPER : MAT_ALUMINUM));
+    uint available = slot == 0u ? state.iron :
+                     (slot == 1u ? state.gold :
+                     (slot == 2u ? state.copper : state.aluminum));
+    if (available == 0u) return;
+
+    atomicAdd(conservation[CONS_CONVERTED], 1u);
+    cells[actorIndex(target)] = makeCellWithEntropy(material, actorPc.seed, actorPc.step);
+    markActorChunkDirty(target);
+    if (slot == 0u) state.iron -= 1u;
+    else if (slot == 1u) state.gold -= 1u;
+    else if (slot == 2u) state.copper -= 1u;
+    else state.aluminum -= 1u;
+    state.moveCooldown = 5u;
 }
 
 void updateBreathing(inout ActorState state) {
@@ -364,8 +368,9 @@ void updateBreathing(inout ActorState state) {
 void resetActor(inout ActorState state) {
     state = ActorState(0, 0, 0, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
                        255u, 255u, 0, 0, actorPc.scene, 0u, 0u, 0u, 0u, 1u);
-    int authoredOriginX = max((int(actorPc.width) - 640) / 2, 0);
-    int authoredOriginY = max(int(actorPc.height) - 360, 0);
+    int authoredOriginX = int(actorPc.width) >= 640 * 3 ? 640 * 2 :
+        max((int(actorPc.width) - 640) / 2, 0);
+    int authoredOriginY = int(actorPc.height) >= 1080 ? 720 : 0;
     if (actorPc.scene == SCENE_GOLD_MINE) {
         state.x = authoredOriginX + 78;
         state.y = authoredOriginY + 127;

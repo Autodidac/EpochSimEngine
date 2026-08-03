@@ -68,3 +68,6 @@ SandHybrid API v3 exposes platform-neutral foundations for the replacement runti
 
 These APIs are deterministic and covered by Windows/Linux contracts. The Vulkan runtime is being migrated onto them incrementally; `missioncache.md` retains every production and packaged-observation requirement until it passes.
 
+## v2.5.6 runtime controls
+
+Right-click exclusively pans: dragging moves the current camera and holding it near a viewport edge performs gated edge panning. `WASD PAN` routes keys to the simulation camera; MAP uses its own camera and a slow full-world snapshot without changing simulation LOD or active-region scheduling. In player scenes, MINE uses left click and BUILD places the selected compact-inventory resource with left click. Hold `F` and left-click the simulation to fill; pressing `F` alone does nothing.

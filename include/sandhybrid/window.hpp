@@ -27,7 +27,7 @@ struct WindowInput final {
     bool single_step{};
     bool reset{};
     bool reset_camera{};
-    bool fill{};
+    bool fill_modifier{};
     bool save_scene{};
     bool load_scene{};
     bool next_scene{};
@@ -40,6 +40,7 @@ struct WindowInput final {
     bool toggle_mining{};
     bool inspect_material{};
     bool toggle_debug{};
+    bool toggle_map{};
 };
 
 class NativeWindow final {

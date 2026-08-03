@@ -262,8 +262,9 @@ struct ActorPush final {
     std::int32_t active_section_x{};
     std::int32_t active_section_y{};
     std::uint32_t active_mode{};
+    std::uint32_t inventory_slot{};
 };
-static_assert(sizeof(ActorPush) == 64);
+static_assert(sizeof(ActorPush) == 68);
 
 struct RenderPush final {
     std::uint32_t grid_width{};
@@ -308,8 +309,14 @@ struct RenderPush final {
     std::int32_t active_area_y{};
     std::uint32_t active_scope_mode{};
     std::uint32_t camera_controls{};
+    std::uint32_t map_mode{};
+    std::uint32_t camera_origin_x{};
+    std::uint32_t camera_origin_y{};
+    std::uint32_t camera_view_width{};
+    std::uint32_t camera_view_height{};
+    std::uint32_t selected_inventory_slot{};
 };
-static_assert(sizeof(RenderPush) == 168);
+static_assert(sizeof(RenderPush) == 192);
 
 bool contains_extension(const std::vector<VkExtensionProperties>& extensions, const char* name) {
     return std::ranges::any_of(extensions, [name](const VkExtensionProperties& extension) {
@@ -370,6 +377,7 @@ struct VulkanRenderer::Impl final {
     std::uint32_t frame_index{};
 
     std::array<Buffer, 2> cell_buffers{};
+    Buffer map_snapshot_buffer{};
     Buffer sunlight_buffer{};
     Buffer actor_buffer{};
     Buffer tile_buffer{};
@@ -386,6 +394,8 @@ struct VulkanRenderer::Impl final {
     bool first_present_logged{false};
     bool debug_was_visible{};
     std::uint32_t debug_sample_frame{};
+    std::uint32_t map_snapshot_step{};
+    bool map_was_visible{};
     std::optional<std::uint32_t> pending_scene_export{};
 #if SANDHYBRID_ENABLE_VALIDATION
     std::chrono::steady_clock::time_point next_conservation_log{};
@@ -477,6 +487,7 @@ struct VulkanRenderer::Impl final {
             destroy_buffer(chunk_buffer);
             destroy_buffer(tile_buffer);
             destroy_buffer(actor_buffer);
+            destroy_buffer(map_snapshot_buffer);
             destroy_buffer(sunlight_buffer);
             for (auto& buffer : cell_buffers) destroy_buffer(buffer);
 
@@ -784,6 +795,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         scene_staging_buffer = create_buffer(cells_size,
             VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        map_snapshot_buffer = create_buffer(cells_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         sunlight_buffer = create_buffer(light_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         actor_buffer = create_buffer(sizeof(std::uint32_t) * 20u, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         tile_buffer = create_buffer(tile_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -851,6 +863,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             },
+            VkDescriptorSetLayoutBinding{
+                .binding = 8,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
         };
         const VkDescriptorSetLayoutCreateInfo layout_info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -894,7 +912,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     void create_descriptors() {
         const VkDescriptorPoolSize pool_size{
             .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 16,
+            .descriptorCount = 18,
         };
         const VkDescriptorPoolCreateInfo pool_info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -924,6 +942,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const VkDescriptorBufferInfo conservation_info{conservation_buffer.handle, 0, conservation_buffer.size};
             const VkDescriptorBufferInfo chunk_info{chunk_buffer.handle, 0, chunk_buffer.size};
             const VkDescriptorBufferInfo ui_text_info{ui_text_buffer.handle, 0, ui_text_buffer.size};
+            const VkDescriptorBufferInfo map_info{map_snapshot_buffer.handle, 0, map_snapshot_buffer.size};
             const std::array writes{
                 VkWriteDescriptorSet{
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -988,6 +1007,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     .descriptorCount = 1,
                     .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                     .pBufferInfo = &chunk_info,
+                },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptor_sets[index],
+                    .dstBinding = 8,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .pBufferInfo = &map_info,
                 },
             };
             vkUpdateDescriptorSets(device, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
@@ -1639,7 +1666,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         std::string key_error;
         if (!write_scene_material_key(scene_directory(), key_error))
             startup_log("Scene material-key warning: " + key_error);
-        startup_log("Loaded crystal-row 640x360 scene image with common lower geology: " + path.string());
+        startup_log("Loaded aligned 640x360 authored scene image; legacy boundary sky normalized to Atmosphere and resident geology rebuilt: " + path.string());
         return true;
     }
 
@@ -1718,14 +1745,22 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         std::uint32_t height{};
     };
 
-    [[nodiscard]] GridView grid_view(const SharedState& state) const {
-        const auto zoom = std::clamp(state.camera_zoom.load(std::memory_order_relaxed), camera_zoom_min, camera_zoom_max);
-        const auto visible_width = (std::max)(8u, config.grid_width / zoom);
-        const auto visible_height = (std::max)(8u, config.grid_height / zoom);
-        const auto center_x = std::clamp(state.camera_center_x.load(std::memory_order_relaxed),
-                                         0, static_cast<int>(config.grid_width - 1u));
-        const auto center_y = std::clamp(state.camera_center_y.load(std::memory_order_relaxed),
-                                         0, static_cast<int>(config.grid_height - 1u));
+    [[nodiscard]] GridView grid_view_from(
+        const std::uint32_t requested_zoom,
+        const int requested_center_x,
+        const int requested_center_y,
+        const bool map_view) const {
+        const auto zoom = map_view
+            ? std::clamp(requested_zoom, map_zoom_min, map_zoom_max)
+            : std::clamp(requested_zoom, camera_zoom_min, camera_zoom_max);
+        const auto visible_width = (std::min)(config.grid_width, map_view
+            ? map_view_width(config.grid_width, zoom) : camera_view_width(zoom));
+        const auto visible_height = (std::min)(config.grid_height, map_view
+            ? map_view_height(config.grid_height, zoom) : camera_view_height(zoom));
+        const auto center_x = std::clamp(
+            requested_center_x, 0, static_cast<int>(config.grid_width - 1u));
+        const auto center_y = std::clamp(
+            requested_center_y, 0, static_cast<int>(config.grid_height - 1u));
         const auto origin_x = static_cast<std::uint32_t>(std::clamp(
             center_x - static_cast<int>(visible_width / 2u), 0,
             static_cast<int>(config.grid_width - visible_width)));
@@ -1735,11 +1770,29 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         return {origin_x, origin_y, visible_width, visible_height};
     }
 
+    [[nodiscard]] GridView camera_grid_view(const SharedState& state) const {
+        return grid_view_from(
+            state.camera_zoom.load(std::memory_order_relaxed),
+            state.camera_center_x.load(std::memory_order_relaxed),
+            state.camera_center_y.load(std::memory_order_relaxed), false);
+    }
+
+    [[nodiscard]] GridView render_grid_view(const SharedState& state) const {
+        if (state.map_view.load(std::memory_order_relaxed)) {
+            return grid_view_from(
+                state.map_zoom.load(std::memory_order_relaxed),
+                state.map_center_x.load(std::memory_order_relaxed),
+                state.map_center_y.load(std::memory_order_relaxed), true);
+        }
+        return camera_grid_view(state);
+    }
+
     std::pair<std::int32_t, std::int32_t> grid_cursor(const SharedState& state) const {
         const auto width = (std::max)(state.window_width.load(std::memory_order_relaxed), 1u);
         const auto height = (std::max)(state.window_height.load(std::memory_order_relaxed), 1u);
         const auto layout = ui::make_layout(width, height);
-        const auto viewport = ui::make_simulation_viewport(layout, config.grid_width, config.grid_height);
+        const auto view = render_grid_view(state);
+        const auto viewport = ui::make_simulation_viewport(layout, view.width, view.height);
         const auto viewport_width = (std::max)(static_cast<std::uint32_t>(viewport.rect.size.x), 1u);
         const auto viewport_height = (std::max)(static_cast<std::uint32_t>(viewport.rect.size.y), 1u);
         const auto mouse_x = std::clamp(
@@ -1748,7 +1801,6 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const auto mouse_y = std::clamp(
             state.mouse_y.load(std::memory_order_relaxed) - static_cast<int>(viewport.rect.position.y),
             0, static_cast<int>(viewport_height - 1u));
-        const auto view = grid_view(state);
         const auto grid_x = static_cast<std::int32_t>(view.origin_x +
             static_cast<std::uint64_t>(mouse_x) * view.width / viewport_width);
         const auto grid_y = static_cast<std::int32_t>(view.origin_y +
@@ -1815,10 +1867,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .seed = random_seed,
             .radius = movement_pair_tests,
             .material = state.selected_material.load(std::memory_order_relaxed),
-            .active_section_x = state.camera_center_x.load(std::memory_order_relaxed) /
-                                active_region_width_cells,
-            .active_section_y = state.camera_center_y.load(std::memory_order_relaxed) /
-                                active_region_height_cells,
+            .active_section_x = state.active_window_origin_x.load(std::memory_order_relaxed),
+            .active_section_y = state.active_window_origin_y.load(std::memory_order_relaxed),
             .active_mode = 1u,
             .reserved = 1u,
         };
@@ -1835,8 +1885,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     void record_simulation_step(const VkCommandBuffer command_buffer,
                                 const SharedState& state,
                                 const bool collect_debug_stats) {
-        const auto active_section_x = state.camera_center_x.load(std::memory_order_relaxed) / active_region_width_cells;
-        const auto active_section_y = state.camera_center_y.load(std::memory_order_relaxed) / active_region_height_cells;
+        const auto active_section_x = state.active_window_origin_x.load(std::memory_order_relaxed);
+        const auto active_section_y = state.active_window_origin_y.load(std::memory_order_relaxed);
         SimulationPush simulation_push{
             .width = config.grid_width,
             .height = config.grid_height,
@@ -2029,9 +2079,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .scene = state.selected_scene.load(std::memory_order_relaxed) % scene_count,
             .deposit = deposit ? 1u : 0u,
             .simulate = simulate_actor ? 1u : 0u,
-            .active_section_x = state.camera_center_x.load(std::memory_order_relaxed) / active_region_width_cells,
-            .active_section_y = state.camera_center_y.load(std::memory_order_relaxed) / active_region_height_cells,
+            .active_section_x = state.active_window_origin_x.load(std::memory_order_relaxed),
+            .active_section_y = state.active_window_origin_y.load(std::memory_order_relaxed),
             .active_mode = 1u,
+            .inventory_slot = state.selected_inventory_slot.load(std::memory_order_relaxed) %
+                              player_inventory_slot_count,
         };
         bind_compute(command_buffer, actor_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
@@ -2047,6 +2099,35 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    }
+
+    void record_map_snapshot(const VkCommandBuffer command_buffer) {
+        buffer_barrier(command_buffer, cell_buffers[current_set],
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_TRANSFER_READ_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT);
+        buffer_barrier(command_buffer, map_snapshot_buffer,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT);
+        const VkBufferCopy copy{.size = map_snapshot_buffer.size};
+        vkCmdCopyBuffer(command_buffer, cell_buffers[current_set].handle,
+                        map_snapshot_buffer.handle, 1, &copy);
+        buffer_barrier(command_buffer, map_snapshot_buffer,
+                       VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        buffer_barrier(command_buffer, cell_buffers[current_set],
+                       VK_ACCESS_TRANSFER_READ_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        map_snapshot_step = simulation_step;
     }
 
     void record_render(const VkCommandBuffer command_buffer, const std::uint32_t image_index,
@@ -2101,9 +2182,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
         const auto [cursor_x, cursor_y] = grid_cursor(state);
         const auto layout = ui::make_layout(swapchain_extent.width, swapchain_extent.height);
+        const auto view = render_grid_view(state);
         const auto simulation_viewport = ui::make_simulation_viewport(
-            layout, config.grid_width, config.grid_height);
-        const auto view = grid_view(state);
+            layout, view.width, view.height);
+        const auto camera_view = camera_grid_view(state);
         const epochengine::gui_lib::Vec2 pointer{
             static_cast<float>(state.mouse_x.load(std::memory_order_relaxed)),
             static_cast<float>(state.mouse_y.load(std::memory_order_relaxed))
@@ -2156,12 +2238,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 ? 1u : state.brush_shape.load(std::memory_order_relaxed) % 4u,
             .placement_mode = state.placement_mode.load(std::memory_order_relaxed) != 0u ? 1u : 0u,
             .active_area_count = state.active_section_count.load(std::memory_order_relaxed),
-            .active_area_x = state.camera_center_x.load(std::memory_order_relaxed) /
-                             active_region_width_cells,
-            .active_area_y = state.camera_center_y.load(std::memory_order_relaxed) /
-                             active_region_height_cells,
+            .active_area_x = state.active_window_origin_x.load(std::memory_order_relaxed),
+            .active_area_y = state.active_window_origin_y.load(std::memory_order_relaxed),
             .active_scope_mode = state.active_scope_mode.load(std::memory_order_relaxed),
             .camera_controls = state.camera_controls.load(std::memory_order_relaxed) ? 1u : 0u,
+            .map_mode = state.map_view.load(std::memory_order_relaxed) ? 1u : 0u,
+            .camera_origin_x = camera_view.origin_x,
+            .camera_origin_y = camera_view.origin_y,
+            .camera_view_width = camera_view.width,
+            .camera_view_height = camera_view.height,
+            .selected_inventory_slot = state.selected_inventory_slot.load(std::memory_order_relaxed) %
+                                       player_inventory_slot_count,
         };
         vkCmdPushConstants(command_buffer, graphics_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                            0, sizeof(push), &push);
@@ -2290,6 +2377,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             record_debug_stats(frame.command_buffer, state,
                                static_cast<std::uint32_t>(tested_pairs));
         }
+        const bool map_visible = state.map_view.load(std::memory_order_relaxed);
+        constexpr std::uint32_t map_refresh_steps = 15u;
+        if (map_visible && (!map_was_visible || reset_this_frame ||
+            simulation_step - map_snapshot_step >= map_refresh_steps))
+            record_map_snapshot(frame.command_buffer);
+        map_was_visible = map_visible;
         record_render(frame.command_buffer, image_index, state);
         check_vk(vkEndCommandBuffer(frame.command_buffer), "vkEndCommandBuffer");
 

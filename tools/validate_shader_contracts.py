@@ -221,6 +221,46 @@ def main() -> int:
             errors.append(f"one-shot medium-boundary settling contract missing {token!r}")
 
 
+    fullscreen_medium = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
+    for token in ("if (isHalfWaterCell(a) || isHalfWaterCell(b)) return;",
+                  "Cell reserve = sampleAt(sourcePosition - ivec2(direction * 2, 0));"):
+        if token not in move:
+            errors.append(f"half-water no-crawl/supply contract missing {token!r}")
+    for token in ("bool settledHalfWater = halfWater && !moving",
+                  "!macroMovable && !settledHalfWater",
+                  "settledMedium || settledFineMedium || settledHalfWater",
+                  "!mediumBreakup;"):
+        if token not in tiles:
+            errors.append(f"stable fine-medium contract missing {token!r}")
+    for token in ("cell.material == MAT_ATMOSPHERE || cell.material == MAT_OXYGEN",
+                  "!tileHas(tile, TILE_SLEEPING)", "stateEdge ? 0.10 : 0.0",
+                  "mediumCell ? 0.0 : 0.045"):
+        if token not in fullscreen_medium:
+            errors.append(f"medium presentation contract missing {token!r}")
+
+
+    scene_image_cpp = (ROOT / "src/scene_image.cpp").read_text(encoding="utf-8")
+    actor_shader = (SHADERS / "actor.comp").read_text(encoding="utf-8")
+    chemistry = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
+    world_layout = (ROOT / "include/sandhybrid/world_layout.hpp").read_text(encoding="utf-8")
+    reset_shader = (SHADERS / "reset.comp").read_text(encoding="utf-8")
+    for token in (
+        "pre_expansion_world_width * 2u",
+        "AUTHORED_WORLD_CELLS.x * 2",
+        "BEE_AUTHORED_WORLD_CELLS.x * 2",
+        "640 * 2",
+        "normalize_legacy_open_air",
+        "ventOutletMedium",
+        "MAT_ASH : (ejecta == 1u ? MAT_SMOKE : MAT_STEAM)",
+        "pressure = min(255u, pressure + recharge)",
+        "if (cell.material == MAT_ASH) return (randomValue & 3u) != 0u;",
+        "chunkPairSleeping(a, b) && sleepSafe(a, firstCell) && sleepSafe(b, secondCell)",
+        "renderPc.debugMode != 0u && renderPc.mapMode == 0u",
+    ):
+        if token not in world_layout + reset_shader + bee_swarm + actor_shader + scene_image_cpp + chemistry + move + fullscreen_medium:
+            errors.append(f"runtime screenshot propagation contract missing {token!r}")
+    if re.search(r"b\.x == 0 \|\| b\.x == world\.x - 1", reset_shader):
+        errors.append("authored scene-local side wall remains")
     app_cpp = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
     ui_layout_hpp = (ROOT / "include/sandhybrid/ui_layout.hpp").read_text(encoding="utf-8")
     shared_state_hpp = (ROOT / "include/sandhybrid/shared_state.hpp").read_text(encoding="utf-8")
@@ -238,23 +278,42 @@ def main() -> int:
     for token in (
         "layout.pause_toggle",
         "layout.camera_controls_toggle",
-        "const bool pan_button_down = input.middle_down",
-        "camera_mode && input.secondary_down",
-        "const auto shift_x = pan_remainder_x / viewport_width",
-        "input.secondary_down && paint_active && !camera_mode",
+        "layout.map_toggle",
+        "input.secondary_down",
+        "edge_pan_direction",
+        "input.fill_modifier && primary_pressed",
+        "const auto directional_input = route_directional_input(",
     ):
         if token not in app_cpp:
             errors.append(f"camera/pause input contract missing {token!r}")
-    if "edge_band_pixels" in app_cpp:
-        errors.append("mouse-edge camera movement remains in app.cpp")
+    if "edge_pan_direction" not in app_cpp or "input.secondary_down" not in app_cpp:
+        errors.append("right-button edge camera panning is missing")
     for token in ("pause_toggle", "camera_controls_toggle", "top_control_width"):
         if token not in ui_layout_hpp:
             errors.append(f"camera/pause layout contract missing {token!r}")
+    for token in ("action_width", "layout.reset_scene", "layout.pause_toggle",
+                  "layout.atmosphere", "layout.eraser", "layout.fill"):
+        if token not in ui_layout_hpp:
+            errors.append(f"grouped editor layout contract missing {token!r}")
+    fullscreen = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
+    for token in ("mediumCell", "stateEdge", "utilityLabels[3] = uint[3](67u, 159u, 108u)",
+                  "debugScale", "palettePanelHeight = 124u",
+                  "keymapBottom = keymapTop + 98u",
+                  "cursorBottom = cursorTop + 112u",
+                  "controlTop = cursorTop + 85u"):
+        if token not in fullscreen:
+            errors.append(f"medium-preserving debug/interface contract missing {token!r}")
+    reset_shader = (SHADERS / "reset.comp").read_text(encoding="utf-8")
+    for token in ("residentGroundHostMaterial(material)", "material == MAT_IRON_ORE",
+                  "material == MAT_COPPER", "material == MAT_ALUMINUM",
+                  "material == MAT_URANIUM"):
+        if token not in reset_shader:
+            errors.append(f"resident structural deposit contract missing {token!r}")
     if "std::atomic_bool camera_controls{false};" not in shared_state_hpp:
         errors.append("shared camera-control mode state is missing")
     if "camera_controls = state.camera_controls.load" not in renderer_cpp:
         errors.append("camera-control mode is not forwarded to rendering")
-    for token in ("MMB/RMB PAN", "PLAYER WASD"):
+    for token in ("RMB PAN", "PLAYER WASD"):
         if token not in generator_py:
             errors.append(f"generated control label contract missing {token!r}")
     ui_text = (SHADERS / "ui_text.glsl").read_text(encoding="utf-8")
@@ -336,6 +395,30 @@ def main() -> int:
     move_comp = (SHADERS / "move.comp").read_text(encoding="utf-8")
     chemistry_comp = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
     reset_comp = (SHADERS / "reset.comp").read_text(encoding="utf-8")
+
+    camera_policy = (ROOT / "include/sandhybrid/camera_policy.hpp").read_text(encoding="utf-8")
+    scheduler_hpp = (ROOT / "include/sandhybrid/section_scheduler.hpp").read_text(encoding="utf-8")
+    scheduler_cpp = (ROOT / "src/section_scheduler.cpp").read_text(encoding="utf-8")
+    chunks_glsl = (SHADERS / "chunks.glsl").read_text(encoding="utf-8")
+    for token in ("resident_world_footprint_columns = 16u",
+                  "resident_world_footprint_rows = 4u",
+                  "resident_world_footprint_count == 64u",
+                  "map_view_width", "map_view_height"):
+        if token not in camera_policy:
+            errors.append(f"16x4 world/camera contract missing {token!r}")
+    for token in ("active_window_columns = 4", "active_window_rows = 4",
+                  "active_window_section_capacity", "active_window_origin",
+                  "section_in_active_window"):
+        if token not in scheduler_hpp + scheduler_cpp:
+            errors.append(f"4x4 active-window scheduler contract missing {token!r}")
+    for token in ("ACTIVE_WINDOW_REGIONS = ivec2(4, 4)",
+                  "sectionCoordinateActive(ivec2 candidate, ivec2 origin)"):
+        if token not in chunks_glsl:
+            errors.append(f"4x4 active-window shader contract missing {token!r}")
+    for source_name, source in (("reset", reset_comp), ("actor", actor_comp),
+                                ("bee", (SHADERS / "bee_swarm.glsl").read_text(encoding="utf-8"))):
+        if "* 2" not in source:
+            errors.append(f"aligned authored x-origin missing from {source_name}")
     app_cpp = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
     input_routing_hpp = (ROOT / "include/sandhybrid/input_routing.hpp").read_text(encoding="utf-8")
     window_hpp = (ROOT / "include/sandhybrid/window.hpp").read_text(encoding="utf-8")
@@ -416,16 +499,25 @@ def main() -> int:
         for token in ("primary_pressed = true", "secondary_pressed = true"):
             if token not in source:
                 errors.append(f"{source_name} press-edge latch missing {token!r}")
-    if "input.primary_pressed" not in app_cpp or "input.secondary_pressed" not in app_cpp:
-        errors.append("app does not consume native press-edge latches")
-    for token in ("looseAuthoredTerrain", "material == MAT_DIRT", "material == MAT_GRASS"):
+    if "input.primary_pressed" not in app_cpp:
+        errors.append("app does not consume the native primary press-edge latch")
+    if "const bool secondary_pressed = input.secondary_pressed;" in app_cpp:
+        errors.append("obsolete unused secondary press-edge local remains")
+    for token in ("looseAuthoredTerrain", "material == MAT_DIRT", "material == MAT_GRASS", "residentGroundDepositMaterial"):
         if token not in reset_comp:
             errors.append(f"authored terrain stability contract missing {token!r}")
     for token in (
+        "static_cast<std::uint64_t>(panel_width) * safe_height",
+        "layout, visible_view.width, visible_view.height",
+        "layout, view.width, view.height",
+    ):
+        if token not in ui_layout + app_cpp + renderer_cpp:
+            errors.append(f"aspect-correct live-view viewport contract missing {token!r}")
+    for token in (
         "preferred_sidebar_width = 384u",
-        "status_height = 126u",
-        "group_tabs_height = 112u",
-        "palette_items_height = 136u",
+        "status_height = 208u",
+        "group_tabs_height = 96u",
+        "palette_items_height = 124u",
         "material_card",
     ):
         if token not in ui_layout:
@@ -437,8 +529,8 @@ def main() -> int:
         "3, cardMaterial",
         "cardPixel(pixel",
         "2, cardMaterial",
-        "2, 60u",
-        "2, 61u",
+        "actor.iron",
+        "renderPc.selectedInventorySlot",
     ):
         if token not in fullscreen:
             errors.append(f"compact sidebar shader contract missing {token!r}")
@@ -458,7 +550,7 @@ def main() -> int:
         "Buffer ui_text_buffer{}",
         ".binding = 6",
         ".stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT",
-        ".descriptorCount = 16",
+        ".descriptorCount = 18",
         ".dstBinding = 6",
         "ui::text_storage.data()",
     ):
@@ -573,10 +665,10 @@ def main() -> int:
         "ActorPush": (
             ["width", "height", "step", "seed", "move_x", "move_y", "aim_x", "aim_y",
              "fire", "reset", "scene", "deposit", "simulate", "active_section_x",
-             "active_section_y", "active_mode"],
+             "active_section_y", "active_mode", "inventory_slot"],
             ["width", "height", "step", "seed", "moveX", "moveY", "aimX", "aimY",
              "fire", "reset", "scene", "deposit", "simulate", "activeSectionX",
-             "activeSectionY", "activeMode"],
+             "activeSectionY", "activeMode", "inventorySlot"],
             (SHADERS / "actor.comp").read_text(encoding="utf-8"),
             "actorPc",
         ),
@@ -589,7 +681,9 @@ def main() -> int:
              "tile_rows", "viewport_left", "viewport_top", "viewport_width", "viewport_height",
              "view_origin_x", "view_origin_y", "view_width", "view_height", "brush_shape",
              "placement_mode", "active_area_count", "active_area_x", "active_area_y",
-             "active_scope_mode", "camera_controls"],
+             "active_scope_mode", "camera_controls", "map_mode", "camera_origin_x",
+             "camera_origin_y", "camera_view_width", "camera_view_height",
+             "selected_inventory_slot"],
             ["gridWidth", "gridHeight", "windowWidth", "windowHeight", "selectedMaterial",
              "materialCount", "cursorX", "cursorY", "brushRadius", "statusHeight", "paletteHeight",
              "groupTabsHeight", "materialSlots", "framesPerSecond", "paused", "stepsPerFrame",
@@ -597,7 +691,9 @@ def main() -> int:
              "sceneCount", "miningMode", "inspectMode", "debugMode", "tileColumns", "tileRows", "viewportLeft", "viewportTop", "viewportWidth", "viewportHeight",
              "viewOriginX", "viewOriginY", "viewWidth", "viewHeight", "brushShape",
              "placementMode", "activeAreaCount", "activeAreaX", "activeAreaY",
-             "activeScopeMode", "cameraControls"],
+             "activeScopeMode", "cameraControls", "mapMode", "cameraOriginX",
+             "cameraOriginY", "cameraViewWidth", "cameraViewHeight",
+             "selectedInventorySlot"],
             renderer,
             "renderPc",
         ),
@@ -621,8 +717,8 @@ def main() -> int:
     hydrogen_case = re.search(r"case\s+MAT_HYDROGEN:(.*?break;)", materials, re.S)
     if not hydrogen_case or "1.00" not in hydrogen_case.group(1) or "0.68" not in hydrogen_case.group(1):
         errors.append("hydrogen no longer uses the requested pink presentation")
-    if "if (renderPc.debugMode != 0u)" not in renderer or "local.x == 0 || local.y == 0" not in renderer:
-        errors.append("tile grid is not isolated behind debug visualization")
+    if "renderPc.debugMode != 0u || renderPc.mapMode != 0u" not in renderer or "local.x == 0 || local.y == 0" not in renderer:
+        errors.append("tile grid is not isolated behind debug/map visualization")
     actor = (SHADERS / "actor.comp").read_text(encoding="utf-8")
     reset = (SHADERS / "reset.comp").read_text(encoding="utf-8")
     paint = (SHADERS / "paint.comp").read_text(encoding="utf-8")
@@ -634,10 +730,10 @@ def main() -> int:
     debug_stats_contract = (SHADERS / "debug_stats.glsl").read_text(encoding="utf-8")
 
     for token in (
-        "resident_world_dimension_scale = 4u", "logical_world_dimension_scale = 8u",
-        "camera_zoom_min = resident_world_dimension_scale / 2u",
-        "camera_zoom_default = resident_world_dimension_scale",
-        "camera_zoom_max = resident_world_dimension_scale * 8u",
+        "resident_world_footprint_columns = 16u", "resident_world_footprint_rows = 4u",
+        "resident_world_footprint_count", "camera_zoom_min = 2u",
+        "camera_zoom_default = 4u", "camera_zoom_max = 32u",
+        "map_zoom_default = 1u",
         "camera_view_width(camera_zoom_min) == 1280u", "camera_view_height(camera_zoom_min) == 720u",
         "camera_view_width(camera_zoom_default) == 640u", "camera_view_height(camera_zoom_default) == 360u",
     ):
@@ -667,7 +763,7 @@ def main() -> int:
         if token not in paint:
             errors.append(f"universal cell/tile placement contract missing {token!r}")
     for token in (
-        "int x = max((int(pc.width) - AUTHORED_WORLD_CELLS.x) / 2, 0);",
+        "AUTHORED_WORLD_CELLS.x * 2",
         "int skyHeight = int(pc.height) >= AUTHORED_WORLD_CELLS.y * 3",
         "? AUTHORED_WORLD_CELLS.y * 2",
         "return ivec2(x, skyHeight);",
@@ -681,7 +777,7 @@ def main() -> int:
             errors.append(f"crystal-row scene/geology shader contract missing {token!r}")
     for token in (
         "subterranean_zone_count =",
-        "resident_world_dimension_scale - 1u",
+        "resident_world_footprint_rows - 1u",
         "resident_world_lava_cells = 16u",
         "authored_scene_origin_y",
         "authored_scene_sky_footprint_rows = 2u",
@@ -707,7 +803,7 @@ def main() -> int:
             errors.append(f"camera/placement input contract missing {token!r}")
     for token in (
         "struct DirectionalInputRouting final",
-        "if (player_present)",
+        "if (route_to_player)",
         "return {0, 0, horizontal, vertical};",
         "return {horizontal, vertical, 0, 0};",
     ):
@@ -737,20 +833,22 @@ def main() -> int:
     for token in (
         "residentGroundHash",
         "residentGroundDepositMaterial",
-        "roll < 24u) return MAT_IRON_ORE",
-        "roll < 32u) return MAT_COPPER",
-        "roll < 38u) return MAT_ALUMINUM",
-        "depth >= 160 && roll < 41u) return MAT_URANIUM",
+        "clusterSize = ivec2(32, 24)",
+        "roll < 132u) deposit = MAT_IRON_ORE",
+        "roll < 52u) deposit = MAT_COPPER",
+        "roll < 24u) deposit = MAT_ALUMINUM",
+        "depth >= 160 && roll < 8u) deposit = MAT_URANIUM",
     ):
         if token not in reset:
             errors.append(f"resident ground deposit contract missing {token!r}")
     for token in (
         "resident_ground_hash",
         "resident_ground_deposit_material",
-        "roll < 24u) return Material::iron_ore",
-        "roll < 32u) return Material::copper",
-        "roll < 38u) return Material::aluminum",
-        "depth >= 160u && roll < 41u) return Material::uranium",
+        "cluster_width = 32u",
+        "roll < 132u) deposit = Material::iron_ore",
+        "roll < 52u) deposit = Material::copper",
+        "roll < 24u) deposit = Material::aluminum",
+        "depth >= 160u && roll < 8u) deposit = Material::uranium",
     ):
         if token not in world_layout:
             errors.append(f"CPU resident ground deposit contract missing {token!r}")
@@ -822,7 +920,7 @@ def main() -> int:
         "resident_substrate_material(",
         "make_resident_substrate_cell(",
         "Material::atmosphere",
-        "Loaded crystal-row 640x360 scene image with common lower geology",
+        "Loaded aligned 640x360 authored scene image",
     ):
         if token not in renderer_cpp:
             errors.append(f"loaded-scene geology parity contract missing {token!r}")
