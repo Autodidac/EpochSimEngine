@@ -29,38 +29,20 @@ jobs:
           from pathlib import Path
           path = Path('src/app.cpp')
           text = path.read_text(encoding='utf-8')
-          old = '        if (input.toggle_mining) {'
-          marker = '        if (static_cast<bool>(input.toggle_mining)) {'
-          if old not in text:
-              raise SystemExit('early mining-toggle anchor missing')
-          text = text.replace(old, marker, 1)
+          old_value = 'const bool mining = shared_state.mining_mode.load(std::memory_order_relaxed);'
+          old_use = 'shared_state.mining_mode.store(!mining, std::memory_order_release);'
+          if old_value not in text or old_use not in text:
+              raise SystemExit('toolbar mining-toggle anchor missing')
+          text = text.replace(old_value,
+              'const bool current_mining = shared_state.mining_mode.load(std::memory_order_relaxed);', 1)
+          text = text.replace(old_use,
+              'shared_state.mining_mode.store(!current_mining, std::memory_order_release);', 1)
           path.write_text(text, encoding='utf-8')
           PY
           cat tools/v256part*.b64 | base64 --decode | gzip --decompress > /tmp/finalize_v256.py
-          cp /tmp/finalize_v256.py tools/finalize_v256_decoded.py
           python3 /tmp/finalize_v256.py
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('src/app.cpp')
-          text = path.read_text(encoding='utf-8')
-          marker = '        if (static_cast<bool>(input.toggle_mining)) {'
-          if marker not in text:
-              raise SystemExit('preserved mining-toggle marker missing after finalizer')
-          path.write_text(text.replace(marker, '        if (input.toggle_mining) {', 1), encoding='utf-8')
-          PY
           python3 tools/v256_hotfix.py
           python3 tools/v256_hotfix2.py
-
-      - name: Publish decoded finalizer snapshot
-        if: always()
-        shell: bash
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git checkout -B agent/v256-debug-output
-          git add -A
-          git commit -m "Expose decoded v2.5.6 finalizer" || true
-          git push --force origin HEAD:agent/v256-debug-output
 
       - name: Validate source contracts
         run: |
@@ -79,8 +61,7 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git checkout agent/debug-map-inventory-v256
-          git rm -f tools/v256part*.b64 tools/v256_hotfix.py tools/v256_hotfix2.py tools/finalize_v256_decoded.py
+          git rm -f tools/v256part*.b64 tools/v256_hotfix.py tools/v256_hotfix2.py
           git add -A
           if git diff --cached --quiet; then
             exit 0
