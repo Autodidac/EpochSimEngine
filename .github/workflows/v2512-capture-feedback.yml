@@ -1,10 +1,11 @@
-# one-shot main trigger
 name: Capture v2.5.12 runtime and workspace feedback
 
 on:
-  push:
+  pull_request:
     branches:
       - main
+    types:
+      - opened
 
 permissions:
   contents: write
