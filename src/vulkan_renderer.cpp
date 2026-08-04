@@ -6,6 +6,7 @@
 #include "sandhybrid/scene_image.hpp"
 #include "sandhybrid/ui_layout.hpp"
 #include "sandhybrid/world_layout.hpp"
+#include "sandhybrid/world_save.hpp"
 #include "sandhybrid/ui_text_data.hpp"
 
 #include <vulkan/vulkan.h>
@@ -338,6 +339,7 @@ bool contains_extension(const std::vector<VkExtensionProperties>& extensions, co
 struct VulkanRenderer::Impl final {
     const NativeWindow& window;
     SimulationConfig config;
+    std::string save_slot;
 
     VkInstance instance{};
     VkDebugUtilsMessengerEXT debug_messenger{};
@@ -405,8 +407,11 @@ struct VulkanRenderer::Impl final {
     std::chrono::steady_clock::time_point next_conservation_log{};
 #endif
 
-    explicit Impl(const NativeWindow& native_window, const SimulationConfig simulation_config)
-        : window(native_window), config(simulation_config) {
+    explicit Impl(const NativeWindow& native_window,
+        const SimulationConfig simulation_config,
+        std::string requested_save_slot)
+        : window(native_window), config(simulation_config),
+save_slot(normalize_world_slot(requested_save_slot)) {
         if (config.grid_width == 0 || config.grid_height == 0) {
             throw std::invalid_argument("Simulation dimensions must be non-zero.");
         }
@@ -1601,7 +1606,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         return authored_scene_origin_y(config.grid_height);
     }
 
-    [[nodiscard]] bool load_scene_image(const std::uint32_t scene_index) {
+    [[nodiscard]] bool import_authored_scene_ppm(const std::uint32_t scene_index) {
         const auto scene = static_cast<Scene>(scene_index % scene_count);
         const auto path = scene_image_path(scene_directory(), scene);
         const auto map_width = (std::min)(config.grid_width, pre_expansion_world_width);
@@ -1651,7 +1656,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         return true;
     }
 
-    void save_scene_image(const std::uint32_t scene_index) {
+    void export_authored_scene_ppm(const std::uint32_t scene_index) {
         const auto world_cells = download_scene_cells();
         const auto map_width = (std::min)(config.grid_width, pre_expansion_world_width);
         const auto map_height = (std::min)(config.grid_height, pre_expansion_world_height);
@@ -1674,6 +1679,43 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         if (!write_scene_material_key(scene_directory(), error))
             throw std::runtime_error("Unable to save scene material key: " + error);
         startup_log("Saved crystal-row 640x360 authored scene image: " + path.string());
+    }
+
+    [[nodiscard]] bool load_world_slot(const std::uint32_t scene_index) {
+        const auto scene = static_cast<Scene>(scene_index % scene_count);
+        std::vector<SceneCell> cells(
+  static_cast<std::size_t>(config.grid_width) * config.grid_height);
+        WorldSaveMetadata metadata{};
+        std::string error;
+        if (!load_world(executable_directory(), config.world_size,
+              config.grid_width, config.grid_height, scene,
+              save_slot, cells, metadata, error)) {
+  startup_log("World load skipped: " + error);
+  return false;
+        }
+        upload_scene_cells(cells);
+        if (!error.empty()) startup_log("World load recovery: " + error);
+        startup_log("Loaded exact world save: " +
+          world_save_path(executable_directory(), config.world_size,
+                          scene, save_slot).string());
+        return true;
+    }
+
+    void save_world_slot(const std::uint32_t scene_index) {
+        const auto scene = static_cast<Scene>(scene_index % scene_count);
+        const auto cells = download_scene_cells();
+        const WorldSaveMetadata metadata{
+  .world_size = config.world_size,
+  .width = config.grid_width,
+  .height = config.grid_height,
+  .scene = scene,
+        };
+        std::string error;
+        if (!save_world(executable_directory(), metadata, save_slot, cells, error))
+  throw std::runtime_error("Unable to save world: " + error);
+        startup_log("Saved exact world state: " +
+          world_save_path(executable_directory(), config.world_size,
+                          scene, save_slot).string());
     }
 
     void record_reset(const VkCommandBuffer command_buffer, const std::uint32_t scene_index) {
@@ -2254,8 +2296,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
         const auto selected_scene = state.selected_scene.load(std::memory_order_relaxed) % scene_count;
         if (state.save_scene_image.exchange(false, std::memory_order_acq_rel)) {
-            if (!needs_reset) save_scene_image(selected_scene);
-            else startup_log("Scene save skipped until the initial scene exists.");
+            if (!needs_reset) save_world_slot(selected_scene);
+            else startup_log("World save skipped until the initial scene exists.");
         }
         const bool explicit_load = state.load_scene_image.exchange(false, std::memory_order_acq_rel);
         if (state.fill_region.exchange(false, std::memory_order_acq_rel)) {
@@ -2269,9 +2311,16 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const bool reset_requested = needs_reset || state.reset.exchange(false, std::memory_order_acq_rel);
         bool image_loaded = false;
         if (explicit_load) {
-            const auto selected = static_cast<Scene>(selected_scene);
-            if (scene_image_exists(scene_directory(), selected)) image_loaded = load_scene_image(selected_scene);
-            else startup_log("No saved PPM exists for the selected scene.");
+  image_loaded = load_world_slot(selected_scene);
+  if (!image_loaded) {
+      const auto selected = static_cast<Scene>(selected_scene);
+      if (scene_image_exists(scene_directory(), selected)) {
+          startup_log("No valid world save; importing the legacy authored PPM instead.");
+          image_loaded = import_authored_scene_ppm(selected_scene);
+      } else {
+          startup_log("No valid world save or authored PPM exists for the selected scene.");
+      }
+  }
         }
 
         std::uint32_t image_index{};
@@ -2411,7 +2460,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         if (pending_scene_export.has_value()) {
             const auto scene_to_export = *pending_scene_export;
             pending_scene_export.reset();
-            save_scene_image(scene_to_export);
+            export_authored_scene_ppm(scene_to_export);
         }
 
         frame_index = (frame_index + 1u) % static_cast<std::uint32_t>(frames.size());
@@ -2513,8 +2562,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     }
 };
 
-VulkanRenderer::VulkanRenderer(const NativeWindow& window, const SimulationConfig config)
-    : impl_(std::make_unique<Impl>(window, config)) {}
+VulkanRenderer::VulkanRenderer(const NativeWindow& window,
+                     const SimulationConfig config,
+                     std::string save_slot)
+    : impl_(std::make_unique<Impl>(window, config, std::move(save_slot))) {}
 
 VulkanRenderer::~VulkanRenderer() = default;
 

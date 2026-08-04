@@ -19,6 +19,7 @@
 #include <exception>
 #include <mutex>
 #include <thread>
+#include <string>
 #include <utility>
 
 namespace sandhybrid {
@@ -189,13 +190,20 @@ void reset_map_view(SharedState& state, const SimulationConfig& config) noexcept
 
 } // namespace
 
-int run_application() {
+int run_application(const ApplicationOptions& options) {
     std::fprintf(stderr, "[SandHybrid] Creating native window...\n");
     NativeWindow window{"SandHybrid", 1280, 720};
     window.show_startup_message("Compiling Shaders...");
     std::fprintf(stderr, "[SandHybrid] Native window created.\n");
     SharedState shared_state{};
-    const SimulationConfig simulation_config{};
+    const auto world = world_dimensions(options.world_size);
+    const SimulationConfig simulation_config{
+        .grid_width = world.width,
+        .grid_height = world.height,
+        .frames_in_flight = 2u,
+        .max_frames_per_second = 120u,
+        .world_size = options.world_size,
+    };
     reset_camera_to_zero(shared_state, simulation_config);
     reset_map_view(shared_state, simulation_config);
     std::atomic_bool renderer_ready{false};
@@ -210,7 +218,7 @@ int run_application() {
     std::thread render_thread([&] {
         try {
             std::fprintf(stderr, "[SandHybrid] Vulkan initialization started.\n");
-            VulkanRenderer renderer{window, simulation_config};
+            VulkanRenderer renderer{window, simulation_config, options.save_slot};
             renderer_ready.store(true, std::memory_order_release);
             std::fprintf(stderr, "[SandHybrid] Vulkan renderer ready.\n");
             renderer.run(stop_renderer, shared_state);
@@ -236,7 +244,8 @@ int run_application() {
     while (!shared_state.quit.load(std::memory_order_acquire) && window.poll(input)) {
         if (!ready_title_applied && renderer_ready.load(std::memory_order_acquire)) {
             window.show_startup_message("");
-            window.set_title("SandHybrid");
+            window.set_title("SandHybrid - " +
+      std::string{world_size_name(options.world_size)});
             ready_title_applied = true;
         }
         shared_state.window_width.store(input.width, std::memory_order_relaxed);

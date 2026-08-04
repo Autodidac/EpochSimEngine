@@ -34,7 +34,7 @@ def require(text: str, token: str, errors: list[str], contract: str) -> None:
 
 def main() -> int:
     legacy = subprocess.run(
-        [sys.executable, str(ROOT / "tools/validate_shader_contracts.py")],
+        [sys.executable, str(ROOT / "tools/validate_shader_contracts_legacy.py")],
         cwd=ROOT,
         capture_output=True,
         text=True,
