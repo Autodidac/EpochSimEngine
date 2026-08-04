@@ -11,111 +11,21 @@ permissions:
   contents: write
 
 concurrency:
-  group: sandhybrid-v259-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: sandhybrid-v2510-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  repair_source:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    outputs:
-      changed: ${{ steps.detect.outputs.changed }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
-          fetch-depth: 0
-
-      - name: Detect pending v2.5.10 source repair
-        id: detect
-        shell: bash
-        run: |
-          set -euo pipefail
-          if grep -q 'project(SandHybrid VERSION 2.5.10 ' CMakeLists.txt; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          elif [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == "refs/heads/main" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" && "${GITHUB_HEAD_REF}" == "agent/v2510-source-repair" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Extract canonical repair script
-        if: steps.detect.outputs.changed == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          workflow = Path('.github/workflows/repair-v2510b.yml').read_text(encoding='utf-8')
-          marker = "          python3 - <<'PY'\n"
-          start = workflow.index(marker) + len(marker)
-          end = workflow.index("\n          PY\n", start)
-          block = workflow[start:end]
-          lines = [
-              line[10:] if line.startswith('          ') else line
-              for line in block.splitlines()
-          ]
-          Path('/tmp/repair_v2510.py').write_text(
-              '\n'.join(lines) + '\n', encoding='utf-8')
-          PY
-
-      - name: Apply v2.5.10 source corrections
-        if: steps.detect.outputs.changed == 'true'
-        run: python3 /tmp/repair_v2510.py
-
-      - name: Install repair validation tools
-        if: steps.detect.outputs.changed == 'true'
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build glslc
-
-      - name: Validate repaired source and shaders
-        if: steps.detect.outputs.changed == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/validate_mission_cache.py
-          python3 tools/validate_v2510_contract.py
-          for shader in reset.comp tiles.comp macro_move.comp move.comp actor.comp fullscreen.frag; do
-            glslc --target-env=vulkan1.2 -I shaders "shaders/$shader" -o "/tmp/$shader.spv"
-          done
-          cmake -S . -B build-headless -G Ninja \
-            -DSANDHYBRID_BUILD_APP=OFF \
-            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
-            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
-            -DBUILD_TESTING=ON
-          cmake --build build-headless --parallel 2
-          ctest --test-dir build-headless --output-on-failure
-
-      - name: Commit validated v2.5.10 source
-        if: steps.detect.outputs.changed == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -f .github/workflows/repair-main-v2510.yml REPAIR_TRIGGER_v2510.md
-          git config user.name "Autodidac Release Bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add -A
-          git commit -m "SandHybrid v2.5.10 terrain liquid and fracture recovery"
-          target_branch="${GITHUB_HEAD_REF:-main}"
-          git push origin HEAD:"${target_branch}"
-
   build:
-    needs: repair_source
-    if: needs.repair_source.outputs.changed != 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-2022
             triplet: x64-windows
-            artifact: SandHybrid-Windows-x64-v2.5.9
+            artifact: SandHybrid-Windows-x64-v2.5.10
           - os: ubuntu-24.04
             triplet: x64-linux
-            artifact: SandHybrid-Linux-x64-v2.5.9
+            artifact: SandHybrid-Linux-x64-v2.5.10
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
 
@@ -124,6 +34,9 @@ jobs:
 
       - name: Validate generated and shader contracts
         run: python tools/validate_shader_contracts.py
+
+      - name: Validate v2.5.10 recovery contracts
+        run: python tools/validate_v2510_contract.py
 
       - name: Validate canonical mission cache
         run: python tools/validate_mission_cache.py
@@ -206,7 +119,10 @@ jobs:
 
       - name: Add package documentation
         shell: bash
-        run: cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md CHANGELOG.md MAP_VIEW.md SCENE_LAYOUT.md RELEASE_NOTES_v2.5.9.md "dist/${{ matrix.artifact }}/"
+        run: |
+          cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md CHANGELOG.md \
+            MAP_VIEW.md SCENE_LAYOUT.md RELEASE_NOTES_v2.5.10.md \
+            "dist/${{ matrix.artifact }}/"
 
       - name: Archive Windows package
         if: runner.os == 'Windows'
@@ -247,7 +163,7 @@ jobs:
         with:
           path: dist
 
-      - name: Publish v2.5.9 release
+      - name: Publish v2.5.10 release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -259,22 +175,23 @@ jobs:
             printf '%s\n' "${assets[@]}" >&2
             exit 1
           fi
-          if gh release view v2.5.9 >/dev/null 2>&1; then
-            gh release upload v2.5.9 "${assets[@]}" --clobber
-            gh release edit v2.5.9 \
-              --title 'SandHybrid v2.5.9' \
-              --notes-file RELEASE_NOTES_v2.5.9.md \
+          if gh release view v2.5.10 >/dev/null 2>&1; then
+            gh release upload v2.5.10 "${assets[@]}" --clobber
+            gh release edit v2.5.10 \
+              --title 'SandHybrid v2.5.10' \
+              --notes-file RELEASE_NOTES_v2.5.10.md \
               --latest
           else
-            gh release create v2.5.9 "${assets[@]}" \
+            gh release create v2.5.10 "${assets[@]}" \
               --target "$GITHUB_SHA" \
-              --title 'SandHybrid v2.5.9' \
-              --notes-file RELEASE_NOTES_v2.5.9.md \
+              --title 'SandHybrid v2.5.10' \
+              --notes-file RELEASE_NOTES_v2.5.10.md \
               --latest
           fi
 
-      - name: Remove completed agent branch
+      - name: Remove completed repair branches
         shell: bash
         run: |
-          git push origin --delete agent/v259-macro-water-volcano-pressure || true
+          git push origin --delete agent/v2510-source-repair || true
+          git push origin --delete agent/v260-ui-collapse-laser || true
           # Preserve agent/nonoverlap-core-hygiene per Adam's explicit instruction.
