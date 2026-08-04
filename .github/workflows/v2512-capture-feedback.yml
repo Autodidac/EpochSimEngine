@@ -1,0 +1,110 @@
+name: Capture v2.5.12 runtime and workspace feedback
+
+on:
+  push:
+    branches:
+      - agent/v2512-runtime-ui-recovery
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/v2512-runtime-ui-recovery
+          fetch-depth: 0
+      - name: Update canonical mission cache
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("missioncache.md")
+          text = path.read_text(encoding="utf-8")
+          lines = text.splitlines()
+
+          replacements = {
+              "MC-099": "| MC-099 | REGRESSION | Separate Air/Fill action with reusable selection bounds | `ATMOSPHERE` selects balanced Air and `ERASER` selects vacuum. `F FILL` executes only on a confirmed left-click. With no selection it fills only the cursor-connected target region; with an active rectangular selection it is strictly clipped to that box. The same marquee geometry and hit testing are shared with blueprint copy/paste, and no keyboard press alone edits the world. Packaged bounded-fill and input acceptance remain required. |",
+              "MC-121": "| MC-121 | REGRESSION | Independent readable debug map and world-design view | MAP renders the complete selected-size world from a separate slow snapshot without affecting simulation scheduling. It preserves actual material colors, clearly shows water, hives, authored structures, terrain layers, active-region outlines, and the live camera rectangle; tile/chunk state appears only as restrained edges or optional overlays. The map must expose unfinished or malformed world design instead of hiding it under checkerboards or cosmetic shading. Packaged clarity and world-layout acceptance remain required. |",
+              "MC-122": "| MC-122 | REGRESSION | Empty inventory placeholder until real item flow exists | The Inventory workspace remains intentionally empty for now except for its title, shared material card, and explicit empty-state text. It must not fabricate a 2x2 metal inventory or imply pickup/build mechanics that are not implemented. Real inventory contents arrive only through accepted item acquisition, storage, and consumption rules. |",
+              "MC-138": "| MC-138 | REGRESSION | Exact workspace ownership and universal cards | The top/global controls belong to `Settings`; all painting, scene, cursor, cells/tiles, fill, camera-edit, and material-edit controls belong to `Editor`. `Inventory` is an empty placeholder for now. `Designer` is dedicated to blueprint creation and contains Inventory and Blueprints subviews. The selected/inspected material card remains visible and consistent in every workspace. Hidden controls cannot render, receive input, or retain misleading labels. |",
+              "MC-139": "| MC-139 | REGRESSION | Color-first restrained material rendering | Cell identity and physics remain authoritative. Normal presentation uses stable material coloring and only the minimum transparency or motion cue needed to distinguish media. Remove stacked glint, curved timing, flow-band, opacity, and noise effects that obscure water, hives, terrain, or debug inspection. Any optional cosmetic effect must be individually gated, render-only, provenance-independent, and visually accepted before becoming a default. |",
+              "MC-141": "| MC-141 | REGRESSION | Workspace-specific sidebar hierarchy and Designer window | Settings owns only global/top controls; Editor owns the remaining editing controls; Inventory is visibly empty for now; Designer is a distinct blueprint-authoring tab/window with separate Inventory and Blueprints panes. The material card is always visible below or beside the active workspace. Draw and hit-test geometry are shared, no caption crosses a control, and inactive workspace controls cannot receive input. |",
+          }
+
+          seen = set()
+          for index, line in enumerate(lines):
+              if line.startswith("Statuses: "):
+                  lines[index] = "Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`. v2.5.12 feedback capture adds MC-149 and MC-150 and reopens the contradicted runtime/UI missions; packaged acceptance remains active."
+              elif line.startswith("- **P0 / primary release gate:**"):
+                  line = line.replace("MC-139, and MC-140", "MC-139, MC-140, MC-149, and MC-150")
+                  lines[index] = line
+              else:
+                  for mission_id, replacement in replacements.items():
+                      if line.startswith(f"| {mission_id} |"):
+                          lines[index] = replacement
+                          seen.add(mission_id)
+                          break
+
+          missing = set(replacements) - seen
+          if missing:
+              raise SystemExit(f"Mission rows not found: {sorted(missing)}")
+
+          text = "\n".join(lines) + "\n"
+
+          evidence_marker = "## Backlog review policy\n"
+          evidence = """## v2.5.11 screenshot/runtime contradictions — 2026-08-04
+
+These screenshots and direct runtime observations reopen the linked missions. Compilation, headless contracts, or a release tag cannot close them.
+
+| Evidence | Runtime contradiction | Linked missions | Required propagation and acceptance |
+|---|---|---|---|
+| EV-2511-001 | Expected Beehives and authored water bodies are absent, obscured, or not clearly readable in normal and MAP presentation. | MC-032, MC-038, MC-074, MC-121, MC-136, MC-144 | Reset, scene generation, save/load, normal rendering, and MAP must show the same approved suspended hives and intended water volumes at the aligned scene origin. |
+| EV-2511-002 | Layered cosmetic effects make the scene harder to inspect; stable coloring is sufficient and should be the default. | MC-027, MC-044, MC-045, MC-121, MC-139 | Remove stacked appearance effects, retain material identity, and prove Water, Air, hives, geology, and debug states remain readable while running and paused. |
+| EV-2511-003 | Debug reports fine movement while bulk movement remains zero, and long liquid surfaces remain visibly sloped instead of reaching a level resting state. | MC-012, MC-013, MC-017, MC-018, MC-019, MC-053, MC-144 | Eligible bulk liquid/powder work executes before fine fallback in the same tick; failed bulk moves fall back immediately; conserved liquids equalize across connected basins and then sleep. |
+| EV-2511-004 | The full-world MAP exposes unfinished terrain composition, malformed transitions, missing scene features, and a debug presentation that does not communicate the intended map design. | MC-089, MC-114, MC-121, MC-125, MC-143 | Finish the selected-size world plan, preserve authored landmarks, make geology transitions deliberate, and keep debug overlays subordinate to the actual map. |
+| EV-2511-005 | Workspace separation is incorrect: top controls were split away from Settings, editing controls are not wholly owned by Editor, Inventory contains premature content, Designer lacks its blueprint workflow, and cards are not universally visible. | MC-122, MC-128, MC-138, MC-141 | Apply the exact workspace ownership model and verify rendering plus hit testing at supported window sizes. |
+| EV-2511-006 | Blueprint authoring lacks a bounded selection/copy/paste path, and Fill lacks a reusable explicit rectangle bound. | MC-099, MC-149, MC-150 | One shared marquee selects cells/tiles, clips Fill, copies exact state into Designer, previews placement, and pastes without out-of-bounds writes or material loss. |
+
+"""
+          if evidence_marker not in text:
+              raise SystemExit("Backlog review marker not found")
+          text = text.replace(evidence_marker, evidence + evidence_marker, 1)
+
+          mission_marker = "# Permanent invariants\n"
+          missions = """## v2.5.12 blueprint and selection workflow
+
+| ID | Status | Mission | Acceptance |
+|---|---|---|---|
+| MC-149 | OPEN | Reusable bounded selection marquee | Editor supports a visible drag rectangle with exact world-cell bounds, normalized drag direction, camera/zoom-correct hit testing, cancel/clear, and optional cell- or tile-aligned snapping. The same selection object clips `F FILL`, copy, cut, delete, and blueprint capture. Operations never escape the box, overflow the selected world size, or mutate on keyboard input alone. |
+| MC-150 | OPEN | Designer blueprint library, preview, and paste | Designer is a dedicated tab/window with Inventory and Blueprints panes. A selection can be copied from the world into a named blueprint preserving material and required cell/tile metadata, previewed at the cursor, rotated/flipped only through explicit supported transforms, and pasted transactionally into valid bounds. Empty Inventory remains honest until real item flow exists; material cards stay visible throughout. Save/load and Windows/Linux packaged round-trip acceptance are required. |
+
+"""
+          if mission_marker not in text:
+              raise SystemExit("Permanent invariants marker not found")
+          text = text.replace(mission_marker, missions + mission_marker, 1)
+
+          invariant_marker = "# Accepted foundations\n"
+          invariants = """- Settings owns global/top controls; Editor owns editing controls; Inventory remains empty until real item flow exists; Designer owns blueprint authoring with Inventory and Blueprints panes; the material card remains visible in every workspace.
+- Stable material coloring is the default. Cosmetic shaders never obscure Water, Air, Beehives, terrain, actors, or debug truth.
+- One camera-correct bounded selection object is reused by Fill and blueprint copy/paste so every operation has explicit visible bounds.
+
+"""
+          if invariant_marker not in text:
+              raise SystemExit("Accepted foundations marker not found")
+          text = text.replace(invariant_marker, invariants + invariant_marker, 1)
+
+          path.write_text(text, encoding="utf-8")
+          Path(".github/workflows/v2512-capture-feedback.yml").unlink()
+          PY
+      - name: Commit durable feedback ledger
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add missioncache.md .github/workflows/v2512-capture-feedback.yml
+          git commit -m "Capture v2.5.12 runtime and blueprint regressions"
+          git push origin HEAD:agent/v2512-runtime-ui-recovery
