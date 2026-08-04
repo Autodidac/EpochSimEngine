@@ -1,0 +1,94 @@
+name: Publish validated SandHybrid v2.5.11 packages
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: sandhybrid-v2511-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event.pull_request.head.ref == 'agent/v2511-publish'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: bbb22360bdcd58334e8aa07c3afbda37aaa9f2cd
+          fetch-depth: 0
+
+      - name: Download validated Windows and Linux packages
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/windows dist/linux
+          gh run download 30936565865 \
+            --repo Autodidac/EpochSimEngine \
+            --name SandHybrid-Windows-x64-v2.5.11 \
+            --dir dist/windows
+          gh run download 30936565865 \
+            --repo Autodidac/EpochSimEngine \
+            --name SandHybrid-Linux-x64-v2.5.11 \
+            --dir dist/linux
+
+      - name: Verify package set
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find dist -type f \( -name '*.zip' -o -name '*.tar.gz' \) -print | sort)
+          if [[ "${#assets[@]}" -ne 2 ]]; then
+            printf 'Expected exactly two validated package files, found %s\n' "${#assets[@]}" >&2
+            find dist -type f -print >&2
+            exit 1
+          fi
+          test "$(basename "${assets[0]}")" = 'SandHybrid-Linux-x64-v2.5.11.tar.gz'
+          test "$(basename "${assets[1]}")" = 'SandHybrid-Windows-x64-v2.5.11.zip'
+          sha256sum "${assets[@]}"
+
+      - name: Publish v2.5.11 release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find dist -type f \( -name '*.zip' -o -name '*.tar.gz' \) -print | sort)
+          if gh release view v2.5.11 --repo Autodidac/EpochSimEngine >/dev/null 2>&1; then
+            gh release upload v2.5.11 "${assets[@]}" --clobber --repo Autodidac/EpochSimEngine
+            gh release edit v2.5.11 \
+              --repo Autodidac/EpochSimEngine \
+              --target bbb22360bdcd58334e8aa07c3afbda37aaa9f2cd \
+              --title 'SandHybrid v2.5.11' \
+              --notes-file RELEASE_NOTES_v2.5.11.md \
+              --latest
+          else
+            gh release create v2.5.11 "${assets[@]}" \
+              --repo Autodidac/EpochSimEngine \
+              --target bbb22360bdcd58334e8aa07c3afbda37aaa9f2cd \
+              --title 'SandHybrid v2.5.11' \
+              --notes-file RELEASE_NOTES_v2.5.11.md \
+              --latest
+          fi
+
+      - name: Verify published release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view v2.5.11 --repo Autodidac/EpochSimEngine \
+            --json tagName,targetCommitish,isLatest,assets \
+            --jq '
+              if .tagName != "v2.5.11" then error("wrong tag")
+              elif .targetCommitish != "bbb22360bdcd58334e8aa07c3afbda37aaa9f2cd" then error("wrong target")
+              elif .isLatest != true then error("not latest")
+              elif (.assets | length) != 2 then error("wrong asset count")
+              else .
+              end'
