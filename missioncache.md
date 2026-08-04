@@ -13,7 +13,7 @@ Before changing code:
 7. During each broad pass, attempt every active mission once. Anything unfinished or runtime-unverified remains active with evidence.
 8. This v2.5.9 regression-recovery pass compared early working material behavior with v2.5.8, restored the v2.4.1 Half Water attraction baseline, separated Lava from sparse powder timing, accelerated cyclic vent pressure, rebuilt the Volcano lake basin, preserved liquid/gas volume when Smoke is painted, removed generic Acid-to-Silt conversion, restored the early suspended hive, added workspace tabs, coherent cosmetic material profiles, complete world dimensions, and carried every unfinished mission forward. Packaged visual/runtime behavior remains active until observed; no item is silently omitted or falsely closed.
 
-Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.
+Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`. v2.5.11 adds MC-145 through MC-148 for exact size-aware world persistence; runtime acceptance remains active.
 
 ## Priority lanes
 
@@ -248,6 +248,15 @@ Every P0 mission is attempted in the current release. Every P1/P2 row is reviewe
 | MC-142 | PARTIAL | 47% structural fracture and compact tool bursts | Complete structural tiles collapse on the 31st destroyed cell, release every survivor into down/diagonal movement, and cannot repair while collapsing. Tool visuals are short sparse pixel bursts. Static contracts pass; packaged visual/physics acceptance remains required. |
 | MC-143 | PARTIAL | Continuous terrain and coherent geology | Ground continues across every resident-world column outside the authored scene. Mineral cores remain complete structural tiles, broken material is limited to localized rubble/trap pockets, and biome boundaries transition through broad deterministic bands. Static contracts pass; packaged map acceptance remains required. |
 | MC-144 | PARTIAL | Volcano lake/lava recovery and low-friction liquids | Volcano visibly contains a water lake, crater lava lake, reservoir, throat, vents, cone, and gas space. Liquids conserve volume while falling, equalizing, and flowing over ledges without the legacy 18-frame cutoff. Shader compilation and static contracts pass; packaged motion acceptance remains required. |
+
+## v2.5.11 exact world persistence and size-aware folders
+
+| ID | Status | Mission | Acceptance |
+|---|---|---|---|
+| MC-145 | PARTIAL | Replace broken gameplay scene-image saves with exact world saves | Save and Load operate on the entire selected-size resident world, preserving every `SceneCell` material, age, temperature, and aux field. The versioned 64x64 chunk stream chooses raw or RLE encoding, verifies each chunk and the full payload, validates dimensions/scene before mutation, publishes atomically, retains one backup, and recovers from a damaged primary. Deterministic contracts pass; packaged Windows/Linux save-load observation remains required. |
+| MC-146 | PARTIAL | Terraria-style selectable world sizes | Compact 2560x1440, Standard 5120x1440, and Large 10240x1440 allocate matching Vulkan buffers before startup. `--world-size` and the supplied size launchers select the preset, and incompatible saves cannot crop or stretch into another size. A polished in-window new-world selector remains open. |
+| MC-147 | PARTIAL | Durable save folder and slot layout | Saves live under `saves/worlds/<size>/<scene>/<slot>/` with sanitized named slots, `world.shw`, `world.bak`, and `manifest.txt`. PPM remains a 640x360 authored-scene asset format only. Package folder portability and multi-slot runtime acceptance remain required. |
+| MC-148 | REGRESSION | Save/load runtime reliability | Repeated save, overwrite, load, backup fallback, scene switching, and all three world sizes must preserve exact state without crashes, truncation, stale tile/chunk metadata, or loading into the wrong scene. Static and headless contracts exist; packaged stress acceptance remains active. |
 
 # Permanent invariants
 

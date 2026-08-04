@@ -356,3 +356,8 @@ These APIs are deterministic and covered by Windows/Linux contracts. The Vulkan 
 ## v2.5.6 runtime controls
 
 Right-click exclusively pans: dragging moves the current camera and holding it near a viewport edge performs gated edge panning. `WASD PAN` routes keys to the simulation camera; MAP uses its own camera and a slow full-world snapshot without changing simulation LOD or active-region scheduling. In player scenes, MINE uses left click and BUILD places the selected compact-inventory resource with left click. Hold `F` and left-click the simulation to fill; pressing `F` alone does nothing.
+
+
+## World sizes and exact saves
+
+Launch Compact, Standard, or Large with the supplied scripts or `--world-size`. Save slots use `--save-slot NAME`. Gameplay saves are exact whole-world `.shw` files under the portable `saves/worlds/<size>/<scene>/<slot>/` tree; see `SAVE_LAYOUT.md`. PPM files are retained only for authored 640x360 scene import/export.

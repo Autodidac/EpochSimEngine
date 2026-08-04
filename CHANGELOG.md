@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.5.11
+
+- Replaced gameplay PPM saves with exact, versioned, checksummed whole-world `.shw` saves.
+- Added atomic publication, previous-save backup, corruption fallback, manifests, sanitized slots, and size/scene-aware folders.
+- Added Compact, Standard, and Large startup selection through launchers and command-line options.
+- Kept PPM as authored-scene import/export only and carried packaged save/load and in-window selector acceptance forward.
+
+
 ## 2.5.10
 
 - Extended natural ground across every column outside the authored scene without moving authored objects.

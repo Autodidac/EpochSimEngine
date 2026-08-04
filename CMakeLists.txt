@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SandHybrid VERSION 2.5.10 LANGUAGES CXX)
+project(SandHybrid VERSION 2.5.11 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -49,6 +49,7 @@ endfunction()
 # and application event handling are intentionally absent from this target.
 add_library(SandHybrid STATIC
     src/scene_image.cpp
+    src/world_save.cpp
     src/section_grid.cpp
     src/section_scheduler.cpp
 )
@@ -239,7 +240,9 @@ if(SANDHYBRID_BUILD_APP)
     install(FILES ${SANDHYBRID_SHADER_BINARIES} DESTINATION ${CMAKE_INSTALL_BINDIR}/shaders)
     install(FILES scenes/README.txt DESTINATION ${CMAKE_INSTALL_BINDIR}/scenes)
     if(WIN32)
-        install(FILES run.bat DESTINATION .)
+        install(FILES run.bat run-compact.bat run-standard.bat run-large.bat DESTINATION .)
+    else()
+        install(PROGRAMS run-compact.sh run-standard.sh run-large.sh DESTINATION .)
     endif()
 endif()
 
@@ -264,6 +267,7 @@ set(SANDHYBRID_CORE_PUBLIC_HEADERS
     include/sandhybrid/scene.hpp
     include/sandhybrid/scene_spawn.hpp
     include/sandhybrid/scene_image.hpp
+    include/sandhybrid/world_save.hpp
     include/sandhybrid/section_grid.hpp
     include/sandhybrid/section_scheduler.hpp
     include/sandhybrid/simulation_policy.hpp
@@ -302,6 +306,8 @@ if(BUILD_TESTING)
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_mission_cache.py)
         add_test(NAME sandhybrid_v2510_source_contract
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2510_contract.py)
+        add_test(NAME sandhybrid_v2511_source_contract
+       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2511_contract.py)
     endif()
 
     add_executable(sandhybrid_input_routing_contract tests/input_routing_contract.cpp)
@@ -339,6 +345,12 @@ if(BUILD_TESTING)
     target_compile_features(sandhybrid_scene_image_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_scene_image_contract)
     add_test(NAME sandhybrid_scene_image_contract COMMAND sandhybrid_scene_image_contract)
+
+    add_executable(sandhybrid_world_save_contract tests/world_save_contract.cpp)
+    target_link_libraries(sandhybrid_world_save_contract PRIVATE SandHybrid)
+    target_compile_features(sandhybrid_world_save_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_world_save_contract)
+    add_test(NAME sandhybrid_world_save_contract COMMAND sandhybrid_world_save_contract)
 
     add_executable(sandhybrid_section_scheduler_contract tests/section_scheduler_contract.cpp)
     target_link_libraries(sandhybrid_section_scheduler_contract PRIVATE SandHybrid)
