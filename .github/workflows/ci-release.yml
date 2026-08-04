@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate generated and shader contracts
-        run: python tools/validate_shader_contracts.py
+        run: python tools/validate_shader_contracts_v2510.py
 
       - name: Validate v2.5.10 recovery contracts
         run: python tools/validate_v2510_contract.py
