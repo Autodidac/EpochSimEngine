@@ -65,7 +65,7 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
     return {{{left, top}, {float(viewport_width), float(viewport_height)}}, tile_pixels};
 }
 
-[[nodiscard]] inline Layout make_layout(std::uint32_t width, std::uint32_t height) noexcept {
+[[nodiscard]] inline constexpr Layout make_layout(std::uint32_t width, std::uint32_t height) noexcept {
     const auto screen_width = (std::max)(width, 1u);
     const auto screen_height = (std::max)(height, 1u);
     const auto requested = (std::max)(minimum_sidebar_width, screen_width / 3u);
