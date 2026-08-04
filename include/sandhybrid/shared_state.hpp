@@ -51,6 +51,7 @@ struct SharedState final {
     std::atomic_int map_center_x{static_cast<int>(resident_world_width / 2u)};
     std::atomic_int map_center_y{static_cast<int>(resident_world_height / 2u)};
     std::atomic_uint32_t selected_inventory_slot{0};
+    std::atomic_uint32_t selected_workspace{1}; // 0 inventory, 1 editor, 2 settings, 3 designer
     std::atomic_uint32_t section_worker_count{0};
     std::atomic_uint32_t active_section_count{0};
     std::atomic_int active_window_origin_x{0};

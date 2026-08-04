@@ -91,3 +91,11 @@ int main() {
     }
     return 0;
 }
+static_assert(sandhybrid::ui::workspace_at(
+    sandhybrid::ui::make_layout(1920u, 1080u),
+    {sandhybrid::ui::make_layout(1920u, 1080u).workspace_inventory.position.x + 2.0f,
+     sandhybrid::ui::make_layout(1920u, 1080u).workspace_inventory.position.y + 2.0f}) == 0u);
+static_assert(sandhybrid::ui::workspace_at(
+    sandhybrid::ui::make_layout(1920u, 1080u),
+    {sandhybrid::ui::make_layout(1920u, 1080u).workspace_designer.position.x + 2.0f,
+     sandhybrid::ui::make_layout(1920u, 1080u).workspace_designer.position.y + 2.0f}) == 3u);

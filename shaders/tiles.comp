@@ -187,8 +187,10 @@ void main() {
     // Block-capable solids may use tile metadata for cohesion, support, sleep,
     // and debug state, but they never become whole-tile movement packets.
     bool bulkReadySolid = fullRegion && isBlockCapable(dominant) && !hot && !reacting;
-    bool macroMovable = (macroLiquid || macroGas || macroPowder) &&
-                        !structuralTile && !activeAgent && !hot && !reacting;
+    bool macroLava = fullRegion && dominant == MAT_LAVA && !structuralTile;
+    bool macroMovable = (macroLiquid || macroGas || macroPowder || macroLava) &&
+                        !structuralTile && !activeAgent &&
+                        ((!hot && !reacting) || macroLava);
 
     uint supportSamples = 0u;
     bool anchored = origin.y + int(TILE_SIZE) >= int(pc.height);
@@ -268,7 +270,7 @@ void main() {
     if (settledMedium) flags |= TILE_SETTLED_MEDIUM;
     if (wetContent) flags |= TILE_WET_CONTENT;
     if (bulkReadySolid) flags |= TILE_MACRO_SOLID | TILE_BULK_READY;
-    if (macroPowder) flags |= TILE_MACRO_POWDER;
+    if (macroPowder || macroLava) flags |= TILE_MACRO_POWDER;
     if (macroLiquid) flags |= TILE_MACRO_LIQUID;
     if (macroGas) flags |= TILE_MACRO_GAS;
     if (gasEnclosed || liquidEnclosed) flags |= TILE_MEDIUM_ENCLOSED;

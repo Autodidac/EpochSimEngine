@@ -9,6 +9,7 @@ namespace sandhybrid::ui {
 inline constexpr std::uint32_t preferred_sidebar_width = 424u;
 inline constexpr std::uint32_t minimum_sidebar_width = 320u;
 inline constexpr std::uint32_t status_height = 208u;
+inline constexpr std::uint32_t workspace_tab_count = 4u;
 inline constexpr std::uint32_t group_tabs_height = 96u;
 inline constexpr std::uint32_t palette_items_height = 124u;
 inline constexpr std::uint32_t eraser_height = 34u;
@@ -20,6 +21,7 @@ inline constexpr float gap = 3.0f;
 
 struct Layout final {
     epochengine::gui_lib::Rect status{}, simulation{}, group_tabs{}, palette{};
+    epochengine::gui_lib::Rect workspace_inventory{}, workspace_editor{}, workspace_settings{}, workspace_designer{};
     epochengine::gui_lib::Rect previous_scene{}, next_scene{}, reset_scene{}, save_scene{}, load_scene{};
     epochengine::gui_lib::Rect mode_toggle{}, pause_toggle{}, camera_controls_toggle{}, map_toggle{}, debug_toggle{};
     epochengine::gui_lib::Rect atmosphere{}, fill{}, eraser{}, keymap{}, cursor_editor{}, material_card{};
@@ -63,7 +65,7 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
     return {{{left, top}, {float(viewport_width), float(viewport_height)}}, tile_pixels};
 }
 
-[[nodiscard]] inline Layout make_layout(std::uint32_t width, std::uint32_t height) noexcept {
+[[nodiscard]] inline constexpr Layout make_layout(std::uint32_t width, std::uint32_t height) noexcept {
     const auto screen_width = (std::max)(width, 1u);
     const auto screen_height = (std::max)(height, 1u);
     const auto requested = (std::max)(minimum_sidebar_width, screen_width / 3u);
@@ -84,6 +86,14 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
         .palette = {{content_left, float(status_height + group_tabs_height) + margin + gap},
                     {content_width, float(palette_items_height)}},
     };
+
+    const float workspace_left = left + 8.0f;
+    const float workspace_width = (std::max)(1.0f, side - 16.0f);
+    const float workspace_cell = workspace_width / float(workspace_tab_count);
+    layout.workspace_inventory = {{workspace_left, 4.0f}, {workspace_cell, 24.0f}};
+    layout.workspace_editor = {{workspace_left + workspace_cell, 4.0f}, {workspace_cell, 24.0f}};
+    layout.workspace_settings = {{workspace_left + workspace_cell * 2.0f, 4.0f}, {workspace_cell, 24.0f}};
+    layout.workspace_designer = {{workspace_left + workspace_cell * 3.0f, 4.0f}, {workspace_width - workspace_cell * 3.0f, 24.0f}};
 
     constexpr float row_left_padding = 8.0f;
     constexpr float row_right_padding = 8.0f;
@@ -157,6 +167,24 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
     layout.material_card = {{content_left, card_top},
                             {content_width, (std::max)(1.0f, float(screen_height) - card_top - margin)}};
     return layout;
+}
+
+[[nodiscard]] inline constexpr bool contains_workspace_point(
+    const epochengine::gui_lib::Rect& rect,
+    const epochengine::gui_lib::Vec2 point) noexcept {
+    return point.x >= rect.position.x &&
+           point.x <= rect.position.x + rect.size.x &&
+           point.y >= rect.position.y &&
+           point.y <= rect.position.y + rect.size.y;
+}
+
+[[nodiscard]] inline constexpr std::uint32_t workspace_at(
+    const Layout& layout, const epochengine::gui_lib::Vec2 point) noexcept {
+    if (contains_workspace_point(layout.workspace_inventory, point)) return 0u;
+    if (contains_workspace_point(layout.workspace_editor, point)) return 1u;
+    if (contains_workspace_point(layout.workspace_settings, point)) return 2u;
+    if (contains_workspace_point(layout.workspace_designer, point)) return 3u;
+    return workspace_tab_count;
 }
 
 [[nodiscard]] inline epochengine::gui_lib::Rect group_tab_rect(

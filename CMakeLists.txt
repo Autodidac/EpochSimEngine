@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SandHybrid VERSION 2.5.8 LANGUAGES CXX)
+project(SandHybrid VERSION 2.5.9 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -185,6 +185,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
                     "${SHADER_SOURCE_DIR}/terrain_generation.glsl"
                     "${SHADER_SOURCE_DIR}/epochgui_font.glsl"
                     "${SHADER_SOURCE_DIR}/ui_text.glsl"
+                    "${SHADER_SOURCE_DIR}/material_appearance.glsl"
             VERBATIM
             COMMENT "Compiling ${SHADER_FILE}"
         )

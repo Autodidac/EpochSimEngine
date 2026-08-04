@@ -41,8 +41,13 @@ inline constexpr std::uint32_t water_half_horizontal_passes = 8u;
 inline constexpr std::uint32_t canonical_air_state = 220u;
 inline constexpr bool half_water_stores_ambient_air_pressure = false;
 inline constexpr std::uint32_t sunlight_update_interval = 4u;
-inline constexpr std::uint32_t vent_eruption_pressure = 220u;
-inline constexpr std::uint32_t vent_gas_release_pressure = 72u;
+inline constexpr std::uint32_t vent_eruption_pressure = 176u;
+inline constexpr std::uint32_t vent_pulse_lava_pressure = 144u;
+inline constexpr std::uint32_t vent_gas_release_pressure = 48u;
+inline constexpr std::uint32_t vent_cycle_ticks = 10'800u;
+inline constexpr std::uint32_t vent_pulse_ticks = 900u;
+inline constexpr std::uint32_t vent_pulse_on_ticks = 420u;
+inline constexpr std::uint32_t vent_major_start_tick = 10'200u;
 inline constexpr std::uint32_t wet_density_bonus = 32u;
 
 [[nodiscard]] constexpr std::uint32_t effective_wet_density(
@@ -121,19 +126,35 @@ inline constexpr std::uint32_t wet_density_bonus = 32u;
 
 enum class VentEmission : std::uint8_t { none, gas, lava };
 
+[[nodiscard]] constexpr bool vent_pulse_active(
+    const std::uint32_t cycle_tick) noexcept {
+    return cycle_tick % vent_pulse_ticks < vent_pulse_on_ticks;
+}
+
+[[nodiscard]] constexpr bool vent_major_active(
+    const std::uint32_t cycle_tick) noexcept {
+    return cycle_tick % vent_cycle_ticks >= vent_major_start_tick;
+}
+
 [[nodiscard]] constexpr VentEmission vent_emission(
-    const std::uint32_t pressure, const std::uint32_t random_value) noexcept {
-    if (pressure >= vent_eruption_pressure && (random_value & 3u) == 0u)
+    const std::uint32_t pressure, const std::uint32_t random_value,
+    const std::uint32_t cycle_tick = 0u) noexcept {
+    if (vent_major_active(cycle_tick) && pressure >= vent_eruption_pressure &&
+        (random_value & 1u) == 0u)
         return VentEmission::lava;
-    if (pressure >= vent_gas_release_pressure && (random_value & 15u) == 0u)
+    if (vent_pulse_active(cycle_tick) && pressure >= vent_pulse_lava_pressure &&
+        (random_value & 3u) == 0u)
+        return VentEmission::lava;
+    if (vent_pulse_active(cycle_tick) && pressure >= vent_gas_release_pressure &&
+        (random_value & 3u) != 0u)
         return VentEmission::gas;
     return VentEmission::none;
 }
 
 [[nodiscard]] constexpr std::uint32_t vent_emission_cost(
     const VentEmission emission) noexcept {
-    return emission == VentEmission::lava ? 96u :
-           emission == VentEmission::gas ? 24u : 0u;
+    return emission == VentEmission::lava ? 20u :
+           emission == VentEmission::gas ? 6u : 0u;
 }
 
 [[nodiscard]] constexpr std::uint32_t consume_vent_pressure(
@@ -144,9 +165,9 @@ enum class VentEmission : std::uint8_t { none, gas, lava };
 
 [[nodiscard]] constexpr std::uint32_t update_vent_pressure(
     const std::uint32_t pressure, const bool blocked, const bool open) noexcept {
-    if (blocked) return pressure >= 250u ? 255u : pressure + 5u;
-    if (open) return pressure > 4u ? pressure - 4u : 0u;
-    return pressure == 255u ? 255u : pressure + 1u;
+    if (blocked) return pressure >= 236u ? 255u : pressure + 20u;
+    if (open) return pressure >= 247u ? 255u : pressure + 8u;
+    return pressure >= 231u ? 255u : pressure + 24u;
 }
 
 } // namespace sandhybrid::policy

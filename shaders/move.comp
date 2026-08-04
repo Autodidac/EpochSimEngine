@@ -451,7 +451,8 @@ bool movementAllows(Cell cell, uint randomValue) {
     }
     if (cell.material == MAT_SALT) return (randomValue & 3u) != 0u;
     if (cell.material == MAT_ASH) return (randomValue % 5u) != 0u;
-    if (cell.material == MAT_LAVA) return (randomValue % 7u) == 0u;
+    // Lava is continuously mobile; cohesion and tile ownership shape it.
+    if (cell.material == MAT_LAVA) return true;
     if (cell.material == MAT_POLLEN) return (randomValue % 6u) == 0u;
     if (cell.material == MAT_GUNPOWDER || cell.material == MAT_SEED) return (randomValue & 1u) == 0u;
     if (cell.material == MAT_SNOW) return (randomValue % 3u) == 0u;
@@ -621,6 +622,39 @@ bool fullWaterSplitSupplied(ivec2 sourcePosition, int direction) {
     Cell reserve = sampleAt(sourcePosition - ivec2(direction * 2, 0));
     return trailing.material == MAT_WATER && !isHalfWaterCell(trailing) &&
            reserve.material == MAT_WATER && !isHalfWaterCell(reserve);
+}
+
+bool halfWaterAhead(ivec2 position, int direction) {
+    Cell candidate2 = sampleAt(position + ivec2(direction * 2, 0));
+    if (isHalfWaterCell(candidate2)) return true;
+    if (!isOpenGas(candidate2)) return false;
+    Cell candidate3 = sampleAt(position + ivec2(direction * 3, 0));
+    if (isHalfWaterCell(candidate3)) return true;
+    if (!isOpenGas(candidate3)) return false;
+    Cell candidate4 = sampleAt(position + ivec2(direction * 4, 0));
+    return isHalfWaterCell(candidate4);
+}
+
+int lavaCohesionScore(ivec2 position) {
+    int score = 0;
+    score += sampleAt(position + ivec2(-1, -1)).material == MAT_LAVA ? 2 : 0;
+    score += sampleAt(position + ivec2(0, -1)).material == MAT_LAVA ? 3 : 0;
+    score += sampleAt(position + ivec2(1, -1)).material == MAT_LAVA ? 2 : 0;
+    score += sampleAt(position + ivec2(-1, 0)).material == MAT_LAVA ? 3 : 0;
+    score += sampleAt(position + ivec2(1, 0)).material == MAT_LAVA ? 3 : 0;
+    score += sampleAt(position + ivec2(-1, 1)).material == MAT_LAVA ? 2 : 0;
+    score += sampleAt(position + ivec2(0, 1)).material == MAT_LAVA ? 3 : 0;
+    score += sampleAt(position + ivec2(1, 1)).material == MAT_LAVA ? 2 : 0;
+    return score;
+}
+
+bool lavaHorizontalMoveAllowed(ivec2 sourcePosition, ivec2 targetPosition, Cell source) {
+    if (source.material != MAT_LAVA || !isOpenGas(moveAt(targetPosition))) return false;
+    if (!supportedAt(sourcePosition, source) || !supportedAt(targetPosition, source)) return false;
+    int sourceScore = lavaCohesionScore(sourcePosition);
+    int targetScore = lavaCohesionScore(targetPosition);
+    bool sameTile = all(equal(sourcePosition / int(TILE_SIZE), targetPosition / int(TILE_SIZE)));
+    return sameTile || targetScore + 2 >= sourceScore;
 }
 
 bool isMovementHazard(uint material) {
@@ -984,6 +1018,13 @@ void processVertical(ivec2 top, ivec2 bottom) {
         return;
     }
 
+    if (b.material == MAT_LAVA && stateValue(b) >= 192u &&
+        !isStructural(a) && !isCellImmovable(a) && a.material != MAT_LAVA &&
+        (isOpenGas(a) || isCellPowder(a) || isLooseSolid(a) || isCellLiquid(a))) {
+        swapCells(top, bottom);
+        return;
+    }
+
     bool emptyGasRise = a.material == MAT_EMPTY && gasExpansionAllows(b);
     bool densityGasRise = isCellGas(a) &&
         densityOf(b.material) < densityOf(a.material);
@@ -1159,11 +1200,28 @@ void processHorizontal(ivec2 left, ivec2 right) {
                                keepLeft ? a : b, keepLeft ? b : a)) return;
     }
 
-    // Half-water is a supplied pre-fall ledge state only. Two halves may
-    // consolidate, but an isolated half never crawls horizontally or chases an edge.
+    // Restore the early conserved Half Water behavior. Halves remain fine-owned
+    // and can make a short deterministic move toward another visible half.
+    if (isHalfWaterCell(a) && isOpenGas(b) && halfWaterAhead(left, 1)) {
+        swapCells(left, right);
+        return;
+    }
+    if (isHalfWaterCell(b) && isOpenGas(a) && halfWaterAhead(right, -1)) {
+        swapCells(left, right);
+        return;
+    }
     if (isHalfWaterCell(a) || isHalfWaterCell(b)) return;
 
     if ((movePc.reserved1 & 1u) != 0u) return;
+
+    if (lavaHorizontalMoveAllowed(left, right, a)) {
+        swapCells(left, right);
+        return;
+    }
+    if (lavaHorizontalMoveAllowed(right, left, b)) {
+        swapCells(left, right);
+        return;
+    }
 
     if (expandAirIntoVacuum(left, right, a, b) ||
         expandAirIntoVacuum(right, left, b, a)) return;

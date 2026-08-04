@@ -59,6 +59,39 @@ bool displacePaintGas(ivec2 p, Cell medium) {
     return remaining == 0u;
 }
 
+bool displacePaintMediumUpward(ivec2 p) {
+    Cell contacted = cells[indexOf(p)];
+    if (!isCellLiquid(contacted) && !isCellGas(contacted)) return true;
+
+    int holeY = -1;
+    for (int y = p.y - 1; y >= 0; --y) {
+        ivec2 candidate = ivec2(p.x, y);
+        Cell medium = cells[indexOf(candidate)];
+        if (medium.material == MAT_EMPTY) {
+            holeY = y;
+            break;
+        }
+        if (isCellGas(medium)) {
+            if (!displacePaintGas(candidate, medium)) return false;
+            holeY = y;
+            break;
+        }
+        if (!isCellLiquid(medium)) return false;
+    }
+    if (holeY < 0) return false;
+
+    for (int y = holeY; y < p.y; ++y) {
+        ivec2 destination = ivec2(p.x, y);
+        ivec2 source = ivec2(p.x, y + 1);
+        Cell moved = cells[indexOf(source)];
+        moved.age = 0u;
+        moved.aux |= AUX_MOVED;
+        cells[indexOf(destination)] = moved;
+        markPaintChunkDirty(destination);
+    }
+    return true;
+}
+
 void main() {
     ivec2 local = ivec2(gl_GlobalInvocationID.xy);
     int diameter = int(pc.radius * 2u + 1u);
@@ -93,6 +126,8 @@ void main() {
         }
         uint index = indexOf(p);
         Cell previous = cells[index];
+        if (material == MAT_SMOKE && (isCellLiquid(previous) || isCellGas(previous)) &&
+            !displacePaintMediumUpward(p)) return;
         if (isDirectPaintLife(material) && isGas(previous.material) &&
             !displacePaintGas(p, previous)) return;
         recordConservation(previous, cell);
@@ -145,6 +180,8 @@ void main() {
 
     uint index = indexOf(p);
     Cell previous = cells[index];
+    if (material == MAT_SMOKE && (isCellLiquid(previous) || isCellGas(previous)) &&
+        !displacePaintMediumUpward(p)) return;
     if (isDirectPaintLife(material) && isGas(previous.material) &&
         !displacePaintGas(p, previous)) return;
     recordConservation(previous, cell);

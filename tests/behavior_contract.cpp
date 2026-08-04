@@ -179,14 +179,17 @@ static_assert(sandhybrid::map_view_width(sandhybrid::resident_world_width,
                                          sandhybrid::map_zoom_default) == 10240u);
 static_assert(sandhybrid::map_view_height(sandhybrid::resident_world_height,
                                           sandhybrid::map_zoom_default) == 1440u);
-static_assert(sandhybrid::policy::vent_emission(220u, 0u) ==
+static_assert(sandhybrid::policy::vent_pulse_active(0u));
+static_assert(!sandhybrid::policy::vent_pulse_active(500u));
+static_assert(sandhybrid::policy::vent_major_active(10'200u));
+static_assert(sandhybrid::policy::vent_emission(176u, 0u, 10'200u) ==
               sandhybrid::policy::VentEmission::lava);
 static_assert(sandhybrid::policy::consume_vent_pressure(
-                  220u, sandhybrid::policy::VentEmission::lava) == 124u);
-static_assert(sandhybrid::policy::vent_emission(72u, 0u) ==
+                  176u, sandhybrid::policy::VentEmission::lava) == 156u);
+static_assert(sandhybrid::policy::vent_emission(48u, 1u, 0u) ==
               sandhybrid::policy::VentEmission::gas);
 static_assert(sandhybrid::policy::consume_vent_pressure(
-                  72u, sandhybrid::policy::VentEmission::gas) == 48u);
+                  48u, sandhybrid::policy::VentEmission::gas) == 42u);
 
 } // namespace
 

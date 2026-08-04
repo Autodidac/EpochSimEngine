@@ -8,6 +8,7 @@
 #include "epochgui_font.glsl"
 #include "ui_text.glsl"
 #include "debug_stats.glsl"
+#include "material_appearance.glsl"
 
 layout(location = 0) out vec4 outColor;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
@@ -66,6 +67,8 @@ layout(push_constant) uniform RenderPush {
     uint cameraViewWidth;
     uint cameraViewHeight;
     uint selectedInventorySlot;
+    uint selectedWorkspace;
+    uint renderFrame;
 } renderPc;
 
 uint glyphRow(uint code, uint row) {
@@ -209,11 +212,11 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
         textColor = vec3(0.52, 0.94, 0.58);
     }
 
-    const uint statCount = 40u;
+    const uint statCount = 46u;
     uint rowHeight = textScale == 2 ? 18u : 12u;
     uint headerHeight = textScale == 2 ? 24u : 15u;
     uint fixedLabels[statCount] = uint[statCount](
-        1u, 143u, 137u,
+        1u, 174u, 175u, 176u, 177u, 178u, 179u, 143u, 137u,
         160u, 161u, 94u, 95u, 96u,
         144u, 145u,
         162u, 98u, 81u, 163u, 119u, 120u, 121u,
@@ -222,6 +225,12 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
         149u, 150u, 151u, 152u, 153u, 154u, 155u, 156u, 110u, 82u);
     uint fixedValues[statCount] = uint[statCount](
         renderPc.framesPerSecond,
+        renderPc.gridWidth,
+        renderPc.gridHeight,
+        renderPc.gridWidth * renderPc.gridHeight,
+        renderPc.tileColumns,
+        renderPc.tileRows,
+        renderPc.tileColumns * renderPc.tileRows,
         renderPc.gridWidth * renderPc.gridHeight * 36u / (1024u * 1024u),
         renderPc.activeAreaCount,
         debugStats[STAT_SCOPE_CELLS],
@@ -274,10 +283,10 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
     // Restrained visual grouping: resource pressure, hierarchy/activity, and
     // world events remain readable without surrounding every row with boxes.
     uint separatorYs[4] = uint[4](
-        panelTop + headerHeight + 8u * rowHeight - 4u,
-        panelTop + headerHeight + 17u * rowHeight - 4u,
-        panelTop + headerHeight + 21u * rowHeight - 4u,
-        panelTop + headerHeight + 30u * rowHeight - 4u);
+        panelTop + headerHeight + 14u * rowHeight - 4u,
+        panelTop + headerHeight + 23u * rowHeight - 4u,
+        panelTop + headerHeight + 27u * rowHeight - 4u,
+        panelTop + headerHeight + 36u * rowHeight - 4u);
     for (uint separator = 0u; separator < 4u; ++separator) {
         uint separatorY = separatorYs[separator];
         if (y >= separatorY && y < separatorY + 1u &&
@@ -374,6 +383,7 @@ vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
 
 vec4 worldColor(Cell cell, ivec2 grid) {
     vec4 base = materialColor(cell.material, cell.age, cell.aux, grid);
+    base = applyMaterialAppearance(cell, grid, renderPc.renderFrame, base);
     if ((cell.aux & AUX_WET) != 0u && !isCellLiquid(cell) && !isCellGas(cell)) {
         base.rgb = mix(base.rgb, vec3(0.08, 0.24, 0.42), 0.20);
         base.rgb *= 0.84;
@@ -386,20 +396,6 @@ vec4 worldColor(Cell cell, ivec2 grid) {
         waterNeighbors += cellAt(grid + ivec2(0, 1)).material == MAT_WATER ? 1u : 0u;
         float coverage = 0.62 + float(waterNeighbors) * 0.045;
         base.rgb = mix(backgroundColor(grid), base.rgb, min(coverage, 0.80));
-    }
-    bool metalSurface = cell.material == MAT_ALUMINUM || cell.material == MAT_IRON ||
-                        cell.material == MAT_COPPER || cell.material == MAT_GOLD ||
-                        cell.material == MAT_STEEL || cell.material == MAT_ALUMINUM_SHAVINGS ||
-                        cell.material == MAT_IRON_ORE;
-    if (metalSurface) {
-        uint grainHash = hash32(uint(grid.x) * 73856093u ^ uint(grid.y) * 19349663u ^ cell.aux);
-        float grain = float((grainHash >> 8u) & 31u) / 31.0 - 0.5;
-        float brushed = ((grid.x + int(cell.age >> 4u)) & 7) == 0 ? 0.10 : 0.0;
-        base.rgb = clamp(base.rgb * (0.88 + grain * 0.20) + vec3(brushed), 0.0, 1.0);
-        if (cell.material == MAT_IRON || cell.material == MAT_IRON_ORE)
-            base.rgb = mix(base.rgb, vec3(0.34, 0.20, 0.13), float((grainHash >> 16u) & 7u) / 42.0);
-        if (cell.material == MAT_COPPER)
-            base.rgb = mix(base.rgb, vec3(0.08, 0.42, 0.32), float((grainHash >> 20u) & 3u) / 24.0);
     }
     if (cell.material == MAT_PLANT_STEM) {
         uint stemHash = hash32(uint(grid.x) * 2654435761u ^ uint(grid.y) ^ cell.aux);
@@ -469,7 +465,25 @@ void main() {
         vec3 color = vec3(0.025, 0.034, 0.048);
         uint localX = x - sidebarLeft;
         if (localX < 2u) color = vec3(0.14, 0.23, 0.32);
-        bool text = fixedPixel(pixel, ivec2(int(sidebarLeft + 10u), 8), 2, 0u);
+        bool text = false;
+        uint rowLeft = sidebarLeft + 8u;
+        uint rowWidth = max(sidebarWidth - 16u, 1u);
+        uint tabWidth = max(rowWidth / 4u, 1u);
+        uint tabLabels[4] = uint[4](166u, 167u, 168u, 169u);
+        for (uint tab = 0u; tab < 4u; ++tab) {
+            uint left = rowLeft + tab * tabWidth;
+            uint right = tab == 3u ? sidebarLeft + sidebarWidth - 8u : left + tabWidth;
+            if (x >= left && x < right && y >= 4u && y < 28u) {
+                color = tab == renderPc.selectedWorkspace ? vec3(0.16, 0.39, 0.58)
+                                                          : vec3(0.055, 0.085, 0.12);
+                if (borderPixel(x, y, left, 4u, right, 28u)) color *= 0.55;
+            }
+            uint length = fixedTextLength(tabLabels[tab]);
+            int scale = int(right - left) >= int(length * 6u + 6u) ? 1 : 1;
+            int labelWidth = int(length) * 6 * scale - scale;
+            if (fixedPixel(pixel, ivec2(int(left + right) / 2 - labelWidth / 2, 12), scale,
+                           tabLabels[tab])) text = true;
+        }
         uint sceneId = renderPc.selectedScene % max(renderPc.sceneCount, 1u);
         text = text || fixedPixel(pixel, ivec2(int(sidebarLeft + 10u), 31), 1, 5u) ||
                scenePixel(pixel, ivec2(int(sidebarLeft + 58u), 27), 2, sceneId) ||
@@ -484,10 +498,14 @@ void main() {
                numberPixel(pixel, ivec2(int(sidebarLeft + 274u), 51), 1,
                            renderPc.activeAreaCount);
 
+        if (fixedPixel(pixel, ivec2(int(rowLeft), 62), 1, 170u) ||
+            fixedPixel(pixel, ivec2(int(rowLeft), 96), 1, 171u) ||
+            fixedPixel(pixel, ivec2(int(rowLeft), 130), 1, 172u) ||
+            fixedPixel(pixel, ivec2(int(rowLeft), 162), 1, 173u))
+            text = true;
+
         // Scene files/navigation.
         uint rowGap = 4u;
-        uint rowLeft = sidebarLeft + 8u;
-        uint rowWidth = max(sidebarWidth - 16u, 1u);
         uint sceneWidth = max((rowWidth - rowGap * 3u) / 4u, 1u);
         uint sceneIds[4] = uint[4](41u, 42u, 65u, 66u);
         for (uint i = 0u; i < 4u; ++i) {

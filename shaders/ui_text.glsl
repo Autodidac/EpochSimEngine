@@ -6,8 +6,8 @@ layout(std430, binding = 6) readonly buffer UiTextStorageBuffer {
 };
 
 const uint FIXED_TEXT_OFFSETS_BASE = 0u;
-const uint FIXED_TEXT_WORDS_BASE = 167u;
-const uint FIXED_TEXT_COUNT = 166u;
+const uint FIXED_TEXT_WORDS_BASE = 182u;
+const uint FIXED_TEXT_COUNT = 181u;
 
 uint fixedTextLength(uint id) {
     if (id >= FIXED_TEXT_COUNT) return 0u;
@@ -26,8 +26,8 @@ uint fixedTextChar(uint id, uint index) {
     return (word >> ((byteIndex & 3u) * 8u)) & 255u;
 }
 
-const uint MATERIAL_TEXT_OFFSETS_BASE = 490u;
-const uint MATERIAL_TEXT_WORDS_BASE = 558u;
+const uint MATERIAL_TEXT_OFFSETS_BASE = 540u;
+const uint MATERIAL_TEXT_WORDS_BASE = 608u;
 const uint MATERIAL_TEXT_COUNT = 67u;
 
 uint materialTextLength(uint id) {
@@ -47,8 +47,8 @@ uint materialTextChar(uint id, uint index) {
     return (word >> ((byteIndex & 3u) * 8u)) & 255u;
 }
 
-const uint GROUP_TEXT_OFFSETS_BASE = 667u;
-const uint GROUP_TEXT_WORDS_BASE = 676u;
+const uint GROUP_TEXT_OFFSETS_BASE = 717u;
+const uint GROUP_TEXT_WORDS_BASE = 726u;
 const uint GROUP_TEXT_COUNT = 8u;
 
 uint groupTextLength(uint id) {
@@ -68,8 +68,8 @@ uint groupTextChar(uint id, uint index) {
     return (word >> ((byteIndex & 3u) * 8u)) & 255u;
 }
 
-const uint SCENE_TEXT_OFFSETS_BASE = 690u;
-const uint SCENE_TEXT_WORDS_BASE = 700u;
+const uint SCENE_TEXT_OFFSETS_BASE = 740u;
+const uint SCENE_TEXT_WORDS_BASE = 750u;
 const uint SCENE_TEXT_COUNT = 9u;
 
 uint sceneTextLength(uint id) {
@@ -89,8 +89,8 @@ uint sceneTextChar(uint id, uint index) {
     return (word >> ((byteIndex & 3u) * 8u)) & 255u;
 }
 
-const uint PHASE_TEXT_OFFSETS_BASE = 722u;
-const uint PHASE_TEXT_WORDS_BASE = 732u;
+const uint PHASE_TEXT_OFFSETS_BASE = 772u;
+const uint PHASE_TEXT_WORDS_BASE = 782u;
 const uint PHASE_TEXT_COUNT = 9u;
 
 uint phaseTextLength(uint id) {
@@ -110,8 +110,8 @@ uint phaseTextChar(uint id, uint index) {
     return (word >> ((byteIndex & 3u) * 8u)) & 255u;
 }
 
-const uint GROUP_MATERIAL_BASE = 752u;
-const uint GROUP_MATERIAL_COUNTS_BASE = 744u;
+const uint GROUP_MATERIAL_BASE = 802u;
+const uint GROUP_MATERIAL_COUNTS_BASE = 794u;
 const uint GROUP_COUNT = 8u;
 const uint GROUP_MATERIAL_SLOTS = 10u;
 
@@ -124,8 +124,8 @@ uint groupMaterial(uint group, uint slot) {
     return uiTextStorage[GROUP_MATERIAL_BASE + group * GROUP_MATERIAL_SLOTS + slot];
 }
 
-const uint CARD_TEXT_OFFSETS_BASE = 832u;
-const uint CARD_TEXT_WORDS_BASE = 1503u;
+const uint CARD_TEXT_OFFSETS_BASE = 882u;
+const uint CARD_TEXT_WORDS_BASE = 1553u;
 const uint CARD_MATERIAL_COUNT = 67u;
 const uint CARD_LINE_COUNT = 10u;
 

@@ -181,6 +181,9 @@ ivec2 sandboxQueen() { return brickCenter(ivec2(58, 24)); }
 
 // Canonical Fix28 compact Beehive shared by generated scenes and the tool.
 void applyBeehive(ivec2 p, ivec2 queen, inout uint material, bool includeFormation) {
+    // Early suspended hive support bar and compact colony geometry.
+    if (p.x > queen.x - 38 && p.x < queen.x + 30 &&
+        p.y > queen.y - 17 && p.y < queen.y - 12) material = MAT_WOOD;
     ivec2 offset = p - queen;
     uint prefab = beehivePrefabMaterial(offset, hash32(indexOf(p) ^ pc.seed ^ 0xb33u));
     if (prefab != MATERIAL_COUNT) material = prefab;
@@ -251,11 +254,26 @@ uint volcanoMaterial(ivec2 p) {
     if (b.y == chamberCenter.y + 2 && abs(b.x - center) <= 2)
         material = MAT_MAGMA_VENT;
 
-    // Natural map-scale lake on the open side of the volcano.
-    ivec2 lakeMin = ivec2(max(center + 25, world.x * 2 / 3), floorRow - 11);
-    ivec2 lakeMax = ivec2(world.x - 2, floorRow + 1);
-    if (brickFrame(p, lakeMin, lakeMax, 1)) material = MAT_STONE;
-    else if (brickRect(p, lakeMin + ivec2(1), lakeMax - ivec2(1))) material = MAT_WATER;
+    // Natural map-scale lake on the open side of the volcano. The basin is
+    // curved at cell resolution, with shallow banks rather than a framed tank.
+    int lakeLeft = max((center + 22) * BRICK_SIZE, int(pc.width) * 2 / 3);
+    int lakeRight = int(pc.width) - BRICK_SIZE * 3;
+    int lakeCenter = (lakeLeft + lakeRight) / 2;
+    int lakeHalfSpan = max(24, (lakeRight - lakeLeft) / 2);
+    int lakeSurface = (floorRow - 9) * BRICK_SIZE + 2;
+    int lakeFloorLimit = floorRow * BRICK_SIZE - 2;
+    int lakeDx = abs(p.x - lakeCenter);
+    if (lakeDx <= lakeHalfSpan) {
+        int centerFactor = lakeHalfSpan - lakeDx;
+        int bowlDepth = 6 + centerFactor * 58 / max(lakeHalfSpan, 1);
+        int rough = int(hash32(uint(p.x / 5) ^ pc.seed ^ 0x1a6eu) & 3u) - 1;
+        int bedY = min(lakeFloorLimit, lakeSurface + bowlDepth + rough);
+        if (p.y >= lakeSurface && p.y < bedY) material = MAT_WATER;
+        else if (p.y >= bedY && p.y < lakeFloorLimit + 5)
+            material = p.y < bedY + 5 ? MAT_DIRT : MAT_STONE;
+        if (p.y == lakeSurface - 1 && lakeDx > lakeHalfSpan - BRICK_SIZE * 2)
+            material = MAT_GRASS;
+    }
 
     if (material == MAT_EMPTY && p.y < (top + 2) * BRICK_SIZE &&
         p.y > max(8, top * BRICK_SIZE - 120) &&
