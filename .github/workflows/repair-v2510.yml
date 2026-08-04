@@ -1,0 +1,671 @@
+name: One-shot v2.5.10 repair
+
+on:
+  push:
+    branches: [agent/v260-ui-collapse-laser]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/v260-ui-collapse-laser
+          fetch-depth: 0
+
+      - name: Apply screenshot, fracture, and tool corrections
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def read(path: str) -> str:
+              return Path(path).read_text(encoding="utf-8")
+
+          def write(path: str, text: str) -> None:
+              Path(path).write_text(text, encoding="utf-8")
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{path}: expected one match, found {count}: {old[:100]!r}")
+              write(path, text.replace(old, new, 1))
+
+          def replace_all(path: str, old: str, new: str, minimum: int = 1) -> None:
+              text = read(path)
+              count = text.count(old)
+              if count < minimum:
+                  raise RuntimeError(f"{path}: expected at least {minimum} matches, found {count}: {old!r}")
+              write(path, text.replace(old, new))
+
+          # Compact global header and workspace-specific body geometry.
+          replace_once("include/sandhybrid/ui_layout.hpp",
+              "inline constexpr std::uint32_t status_height = 208u;",
+              "inline constexpr std::uint32_t status_height = 200u;")
+          replace_once("include/sandhybrid/ui_layout.hpp", '''    // Scene files/navigation: PREV, NEXT, SAVE, LOAD.
+              const float scene_width = (std::max)(1.0f, (row_width - row_gap * 3.0f) / 4.0f);
+              layout.previous_scene = {{row_left, 70.0f}, {scene_width, 28.0f}};
+              layout.next_scene = {{row_left + (scene_width + row_gap), 70.0f}, {scene_width, 28.0f}};
+              layout.save_scene = {{row_left + (scene_width + row_gap) * 2.0f, 70.0f}, {scene_width, 28.0f}};
+              layout.load_scene = {{row_left + (scene_width + row_gap) * 3.0f, 70.0f},
+                                   {row_width - scene_width * 3.0f - row_gap * 3.0f, 28.0f}};
+
+              // Simulation actions are intentionally paired and equally prominent.
+              const float action_width = (std::max)(1.0f, (row_width - row_gap) * 0.5f);
+              layout.reset_scene = {{row_left, 102.0f}, {action_width, 30.0f}};
+              layout.pause_toggle = {{row_left + action_width + row_gap, 102.0f},
+                                     {row_width - action_width - row_gap, 30.0f}};
+
+              // View/input modes: MINE/BUILD, PLAYER/WASD PAN, MAP, DEBUG.
+              const float top_control_width = (std::max)(1.0f, (row_width - row_gap * 3.0f) / 4.0f);
+              layout.mode_toggle = {{row_left, 136.0f}, {top_control_width, 28.0f}};
+              layout.camera_controls_toggle = {{row_left + (top_control_width + row_gap), 136.0f},
+                                               {top_control_width, 28.0f}};
+              layout.map_toggle = {{row_left + (top_control_width + row_gap) * 2.0f, 136.0f},
+                                   {top_control_width, 28.0f}};
+              layout.debug_toggle = {{row_left + (top_control_width + row_gap) * 3.0f, 136.0f},
+                                     {row_width - top_control_width * 3.0f - row_gap * 3.0f, 28.0f}};
+
+              // Primary tools stay visible above the material browser.
+              const float utility_width = (std::max)(1.0f, (row_width - row_gap * 2.0f) / 3.0f);
+              layout.atmosphere = {{row_left, 168.0f}, {utility_width, float(eraser_height)}};
+              layout.eraser = {{row_left + utility_width + row_gap, 168.0f},
+                               {utility_width, float(eraser_height)}};
+              layout.fill = {{row_left + (utility_width + row_gap) * 2.0f, 168.0f},
+                             {row_width - utility_width * 2.0f - row_gap * 2.0f,
+                              float(eraser_height)}};
+
+              const float keymap_top = layout.palette.position.y + layout.palette.size.y + gap;
+              layout.keymap = {{content_left, keymap_top}, {content_width, float(keymap_height)}};
+              const float cursor_top = keymap_top + float(keymap_height) + gap;
+              layout.cursor_editor = {{content_left, cursor_top},
+                                      {content_width, float(cursor_editor_height)}};
+          ''', '''    // Global controls occupy four clean rows with no floating headings drawn through them.
+              const float scene_width = (std::max)(1.0f, (row_width - row_gap * 3.0f) / 4.0f);
+              layout.previous_scene = {{row_left, 64.0f}, {scene_width, 28.0f}};
+              layout.next_scene = {{row_left + (scene_width + row_gap), 64.0f}, {scene_width, 28.0f}};
+              layout.save_scene = {{row_left + (scene_width + row_gap) * 2.0f, 64.0f}, {scene_width, 28.0f}};
+              layout.load_scene = {{row_left + (scene_width + row_gap) * 3.0f, 64.0f},
+                                   {row_width - scene_width * 3.0f - row_gap * 3.0f, 28.0f}};
+
+              const float action_width = (std::max)(1.0f, (row_width - row_gap) * 0.5f);
+              layout.reset_scene = {{row_left, 96.0f}, {action_width, 30.0f}};
+              layout.pause_toggle = {{row_left + action_width + row_gap, 96.0f},
+                                     {row_width - action_width - row_gap, 30.0f}};
+
+              const float top_control_width = (std::max)(1.0f, (row_width - row_gap * 3.0f) / 4.0f);
+              layout.mode_toggle = {{row_left, 130.0f}, {top_control_width, 28.0f}};
+              layout.camera_controls_toggle = {{row_left + (top_control_width + row_gap), 130.0f},
+                                               {top_control_width, 28.0f}};
+              layout.map_toggle = {{row_left + (top_control_width + row_gap) * 2.0f, 130.0f},
+                                   {top_control_width, 28.0f}};
+              layout.debug_toggle = {{row_left + (top_control_width + row_gap) * 3.0f, 130.0f},
+                                     {row_width - top_control_width * 3.0f - row_gap * 3.0f, 28.0f}};
+
+              const float utility_width = (std::max)(1.0f, (row_width - row_gap * 2.0f) / 3.0f);
+              layout.atmosphere = {{row_left, 162.0f}, {utility_width, float(eraser_height)}};
+              layout.eraser = {{row_left + utility_width + row_gap, 162.0f},
+                               {utility_width, float(eraser_height)}};
+              layout.fill = {{row_left + (utility_width + row_gap) * 2.0f, 162.0f},
+                             {row_width - utility_width * 2.0f - row_gap * 2.0f,
+                              float(eraser_height)}};
+
+              // Editor, Settings, and Designer reuse the same body origin; only the selected
+              // workspace is rendered and receives input.
+              const float workspace_body_top = float(status_height) + margin;
+              layout.keymap = {{content_left, workspace_body_top},
+                               {content_width, float(keymap_height)}};
+              const float cursor_top = workspace_body_top;
+              layout.cursor_editor = {{content_left, cursor_top},
+                                      {content_width, float(cursor_editor_height)}};
+          ''')
+          replace_once("include/sandhybrid/ui_layout.hpp",
+              "    const float card_top = cursor_top + float(cursor_editor_height) + gap;",
+              "    const float card_top = layout.palette.position.y + layout.palette.size.y + gap;")
+          replace_once("include/sandhybrid/ui_layout.hpp",
+              "    const float top = (std::max)(0.0f, static_cast<float>(window_height) - 88.0f);",
+              "    const float top = layout.status.position.y + layout.status.size.y + margin + 34.0f;\n    (void)window_height;")
+
+          # Input is routed only to controls visible in the selected workspace.
+          replace_once("src/app.cpp", '''        const auto hovered_group = ui::group_at(layout, pointer);
+              shared_state.hovered_group.store(hovered_group, std::memory_order_relaxed);
+
+              const auto selected_group_index =
+                  shared_state.selected_group.load(std::memory_order_relaxed) % material_group_count;
+              const auto selected_group = static_cast<MaterialGroup>(selected_group_index);
+              const auto hovered_material = ui::palette_material_at(layout, selected_group, pointer);
+              shared_state.hovered_material.store(
+                  static_cast<std::uint32_t>(hovered_material), std::memory_order_relaxed);
+              const bool hovered_ignite_air =
+                  ui::ignite_air_action_at(layout, selected_group, pointer);
+          ''', '''        const auto selected_workspace =
+                  shared_state.selected_workspace.load(std::memory_order_relaxed) %
+                  ui::workspace_tab_count;
+              const bool inventory_workspace = selected_workspace == 0u;
+              const bool editor_workspace = selected_workspace == 1u;
+              const bool designer_workspace = selected_workspace == 3u;
+              const auto hovered_group = editor_workspace
+                  ? ui::group_at(layout, pointer) : material_group_count;
+              shared_state.hovered_group.store(hovered_group, std::memory_order_relaxed);
+
+              const auto selected_group_index =
+                  shared_state.selected_group.load(std::memory_order_relaxed) % material_group_count;
+              const auto selected_group = static_cast<MaterialGroup>(selected_group_index);
+              const auto hovered_material = editor_workspace
+                  ? ui::palette_material_at(layout, selected_group, pointer) : Material::count;
+              shared_state.hovered_material.store(
+                  static_cast<std::uint32_t>(hovered_material), std::memory_order_relaxed);
+              const bool hovered_ignite_air = editor_workspace &&
+                  ui::ignite_air_action_at(layout, selected_group, pointer);
+          ''')
+          for old, new in [
+              ("else if (epochengine::gui_lib::contains(layout.placement_cells, pointer))",
+               "else if (designer_workspace && epochengine::gui_lib::contains(layout.placement_cells, pointer))"),
+              ("else if (epochengine::gui_lib::contains(layout.placement_tiles, pointer))",
+               "else if (designer_workspace && epochengine::gui_lib::contains(layout.placement_tiles, pointer))"),
+              ("else if (epochengine::gui_lib::contains(layout.cursor_circle, pointer))",
+               "else if (designer_workspace && epochengine::gui_lib::contains(layout.cursor_circle, pointer))"),
+              ("else if (epochengine::gui_lib::contains(layout.cursor_square, pointer))",
+               "else if (designer_workspace && epochengine::gui_lib::contains(layout.cursor_square, pointer))"),
+              ("else if (epochengine::gui_lib::contains(layout.cursor_horizontal, pointer))",
+               "else if (designer_workspace && epochengine::gui_lib::contains(layout.cursor_horizontal, pointer))"),
+              ("else if (epochengine::gui_lib::contains(layout.cursor_vertical, pointer))",
+               "else if (designer_workspace && epochengine::gui_lib::contains(layout.cursor_vertical, pointer))"),
+              ("else if (epochengine::gui_lib::contains(layout.brush_smaller, pointer))",
+               "else if (designer_workspace && epochengine::gui_lib::contains(layout.brush_smaller, pointer))"),
+              ("else if (epochengine::gui_lib::contains(layout.brush_larger, pointer))",
+               "else if (designer_workspace && epochengine::gui_lib::contains(layout.brush_larger, pointer))"),
+              ("else if (epochengine::gui_lib::contains(layout.zoom_out, pointer))",
+               "else if (designer_workspace && epochengine::gui_lib::contains(layout.zoom_out, pointer))"),
+              ("else if (epochengine::gui_lib::contains(layout.zoom_in, pointer))",
+               "else if (designer_workspace && epochengine::gui_lib::contains(layout.zoom_in, pointer))"),
+              ("} else if (scene_player_present &&\n                       ui::inventory_slot_at(layout, input.height, pointer) <",
+               "} else if (inventory_workspace && scene_player_present &&\n                       ui::inventory_slot_at(layout, input.height, pointer) <"),
+              ("} else if (hovered_group < material_group_count) {",
+               "} else if (editor_workspace && hovered_group < material_group_count) {"),
+              ("} else if (hovered_material != Material::count) {",
+               "} else if (editor_workspace && hovered_material != Material::count) {")
+          ]:
+              replace_once("src/app.cpp", old, new)
+
+          # Remove overlapping section captions and make each workspace render distinct content.
+          replace_once("shaders/fullscreen.frag", '''        if (fixedPixel(pixel, ivec2(int(rowLeft), 62), 1, 170u) ||
+                  fixedPixel(pixel, ivec2(int(rowLeft), 96), 1, 171u) ||
+                  fixedPixel(pixel, ivec2(int(rowLeft), 130), 1, 172u) ||
+                  fixedPixel(pixel, ivec2(int(rowLeft), 162), 1, 173u))
+                  text = true;
+
+          ''', "")
+          for old, new in [
+              ("y >= 70u && y < 98u", "y >= 64u && y < 92u"),
+              ("borderPixel(x, y, left, 70u, right, 98u)", "borderPixel(x, y, left, 64u, right, 92u)"),
+              ("84 - (7 * scale) / 2", "78 - (7 * scale) / 2"),
+              ("y >= 102u && y < 132u", "y >= 96u && y < 126u"),
+              ("borderPixel(x, y, left, 102u, right, 132u)", "borderPixel(x, y, left, 96u, right, 126u)"),
+              ("117 - (7 * scale) / 2", "111 - (7 * scale) / 2"),
+              ("y >= 136u && y < 164u", "y >= 130u && y < 158u"),
+              ("borderPixel(x, y, left, 136u, right, 164u)", "borderPixel(x, y, left, 130u, right, 158u)"),
+              ("150 - (7 * scale) / 2", "144 - (7 * scale) / 2"),
+              ("y >= 168u && y < 202u", "y >= 162u && y < 196u"),
+              ("borderPixel(x, y, left, 168u, right, 202u)", "borderPixel(x, y, left, 162u, right, 196u)"),
+              ("185 - (7 * scale) / 2", "179 - (7 * scale) / 2")
+          ]:
+              replace_all("shaders/fullscreen.frag", old, new)
+
+          replace_once("shaders/fullscreen.frag", '''        uint groupTop = renderPc.statusHeight + 5u;
+              uint groupRows = max((renderPc.groupCount + 1u) / 2u, 1u);
+          ''', '''        uint groupTop = renderPc.statusHeight + 5u;
+              if (renderPc.selectedWorkspace == 0u && y >= groupTop &&
+                  y < renderPc.windowHeight - 5u) {
+                  color = vec3(0.035, 0.047, 0.064);
+                  if (borderPixel(x, y, contentLeft, groupTop,
+                                  contentLeft + contentWidth, renderPc.windowHeight - 5u))
+                      color = vec3(0.12, 0.20, 0.28);
+                  bool inventoryText = fixedPixel(
+                      pixel, ivec2(int(contentLeft + 10u), int(groupTop + 9u)), 2, tabLabels[0]);
+                  uint inventoryTop = groupTop + 34u;
+                  uint slotGap = 3u;
+                  uint slotWidth = max((contentWidth - slotGap) / 2u, 1u);
+                  uint slotHeight = 42u;
+                  uint materials[4] = uint[4](MAT_IRON, MAT_GOLD, MAT_COPPER, MAT_ALUMINUM);
+                  uint counts[4] = uint[4](actor.iron, actor.gold, actor.copper, actor.aluminum);
+                  for (uint slot = 0u; slot < 4u; ++slot) {
+                      uint column = slot % 2u;
+                      uint row = slot / 2u;
+                      uint left = contentLeft + column * (slotWidth + slotGap);
+                      uint right = column == 1u ? contentLeft + contentWidth : left + slotWidth;
+                      uint top = inventoryTop + row * (slotHeight + slotGap);
+                      uint bottom = top + slotHeight;
+                      if (x >= left && x < right && y >= top && y < bottom) {
+                          color = slot == renderPc.selectedInventorySlot
+                              ? vec3(0.14, 0.30, 0.45) : vec3(0.045, 0.062, 0.084);
+                          if (borderPixel(x, y, left, top, right, bottom))
+                              color = slot == renderPc.selectedInventorySlot
+                                  ? vec3(0.34, 0.78, 1.00) : vec3(0.12, 0.20, 0.28);
+                      }
+                      inventoryText = inventoryText || materialPixel(
+                          pixel, ivec2(int(left + 7u), int(top + 8u)), 1, materials[slot]) ||
+                          numberPixel(pixel, ivec2(int(right - 48u), int(top + 7u)), 2, counts[slot]);
+                  }
+                  if (inventoryText) color = vec3(0.94, 0.97, 1.0);
+                  outColor = vec4(color, 1.0);
+                  return;
+              }
+              uint groupRows = max((renderPc.groupCount + 1u) / 2u, 1u);
+          ''')
+          replace_once("shaders/fullscreen.frag",
+              "        if (y >= groupTop && y < groupTop + renderPc.groupTabsHeight &&",
+              "        if (renderPc.selectedWorkspace == 1u &&\n            y >= groupTop && y < groupTop + renderPc.groupTabsHeight &&")
+          replace_once("shaders/fullscreen.frag",
+              "        if (y >= paletteTop && y < paletteTop + palettePanelHeight &&",
+              "        if (renderPc.selectedWorkspace == 1u &&\n            y >= paletteTop && y < paletteTop + palettePanelHeight &&")
+          replace_once("shaders/fullscreen.frag",
+              "        uint keymapTop = paletteTop + palettePanelHeight + 3u;",
+              "        uint keymapTop = groupTop;")
+          replace_once("shaders/fullscreen.frag",
+              "        if (y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {",
+              "        if (renderPc.selectedWorkspace == 2u &&\n            y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {")
+          replace_once("shaders/fullscreen.frag",
+              "        uint cursorTop = keymapBottom + 3u;",
+              "        uint cursorTop = groupTop;")
+          replace_once("shaders/fullscreen.frag",
+              "        if (y >= cursorTop && y < cursorBottom && x >= contentLeft && x < contentLeft + contentWidth) {",
+              "        if (renderPc.selectedWorkspace == 3u &&\n            y >= cursorTop && y < cursorBottom && x >= contentLeft && x < contentLeft + contentWidth) {")
+          replace_once("shaders/fullscreen.frag", '''        uint cardTop = cursorBottom + 3u;
+              uint actorPanel = actor.enabled != 0u ? 106u : 5u;
+          ''', '''        if (renderPc.selectedWorkspace != 1u && y >= groupTop) {
+                  outColor = vec4(color, 1.0);
+                  return;
+              }
+
+              uint cardTop = paletteTop + palettePanelHeight + 3u;
+              uint actorPanel = actor.enabled != 0u ? 106u : 5u;
+          ''')
+          replace_once("shaders/fullscreen.frag",
+              "        if (y >= cardTop && y < cardBottom) {",
+              "        if (renderPc.selectedWorkspace == 1u && y >= cardTop && y < cardBottom) {")
+
+          # Sparse, short-lived pixel bursts replace the long solid beam.
+          replace_once("shaders/fullscreen.frag", '''    if (actor.enabled != 0u && actor.health != 0u && actor.shotTimer > 0u) {
+              vec2 toolOrigin = vec2(float(actor.x), float(actor.y - 4));
+              vec2 toolHit = vec2(float(actor.hitX), float(actor.hitY));
+              float beamDistance = segmentDistance(vec2(grid) + vec2(0.5), toolOrigin, toolHit);
+              if (beamDistance < 0.72) {
+                  color = actor.shotTimer > 7u ? vec4(1.0, 0.28, 0.68, 1.0)
+                                               : vec4(1.0, 0.82, 0.20, 1.0);
+              }
+              ivec2 impactDelta = grid - ivec2(actor.hitX, actor.hitY);
+              int impactDistance = impactDelta.x * impactDelta.x + impactDelta.y * impactDelta.y;
+              if (impactDistance >= 3 && impactDistance <= 10) color = vec4(1.0, 0.96, 0.72, 1.0);
+          }
+          ''', '''    if (actor.enabled != 0u && actor.health != 0u && actor.shotTimer > 0u) {
+              vec2 toolOrigin = vec2(float(actor.x), float(actor.y - 4));
+              vec2 toolHit = vec2(float(actor.hitX), float(actor.hitY));
+              vec2 ray = toolHit - toolOrigin;
+              float rayLength = max(length(ray), 1.0);
+              vec2 samplePoint = vec2(grid) + vec2(0.5);
+              float along = clamp(dot(samplePoint - toolOrigin, ray) /
+                                  max(dot(ray, ray), 0.0001), 0.0, 1.0);
+              float beamDistance = segmentDistance(samplePoint, toolOrigin, toolHit);
+              uint beamStep = uint(floor(along * rayLength));
+              uint burstHash = hash32(uint(grid.x) * 2246822519u ^ uint(grid.y) * 3266489917u ^
+                                      renderPc.renderFrame * 668265263u ^ actor.shotTimer * 374761393u);
+              bool tinyDash = ((beamStep + actor.shotTimer) % 7u) < 2u;
+              bool sparsePixel = (burstHash & 3u) != 0u;
+              if (beamDistance < 0.46 && tinyDash && sparsePixel) {
+                  color = actor.shotTimer > 4u ? vec4(1.0, 0.28, 0.68, 1.0)
+                                               : vec4(1.0, 0.82, 0.20, 1.0);
+              }
+              ivec2 impactDelta = grid - ivec2(actor.hitX, actor.hitY);
+              int impactDistance = impactDelta.x * impactDelta.x + impactDelta.y * impactDelta.y;
+              if (impactDistance >= 1 && impactDistance <= 8 && ((burstHash >> 3u) & 3u) == 0u)
+                  color = vec4(1.0, 0.96, 0.72, 1.0);
+          }
+          ''')
+
+          # Arm complete structural tiles for the exact 31-destroyed-cell collapse threshold.
+          replace_once("shaders/tiles.glsl", '''const uint TILE_STABILITY_OCCUPANCY = 52u;
+          // This occupancy threshold applies only to stabilized granular terrain.
+          // Block-capable structural tile placements never auto-crumble from occupancy.
+          const uint TILE_DESTROYED_CELLS_TO_CRUMBLE = 31u;
+          const uint TILE_MIN_COHESIVE_CELLS =
+              TILE_CELL_COUNT - TILE_DESTROYED_CELLS_TO_CRUMBLE + 1u;
+          const uint TILE_COLLAPSE_OCCUPANCY = TILE_MIN_COHESIVE_CELLS;
+          ''', '''const uint TILE_STABILITY_OCCUPANCY = 52u;
+          // A complete structural tile is fracture-armed. The 31st destroyed cell
+          // crosses 47% destruction (48.4375%) and releases every survivor.
+          const uint TILE_DESTROYED_CELLS_TO_CRUMBLE = 31u;
+          const uint TILE_REMAINING_CELLS_AT_COLLAPSE =
+              TILE_CELL_COUNT - TILE_DESTROYED_CELLS_TO_CRUMBLE;
+          const uint TILE_MIN_COHESIVE_CELLS = TILE_REMAINING_CELLS_AT_COLLAPSE + 1u;
+          const uint TILE_COLLAPSE_OCCUPANCY = TILE_MIN_COHESIVE_CELLS;
+          ''')
+          replace_once("shaders/tiles.glsl",
+              "const uint TILE_BULK_READY = 0x08000000u;",
+              "const uint TILE_BULK_READY = 0x08000000u;\nconst uint TILE_FRACTURE_ARMED = 0x10000000u;")
+
+          replace_once("shaders/tiles.comp", '''    bool structuralTile = structural > 0u;
+              bool durableStructuralTile = structuralTile &&
+                  (isBlockCapable(dominant) || isBlockCapable(previous.material));
+          ''', '''    bool structuralTile = structural > 0u;
+              bool durableStructuralTile = structuralTile &&
+                  (isBlockCapable(dominant) || isBlockCapable(previous.material));
+              bool fractureArmed = structuralTile &&
+                  (tileHas(previous, TILE_FRACTURE_ARMED) ||
+                   (fullRegion && isBlockCapable(dominant)));
+          ''')
+          replace_once("shaders/tiles.comp", '''    bool unsupportedStructural = structuralTile && !durableStructuralTile &&
+                                           !physicallySupported;
+              bool collapsing = structuralTile && !durableStructuralTile &&
+                                (dominantCount < TILE_MIN_COHESIVE_CELLS || unsupportedStructural);
+          ''', '''    bool unsupportedGranularStructure = structuralTile && !durableStructuralTile &&
+                                                  !physicallySupported;
+              bool thresholdCollapse = fractureArmed &&
+                                       structural < TILE_MIN_COHESIVE_CELLS;
+              bool collapsing = thresholdCollapse || unsupportedGranularStructure;
+          ''')
+          replace_once("shaders/tiles.comp",
+              "    if (bulkReadySolid) flags |= TILE_MACRO_SOLID | TILE_BULK_READY;",
+              "    if (bulkReadySolid) flags |= TILE_MACRO_SOLID | TILE_BULK_READY;\n    if (fractureArmed) flags |= TILE_FRACTURE_ARMED;")
+          replace_once("shaders/tiles.comp", '''    bool fineActive = represented != 0u && !macroMovable && !settledHalfWater &&
+                                (activeAgent || moving || reacting || hot || mediumBreakup ||
+                                 !uniformMaterial || represented < TILE_CELL_COUNT);
+          ''', '''    bool fineActive = represented != 0u && !macroMovable && !settledHalfWater &&
+                                (collapsing || activeAgent || moving || reacting || hot || mediumBreakup ||
+                                 !uniformMaterial || represented < TILE_CELL_COUNT);
+          ''')
+
+          # Remaining structural pixels become ordinary moving fragments and immediately enter
+          # vertical/diagonal movement. Collapsing tiles cannot repair themselves.
+          replace_once("shaders/move.comp", '''bool isLooseSolid(Cell cell) {
+              return isBlockCapable(cell.material) && !isStructural(cell) &&
+                     !isCellLiquid(cell) && !isCellGas(cell);
+          }
+
+          ''', '''bool isLooseSolid(Cell cell) {
+              return isBlockCapable(cell.material) && !isStructural(cell) &&
+                     !isCellLiquid(cell) && !isCellGas(cell);
+          }
+
+          bool releaseCollapsingStructural(ivec2 position) {
+              if (!moveInside(position)) return false;
+              Cell cell = moveAt(position);
+              if (!isStructural(cell)) return false;
+              TileState tile = tiles[tileIndex(position, movePc.width)];
+              if (!tileHas(tile, TILE_COLLAPSING)) return false;
+              cell.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
+              cell.aux |= AUX_MOVED;
+              cell.age = 0u;
+              cells[moveIndex(position)] = cell;
+              markChunkDirty(position);
+              return true;
+          }
+
+          ''')
+          replace_once("shaders/move.comp", '''    if (!tileHas(targetTile, TILE_STRUCTURAL) || !tileHas(targetTile, TILE_DAMAGED) ||
+                  targetTile.material != source.material) return false;
+          ''', '''    if (!tileHas(targetTile, TILE_STRUCTURAL) || !tileHas(targetTile, TILE_DAMAGED) ||
+                  tileHas(targetTile, TILE_COLLAPSING) ||
+                  targetTile.material != source.material) return false;
+          ''')
+          for signature in [
+              "void processVertical(ivec2 top, ivec2 bottom) {\n    if (pairSleeping(top, bottom)) return;",
+              "void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {\n    if (pairSleeping(sourcePosition, targetPosition)) return;",
+              "void processHorizontal(ivec2 left, ivec2 right) {\n    if (pairSleeping(left, right)) return;"
+          ]:
+              if "processVertical" in signature:
+                  replacement = "void processVertical(ivec2 top, ivec2 bottom) {\n    releaseCollapsingStructural(top);\n    releaseCollapsingStructural(bottom);\n    if (pairSleeping(top, bottom)) return;"
+              elif "processDiagonal" in signature:
+                  replacement = "void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {\n    releaseCollapsingStructural(sourcePosition);\n    releaseCollapsingStructural(targetPosition);\n    if (pairSleeping(sourcePosition, targetPosition)) return;"
+              else:
+                  replacement = "void processHorizontal(ivec2 left, ivec2 right) {\n    releaseCollapsingStructural(left);\n    releaseCollapsingStructural(right);\n    if (pairSleeping(left, right)) return;"
+              replace_once("shaders/move.comp", signature, replacement)
+
+          # A directly broken cell is kicked down or diagonally before the tile-wide release pass.
+          replace_once("shaders/actor.comp", '''        if (health <= damage) {
+                  Cell fragment = cell;
+                  fragment.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
+                  fragment.aux |= AUX_MOVED;
+                  fragment.age = 0u;
+                  setStateValue(fragment, 1u);
+                  recordConservation(cell, fragment);
+                  cells[index] = fragment;
+              } else {
+          ''', '''        if (health <= damage) {
+                  Cell fragment = cell;
+                  fragment.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
+                  fragment.aux |= AUX_MOVED;
+                  fragment.age = 0u;
+                  setStateValue(fragment, 1u);
+                  recordConservation(cell, fragment);
+                  int away = p.x >= actor.x ? 1 : -1;
+                  ivec2 fallTargets[3] = ivec2[3](
+                      p + ivec2(0, 1), p + ivec2(away, 1), p + ivec2(-away, 1));
+                  for (uint targetIndex = 0u; targetIndex < 3u; ++targetIndex) {
+                      ivec2 targetPosition = fallTargets[targetIndex];
+                      if (!actorInside(targetPosition)) continue;
+                      Cell target = actorAt(targetPosition);
+                      if (target.material != MAT_EMPTY && !isCellGas(target) && !isCellLiquid(target))
+                          continue;
+                      cells[index] = target;
+                      cells[actorIndex(targetPosition)] = fragment;
+                      markActorChunkDirty(p);
+                      markActorChunkDirty(targetPosition);
+                      return;
+                  }
+                  cells[index] = fragment;
+              } else {
+          ''')
+          replace_once("shaders/actor.comp",
+              "        int radius = plasma ? 3 : 2;",
+              "        int radius = plasma ? 2 : 1;")
+          replace_once("shaders/actor.comp",
+              "    state.shotTimer = plasma ? 14u : 7u;",
+              "    state.shotTimer = plasma ? 6u : 4u;")
+
+          # Public deterministic fracture policy and tests.
+          Path("include/sandhybrid/structural_policy.hpp").write_text('''#pragma once
+          #include <cstdint>
+
+          namespace sandhybrid::structural_policy {
+          inline constexpr std::uint32_t tile_cell_count = 64u;
+          inline constexpr std::uint32_t destroyed_cells_to_crumble = 31u;
+          inline constexpr std::uint32_t remaining_cells_at_collapse =
+              tile_cell_count - destroyed_cells_to_crumble;
+          inline constexpr std::uint32_t minimum_cohesive_cells =
+              remaining_cells_at_collapse + 1u;
+
+          [[nodiscard]] constexpr bool should_collapse(
+              const std::uint32_t remaining_structural_cells) noexcept {
+              return remaining_structural_cells < minimum_cohesive_cells;
+          }
+
+          static_assert(!should_collapse(34u));
+          static_assert(should_collapse(33u));
+          static_assert(destroyed_cells_to_crumble * 100u > tile_cell_count * 47u);
+          } // namespace sandhybrid::structural_policy
+          ''', encoding="utf-8")
+          Path("tests/structural_policy_contract.cpp").write_text('''#include "sandhybrid/structural_policy.hpp"
+
+          int main() {
+              using namespace sandhybrid::structural_policy;
+              if (tile_cell_count != 64u || destroyed_cells_to_crumble != 31u) return 1;
+              if (should_collapse(34u)) return 2;
+              if (!should_collapse(33u)) return 3;
+              if (!should_collapse(0u)) return 4;
+              return 0;
+          }
+          ''', encoding="utf-8")
+          Path("tools/validate_v2510_contract.py").write_text('''from pathlib import Path
+
+          def require(path: str, needle: str) -> None:
+              text = Path(path).read_text(encoding="utf-8")
+              if needle not in text:
+                  raise SystemExit(f"{path}: missing {needle!r}")
+
+          require("shaders/tiles.glsl", "TILE_DESTROYED_CELLS_TO_CRUMBLE = 31u")
+          require("shaders/tiles.glsl", "TILE_FRACTURE_ARMED")
+          require("shaders/tiles.comp", "bool thresholdCollapse = fractureArmed")
+          require("shaders/tiles.comp", "structural < TILE_MIN_COHESIVE_CELLS")
+          require("shaders/move.comp", "releaseCollapsingStructural")
+          require("shaders/move.comp", "tileHas(targetTile, TILE_COLLAPSING)")
+          require("shaders/fullscreen.frag", "bool tinyDash")
+          require("shaders/fullscreen.frag", "renderPc.selectedWorkspace == 1u")
+          require("src/app.cpp", "designer_workspace &&")
+          require("src/app.cpp", "inventory_workspace && scene_player_present")
+          for forbidden in ("ivec2(int(rowLeft), 62), 1, 170u", "ivec2(int(rowLeft), 96), 1, 171u"):
+              if forbidden in Path("shaders/fullscreen.frag").read_text(encoding="utf-8"):
+                  raise SystemExit(f"overlapping heading survived: {forbidden}")
+          ''', encoding="utf-8")
+
+          replace_once("CMakeLists.txt", "project(SandHybrid VERSION 2.5.9 LANGUAGES CXX)",
+                       "project(SandHybrid VERSION 2.5.10 LANGUAGES CXX)")
+          replace_once("CMakeLists.txt", '''    include/sandhybrid/simulation_policy.hpp
+              include/sandhybrid/terrain_generation.hpp
+          ''', '''    include/sandhybrid/simulation_policy.hpp
+              include/sandhybrid/structural_policy.hpp
+              include/sandhybrid/terrain_generation.hpp
+          ''')
+          replace_once("CMakeLists.txt", '''    if(Python3_Interpreter_FOUND)
+                  add_test(NAME sandhybrid_mission_cache_contract
+                           COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_mission_cache.py)
+              endif()
+          ''', '''    if(Python3_Interpreter_FOUND)
+                  add_test(NAME sandhybrid_mission_cache_contract
+                           COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_mission_cache.py)
+                  add_test(NAME sandhybrid_v2510_source_contract
+                           COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2510_contract.py)
+              endif()
+          ''')
+          replace_once("CMakeLists.txt", '''    add_executable(sandhybrid_world_layout_contract tests/world_layout_contract.cpp)
+              target_link_libraries(sandhybrid_world_layout_contract PRIVATE SandHybrid::SandHybrid)
+              target_compile_features(sandhybrid_world_layout_contract PRIVATE cxx_std_23)
+              sandhybrid_configure_warnings(sandhybrid_world_layout_contract)
+              add_test(NAME sandhybrid_world_layout_contract COMMAND sandhybrid_world_layout_contract)
+
+          ''', '''    add_executable(sandhybrid_world_layout_contract tests/world_layout_contract.cpp)
+              target_link_libraries(sandhybrid_world_layout_contract PRIVATE SandHybrid::SandHybrid)
+              target_compile_features(sandhybrid_world_layout_contract PRIVATE cxx_std_23)
+              sandhybrid_configure_warnings(sandhybrid_world_layout_contract)
+              add_test(NAME sandhybrid_world_layout_contract COMMAND sandhybrid_world_layout_contract)
+
+              add_executable(sandhybrid_structural_policy_contract tests/structural_policy_contract.cpp)
+              target_include_directories(sandhybrid_structural_policy_contract PRIVATE include)
+              target_compile_features(sandhybrid_structural_policy_contract PRIVATE cxx_std_23)
+              sandhybrid_configure_warnings(sandhybrid_structural_policy_contract)
+              add_test(NAME sandhybrid_structural_policy_contract COMMAND sandhybrid_structural_policy_contract)
+
+          ''')
+
+          replace_once("tests/ui_layout_contract.cpp", '''    if (layout.status.size.x < 420.0f ||
+                  layout.cursor_editor.position.y < layout.keymap.position.y + layout.keymap.size.y ||
+                  layout.material_card.position.y <
+                      layout.cursor_editor.position.y + layout.cursor_editor.size.y) return 15;
+          ''', '''    if (layout.status.size.x < 420.0f || layout.status.size.y != 200.0f ||
+                  layout.keymap.position.y != layout.group_tabs.position.y ||
+                  layout.cursor_editor.position.y != layout.group_tabs.position.y ||
+                  layout.material_card.position.y <
+                      layout.palette.position.y + layout.palette.size.y) return 15;
+          ''')
+
+          # Release metadata and durable mission ledger.
+          replace_all(".github/workflows/ci-release.yml", "v2.5.9", "v2.5.10")
+          replace_once(".github/workflows/ci-release.yml",
+              "agent/v259-macro-water-volcano-pressure",
+              "agent/v260-ui-collapse-laser")
+
+          changelog = read("CHANGELOG.md")
+          if "## 2.5.10" not in changelog:
+              changelog = changelog.replace("# Changelog\n", '''# Changelog
+
+          ## 2.5.10
+
+          - Rebuilt the sidebar header into non-overlapping global rows and made Inventory, Editor, Settings, and Designer render and receive input as distinct workspaces.
+          - Complete structural tiles are fracture-armed and release every surviving pixel after the 31st destroyed cell, the first count above 47% destruction.
+          - Collapse survivors become loose moving cells, cannot repair the collapsing tile, and enter vertical/diagonal movement immediately.
+          - Mining and plasma presentation now uses short-lived sparse pixel dashes and small impact sparks instead of a long solid beam.
+          - Directly broken pixels receive a downward or diagonal kick, and drill/plasma impact radii are reduced to compact bursts.
+
+          ''', 1)
+              write("CHANGELOG.md", changelog)
+
+          Path("RELEASE_NOTES_v2.5.10.md").write_text('''# SandHybrid v2.5.10
+
+          - Removes the overlapping SCENE FILES, SIMULATION, VIEW INPUT, and PRIMARY TOOLS captions and compacts the global control header.
+          - Makes Inventory, Editor, Settings, and Designer distinct workspace bodies with matching input routing.
+          - Fracture-arms complete 8x8 structural tiles and collapses them after 31 destroyed cells (48.4375%).
+          - Releases every surviving structural pixel as loose material that immediately participates in downward and diagonal movement.
+          - Prevents loose fragments from repairing a tile while that tile is collapsing.
+          - Replaces long solid tool beams with short-lived sparse pixel dashes and compact impact sparks.
+          - Reduces drill and plasma impact radii and kicks directly broken pixels down or diagonally.
+
+          The shader appearance recovery from v2.5.9 remains intact. Runtime visual acceptance for the broader simulation backlog remains active in `missioncache.md`.
+          ''', encoding="utf-8")
+
+          mission = read("missioncache.md")
+          mission = mission.replace(
+              "MC-139, and MC-140.",
+              "MC-139, MC-140, MC-141, and MC-142.", 1)
+          marker = "# Permanent invariants"
+          if "MC-141" not in mission:
+              insertion = '''## v2.5.10 screenshot and fracture corrections
+
+          | ID | Status | Mission | Acceptance |
+          |---|---|---|---|
+          | MC-141 | PARTIAL | Workspace-specific sidebar hierarchy | Global scene/simulation/view/tool rows never overlap text. Inventory, Editor, Settings, and Designer render distinct bodies, hidden controls cannot receive input, and the sidebar remains usable at 1280x720 and compact sizes. Static layout and shader contracts pass; packaged Windows/Linux visual acceptance remains required. |
+          | MC-142 | PARTIAL | 47% structural fracture and compact tool bursts | A complete 8x8 structural tile becomes fracture-armed. The 31st destroyed cell (48.4375%) marks it collapsing, releases every survivor as a loose conserved cell, blocks repair into the collapsing tile, and lets fragments move down or diagonally. Drill/plasma visuals are sparse short pixel bursts rather than a solid long beam. Static and shader contracts pass; packaged fracture and presentation acceptance remains required. |
+
+          '''
+              mission = mission.replace(marker, insertion + marker, 1)
+          mission = mission.replace(
+              "added workspace tabs, coherent cosmetic material profiles, complete world dimensions, and carried every unfinished mission forward.",
+              "added workspace tabs, coherent cosmetic material profiles, complete world dimensions, and carried every unfinished mission forward. The v2.5.10 pass removes the overlapping captions, separates workspace bodies and input, restores the 31-destroyed-cell fracture rule for complete structural tiles, releases collapse debris into normal movement, and replaces the solid tool beam with sparse pixel bursts.", 1)
+          write("missioncache.md", mission)
+
+          readme = read("README.md")
+          readme = readme.replace(
+              "- responsive scene and mode controls\n",
+              "- non-overlapping global scene, simulation, view, and tool rows\n- distinct Inventory, Editor, Settings, and Designer workspace bodies\n", 1)
+          readme = readme.replace(
+              "- Middle-mouse drag: pan camera\n- Move the mouse to a simulation-view edge: pan camera continuously\n",
+              "- Hold right mouse and drag: pan camera directly\n- While right mouse is held, touching a simulation-view edge pans continuously\n", 1)
+          fracture_note = '''
+          A complete 8x8 structural tile is fracture-armed. It remains durable through 30 destroyed cells; the 31st destroyed cell is the first count above 47% and releases every surviving pixel into the ordinary loose-cell simulation. Released fragments move down or diagonally and cannot repair the tile during collapse.
+          '''
+          if fracture_note.strip() not in readme:
+              readme = readme.replace("## Exact material inspection", fracture_note + "\n## Exact material inspection", 1)
+          write("README.md", readme)
+
+          # Remove this workflow from the resulting source commit so CI sees a normal branch head.
+          Path(".github/workflows/repair-v2510.yml").unlink()
+          PY
+
+      - name: Validate headless contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_v2510_contract.py
+          cmake -S . -B build-headless -G Ninja \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON
+          cmake --build build-headless --parallel 2
+          ctest --test-dir build-headless --output-on-failure
+
+      - name: Commit repaired source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Autodidac Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "SandHybrid v2.5.10 UI fracture and tool recovery"
+          git push origin HEAD:agent/v260-ui-collapse-laser
