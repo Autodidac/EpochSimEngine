@@ -169,7 +169,7 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
     return layout;
 }
 
-[[nodiscard]] inline std::uint32_t workspace_at(
+[[nodiscard]] inline constexpr std::uint32_t workspace_at(
     const Layout& layout, const epochengine::gui_lib::Vec2 point) noexcept {
     if (epochengine::gui_lib::contains(layout.workspace_inventory, point)) return 0u;
     if (epochengine::gui_lib::contains(layout.workspace_editor, point)) return 1u;
