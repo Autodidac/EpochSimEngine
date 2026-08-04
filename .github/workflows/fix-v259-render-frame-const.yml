@@ -1,0 +1,79 @@
+name: Fix v2.5.9 render frame mutation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-v259-render-frame-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    if: github.head_ref == 'agent/v259-macro-water-volcano-pressure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/v259-macro-water-volcano-pressure
+          fetch-depth: 0
+
+      - name: Correct record_render mutability
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/vulkan_renderer.cpp')
+          text = path.read_text(encoding='utf-8')
+          old = 'const SharedState& state) const {'
+          new = 'const SharedState& state) {'
+          count = text.count(old)
+          if count == 0 and new in text:
+              raise SystemExit(0)
+          if count != 1:
+              raise SystemExit(f'expected one record_render const qualifier, found {count}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Install native Vulkan build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libvulkan-dev libxcb1-dev glslc
+
+      - name: Validate full Linux Vulkan package build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+          cmake -S . -B build/v259-render-frame -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DSANDHYBRID_ENABLE_VALIDATION=OFF \
+            -DBUILD_TESTING=ON
+          cmake --build build/v259-render-frame --parallel
+          ctest --test-dir build/v259-render-frame --output-on-failure
+          cmake --install build/v259-render-frame --prefix package/v259-render-frame
+
+      - name: Commit permanent source fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- src/vulkan_renderer.cpp; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/vulkan_renderer.cpp
+          git commit -m 'Fix render frame counter mutation'
+          git push origin HEAD:agent/v259-macro-water-volcano-pressure
