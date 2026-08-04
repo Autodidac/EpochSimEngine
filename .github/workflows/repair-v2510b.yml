@@ -1,0 +1,340 @@
+name: Robust v2.5.10 source repair
+
+on:
+  push:
+    branches: [agent/v260-ui-collapse-laser]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/v260-ui-collapse-laser
+          fetch-depth: 0
+
+      - name: Apply release patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def load(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def save(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+
+          def once(path, old, new):
+              text = load(path)
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{path}: expected one match, got {count}: {old[:120]!r}')
+              save(path, text.replace(old, new, 1))
+
+          def all_(path, old, new, minimum=1):
+              text = load(path)
+              count = text.count(old)
+              if count < minimum:
+                  raise RuntimeError(f'{path}: expected >= {minimum} matches, got {count}: {old!r}')
+              save(path, text.replace(old, new))
+
+          def regex_once(path, pattern, replacement):
+              text = load(path)
+              result, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+              if count != 1:
+                  raise RuntimeError(f'{path}: regex expected one match, got {count}: {pattern[:120]!r}')
+              save(path, result)
+
+          # Distinct workspace bodies and no headings drawn through controls.
+          regex_once('shaders/fullscreen.frag',
+              r'\n\s*if \(fixedPixel\(pixel, ivec2\(int\(rowLeft\), 62\), 1, 170u\) \|\|.*?\n\s*text = true;\n',
+              '\n')
+          once('shaders/fullscreen.frag',
+              'if (y >= groupTop && y < groupTop + renderPc.groupTabsHeight &&',
+              'if (renderPc.selectedWorkspace == 1u &&\n            y >= groupTop && y < groupTop + renderPc.groupTabsHeight &&')
+          once('shaders/fullscreen.frag',
+              'if (y >= paletteTop && y < paletteTop + palettePanelHeight &&',
+              'if (renderPc.selectedWorkspace == 1u &&\n            y >= paletteTop && y < paletteTop + palettePanelHeight &&')
+          once('shaders/fullscreen.frag',
+              'uint keymapTop = paletteTop + palettePanelHeight + 3u;',
+              'uint keymapTop = groupTop;')
+          once('shaders/fullscreen.frag',
+              'if (y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {',
+              'if (renderPc.selectedWorkspace == 2u &&\n            y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {')
+          once('shaders/fullscreen.frag',
+              'uint cursorTop = keymapBottom + 3u;',
+              'uint cursorTop = groupTop;')
+          once('shaders/fullscreen.frag',
+              'if (y >= cursorTop && y < cursorBottom && x >= contentLeft && x < contentLeft + contentWidth) {',
+              'if (renderPc.selectedWorkspace == 3u &&\n            y >= cursorTop && y < cursorBottom && x >= contentLeft && x < contentLeft + contentWidth) {')
+          once('shaders/fullscreen.frag',
+              'uint cardTop = cursorBottom + 3u;',
+              'uint cardTop = paletteTop + palettePanelHeight + 3u;')
+          once('shaders/fullscreen.frag',
+              'if (y >= cardTop && y < cardBottom) {',
+              'if (renderPc.selectedWorkspace == 1u && y >= cardTop && y < cardBottom) {')
+          once('shaders/fullscreen.frag',
+              'if (actor.enabled != 0u) {\n            uint top = cardBottom + 3u;',
+              'if (actor.enabled != 0u && renderPc.selectedWorkspace == 0u) {\n            uint top = groupTop;')
+
+          # Hidden workspace controls do not receive clicks.
+          once('src/app.cpp',
+              'const auto hovered_group = ui::group_at(layout, pointer);',
+              'const auto selected_workspace = shared_state.selected_workspace.load(std::memory_order_relaxed) % ui::workspace_tab_count;\n        const bool inventory_workspace = selected_workspace == 0u;\n        const bool editor_workspace = selected_workspace == 1u;\n        const bool designer_workspace = selected_workspace == 3u;\n        const auto hovered_group = editor_workspace ? ui::group_at(layout, pointer) : material_group_count;')
+          once('src/app.cpp',
+              'const auto hovered_material = ui::palette_material_at(layout, selected_group, pointer);',
+              'const auto hovered_material = editor_workspace ? ui::palette_material_at(layout, selected_group, pointer) : Material::count;')
+          once('src/app.cpp',
+              'const bool hovered_ignite_air =\n            ui::ignite_air_action_at(layout, selected_group, pointer);',
+              'const bool hovered_ignite_air = editor_workspace &&\n            ui::ignite_air_action_at(layout, selected_group, pointer);')
+          designer_controls = [
+              'placement_cells', 'placement_tiles', 'cursor_circle', 'cursor_square',
+              'cursor_horizontal', 'cursor_vertical', 'brush_smaller', 'brush_larger',
+              'zoom_out', 'zoom_in'
+          ]
+          for control in designer_controls:
+              once('src/app.cpp',
+                  f'else if (epochengine::gui_lib::contains(layout.{control}, pointer))',
+                  f'else if (designer_workspace && epochengine::gui_lib::contains(layout.{control}, pointer))')
+          once('src/app.cpp',
+              '} else if (scene_player_present &&\n                       ui::inventory_slot_at(layout, input.height, pointer) <',
+              '} else if (inventory_workspace && scene_player_present &&\n                       ui::inventory_slot_at(layout, input.height, pointer) <')
+          once('src/app.cpp',
+              '} else if (hovered_group < material_group_count) {',
+              '} else if (editor_workspace && hovered_group < material_group_count) {')
+          once('src/app.cpp',
+              '} else if (hovered_material != Material::count) {',
+              '} else if (editor_workspace && hovered_material != Material::count) {')
+
+          # Sparse short pixel dashes replace the solid full-length beam.
+          regex_once('shaders/fullscreen.frag',
+              r'    if \(actor\.enabled != 0u && actor\.health != 0u && actor\.shotTimer > 0u\) \{.*?\n    \}\n\n    if \(renderPc\.inspectMode',
+              '''    if (actor.enabled != 0u && actor.health != 0u && actor.shotTimer > 0u) {
+        vec2 toolOrigin = vec2(float(actor.x), float(actor.y - 4));
+        vec2 toolHit = vec2(float(actor.hitX), float(actor.hitY));
+        vec2 ray = toolHit - toolOrigin;
+        float raySquared = max(dot(ray, ray), 0.0001);
+        vec2 samplePoint = vec2(grid) + vec2(0.5);
+        float along = clamp(dot(samplePoint - toolOrigin, ray) / raySquared, 0.0, 1.0);
+        float beamDistance = segmentDistance(samplePoint, toolOrigin, toolHit);
+        uint beamStep = uint(floor(along * sqrt(raySquared)));
+        uint burstHash = hash32(uint(grid.x) * 2246822519u ^ uint(grid.y) * 3266489917u ^
+                                renderPc.renderFrame * 668265263u ^ actor.shotTimer * 374761393u);
+        bool tinyDash = ((beamStep + actor.shotTimer) % 7u) < 2u;
+        if (beamDistance < 0.46 && tinyDash && (burstHash & 3u) != 0u) {
+            color = actor.shotTimer > 4u ? vec4(1.0, 0.28, 0.68, 1.0)
+                                         : vec4(1.0, 0.82, 0.20, 1.0);
+        }
+        ivec2 impactDelta = grid - ivec2(actor.hitX, actor.hitY);
+        int impactDistance = impactDelta.x * impactDelta.x + impactDelta.y * impactDelta.y;
+        if (impactDistance >= 1 && impactDistance <= 8 && ((burstHash >> 3u) & 3u) == 0u)
+            color = vec4(1.0, 0.96, 0.72, 1.0);
+    }
+
+    if (renderPc.inspectMode''')
+
+          # Complete structural tiles retain fracture memory and collapse on the 31st destroyed cell.
+          once('shaders/tiles.glsl',
+              'const uint TILE_BULK_READY = 0x08000000u;',
+              'const uint TILE_BULK_READY = 0x08000000u;\nconst uint TILE_FRACTURE_ARMED = 0x10000000u;')
+          once('shaders/tiles.glsl',
+              '// This occupancy threshold applies only to stabilized granular terrain.\n// Block-capable structural tile placements never auto-crumble from occupancy.',
+              '// Complete structural tiles are fracture-armed. The 31st destroyed cell is\n// 48.4375% destruction and releases every surviving structural pixel.')
+          once('shaders/tiles.comp',
+              '''    bool durableStructuralTile = structuralTile &&
+        (isBlockCapable(dominant) || isBlockCapable(previous.material));''',
+              '''    bool durableStructuralTile = structuralTile &&
+        (isBlockCapable(dominant) || isBlockCapable(previous.material));
+    bool fractureArmed = structuralTile &&
+        (tileHas(previous, TILE_FRACTURE_ARMED) ||
+         (fullRegion && isBlockCapable(dominant)));''')
+          once('shaders/tiles.comp',
+              '''    bool unsupportedStructural = structuralTile && !durableStructuralTile &&
+                                 !physicallySupported;
+    bool collapsing = structuralTile && !durableStructuralTile &&
+                      (dominantCount < TILE_MIN_COHESIVE_CELLS || unsupportedStructural);''',
+              '''    bool unsupportedStructural = structuralTile && !durableStructuralTile &&
+                                 !physicallySupported;
+    bool thresholdCollapse = fractureArmed && structural < TILE_MIN_COHESIVE_CELLS;
+    bool collapsing = thresholdCollapse || unsupportedStructural;''')
+          once('shaders/tiles.comp',
+              '''    bool fineActive = represented != 0u && !macroMovable && !settledHalfWater &&
+                      (activeAgent || moving || reacting || hot || mediumBreakup ||''',
+              '''    bool fineActive = represented != 0u && !macroMovable && !settledHalfWater &&
+                      (collapsing || activeAgent || moving || reacting || hot || mediumBreakup ||''')
+          once('shaders/tiles.comp',
+              'if (bulkReadySolid) flags |= TILE_MACRO_SOLID | TILE_BULK_READY;',
+              'if (bulkReadySolid) flags |= TILE_MACRO_SOLID | TILE_BULK_READY;\n    if (fractureArmed) flags |= TILE_FRACTURE_ARMED;')
+
+          # Collapse survivors become loose and immediately participate in down/diagonal passes.
+          once('shaders/move.comp',
+              '''bool isLooseSolid(Cell cell) {
+    return isBlockCapable(cell.material) && !isStructural(cell) &&
+           !isCellLiquid(cell) && !isCellGas(cell);
+}
+''',
+              '''bool isLooseSolid(Cell cell) {
+    return isBlockCapable(cell.material) && !isStructural(cell) &&
+           !isCellLiquid(cell) && !isCellGas(cell);
+}
+
+void releaseCollapsingStructural(ivec2 position) {
+    if (!moveInside(position)) return;
+    Cell cell = moveAt(position);
+    if (!isStructural(cell)) return;
+    TileState tile = tiles[tileIndex(position, movePc.width)];
+    if (!tileHas(tile, TILE_COLLAPSING)) return;
+    cell.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
+    cell.aux |= AUX_MOVED;
+    cell.age = 0u;
+    cells[moveIndex(position)] = cell;
+    markChunkDirty(position);
+}
+''')
+          once('shaders/move.comp',
+              '''    if (!tileHas(targetTile, TILE_STRUCTURAL) || !tileHas(targetTile, TILE_DAMAGED) ||
+        targetTile.material != source.material) return false;''',
+              '''    if (!tileHas(targetTile, TILE_STRUCTURAL) || !tileHas(targetTile, TILE_DAMAGED) ||
+        tileHas(targetTile, TILE_COLLAPSING) ||
+        targetTile.material != source.material) return false;''')
+          once('shaders/move.comp',
+              'void processVertical(ivec2 top, ivec2 bottom) {\n    if (pairSleeping(top, bottom)) return;',
+              'void processVertical(ivec2 top, ivec2 bottom) {\n    releaseCollapsingStructural(top);\n    releaseCollapsingStructural(bottom);\n    if (pairSleeping(top, bottom)) return;')
+          once('shaders/move.comp',
+              'void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {\n    if (pairSleeping(sourcePosition, targetPosition)) return;',
+              'void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {\n    releaseCollapsingStructural(sourcePosition);\n    releaseCollapsingStructural(targetPosition);\n    if (pairSleeping(sourcePosition, targetPosition)) return;')
+          once('shaders/move.comp',
+              'void processHorizontal(ivec2 left, ivec2 right) {\n    if (pairSleeping(left, right)) return;',
+              'void processHorizontal(ivec2 left, ivec2 right) {\n    releaseCollapsingStructural(left);\n    releaseCollapsingStructural(right);\n    if (pairSleeping(left, right)) return;')
+
+          # Directly broken pixels get a compact down/diagonal kick; tool bursts are smaller.
+          regex_once('shaders/actor.comp',
+              r'        if \(health <= damage\) \{\n            Cell fragment = cell;.*?\n            cells\[index\] = fragment;\n        \} else \{',
+              '''        if (health <= damage) {
+            Cell fragment = cell;
+            fragment.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
+            fragment.aux |= AUX_MOVED;
+            fragment.age = 0u;
+            setStateValue(fragment, 1u);
+            recordConservation(cell, fragment);
+            int away = p.x >= actor.x ? 1 : -1;
+            ivec2 targets[3] = ivec2[3](p + ivec2(0, 1),
+                p + ivec2(away, 1), p + ivec2(-away, 1));
+            for (uint targetIndex = 0u; targetIndex < 3u; ++targetIndex) {
+                ivec2 targetPosition = targets[targetIndex];
+                if (!actorInside(targetPosition)) continue;
+                Cell target = actorAt(targetPosition);
+                if (target.material != MAT_EMPTY && !isCellGas(target) && !isCellLiquid(target))
+                    continue;
+                cells[index] = target;
+                cells[actorIndex(targetPosition)] = fragment;
+                markActorChunkDirty(p);
+                markActorChunkDirty(targetPosition);
+                return;
+            }
+            cells[index] = fragment;
+        } else {''')
+          once('shaders/actor.comp', 'int radius = plasma ? 3 : 2;', 'int radius = plasma ? 2 : 1;')
+          once('shaders/actor.comp', 'state.shotTimer = plasma ? 14u : 7u;', 'state.shotTimer = plasma ? 6u : 4u;')
+
+          # Deterministic source contract and release metadata.
+          Path('tools/validate_v2510_contract.py').write_text('''from pathlib import Path
+
+def require(path: str, needle: str) -> None:
+    text = Path(path).read_text(encoding="utf-8")
+    if needle not in text:
+        raise SystemExit(f"{path}: missing {needle!r}")
+
+require("shaders/tiles.glsl", "TILE_DESTROYED_CELLS_TO_CRUMBLE = 31u")
+require("shaders/tiles.glsl", "TILE_FRACTURE_ARMED")
+require("shaders/tiles.comp", "thresholdCollapse = fractureArmed && structural < TILE_MIN_COHESIVE_CELLS")
+require("shaders/move.comp", "releaseCollapsingStructural")
+require("shaders/move.comp", "tileHas(targetTile, TILE_COLLAPSING)")
+require("shaders/fullscreen.frag", "bool tinyDash")
+require("shaders/fullscreen.frag", "renderPc.selectedWorkspace == 2u")
+require("src/app.cpp", "designer_workspace &&")
+if "ivec2(int(rowLeft), 62), 1, 170u" in Path("shaders/fullscreen.frag").read_text(encoding="utf-8"):
+    raise SystemExit("overlapping headings remain")
+''', encoding='utf-8')
+          once('CMakeLists.txt', 'project(SandHybrid VERSION 2.5.9 LANGUAGES CXX)',
+               'project(SandHybrid VERSION 2.5.10 LANGUAGES CXX)')
+          once('CMakeLists.txt',
+              '''        add_test(NAME sandhybrid_mission_cache_contract
+                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_mission_cache.py)''',
+              '''        add_test(NAME sandhybrid_mission_cache_contract
+                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_mission_cache.py)
+        add_test(NAME sandhybrid_v2510_source_contract
+                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2510_contract.py)''')
+          all_('.github/workflows/ci-release.yml', 'v2.5.9', 'v2.5.10')
+          once('.github/workflows/ci-release.yml',
+               'agent/v259-macro-water-volcano-pressure', 'agent/v260-ui-collapse-laser')
+
+          notes = '''# SandHybrid v2.5.10
+
+- Removes sidebar captions that were rendered through buttons and values.
+- Makes Inventory, Editor, Settings, and Designer show distinct bodies and blocks input to hidden controls.
+- Fracture-arms complete 8x8 structural tiles and collapses them after the 31st destroyed cell (48.4375%).
+- Releases every surviving structural pixel into normal downward and diagonal movement and prevents repair during collapse.
+- Replaces the long solid tool beam with short-lived sparse pixel dashes and compact impact sparks.
+- Reduces drill and plasma impact radii and kicks directly broken pixels down or diagonally.
+
+The v2.5.9 cosmetic material shaders remain intact. Broader packaged runtime acceptance remains open in `missioncache.md`.
+'''
+          Path('RELEASE_NOTES_v2.5.10.md').write_text(notes, encoding='utf-8')
+          changelog = load('CHANGELOG.md')
+          if '## 2.5.10' not in changelog:
+              changelog = changelog.replace('# Changelog\n', '# Changelog\n\n## 2.5.10\n\n- Separated workspace bodies and removed overlapping sidebar captions.\n- Restored 31-destroyed-cell structural fracture with moving debris.\n- Replaced solid tool beams with compact sparse pixel bursts.\n\n', 1)
+          save('CHANGELOG.md', changelog)
+
+          mission = load('missioncache.md')
+          if 'MC-141' not in mission:
+              section = '''## v2.5.10 screenshot and fracture corrections
+
+| ID | Status | Mission | Acceptance |
+|---|---|---|---|
+| MC-141 | PARTIAL | Workspace-specific sidebar hierarchy | Global controls never have captions drawn through them. Inventory, Editor, Settings, and Designer render distinct bodies and hidden controls cannot receive input. Static contracts pass; packaged visual acceptance remains required. |
+| MC-142 | PARTIAL | 47% structural fracture and compact tool bursts | Complete structural tiles collapse on the 31st destroyed cell, release every survivor into down/diagonal movement, and cannot repair while collapsing. Tool visuals are short sparse pixel bursts. Static contracts pass; packaged visual/physics acceptance remains required. |
+
+'''
+              mission = mission.replace('# Permanent invariants', section + '# Permanent invariants', 1)
+          save('missioncache.md', mission)
+
+          readme = load('README.md')
+          readme = readme.replace('- responsive scene and mode controls\n',
+              '- non-overlapping global controls and distinct workspace bodies\n', 1)
+          save('README.md', readme)
+
+          Path('.github/workflows/repair-v2510.yml').unlink(missing_ok=True)
+          Path('.github/workflows/repair-v2510b.yml').unlink(missing_ok=True)
+          PY
+
+      - name: Validate headless contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_v2510_contract.py
+          cmake -S . -B build-headless -G Ninja \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON
+          cmake --build build-headless --parallel 2
+          ctest --test-dir build-headless --output-on-failure
+
+      - name: Commit repaired source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Autodidac Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "SandHybrid v2.5.10 UI fracture and tool recovery"
+          git push origin HEAD:agent/v260-ui-collapse-laser
