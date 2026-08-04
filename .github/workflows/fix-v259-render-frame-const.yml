@@ -28,17 +28,27 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('src/vulkan_renderer.cpp')
           text = path.read_text(encoding='utf-8')
-          old = 'const SharedState& state) const {'
-          new = 'const SharedState& state) {'
-          count = text.count(old)
-          if count == 0 and new in text:
-              raise SystemExit(0)
-          if count != 1:
-              raise SystemExit(f'expected one record_render const qualifier, found {count}')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          pattern = re.compile(
+              r'(void record_render\(const VkCommandBuffer command_buffer,\s*'
+              r'const std::uint32_t image_index,\s*'
+              r'const SharedState& state\)) const \{'
+          )
+          updated, count = pattern.subn(r'\1 {', text, count=1)
+          if count == 0:
+              already_fixed = re.search(
+                  r'void record_render\(const VkCommandBuffer command_buffer,\s*'
+                  r'const std::uint32_t image_index,\s*'
+                  r'const SharedState& state\) \{',
+                  text,
+              )
+              if already_fixed:
+                  raise SystemExit(0)
+              raise SystemExit('record_render signature not found')
+          path.write_text(updated, encoding='utf-8')
           PY
 
       - name: Install native Vulkan build dependencies
