@@ -31,12 +31,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" != "push" || "${GITHUB_REF}" != "refs/heads/main" ]]; then
+          if grep -q 'project(SandHybrid VERSION 2.5.10 ' CMakeLists.txt; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-          elif grep -q 'project(SandHybrid VERSION 2.5.10 ' CMakeLists.txt; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
+          elif [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == "refs/heads/main" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" && "${GITHUB_HEAD_REF}" == "agent/v2510-source-repair" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Extract canonical repair script
@@ -93,12 +95,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -f .github/workflows/repair-main-v2510.yml
+          rm -f .github/workflows/repair-main-v2510.yml REPAIR_TRIGGER_v2510.md
           git config user.name "Autodidac Release Bot"
           git config user.email "actions@users.noreply.github.com"
           git add -A
           git commit -m "SandHybrid v2.5.10 terrain liquid and fracture recovery"
-          git push origin HEAD:main
+          target_branch="${GITHUB_HEAD_REF:-main}"
+          git push origin HEAD:"${target_branch}"
 
   build:
     needs: repair_source
