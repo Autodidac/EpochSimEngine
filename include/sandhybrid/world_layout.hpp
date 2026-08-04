@@ -59,7 +59,7 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
 
 [[nodiscard]] constexpr bool resident_substrate_is_structural(
     const Material material) noexcept {
-    return resident_ground_host_material(material) ||
+    return material == Material::grass || resident_ground_host_material(material) ||
            material == Material::iron_ore || material == Material::copper ||
            material == Material::aluminum || material == Material::uranium;
 }
@@ -90,6 +90,74 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
     return terrain::sample(base_material, x, y, depth);
 }
 
+[[nodiscard]] constexpr Material resident_biome_material(
+    const std::uint32_t biome_index) noexcept {
+    const auto roll = resident_ground_hash(biome_index, 0x4b17u) % 3u;
+    return roll == 0u ? Material::dirt :
+ (roll == 1u ? Material::sand : Material::silt);
+}
+
+[[nodiscard]] constexpr Material resident_transition_material(
+    const Material first,
+    const Material second,
+    const std::int32_t signed_distance,
+    const std::int32_t half_width,
+    const std::uint32_t x,
+    const std::uint32_t y,
+    const std::uint32_t salt) noexcept {
+    if (signed_distance <= -half_width) return first;
+    if (signed_distance >= half_width) return second;
+    const auto numerator = static_cast<std::uint32_t>(signed_distance + half_width);
+    const auto denominator = static_cast<std::uint32_t>(half_width * 2);
+    const auto threshold = numerator * 256u / denominator;
+    return (resident_ground_hash(x / 2u, y / 2u + salt) & 255u) < threshold
+        ? second : first;
+}
+
+[[nodiscard]] constexpr Material resident_surface_biome(
+    const std::uint32_t world_width,
+    const std::uint32_t x,
+    const std::uint32_t y) noexcept {
+    const auto span = (std::max)(world_width / 12u, 256u);
+    const auto biome = x / span;
+    const auto local = x % span;
+    const auto first = resident_biome_material(biome);
+    const auto second = resident_biome_material(biome + 1u);
+    constexpr std::uint32_t blend_width = 96u;
+    if (local + blend_width < span) return first;
+    const auto signed_distance = static_cast<std::int32_t>(local) -
+        static_cast<std::int32_t>(span - blend_width / 2u);
+    return resident_transition_material(first, second, signed_distance,
+                              static_cast<std::int32_t>(blend_width / 2u),
+                              x, y, biome * 41u + 9u);
+}
+
+[[nodiscard]] constexpr Material resident_layer_material(
+    const std::uint32_t zone,
+    const std::int32_t local_y,
+    const std::int32_t boundary_a,
+    const std::int32_t boundary_b,
+    const std::int32_t boundary_c,
+    const std::uint32_t x,
+    const std::uint32_t y) noexcept {
+    const Material first = zone == 0u ? Material::dirt :
+        (zone == 1u ? Material::sand : Material::silt);
+    const Material second = zone == 0u ? Material::sand :
+        (zone == 1u ? Material::silt : Material::dirt);
+    const Material third = zone == 0u ? Material::silt :
+        (zone == 1u ? Material::dirt : Material::stone);
+    const Material fourth = Material::stone;
+    constexpr std::int32_t blend = 14;
+    if (local_y < boundary_a + blend)
+        return resident_transition_material(first, second, local_y - boundary_a,
+                                  blend, x, y, zone * 31u + 3u);
+    if (local_y < boundary_b + blend)
+        return resident_transition_material(second, third, local_y - boundary_b,
+                                  blend, x, y, zone * 31u + 11u);
+    return resident_transition_material(third, fourth, local_y - boundary_c,
+                              blend, x, y, zone * 31u + 19u);
+}
+
 [[nodiscard]] constexpr terrain::Sample resident_substrate_sample(
     const std::uint32_t world_width,
     const std::uint32_t world_height,
@@ -98,9 +166,10 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
     if (x >= world_width || y >= world_height || world_width == 0u || world_height == 0u)
         return {Material::empty, false, false, false};
 
+    const auto scene_left = authored_scene_origin_x(world_width);
+    const auto scene_right = (std::min)(world_width, scene_left + pre_expansion_world_width);
     const auto scene_top = authored_scene_origin_y(world_height);
-    const auto scene_bottom = (std::min)(
-        world_height, scene_top + pre_expansion_world_height);
+    const auto scene_bottom = (std::min)(world_height, scene_top + pre_expansion_world_height);
     const auto horizontal_shell = (std::min)(world_width, resident_world_shell_cells);
     const auto top_shell = (std::min)(world_height, resident_world_shell_cells);
     const bool side_shell = x < horizontal_shell || x >= world_width - horizontal_shell;
@@ -110,9 +179,21 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
     const auto scene_height = scene_bottom - scene_top;
     const auto foundation = (std::min)(scene_height, authored_scene_foundation_cells);
     const auto foundation_start = scene_bottom - foundation;
+    const bool outside_authored_scene = x < scene_left || x >= scene_right;
     if (y < scene_bottom) {
         if (y >= foundation_start) return {Material::stone, true, false, false};
-        return {Material::empty, false, false, false};
+        if (!outside_authored_scene) return {Material::empty, false, false, false};
+
+        const auto nominal_surface = static_cast<std::int32_t>(scene_bottom) -
+  static_cast<std::int32_t>(foundation * 2u);
+        const auto surface_y = nominal_surface +
+  resident_ground_boundary_offset(x, 0x63u, 5);
+        if (static_cast<std::int32_t>(y) < surface_y)
+  return {Material::empty, false, false, false};
+        const auto biome = resident_surface_biome(world_width, x, y);
+        if (static_cast<std::int32_t>(y) == surface_y && biome == Material::dirt)
+  return {Material::grass, true, false, false};
+        return {biome, true, false, false};
     }
 
     const auto bottom_shell = (std::min)(world_height, resident_world_shell_cells);
@@ -134,38 +215,18 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
     const auto zone_height = pre_expansion_world_height;
     const auto zone = (std::min)(depth / zone_height, subterranean_zone_count - 1u);
     const auto local_y = static_cast<std::int32_t>(depth % zone_height);
-    const auto boundary_a = 106 + resident_ground_boundary_offset(x, zone * 17u + 3u, 18);
-    const auto boundary_b = 232 + resident_ground_boundary_offset(x, zone * 19u + 7u, 24);
-    const auto boundary_c = 304 + resident_ground_boundary_offset(x, zone * 23u + 11u, 16);
+    const auto boundary_a = 96 + resident_ground_boundary_offset(x, zone * 17u + 3u, 22);
+    const auto boundary_b = 218 + resident_ground_boundary_offset(x, zone * 19u + 7u, 28);
+    const auto boundary_c = 302 + resident_ground_boundary_offset(x, zone * 23u + 11u, 20);
+    auto geology = resident_layer_material(zone, local_y, boundary_a, boundary_b,
+                                 boundary_c, x, y);
 
-    Material geology = Material::stone;
-    if (zone == 0u) {
-        geology = local_y < boundary_a ? Material::dirt
-            : (local_y < boundary_b ? Material::sand : Material::silt);
-    } else if (zone == 1u) {
-        geology = local_y < boundary_a ? Material::sand
-            : (local_y < boundary_b ? Material::silt : Material::dirt);
-    } else {
-        geology = local_y < boundary_a ? Material::silt
-            : (local_y < boundary_b ? Material::dirt : Material::stone);
-    }
-
-    const auto nearest = (std::min)(
-        (std::abs)(local_y - boundary_a),
-        (std::min)((std::abs)(local_y - boundary_b), (std::abs)(local_y - boundary_c)));
-    if (nearest <= 7 && resident_ground_rough_edge_cell(x, y, zone * 31u + 13u)) {
-        if (geology == Material::dirt) geology = Material::sand;
-        else if (geology == Material::sand) geology = Material::silt;
-        else if (geology == Material::silt) geology = Material::dirt;
-    }
-
-    const auto mud_seed = resident_ground_hash(x / 24u, y / 18u + zone * 97u);
-    const auto mud_local_x = static_cast<std::int32_t>(x % 24u) - 12;
-    const auto mud_local_y = static_cast<std::int32_t>(y % 18u) - 9;
-    if ((mud_seed & 31u) == 0u &&
-        mud_local_x * mud_local_x * 9 + mud_local_y * mud_local_y * 16 < 900) {
+    const auto mud_seed = resident_ground_hash(x / 32u, y / 24u + zone * 97u);
+    const auto mud_local_x = static_cast<std::int32_t>(x % 32u) - 16;
+    const auto mud_local_y = static_cast<std::int32_t>(y % 24u) - 12;
+    if ((mud_seed & 63u) == 0u &&
+        mud_local_x * mud_local_x * 9 + mud_local_y * mud_local_y * 16 < 1600)
         geology = Material::mud;
-    }
 
     return resident_ground_sample(geology, x, y, depth);
 }

@@ -166,6 +166,9 @@ void main() {
     bool structuralTile = structural > 0u;
     bool durableStructuralTile = structuralTile &&
         (isBlockCapable(dominant) || isBlockCapable(previous.material));
+    bool fractureArmed = structuralTile &&
+        (tileHas(previous, TILE_FRACTURE_ARMED) ||
+         (fullRegion && isBlockCapable(dominant)));
     bool fullLiquid = fullRegion && isLiquid(dominant) && !halfWater;
     bool fullGas = fullRegion && isGas(dominant);
     bool liquidEnclosed = fullLiquid && mediumBoundaryEnclosed(origin, false);
@@ -223,9 +226,9 @@ void main() {
     uint stableTicks = candidate ? min(tileStableTicks(previous) + 1u, TILE_STABILIZE_TICKS) : 0u;
     bool stableRegion = candidate && stableTicks >= TILE_STABILIZE_TICKS;
     bool unsupportedStructural = structuralTile && !durableStructuralTile &&
-                                 !physicallySupported;
-    bool collapsing = structuralTile && !durableStructuralTile &&
-                      (dominantCount < TILE_MIN_COHESIVE_CELLS || unsupportedStructural);
+                       !physicallySupported;
+    bool thresholdCollapse = fractureArmed && structural < TILE_MIN_COHESIVE_CELLS;
+    bool collapsing = thresholdCollapse || unsupportedStructural;
     if (pc.reserved != 0u && collapsing && !tileHas(previous, TILE_COLLAPSING))
         atomicAdd(debugStats[STAT_STRUCTURAL_COLLAPSES], 1u);
     if (pc.reserved != 0u && gasBreakup)
@@ -247,7 +250,7 @@ void main() {
     bool settledHalfWater = halfWater && !moving && !reacting && !hot &&
                             minimumAge >= 12u;
     bool fineActive = represented != 0u && !macroMovable && !settledHalfWater &&
-                      (activeAgent || moving || reacting || hot || mediumBreakup ||
+            (collapsing || activeAgent || moving || reacting || hot || mediumBreakup ||
                        !uniformMaterial || represented < TILE_CELL_COUNT);
 
     uint flags = 0u;
@@ -270,6 +273,7 @@ void main() {
     if (settledMedium) flags |= TILE_SETTLED_MEDIUM;
     if (wetContent) flags |= TILE_WET_CONTENT;
     if (bulkReadySolid) flags |= TILE_MACRO_SOLID | TILE_BULK_READY;
+    if (fractureArmed) flags |= TILE_FRACTURE_ARMED;
     if (macroPowder || macroLava) flags |= TILE_MACRO_POWDER;
     if (macroLiquid) flags |= TILE_MACRO_LIQUID;
     if (macroGas) flags |= TILE_MACRO_GAS;

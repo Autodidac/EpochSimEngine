@@ -90,66 +90,115 @@ uvec2 residentGroundSample(uint baseMaterial, ivec2 position, int depth) {
     return terrainSample(baseMaterial, position, uint(max(depth, 0)));
 }
 
-// Every scene occupies the crystal-marker camera footprint: the third
-// 640x360 resident row. The two complete rows above it remain empty sky. A
-// one-brick foundation separates the scene from the remaining lower geology;
-// a two-brick lava band spans the bottom inside stone cap, shell, and side walls.
+// Every scene occupies the crystal-marker camera footprint. Two complete
+// rows above it remain sky. Outside the authored 640x360 footprint, a natural
+// surface continues across every world column; beneath it, biome seams are
+// dithered across broad bands instead of changing on a hard line.
+uint residentBiomeMaterial(uint biomeIndex) {
+    uint roll = residentGroundHash(ivec2(int(biomeIndex), 0x4b17)) % 3u;
+    return roll == 0u ? MAT_DIRT : (roll == 1u ? MAT_SAND : MAT_SILT);
+}
+
+uint residentTransitionMaterial(uint first, uint second, int signedDistance,
+                      int halfWidth, ivec2 position, uint salt) {
+    if (signedDistance <= -halfWidth) return first;
+    if (signedDistance >= halfWidth) return second;
+    uint threshold = uint(signedDistance + halfWidth) * 256u / uint(halfWidth * 2);
+    return (residentGroundHash(ivec2(position.x / 2, position.y / 2 + int(salt))) & 255u) < threshold
+        ? second : first;
+}
+
+uint residentSurfaceBiome(ivec2 position) {
+    uint span = max(pc.width / 12u, 256u);
+    uint biome = uint(position.x) / span;
+    uint local = uint(position.x) % span;
+    uint first = residentBiomeMaterial(biome);
+    uint second = residentBiomeMaterial(biome + 1u);
+    const uint blendWidth = 96u;
+    if (local + blendWidth < span) return first;
+    int signedDistance = int(local) - int(span - blendWidth / 2u);
+    return residentTransitionMaterial(first, second, signedDistance,
+                            int(blendWidth / 2u), position,
+                            biome * 41u + 9u);
+}
+
+uint residentLayerMaterial(int zone, int localY, int boundaryA, int boundaryB,
+                 int boundaryC, ivec2 position) {
+    uint first = zone == 0 ? MAT_DIRT : (zone == 1 ? MAT_SAND : MAT_SILT);
+    uint second = zone == 0 ? MAT_SAND : (zone == 1 ? MAT_SILT : MAT_DIRT);
+    uint third = zone == 0 ? MAT_SILT : (zone == 1 ? MAT_DIRT : MAT_STONE);
+    const int blend = 14;
+    if (localY < boundaryA + blend)
+        return residentTransitionMaterial(first, second, localY - boundaryA,
+                                blend, position, uint(zone * 31 + 3));
+    if (localY < boundaryB + blend)
+        return residentTransitionMaterial(second, third, localY - boundaryB,
+                                blend, position, uint(zone * 31 + 11));
+    return residentTransitionMaterial(third, MAT_STONE, localY - boundaryC,
+                            blend, position, uint(zone * 31 + 19));
+}
+
 uvec2 residentWorldSubstrateSample(ivec2 worldPosition) {
     int width = int(pc.width);
     int height = int(pc.height);
+    int sceneLeft = authoredWorldOrigin().x;
+    int sceneRight = min(width, sceneLeft + AUTHORED_WORLD_CELLS.x);
     int sceneTop = authoredWorldOrigin().y;
     int sceneBottom = min(height, sceneTop + AUTHORED_WORLD_CELLS.y);
     int horizontalShell = min(width, BRICK_SIZE);
     int topShell = min(height, BRICK_SIZE);
     bool sideShell = worldPosition.x < horizontalShell ||
-                     worldPosition.x >= width - horizontalShell;
-    if (sideShell || worldPosition.y < topShell) return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
+           worldPosition.x >= width - horizontalShell;
+    if (sideShell || worldPosition.y < topShell)
+        return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
     if (worldPosition.y < sceneTop) return uvec2(MAT_EMPTY, 0u);
 
     int foundation = min(sceneBottom - sceneTop, BRICK_SIZE);
     int foundationStart = sceneBottom - foundation;
+    bool outsideAuthored = worldPosition.x < sceneLeft || worldPosition.x >= sceneRight;
     if (worldPosition.y < sceneBottom) {
-        if (worldPosition.y >= foundationStart) return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
-        return uvec2(MAT_EMPTY, 0u);
+        if (worldPosition.y >= foundationStart)
+  return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
+        if (!outsideAuthored) return uvec2(MAT_EMPTY, 0u);
+        int nominalSurface = sceneBottom - foundation * 2;
+        int surfaceY = nominalSurface + residentGroundBoundaryOffset(worldPosition.x, 0x63u, 5);
+        if (worldPosition.y < surfaceY) return uvec2(MAT_EMPTY, 0u);
+        uint biome = residentSurfaceBiome(worldPosition);
+        if (worldPosition.y == surfaceY && biome == MAT_DIRT)
+  return uvec2(MAT_GRASS, TERRAIN_FLAG_STRUCTURAL);
+        return uvec2(biome, TERRAIN_FLAG_STRUCTURAL);
     }
 
     int bottomShell = min(height, BRICK_SIZE);
     int bottomShellStart = height - bottomShell;
-    if (worldPosition.y >= bottomShellStart) return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
+    if (worldPosition.y >= bottomShellStart)
+        return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
     int lavaRoom = max(bottomShellStart - sceneBottom, 0);
     int lavaThickness = min(lavaRoom, BRICK_SIZE * 2);
     int lavaStart = bottomShellStart - lavaThickness;
-    if (worldPosition.y >= lavaStart) return uvec2(MAT_LAVA, TERRAIN_FLAG_DELIBERATE_LOOSE);
+    if (worldPosition.y >= lavaStart)
+        return uvec2(MAT_LAVA, TERRAIN_FLAG_DELIBERATE_LOOSE);
     int capRoom = max(lavaStart - sceneBottom, 0);
     int capThickness = min(capRoom, BRICK_SIZE);
     int lavaCapStart = lavaStart - capThickness;
-    if (worldPosition.y >= lavaCapStart) return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
+    if (worldPosition.y >= lavaCapStart)
+        return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
 
     int depth = worldPosition.y - sceneBottom;
     int zone = min(depth / AUTHORED_WORLD_CELLS.y, 2);
     int localY = depth % AUTHORED_WORLD_CELLS.y;
-    int boundaryA = 106 + residentGroundBoundaryOffset(worldPosition.x, uint(zone * 17 + 3), 18);
-    int boundaryB = 232 + residentGroundBoundaryOffset(worldPosition.x, uint(zone * 19 + 7), 24);
-    int boundaryC = 304 + residentGroundBoundaryOffset(worldPosition.x, uint(zone * 23 + 11), 16);
+    int boundaryA = 96 + residentGroundBoundaryOffset(worldPosition.x, uint(zone * 17 + 3), 22);
+    int boundaryB = 218 + residentGroundBoundaryOffset(worldPosition.x, uint(zone * 19 + 7), 28);
+    int boundaryC = 302 + residentGroundBoundaryOffset(worldPosition.x, uint(zone * 23 + 11), 20);
+    uint geology = residentLayerMaterial(zone, localY, boundaryA, boundaryB,
+                               boundaryC, worldPosition);
 
-    uint geology = MAT_STONE;
-    if (zone == 0) geology = localY < boundaryA ? MAT_DIRT : (localY < boundaryB ? MAT_SAND : MAT_SILT);
-    else if (zone == 1) geology = localY < boundaryA ? MAT_SAND : (localY < boundaryB ? MAT_SILT : MAT_DIRT);
-    else geology = localY < boundaryA ? MAT_SILT : (localY < boundaryB ? MAT_DIRT : MAT_STONE);
-
-    int nearest = min(abs(localY - boundaryA), min(abs(localY - boundaryB), abs(localY - boundaryC)));
-    if (nearest <= 7 && residentGroundRoughEdgeCell(worldPosition, uint(zone * 31 + 13))) {
-        if (geology == MAT_DIRT) geology = MAT_SAND;
-        else if (geology == MAT_SAND) geology = MAT_SILT;
-        else if (geology == MAT_SILT) geology = MAT_DIRT;
-    }
-
-    uint mudSeed = residentGroundHash(ivec2(worldPosition.x / 24, worldPosition.y / 18 + zone * 97));
-    ivec2 mudLocal = ivec2(worldPosition.x % 24 - 12, worldPosition.y % 18 - 9);
-    if ((mudSeed & 31u) == 0u &&
-        mudLocal.x * mudLocal.x * 9 + mudLocal.y * mudLocal.y * 16 < 900) {
+    uint mudSeed = residentGroundHash(ivec2(worldPosition.x / 32,
+                                  worldPosition.y / 24 + zone * 97));
+    ivec2 mudLocal = ivec2(worldPosition.x % 32 - 16, worldPosition.y % 24 - 12);
+    if ((mudSeed & 63u) == 0u &&
+        mudLocal.x * mudLocal.x * 9 + mudLocal.y * mudLocal.y * 16 < 1600)
         geology = MAT_MUD;
-    }
     return residentGroundSample(geology, worldPosition, depth);
 }
 
@@ -230,55 +279,66 @@ uint volcanoMaterial(ivec2 p) {
     ivec2 world = worldBrickSize();
     ivec2 b = brickCoordinate(p);
     int floorRow = world.y - 2;
-    int center = max(18, world.x * 3 / 10);
-    int top = max(4, floorRow - 36);
+    int center = max(18, world.x * 2 / 5);
+    int top = max(4, floorRow - 35);
     uint material = MAT_EMPTY;
 
     if (b.y >= floorRow) return MAT_STONE;
     int depth = b.y - top;
-    int halfWidth = max(0, depth * 2 / 3 + 3);
+    int halfWidth = max(0, depth * 2 / 3 + 4);
     bool insideCone = b.y >= top && b.y < floorRow && abs(b.x - center) <= halfWidth;
     if (insideCone) material = MAT_STONE;
 
-    ivec2 chamberCenter = ivec2(center, floorRow - 7);
+    // Large pressure reservoir and a three-brick throat keep visible lava in
+    // the volcano instead of draining the scene immediately.
+    ivec2 chamberCenter = ivec2(center, floorRow - 8);
     ivec2 chamberDelta = b - chamberCenter;
     bool chamberInterior = chamberDelta.x * chamberDelta.x * 2 +
-                           chamberDelta.y * chamberDelta.y * 5 <= 58;
+                 chamberDelta.y * chamberDelta.y * 4 <= 96;
     if (chamberInterior) material = MAT_LAVA;
-    if (abs(b.x - center) <= 1 && b.y >= top + 2 && b.y <= chamberCenter.y)
+    if (abs(b.x - center) <= 2 && b.y >= top + 4 && b.y <= chamberCenter.y)
         material = MAT_LAVA;
-    if (b.y >= top && b.y < top + 2 && abs(b.x - center) <= 4)
-        material = MAT_EMPTY;
-    if (b.y == top + 1 && abs(b.x - center) <= 1)
-        material = MAT_MAGMA_VENT;
-    if (b.y == chamberCenter.y + 2 && abs(b.x - center) <= 2)
+    if (b.y == chamberCenter.y + 3 && abs(b.x - center) <= 3)
         material = MAT_MAGMA_VENT;
 
-    // Natural map-scale lake on the open side of the volcano. The basin is
-    // curved at cell resolution, with shallow banks rather than a framed tank.
-    int lakeLeft = max((center + 22) * BRICK_SIZE, int(pc.width) * 2 / 3);
-    int lakeRight = int(pc.width) - BRICK_SIZE * 3;
+    // Open crater with a retained lava lake and a vent at its base.
+    int craterCenterX = center * BRICK_SIZE + BRICK_SIZE / 2;
+    int craterDx = abs(p.x - craterCenterX);
+    int craterSurface = (top + 4) * BRICK_SIZE;
+    int craterBed = craterSurface + 18 + max(0, 34 - craterDx) / 2;
+    if (craterDx <= 44 && p.y >= craterSurface && p.y < craterBed)
+        material = MAT_LAVA;
+    if (craterDx <= 52 && p.y >= craterBed && p.y < craterBed + 6)
+        material = MAT_STONE;
+    if (p.y >= craterSurface - 10 && p.y < craterSurface && craterDx <= 48)
+        material = MAT_EMPTY;
+    if (p.y == craterBed - 1 && craterDx <= 6)
+        material = MAT_MAGMA_VENT;
+
+    // Natural map-scale water lake. All coordinates are authored-local.
+    int authoredWidth = min(int(pc.width), AUTHORED_WORLD_CELLS.x);
+    int lakeLeft = max((center + 18) * BRICK_SIZE, authoredWidth * 3 / 5);
+    int lakeRight = authoredWidth - BRICK_SIZE * 3;
     int lakeCenter = (lakeLeft + lakeRight) / 2;
     int lakeHalfSpan = max(24, (lakeRight - lakeLeft) / 2);
     int lakeSurface = (floorRow - 9) * BRICK_SIZE + 2;
     int lakeFloorLimit = floorRow * BRICK_SIZE - 2;
     int lakeDx = abs(p.x - lakeCenter);
-    if (lakeDx <= lakeHalfSpan) {
+    if (lakeRight > lakeLeft && lakeDx <= lakeHalfSpan) {
         int centerFactor = lakeHalfSpan - lakeDx;
-        int bowlDepth = 6 + centerFactor * 58 / max(lakeHalfSpan, 1);
-        int rough = int(hash32(uint(p.x / 5) ^ pc.seed ^ 0x1a6eu) & 3u) - 1;
+        int bowlDepth = 8 + centerFactor * 62 / max(lakeHalfSpan, 1);
+        int rough = int(hash32(uint(p.x / 7) ^ pc.seed ^ 0x1a6eu) & 3u) - 1;
         int bedY = min(lakeFloorLimit, lakeSurface + bowlDepth + rough);
         if (p.y >= lakeSurface && p.y < bedY) material = MAT_WATER;
         else if (p.y >= bedY && p.y < lakeFloorLimit + 5)
-            material = p.y < bedY + 5 ? MAT_DIRT : MAT_STONE;
+  material = p.y < bedY + 6 ? MAT_DIRT : MAT_STONE;
         if (p.y == lakeSurface - 1 && lakeDx > lakeHalfSpan - BRICK_SIZE * 2)
-            material = MAT_GRASS;
+  material = MAT_GRASS;
     }
 
-    if (material == MAT_EMPTY && p.y < (top + 2) * BRICK_SIZE &&
-        p.y > max(8, top * BRICK_SIZE - 120) &&
-        abs(p.x - center * BRICK_SIZE) < 110 &&
-        (hash32(indexOf(p) ^ pc.seed ^ 0x51a9u) % 37u) == 0u)
+    if (material == MAT_EMPTY && p.y < craterSurface &&
+        p.y > max(8, top * BRICK_SIZE - 128) && craterDx < 118 &&
+        (hash32(indexOf(p) ^ pc.seed ^ 0x51a9u) % 31u) == 0u)
         material = MAT_SMOKE;
     return material;
 }

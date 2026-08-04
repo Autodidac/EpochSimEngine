@@ -17,9 +17,12 @@ static_assert(authored_scene_origin_x(resident_world_width) % pre_expansion_worl
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 0u, 0u) == Material::stone);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 100u) == Material::empty);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 1079u) == Material::stone);
+static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 1068u) != Material::empty);
+static_assert(resident_substrate_material(resident_world_width, resident_world_height, 3000u, 1068u) != Material::empty);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 0u) == Material::stone);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1416u) == Material::lava);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1432u) == Material::stone);
+static_assert(resident_substrate_is_structural(Material::grass));
 static_assert(resident_substrate_is_structural(Material::mud));
 static_assert(resident_substrate_is_structural(Material::iron_ore));
 static_assert(resident_substrate_is_structural(Material::copper));

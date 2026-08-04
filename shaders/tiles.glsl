@@ -4,8 +4,8 @@
 const uint TILE_SIZE = 8u;
 const uint TILE_CELL_COUNT = 64u;
 const uint TILE_STABILITY_OCCUPANCY = 52u;
-// This occupancy threshold applies only to stabilized granular terrain.
-// Block-capable structural tile placements never auto-crumble from occupancy.
+// Complete structural tiles are fracture-armed. The 31st destroyed cell is
+// 48.4375% destruction and releases every surviving structural pixel.
 const uint TILE_DESTROYED_CELLS_TO_CRUMBLE = 31u;
 const uint TILE_MIN_COHESIVE_CELLS =
     TILE_CELL_COUNT - TILE_DESTROYED_CELLS_TO_CRUMBLE + 1u;
@@ -43,6 +43,7 @@ const uint TILE_MEDIUM_BREAKUP = 0x04000000u;
 // Cohesive solid metadata for sleeping/debug only. This is never permission
 // to translate the represented 8x8 solid as one movement packet.
 const uint TILE_BULK_READY = 0x08000000u;
+const uint TILE_FRACTURE_ARMED = 0x10000000u;
 
 struct TileState {
     uint material;

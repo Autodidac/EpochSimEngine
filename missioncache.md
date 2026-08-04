@@ -240,6 +240,15 @@ These observations are authoritative contradictions. A release cannot erase a ro
 
 Every P0 mission is attempted in the current release. Every P1/P2 row is reviewed for contradiction and retained until its own acceptance passes. Static compilation never closes visual, runtime, conservation, or performance work.
 
+## v2.5.10 terrain, liquid, workspace, and fracture corrections
+
+| ID | Status | Mission | Acceptance |
+|---|---|---|---|
+| MC-141 | PARTIAL | Workspace-specific sidebar hierarchy | Global controls never have captions drawn through them. Inventory, Editor, Settings, and Designer render distinct bodies and hidden controls cannot receive input. Static contracts pass; packaged visual acceptance remains required. |
+| MC-142 | PARTIAL | 47% structural fracture and compact tool bursts | Complete structural tiles collapse on the 31st destroyed cell, release every survivor into down/diagonal movement, and cannot repair while collapsing. Tool visuals are short sparse pixel bursts. Static contracts pass; packaged visual/physics acceptance remains required. |
+| MC-143 | PARTIAL | Continuous terrain and coherent geology | Ground continues across every resident-world column outside the authored scene. Mineral cores remain complete structural tiles, broken material is limited to localized rubble/trap pockets, and biome boundaries transition through broad deterministic bands. Static contracts pass; packaged map acceptance remains required. |
+| MC-144 | PARTIAL | Volcano lake/lava recovery and low-friction liquids | Volcano visibly contains a water lake, crater lava lake, reservoir, throat, vents, cone, and gas space. Liquids conserve volume while falling, equalizing, and flowing over ledges without the legacy 18-frame cutoff. Shader compilation and static contracts pass; packaged motion acceptance remains required. |
+
 # Permanent invariants
 
 - Every generated scene and loaded saved counterpart uses the same crystal-marker authored footprint at world Y=720, two complete sky rows above it, and stone-wrapped lower geology/lava stack below it.

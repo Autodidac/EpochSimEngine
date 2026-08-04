@@ -201,13 +201,28 @@ void damageCell(ivec2 p, uint damage) {
         uint health = stateValue(cell);
         if (health == 0u) health = 255u;
         if (health <= damage) {
-            Cell fragment = cell;
-            fragment.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
-            fragment.aux |= AUX_MOVED;
-            fragment.age = 0u;
-            setStateValue(fragment, 1u);
-            recordConservation(cell, fragment);
-            cells[index] = fragment;
+  Cell fragment = cell;
+  fragment.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
+  fragment.aux |= AUX_MOVED;
+  fragment.age = 0u;
+  setStateValue(fragment, 1u);
+  recordConservation(cell, fragment);
+  int away = p.x >= actor.x ? 1 : -1;
+  ivec2 targets[3] = ivec2[3](p + ivec2(0, 1),
+      p + ivec2(away, 1), p + ivec2(-away, 1));
+  for (uint targetIndex = 0u; targetIndex < 3u; ++targetIndex) {
+      ivec2 targetPosition = targets[targetIndex];
+      if (!actorInside(targetPosition)) continue;
+      Cell target = actorAt(targetPosition);
+      if (target.material != MAT_EMPTY && !isCellGas(target) && !isCellLiquid(target))
+          continue;
+      cells[index] = target;
+      cells[actorIndex(targetPosition)] = fragment;
+      markActorChunkDirty(p);
+      markActorChunkDirty(targetPosition);
+      return;
+  }
+  cells[index] = fragment;
         } else {
             setStateValue(cell, health - damage);
             cell.age = 0u;
@@ -263,7 +278,7 @@ void fireTool(inout ActorState state) {
     // ammunition exists. Ammo never blocks ordinary mining.
     bool plasma = found && hitMaterial == MAT_BEETLE && state.ammo > 0u && (state.unlocks & 8u) != 0u;
     if (found) {
-        int radius = plasma ? 3 : 2;
+        int radius = plasma ? 2 : 1;
         uint damage = plasma ? 255u : (state.drillLevel >= 2u ? 192u : 144u);
         for (int y = -radius; y <= radius; ++y) {
             for (int x = -radius; x <= radius; ++x) {
@@ -274,7 +289,7 @@ void fireTool(inout ActorState state) {
     }
     state.hitX = hit.x;
     state.hitY = hit.y;
-    state.shotTimer = plasma ? 14u : 7u;
+    state.shotTimer = plasma ? 6u : 4u;
 }
 
 

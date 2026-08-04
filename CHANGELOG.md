@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.5.10
+
+- Extended natural ground across every column outside the authored scene without moving authored objects.
+- Replaced blocky mineral scatter with coherent complete-tile vein cores, curved sand traps, and sparse localized rubble pockets.
+- Smoothed vertical and horizontal biome transitions with deterministic dither bands.
+- Restored the Volcano water lake by using authored-local width and added a retained crater lava lake plus a larger pressure reservoir.
+- Removed the liquid surface age cutoff, increased pressure/drop look-ahead, reduced viscosity gating, and added more equalization passes.
+- Separated workspace bodies, removed overlapping captions, restored 31-cell structural collapse, and replaced solid tool beams with sparse pixel bursts.
+
+
 ## 2.5.9
 
 - Restored the early v2.4.1 fine-owned Half Water attraction/consolidation behavior while keeping full Water and Air eligible for validated macro packets.

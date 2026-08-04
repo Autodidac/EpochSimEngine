@@ -104,6 +104,10 @@ Press `F3` to reveal the structural debug layer:
 
 The overlay reads simulation state only and does not alter it.
 
+Ground continues across the resident world outside the authored scene footprint. Biome seams are broad deterministic transitions, mineral deposits use coherent complete-tile cores, and broken resource cells appear only in localized rubble pockets or curved sand traps.
+
+Liquids use pressure-aware falling and equalization without a fixed surface-age cutoff. Water-like liquids spread farthest, oil and acid use bounded intermediate reach, honey remains slower without becoming stuck, and lava retains its cohesive semi-solid path.
+
 ## Exact material inspection
 
 Hold `Alt` while the cursor is inside the simulation to display the card for the exact cell under the mouse. Lookup is direct by grid coordinate; it does not scan or select the world.
@@ -152,7 +156,7 @@ Gas drawing is isolated behind `gasPresentation(...)`. The current pass uses res
 The interface was rebuilt as a pixel-aligned EpochGui layout. The native title bar remains simple; game controls stay inside the Vulkan viewport.
 
 - compact `SandHybrid` header and FPS display
-- responsive scene and mode controls
+- non-overlapping global controls and distinct workspace bodies
 - eight consistent material groups and slots
 - larger title, FPS, controls, palette labels, and character HUD
 - readable hover, selection, pause, brush, and character status

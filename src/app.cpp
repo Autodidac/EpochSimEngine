@@ -429,16 +429,20 @@ int run_application() {
                 static_cast<int>(maximum_zoom))), std::memory_order_relaxed);
         };
 
-        const auto hovered_group = ui::group_at(layout, pointer);
+        const auto selected_workspace = shared_state.selected_workspace.load(std::memory_order_relaxed) % ui::workspace_tab_count;
+        const bool inventory_workspace = selected_workspace == 0u;
+        const bool editor_workspace = selected_workspace == 1u;
+        const bool designer_workspace = selected_workspace == 3u;
+        const auto hovered_group = editor_workspace ? ui::group_at(layout, pointer) : material_group_count;
         shared_state.hovered_group.store(hovered_group, std::memory_order_relaxed);
 
         const auto selected_group_index =
             shared_state.selected_group.load(std::memory_order_relaxed) % material_group_count;
         const auto selected_group = static_cast<MaterialGroup>(selected_group_index);
-        const auto hovered_material = ui::palette_material_at(layout, selected_group, pointer);
+        const auto hovered_material = editor_workspace ? ui::palette_material_at(layout, selected_group, pointer) : Material::count;
         shared_state.hovered_material.store(
             static_cast<std::uint32_t>(hovered_material), std::memory_order_relaxed);
-        const bool hovered_ignite_air =
+        const bool hovered_ignite_air = editor_workspace &&
             ui::ignite_air_action_at(layout, selected_group, pointer);
 
         if (primary_pressed) {
@@ -482,29 +486,29 @@ int run_application() {
             } else if (epochengine::gui_lib::contains(layout.debug_toggle, pointer)) {
                 const bool debug = shared_state.debug_visualization.load(std::memory_order_relaxed);
                 shared_state.debug_visualization.store(!debug, std::memory_order_release);
-            } else if (epochengine::gui_lib::contains(layout.placement_cells, pointer)) {
+            } else if (designer_workspace && epochengine::gui_lib::contains(layout.placement_cells, pointer)) {
                 shared_state.placement_mode.store(0u, std::memory_order_relaxed);
-            } else if (epochengine::gui_lib::contains(layout.placement_tiles, pointer)) {
+            } else if (designer_workspace && epochengine::gui_lib::contains(layout.placement_tiles, pointer)) {
                 shared_state.placement_mode.store(1u, std::memory_order_relaxed);
-            } else if (epochengine::gui_lib::contains(layout.cursor_circle, pointer)) {
+            } else if (designer_workspace && epochengine::gui_lib::contains(layout.cursor_circle, pointer)) {
                 shared_state.brush_shape.store(0u, std::memory_order_relaxed);
-            } else if (epochengine::gui_lib::contains(layout.cursor_square, pointer)) {
+            } else if (designer_workspace && epochengine::gui_lib::contains(layout.cursor_square, pointer)) {
                 shared_state.brush_shape.store(1u, std::memory_order_relaxed);
-            } else if (epochengine::gui_lib::contains(layout.cursor_horizontal, pointer)) {
+            } else if (designer_workspace && epochengine::gui_lib::contains(layout.cursor_horizontal, pointer)) {
                 shared_state.brush_shape.store(2u, std::memory_order_relaxed);
-            } else if (epochengine::gui_lib::contains(layout.cursor_vertical, pointer)) {
+            } else if (designer_workspace && epochengine::gui_lib::contains(layout.cursor_vertical, pointer)) {
                 shared_state.brush_shape.store(3u, std::memory_order_relaxed);
-            } else if (epochengine::gui_lib::contains(layout.brush_smaller, pointer)) {
+            } else if (designer_workspace && epochengine::gui_lib::contains(layout.brush_smaller, pointer)) {
                 const auto radius = static_cast<int>(shared_state.brush_radius.load(std::memory_order_relaxed));
                 shared_state.brush_radius.store(static_cast<std::uint32_t>(std::clamp(radius - 1, 1, 48)),
                                                 std::memory_order_relaxed);
-            } else if (epochengine::gui_lib::contains(layout.brush_larger, pointer)) {
+            } else if (designer_workspace && epochengine::gui_lib::contains(layout.brush_larger, pointer)) {
                 const auto radius = static_cast<int>(shared_state.brush_radius.load(std::memory_order_relaxed));
                 shared_state.brush_radius.store(static_cast<std::uint32_t>(std::clamp(radius + 1, 1, 48)),
                                                 std::memory_order_relaxed);
-            } else if (epochengine::gui_lib::contains(layout.zoom_out, pointer)) {
+            } else if (designer_workspace && epochengine::gui_lib::contains(layout.zoom_out, pointer)) {
                 adjust_zoom_centered(-1);
-            } else if (epochengine::gui_lib::contains(layout.zoom_in, pointer)) {
+            } else if (designer_workspace && epochengine::gui_lib::contains(layout.zoom_in, pointer)) {
                 adjust_zoom_centered(1);
             } else if (epochengine::gui_lib::contains(layout.atmosphere, pointer)) {
                 shared_state.selected_material.store(
@@ -514,17 +518,17 @@ int run_application() {
             } else if (epochengine::gui_lib::contains(layout.eraser, pointer)) {
                 shared_state.selected_material.store(static_cast<std::uint32_t>(Material::empty),
                                                      std::memory_order_relaxed);
-            } else if (scene_player_present &&
+            } else if (inventory_workspace && scene_player_present &&
                        ui::inventory_slot_at(layout, input.height, pointer) <
                            player_inventory_slot_count) {
                 shared_state.selected_inventory_slot.store(
                     ui::inventory_slot_at(layout, input.height, pointer),
                     std::memory_order_relaxed);
-            } else if (hovered_group < material_group_count) {
+            } else if (editor_workspace && hovered_group < material_group_count) {
                 shared_state.selected_group.store(hovered_group, std::memory_order_relaxed);
             } else if (hovered_ignite_air) {
                 shared_state.ignite_air.store(true, std::memory_order_release);
-            } else if (hovered_material != Material::count) {
+            } else if (editor_workspace && hovered_material != Material::count) {
                 shared_state.selected_material.store(
                     static_cast<std::uint32_t>(hovered_material), std::memory_order_relaxed);
             }

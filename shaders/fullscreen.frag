@@ -498,12 +498,6 @@ void main() {
                numberPixel(pixel, ivec2(int(sidebarLeft + 274u), 51), 1,
                            renderPc.activeAreaCount);
 
-        if (fixedPixel(pixel, ivec2(int(rowLeft), 62), 1, 170u) ||
-            fixedPixel(pixel, ivec2(int(rowLeft), 96), 1, 171u) ||
-            fixedPixel(pixel, ivec2(int(rowLeft), 130), 1, 172u) ||
-            fixedPixel(pixel, ivec2(int(rowLeft), 162), 1, 173u))
-            text = true;
-
         // Scene files/navigation.
         uint rowGap = 4u;
         uint sceneWidth = max((rowWidth - rowGap * 3u) / 4u, 1u);
@@ -615,7 +609,8 @@ void main() {
         uint groupRows = max((renderPc.groupCount + 1u) / 2u, 1u);
         uint groupCellWidth = max(contentWidth / 2u, 1u);
         uint groupCellHeight = max(renderPc.groupTabsHeight / groupRows, 1u);
-        if (y >= groupTop && y < groupTop + renderPc.groupTabsHeight &&
+        if (renderPc.selectedWorkspace == 1u &&
+            y >= groupTop && y < groupTop + renderPc.groupTabsHeight &&
             x >= contentLeft && x < contentLeft + contentWidth) {
             uint column = min((x - contentLeft) / groupCellWidth, 1u);
             uint row = min((y - groupTop) / groupCellHeight, groupRows - 1u);
@@ -648,7 +643,8 @@ void main() {
         uint slotRows = max((slotCount + 1u) / 2u, 1u);
         uint cellWidth = max(contentWidth / 2u, 1u);
         uint cellHeight = max(palettePanelHeight / slotRows, 1u);
-        if (y >= paletteTop && y < paletteTop + palettePanelHeight &&
+        if (renderPc.selectedWorkspace == 1u &&
+            y >= paletteTop && y < paletteTop + palettePanelHeight &&
             x >= contentLeft && x < contentLeft + contentWidth) {
             uint column = min((x - contentLeft) / cellWidth, 1u);
             uint row = min((y - paletteTop) / cellHeight, slotRows - 1u);
@@ -687,9 +683,10 @@ void main() {
             return;
         }
 
-        uint keymapTop = paletteTop + palettePanelHeight + 3u;
+        uint keymapTop = groupTop;
         uint keymapBottom = keymapTop + 124u;
-        if (y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {
+        if (renderPc.selectedWorkspace == 2u &&
+            y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {
             color = vec3(0.035, 0.047, 0.064);
             if (borderPixel(x, y, contentLeft, keymapTop, contentLeft + contentWidth, keymapBottom))
                 color = vec3(0.12, 0.20, 0.28);
@@ -709,9 +706,10 @@ void main() {
             return;
         }
 
-        uint cursorTop = keymapBottom + 3u;
+        uint cursorTop = groupTop;
         uint cursorBottom = cursorTop + 112u;
-        if (y >= cursorTop && y < cursorBottom && x >= contentLeft && x < contentLeft + contentWidth) {
+        if (renderPc.selectedWorkspace == 3u &&
+            y >= cursorTop && y < cursorBottom && x >= contentLeft && x < contentLeft + contentWidth) {
             color = vec3(0.035, 0.047, 0.064);
             if (borderPixel(x, y, contentLeft, cursorTop, contentLeft + contentWidth, cursorBottom))
                 color = vec3(0.12, 0.20, 0.28);
@@ -778,7 +776,7 @@ void main() {
             return;
         }
 
-        uint cardTop = cursorBottom + 3u;
+        uint cardTop = paletteTop + palettePanelHeight + 3u;
         uint actorPanel = actor.enabled != 0u ? 106u : 5u;
         uint cardBottom = renderPc.windowHeight > actorPanel + 5u
             ? renderPc.windowHeight - actorPanel - 5u : renderPc.windowHeight;
@@ -788,7 +786,7 @@ void main() {
         uint cardMaterial = renderPc.inspectMode != 0u ? inspected.material :
             (renderPc.hoveredMaterial < renderPc.materialCount ? renderPc.hoveredMaterial : renderPc.selectedMaterial);
         cardMaterial = min(cardMaterial, renderPc.materialCount - 1u);
-        if (y >= cardTop && y < cardBottom) {
+        if (renderPc.selectedWorkspace == 1u && y >= cardTop && y < cardBottom) {
             if (borderPixel(x, y, contentLeft, cardTop, contentLeft + contentWidth, cardBottom))
                 color = vec3(0.13, 0.29, 0.43);
             if (renderPc.inspectMode != 0u && isHalfWater(inspected)) {
@@ -819,8 +817,8 @@ void main() {
             return;
         }
 
-        if (actor.enabled != 0u) {
-            uint top = cardBottom + 3u;
+        if (actor.enabled != 0u && renderPc.selectedWorkspace == 0u) {
+            uint top = groupTop;
             if (y >= top) {
                 color = vec3(0.032, 0.043, 0.058);
                 bool actorText = fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(top + 5u)), 1, 45u) ||
@@ -972,21 +970,22 @@ void main() {
     if (actor.enabled != 0u && actor.health != 0u && actor.shotTimer > 0u) {
         vec2 toolOrigin = vec2(float(actor.x), float(actor.y - 4));
         vec2 toolHit = vec2(float(actor.hitX), float(actor.hitY));
-        float beamDistance = segmentDistance(vec2(grid) + vec2(0.5), toolOrigin, toolHit);
-        if (beamDistance < 0.72) {
-            color = actor.shotTimer > 7u ? vec4(1.0, 0.28, 0.68, 1.0)
-                                         : vec4(1.0, 0.82, 0.20, 1.0);
-        }
+        vec2 ray = toolHit - toolOrigin;
+        float raySquared = max(dot(ray, ray), 0.0001);
+        vec2 samplePoint = vec2(grid) + vec2(0.5);
+        float along = clamp(dot(samplePoint - toolOrigin, ray) / raySquared, 0.0, 1.0);
+        float beamDistance = segmentDistance(samplePoint, toolOrigin, toolHit);
+        uint beamStep = uint(floor(along * sqrt(raySquared)));
+        uint burstHash = hash32(uint(grid.x) * 2246822519u ^ uint(grid.y) * 3266489917u ^
+                      renderPc.renderFrame * 668265263u ^ actor.shotTimer * 374761393u);
+        bool tinyDash = ((beamStep + actor.shotTimer) % 7u) < 2u;
+        if (beamDistance < 0.46 && tinyDash && (burstHash & 3u) != 0u)
+  color = actor.shotTimer > 4u ? vec4(1.0, 0.28, 0.68, 1.0)
+                               : vec4(1.0, 0.82, 0.20, 1.0);
         ivec2 impactDelta = grid - ivec2(actor.hitX, actor.hitY);
         int impactDistance = impactDelta.x * impactDelta.x + impactDelta.y * impactDelta.y;
-        if (impactDistance >= 3 && impactDistance <= 10) color = vec4(1.0, 0.96, 0.72, 1.0);
-    }
-
-    if (actor.enabled != 0u && actor.health != 0u) {
-        ivec2 d = grid - ivec2(actor.x, actor.y);
-        bool body = d.x >= -2 && d.x <= 2 && d.y >= -7 && d.y <= 0;
-        bool visor = d.y >= -6 && d.y <= -5 && d.x >= -1 && d.x <= 2;
-        if (body) color = visor ? vec4(0.20, 0.88, 1.0, 1.0) : vec4(0.82, 0.88, 0.94, 1.0);
+        if (impactDistance >= 1 && impactDistance <= 8 && ((burstHash >> 3u) & 3u) == 0u)
+  color = vec4(1.0, 0.96, 0.72, 1.0);
     }
 
     if (renderPc.inspectMode == 0u && renderPc.mapMode == 0u) {

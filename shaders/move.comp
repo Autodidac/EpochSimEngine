@@ -351,7 +351,20 @@ bool isStructural(Cell cell) {
 
 bool isLooseSolid(Cell cell) {
     return isBlockCapable(cell.material) && !isStructural(cell) &&
-           !isCellLiquid(cell) && !isCellGas(cell);
+ !isCellLiquid(cell) && !isCellGas(cell);
+}
+
+void releaseCollapsingStructural(ivec2 position) {
+    if (!moveInside(position)) return;
+    Cell cell = moveAt(position);
+    if (!isStructural(cell)) return;
+    TileState tile = tiles[tileIndex(position, movePc.width)];
+    if (!tileHas(tile, TILE_COLLAPSING)) return;
+    cell.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
+    cell.aux |= AUX_MOVED;
+    cell.age = 0u;
+    cells[moveIndex(position)] = cell;
+    markChunkDirty(position);
 }
 
 bool isMagnetic(uint material) {
@@ -427,12 +440,11 @@ void diffuseSalinityPair(ivec2 aPosition, ivec2 bPosition) {
 
 uint flowInterval(Cell cell) {
     if (isMolten(cell)) {
-        if (cell.material == MAT_PLASTIC || cell.material == MAT_ACID_RESISTANT_PLASTIC) return 3u;
-        if (cell.material == MAT_COPPER || cell.material == MAT_GOLD) return 4u;
-        return 6u;
+        if (cell.material == MAT_PLASTIC || cell.material == MAT_ACID_RESISTANT_PLASTIC)
+  return 2u;
+        return 3u;
     }
-    if (cell.material == MAT_HONEY) return 4u;
-    if (cell.material == MAT_LAVA) return stateValue(cell) >= 160u ? 1u : 2u;
+    if (cell.material == MAT_HONEY) return 2u;
     return 1u;
 }
 
@@ -502,6 +514,7 @@ bool repairDamagedTileFromLooseCell(ivec2 sourcePosition, ivec2 contactPosition,
     uint targetTileIndex = tileIndex(contactPosition, movePc.width);
     TileState targetTile = tiles[targetTileIndex];
     if (!tileHas(targetTile, TILE_STRUCTURAL) || !tileHas(targetTile, TILE_DAMAGED) ||
+        tileHas(targetTile, TILE_COLLAPSING) ||
         targetTile.material != source.material) return false;
 
     ivec2 origin = (contactPosition / int(TILE_SIZE)) * int(TILE_SIZE);
@@ -560,47 +573,63 @@ bool supportedAt(ivec2 position, Cell cell) {
 
 int liquidColumnPressure(ivec2 position, uint material) {
     int pressure = 0;
-    Cell c1 = moveAt(position + ivec2(0, -1));
-    if (c1.material != material && !(isCellLiquid(c1) && densityOf(c1.material) >= densityOf(material))) return pressure;
-    ++pressure;
-    Cell c2 = moveAt(position + ivec2(0, -2));
-    if (c2.material != material && !(isCellLiquid(c2) && densityOf(c2.material) >= densityOf(material))) return pressure;
-    ++pressure;
-    Cell c3 = moveAt(position + ivec2(0, -3));
-    if (c3.material != material && !(isCellLiquid(c3) && densityOf(c3.material) >= densityOf(material))) return pressure;
-    ++pressure;
-    Cell c4 = moveAt(position + ivec2(0, -4));
-    if (c4.material == material || (isCellLiquid(c4) && densityOf(c4.material) >= densityOf(material))) ++pressure;
+    for (int offset = 1; offset <= 8; ++offset) {
+        Cell above = moveAt(position + ivec2(0, -offset));
+        bool compatible = above.material == material ||
+  (isCellLiquid(above) && densityOf(above.material) >= densityOf(material));
+        if (!compatible) break;
+        ++pressure;
+    }
     return pressure;
 }
 
-bool liquidCanSpread(ivec2 sourcePosition, ivec2 targetPosition, Cell source, uint randomValue) {
-    if (!isOpenGas(moveAt(targetPosition)) || !movementAllows(source, randomValue)) return false;
+int liquidSpreadReach(uint material) {
+    if (material == MAT_HONEY) return 2;
+    if (material == MAT_OIL) return 4;
+    if (material == MAT_ACID) return 5;
+    if (material == MAT_SALTWATER || material == MAT_DIRTY_WATER) return 6;
+    return 7;
+}
+
+bool liquidPathLeadsToDrop(ivec2 targetPosition, int direction, Cell source) {
+    int reach = liquidSpreadReach(source.material);
+    for (int offset = 1; offset <= 7; ++offset) {
+        if (offset > reach) break;
+        ivec2 candidate = targetPosition + ivec2(direction * offset, 0);
+        if (!moveInside(candidate) || !isOpenGas(moveAt(candidate))) return false;
+        if (canCellFallInto(source, moveAt(candidate + ivec2(0, 1)))) return true;
+    }
+    return false;
+}
+
+bool liquidCanSpread(ivec2 sourcePosition, ivec2 targetPosition,
+           Cell source, uint randomValue) {
+    if (!isOpenGas(moveAt(targetPosition)) || !movementAllows(source, randomValue))
+        return false;
     if (!supportedAt(sourcePosition, source)) return false;
     if (!supportedAt(targetPosition, source)) return true;
+
     bool sourceCovered = isCellLiquid(moveAt(sourcePosition + ivec2(0, -1)));
     bool targetCovered = isCellLiquid(moveAt(targetPosition + ivec2(0, -1)));
     if (sourceCovered != targetCovered) return sourceCovered;
+
     int sourcePressure = liquidColumnPressure(sourcePosition, source.material);
     int targetPressure = liquidColumnPressure(targetPosition, source.material);
     if (sourcePressure != targetPressure) return sourcePressure > targetPressure;
+
     int direction = targetPosition.x > sourcePosition.x ? 1 : -1;
-    ivec2 next = targetPosition + ivec2(direction, 0);
-    ivec2 next2 = targetPosition + ivec2(direction * 2, 0);
-    bool firstDrop = moveInside(next) && isOpenGas(moveAt(next)) &&
-                     canCellFallInto(source, moveAt(next + ivec2(0, 1)));
-    bool secondDrop = moveInside(next2) && isOpenGas(moveAt(next)) &&
-                      isOpenGas(moveAt(next2)) &&
-                      canCellFallInto(source, moveAt(next2 + ivec2(0, 1)));
-    if (firstDrop || secondDrop) return true;
-    // A supplied low-viscosity surface may run outward briefly to form a level pool.
-    // Age is preserved by liquid swaps, so an equal basin still reaches real rest.
-    int directionBack = targetPosition.x > sourcePosition.x ? -1 : 1;
-    Cell behind = moveAt(sourcePosition + ivec2(directionBack, 0));
+    if (liquidPathLeadsToDrop(targetPosition, direction, source)) return true;
+
+    Cell behind = moveAt(sourcePosition - ivec2(direction, 0));
     Cell above = moveAt(sourcePosition + ivec2(0, -1));
-    bool suppliedSurface = behind.material == source.material || above.material == source.material;
-    bool lowViscosity = source.material != MAT_HONEY && source.material != MAT_OIL;
-    return lowViscosity && suppliedSurface && source.age < 18u;
+    bool suppliedSurface = behind.material == source.material ||
+                 above.material == source.material;
+    if (!suppliedSurface) return false;
+
+    // Only the supplied frontier advances. Interior cells therefore settle,
+    // while a lake or reservoir can keep feeding its edge without an age cutoff.
+    ivec2 forward = targetPosition + ivec2(direction, 0);
+    return moveInside(forward) && isOpenGas(moveAt(forward));
 }
 
 bool solidSupportsWaterAt(ivec2 position) {
@@ -964,6 +993,8 @@ bool pairSleeping(ivec2 a, ivec2 b) {
 }
 
 void processVertical(ivec2 top, ivec2 bottom) {
+    releaseCollapsingStructural(top);
+    releaseCollapsingStructural(bottom);
     if (pairSleeping(top, bottom)) return;
     diffuseSalinityPair(top, bottom);
     Cell a = moveAt(top);
@@ -1053,6 +1084,8 @@ void processVertical(ivec2 top, ivec2 bottom) {
 }
 
 void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
+    releaseCollapsingStructural(sourcePosition);
+    releaseCollapsingStructural(targetPosition);
     if (pairSleeping(sourcePosition, targetPosition)) return;
     Cell source = moveAt(sourcePosition);
     Cell target = moveAt(targetPosition);
@@ -1089,11 +1122,11 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
 
     bool cohesiveMud = source.material == MAT_MUD &&
         (below.material == MAT_DIRT || below.material == MAT_STONE || below.material == MAT_MUD);
-    if (!upward && source.material == MAT_WATER && supportedAt(sourcePosition, source) &&
+    if (!upward && isHalfWaterCell(source) && supportedAt(sourcePosition, source) &&
         isOpenGas(target)) {
         int direction = targetPosition.x > sourcePosition.x ? 1 : -1;
         Cell trailing = sampleAt(sourcePosition - ivec2(direction, 0));
-        if (waterHalfUnits(source) != 2u || waterHalfUnits(trailing) < 1u) return;
+        if (waterHalfUnits(trailing) < 1u) return;
     }
     if (!upward && !cohesiveMud &&
         (isCellPowder(source) || isCellLiquid(source) || isLooseSolid(source)) &&
@@ -1147,6 +1180,8 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
 }
 
 void processHorizontal(ivec2 left, ivec2 right) {
+    releaseCollapsingStructural(left);
+    releaseCollapsingStructural(right);
     if (pairSleeping(left, right)) return;
     diffuseSalinityPair(left, right);
     Cell a = moveAt(left);
