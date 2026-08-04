@@ -46,7 +46,42 @@ jobs:
           lines = []
           for line in workflow[start:end].splitlines():
               lines.append(line[10:] if line.startswith('          ') else line)
-          Path('/tmp/apply_v2511.py').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          script = '\n'.join(lines) + '\n'
+          strict_save = '''if old_draw not in renderer:
+    raise RuntimeError('vulkan_renderer.cpp: save routing anchor missing')
+renderer = renderer.replace(old_draw, new_draw, 1)'''
+          tolerant_save = '''if old_draw in renderer:
+    renderer = renderer.replace(old_draw, new_draw, 1)
+else:
+    save_call = 'if (!needs_reset) export_authored_scene_ppm(selected_scene);'
+    if save_call not in renderer:
+        raise RuntimeError('vulkan_renderer.cpp: save call anchor missing')
+    renderer = renderer.replace(
+        save_call, 'if (!needs_reset) save_world_slot(selected_scene);', 1)
+    renderer = renderer.replace(
+        'else startup_log("Scene save skipped until the initial scene exists.");',
+        'else startup_log("World save skipped until the initial scene exists.");', 1)'''
+          strict_load = '''if old_load not in renderer:
+    raise RuntimeError('vulkan_renderer.cpp: load routing anchor missing')
+renderer = renderer.replace(old_load, new_load, 1)'''
+          tolerant_load = '''if old_load in renderer:
+    renderer = renderer.replace(old_load, new_load, 1)
+else:
+    load_pattern = re.compile(
+        r'        bool image_loaded = false;\\n'
+        r'        if \\(explicit_load\\) \\{.*?\\n'
+        r'        \\}\\n\\n'
+        r'        std::uint32_t image_index\\{\\};', re.S)
+    replacement = new_load + '\\n\\n        std::uint32_t image_index{};'
+    renderer, load_count = load_pattern.subn(replacement, renderer, count=1)
+    if load_count != 1:
+        raise RuntimeError(
+            f'vulkan_renderer.cpp: load routing regex matched {load_count} times')'''
+          if strict_save not in script or strict_load not in script:
+              raise SystemExit('canonical routing patches changed unexpectedly')
+          script = script.replace(strict_save, tolerant_save, 1)
+          script = script.replace(strict_load, tolerant_load, 1)
+          Path('/tmp/apply_v2511.py').write_text(script, encoding='utf-8')
           PY
           python3 /tmp/apply_v2511.py
           rm -f .github/workflows/v2511-integrate.yml V2511_TRIGGER.md
