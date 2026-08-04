@@ -1,0 +1,369 @@
+name: Apply SandHybrid v2.5.11 World Save Rewrite
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sandhybrid-v2511-save-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.event.pull_request.head.ref == 'agent/v2511-world-save-rewrite'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Detect pending rewrite
+        id: detect
+        shell: bash
+        run: |
+          if grep -q 'project(SandHybrid VERSION 2.5.11 ' CMakeLists.txt; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply v2.5.11 integration
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def load(path: str) -> str:
+              return Path(path).read_text(encoding='utf-8')
+
+          def save(path: str, text: str) -> None:
+              Path(path).write_text(text, encoding='utf-8')
+
+          def once(path: str, old: str, new: str) -> None:
+              text = load(path)
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{path}: expected one match, found {count}: {old[:160]!r}')
+              save(path, text.replace(old, new, 1))
+
+          # Make the canonical validator usable by every workflow, including the
+          # headless matrix that previously called the stale legacy script.
+          legacy = Path('tools/validate_shader_contracts_legacy.py')
+          current = Path('tools/validate_shader_contracts.py')
+          wrapper = Path('tools/validate_shader_contracts_v2510.py')
+          if not legacy.exists():
+              current.rename(legacy)
+          wrapper_text = wrapper.read_text(encoding='utf-8').replace(
+              'tools/validate_shader_contracts.py',
+              'tools/validate_shader_contracts_legacy.py')
+          wrapper.write_text(wrapper_text, encoding='utf-8')
+          current.write_text(wrapper_text, encoding='utf-8')
+
+          # Platform-neutral library and package integration.
+          once('CMakeLists.txt',
+               'project(SandHybrid VERSION 2.5.10 LANGUAGES CXX)',
+               'project(SandHybrid VERSION 2.5.11 LANGUAGES CXX)')
+          once('CMakeLists.txt',
+               'add_library(SandHybrid STATIC\n    src/scene_image.cpp\n',
+               'add_library(SandHybrid STATIC\n    src/scene_image.cpp\n    src/world_save.cpp\n')
+          once('CMakeLists.txt',
+               '    include/sandhybrid/scene_image.hpp\n',
+               '    include/sandhybrid/scene_image.hpp\n    include/sandhybrid/world_save.hpp\n')
+          once('CMakeLists.txt',
+               '''    if(WIN32)
+        install(FILES run.bat DESTINATION .)
+    endif()''',
+               '''    if(WIN32)
+        install(FILES run.bat run-compact.bat run-standard.bat run-large.bat DESTINATION .)
+    else()
+        install(PROGRAMS run-compact.sh run-standard.sh run-large.sh DESTINATION .)
+    endif()''')
+          once('CMakeLists.txt',
+               '''        add_test(NAME sandhybrid_v2510_source_contract
+       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2510_contract.py)''',
+               '''        add_test(NAME sandhybrid_v2510_source_contract
+       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2510_contract.py)
+        add_test(NAME sandhybrid_v2511_source_contract
+       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2511_contract.py)''')
+          scene_test = '''    add_executable(sandhybrid_scene_image_contract tests/scene_image_contract.cpp)
+    target_link_libraries(sandhybrid_scene_image_contract PRIVATE SandHybrid)
+    target_compile_features(sandhybrid_scene_image_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_scene_image_contract)
+    add_test(NAME sandhybrid_scene_image_contract COMMAND sandhybrid_scene_image_contract)
+'''
+          world_test = scene_test + '''
+    add_executable(sandhybrid_world_save_contract tests/world_save_contract.cpp)
+    target_link_libraries(sandhybrid_world_save_contract PRIVATE SandHybrid)
+    target_compile_features(sandhybrid_world_save_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_world_save_contract)
+    add_test(NAME sandhybrid_world_save_contract COMMAND sandhybrid_world_save_contract)
+'''
+          once('CMakeLists.txt', scene_test, world_test)
+
+          # Application startup selects a Terraria-style size before allocating
+          # Vulkan buffers. Save slots are fixed for the renderer lifetime.
+          once('src/app.cpp', 'int run_application() {',
+               'int run_application(const ApplicationOptions& options) {')
+          once('src/app.cpp',
+               '    const SimulationConfig simulation_config{};\n',
+               '''    const auto world = world_dimensions(options.world_size);
+    const SimulationConfig simulation_config{
+        .grid_width = world.width,
+        .grid_height = world.height,
+        .frames_in_flight = 2u,
+        .max_frames_per_second = 120u,
+        .world_size = options.world_size,
+    };
+''')
+          once('src/app.cpp',
+               '            VulkanRenderer renderer{window, simulation_config};',
+               '            VulkanRenderer renderer{window, simulation_config, options.save_slot};')
+          once('src/app.cpp',
+               '            window.set_title("SandHybrid");',
+               '''            window.set_title("SandHybrid - " +
+                std::string{world_size_name(options.world_size)});''')
+          once('src/app.cpp', '#include <thread>\n', '#include <thread>\n#include <string>\n')
+
+          renderer = load('src/vulkan_renderer.cpp')
+          renderer = renderer.replace(
+              '#include "sandhybrid/world_layout.hpp"\n',
+              '#include "sandhybrid/world_layout.hpp"\n#include "sandhybrid/world_save.hpp"\n', 1)
+          renderer = renderer.replace(
+              '    SimulationConfig config;\n',
+              '    SimulationConfig config;\n    std::string save_slot;\n', 1)
+          renderer = renderer.replace(
+              '''    explicit Impl(const NativeWindow& native_window, const SimulationConfig simulation_config)
+        : window(native_window), config(simulation_config) {''',
+              '''    explicit Impl(const NativeWindow& native_window,
+                  const SimulationConfig simulation_config,
+                  std::string requested_save_slot)
+        : window(native_window), config(simulation_config),
+          save_slot(normalize_world_slot(requested_save_slot)) {''', 1)
+          renderer = renderer.replace(
+              '''        if (config.grid_width == 0 || config.grid_height == 0) {
+            throw std::invalid_argument("Simulation dimensions must be non-zero.");
+        }''',
+              '''        if (config.grid_width == 0 || config.grid_height == 0) {
+            throw std::invalid_argument("Simulation dimensions must be non-zero.");
+        }
+        const auto selected_dimensions = world_dimensions(config.world_size);
+        if (config.grid_width != selected_dimensions.width ||
+            config.grid_height != selected_dimensions.height) {
+            throw std::invalid_argument("Simulation dimensions do not match the selected world size.");
+        }
+        startup_log("World: " + std::string{world_size_name(config.world_size)} +
+                    " " + std::to_string(config.grid_width) + "x" +
+                    std::to_string(config.grid_height) + ", save slot " + save_slot);''', 1)
+          renderer = renderer.replace('load_scene_image(', 'import_authored_scene_ppm(')
+          renderer = renderer.replace('save_scene_image(', 'export_authored_scene_ppm(')
+
+          insertion = '''        startup_log("Saved crystal-row 640x360 authored scene image: " + path.string());
+    }
+
+    void record_reset'''
+          world_io = '''        startup_log("Saved crystal-row 640x360 authored scene image: " + path.string());
+    }
+
+    [[nodiscard]] bool load_world_slot(const std::uint32_t scene_index) {
+        const auto scene = static_cast<Scene>(scene_index % scene_count);
+        std::vector<SceneCell> cells(
+            static_cast<std::size_t>(config.grid_width) * config.grid_height);
+        WorldSaveMetadata metadata{};
+        std::string error;
+        if (!load_world(executable_directory(), config.world_size,
+                        config.grid_width, config.grid_height, scene,
+                        save_slot, cells, metadata, error)) {
+            startup_log("World load skipped: " + error);
+            return false;
+        }
+        upload_scene_cells(cells);
+        if (!error.empty()) startup_log("World load recovery: " + error);
+        startup_log("Loaded exact world save: " +
+                    world_save_path(executable_directory(), config.world_size,
+                                    scene, save_slot).string());
+        return true;
+    }
+
+    void save_world_slot(const std::uint32_t scene_index) {
+        const auto scene = static_cast<Scene>(scene_index % scene_count);
+        const auto cells = download_scene_cells();
+        const WorldSaveMetadata metadata{
+            .world_size = config.world_size,
+            .width = config.grid_width,
+            .height = config.grid_height,
+            .scene = scene,
+        };
+        std::string error;
+        if (!save_world(executable_directory(), metadata, save_slot, cells, error))
+            throw std::runtime_error("Unable to save world: " + error);
+        startup_log("Saved exact world state: " +
+                    world_save_path(executable_directory(), config.world_size,
+                                    scene, save_slot).string());
+    }
+
+    void record_reset'''
+          if insertion not in renderer:
+              raise RuntimeError('vulkan_renderer.cpp: world I/O insertion anchor missing')
+          renderer = renderer.replace(insertion, world_io, 1)
+
+          old_draw = '''        const auto selected_scene = state.selected_scene.load(std::memory_order_relaxed) % scene_count;
+        if (state.save_scene_image.exchange(false, std::memory_order_acq_rel)) {
+            if (!needs_reset) export_authored_scene_ppm(selected_scene);
+            else startup_log("Scene save skipped until the initial scene exists.");
+        }
+        const bool explicit_load = state.load_scene_image.exchange(false, std::memory_order_acq_rel);'''
+          new_draw = '''        const auto selected_scene = state.selected_scene.load(std::memory_order_relaxed) % scene_count;
+        if (state.save_scene_image.exchange(false, std::memory_order_acq_rel)) {
+            if (!needs_reset) save_world_slot(selected_scene);
+            else startup_log("World save skipped until the initial scene exists.");
+        }
+        const bool explicit_load = state.load_scene_image.exchange(false, std::memory_order_acq_rel);'''
+          if old_draw not in renderer:
+              raise RuntimeError('vulkan_renderer.cpp: save routing anchor missing')
+          renderer = renderer.replace(old_draw, new_draw, 1)
+
+          old_load = '''        bool image_loaded = false;
+        if (explicit_load) {
+            const auto selected = static_cast<Scene>(selected_scene);
+            if (scene_image_exists(scene_directory(), selected)) image_loaded = import_authored_scene_ppm(selected_scene);
+            else startup_log("No saved PPM exists for the selected scene.");
+        }'''
+          new_load = '''        bool image_loaded = false;
+        if (explicit_load) {
+            image_loaded = load_world_slot(selected_scene);
+            if (!image_loaded) {
+                const auto selected = static_cast<Scene>(selected_scene);
+                if (scene_image_exists(scene_directory(), selected)) {
+                    startup_log("No valid world save; importing the legacy authored PPM instead.");
+                    image_loaded = import_authored_scene_ppm(selected_scene);
+                } else {
+                    startup_log("No valid world save or authored PPM exists for the selected scene.");
+                }
+            }
+        }'''
+          if old_load not in renderer:
+              raise RuntimeError('vulkan_renderer.cpp: load routing anchor missing')
+          renderer = renderer.replace(old_load, new_load, 1)
+          renderer = renderer.replace(
+              '''VulkanRenderer::VulkanRenderer(const NativeWindow& window, const SimulationConfig config)
+    : impl_(std::make_unique<Impl>(window, config)) {}''',
+              '''VulkanRenderer::VulkanRenderer(const NativeWindow& window,
+                               const SimulationConfig config,
+                               std::string save_slot)
+    : impl_(std::make_unique<Impl>(window, config, std::move(save_slot))) {}''', 1)
+          save('src/vulkan_renderer.cpp', renderer)
+
+          # Release, docs, and durable mission evidence.
+          workflow = load('.github/workflows/ci-release.yml')
+          workflow = workflow.replace('v2.5.10', 'v2.5.11')
+          workflow = workflow.replace('sandhybrid-v2510-', 'sandhybrid-v2511-')
+          workflow = workflow.replace(
+              'run: python tools/validate_shader_contracts_v2510.py',
+              '''run: |
+          python tools/validate_shader_contracts.py
+          python tools/validate_v2510_contract.py
+          python tools/validate_v2511_contract.py''')
+          workflow = workflow.replace(
+              'MAP_VIEW.md SCENE_LAYOUT.md RELEASE_NOTES_v2.5.11.md',
+              'MAP_VIEW.md SCENE_LAYOUT.md SAVE_LAYOUT.md RELEASE_NOTES_v2.5.11.md')
+          workflow = workflow.replace(
+              'git push origin --delete agent/v260-ui-collapse-laser || true',
+              '''git push origin --delete agent/v260-ui-collapse-laser || true
+          git push origin --delete agent/v2511-world-save-rewrite || true''')
+          save('.github/workflows/ci-release.yml', workflow)
+
+          mission = load('missioncache.md')
+          if 'MC-145' not in mission:
+              section = '''## v2.5.11 exact world persistence and size-aware folders
+
+| ID | Status | Mission | Acceptance |
+|---|---|---|---|
+| MC-145 | PARTIAL | Replace broken gameplay scene-image saves with exact world saves | Save and Load operate on the entire selected-size resident world, preserving every `SceneCell` material, age, temperature, and aux field. The versioned 64x64 chunk stream chooses raw or RLE encoding, verifies each chunk and the full payload, validates dimensions/scene before mutation, publishes atomically, retains one backup, and recovers from a damaged primary. Deterministic contracts pass; packaged Windows/Linux save-load observation remains required. |
+| MC-146 | PARTIAL | Terraria-style selectable world sizes | Compact 2560x1440, Standard 5120x1440, and Large 10240x1440 allocate matching Vulkan buffers before startup. `--world-size` and the supplied size launchers select the preset, and incompatible saves cannot crop or stretch into another size. A polished in-window new-world selector remains open. |
+| MC-147 | PARTIAL | Durable save folder and slot layout | Saves live under `saves/worlds/<size>/<scene>/<slot>/` with sanitized named slots, `world.shw`, `world.bak`, and `manifest.txt`. PPM remains a 640x360 authored-scene asset format only. Package folder portability and multi-slot runtime acceptance remain required. |
+| MC-148 | REGRESSION | Save/load runtime reliability | Repeated save, overwrite, load, backup fallback, scene switching, and all three world sizes must preserve exact state without crashes, truncation, stale tile/chunk metadata, or loading into the wrong scene. Static and headless contracts exist; packaged stress acceptance remains active. |
+
+'''
+              mission = mission.replace('# Permanent invariants', section + '# Permanent invariants', 1)
+          mission = mission.replace(
+              'Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`.',
+              'Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`. v2.5.11 adds MC-145 through MC-148 for exact size-aware world persistence; runtime acceptance remains active.')
+          save('missioncache.md', mission)
+
+          changelog = load('CHANGELOG.md')
+          if '## 2.5.11' not in changelog:
+              changelog = changelog.replace('# Changelog\n', '''# Changelog
+
+## 2.5.11
+
+- Replaced gameplay PPM saves with exact, versioned, checksummed whole-world `.shw` saves.
+- Added atomic publication, previous-save backup, corruption fallback, manifests, sanitized slots, and size/scene-aware folders.
+- Added Compact, Standard, and Large startup selection through launchers and command-line options.
+- Kept PPM as authored-scene import/export only and carried packaged save/load and in-window selector acceptance forward.
+
+''', 1)
+          save('CHANGELOG.md', changelog)
+
+          readme = load('README.md')
+          if '## World sizes and exact saves' not in readme:
+              readme += '''
+
+## World sizes and exact saves
+
+Launch Compact, Standard, or Large with the supplied scripts or `--world-size`. Save slots use `--save-slot NAME`. Gameplay saves are exact whole-world `.shw` files under the portable `saves/worlds/<size>/<scene>/<slot>/` tree; see `SAVE_LAYOUT.md`. PPM files are retained only for authored 640x360 scene import/export.
+'''
+          save('README.md', readme)
+
+          # Temporary repair machinery must not survive the source commit.
+          for temporary in (
+              '.github/workflows/v2511-save-repair.yml',
+              '.github/workflows/v2510-final-repair.yml',
+              '.github/workflows/repair-v2510b.yml',
+              '.github/workflows/repair-main-v2510.yml',
+          ):
+              Path(temporary).unlink(missing_ok=True)
+          PY
+
+      - name: Install validation tools
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Validate headless library and persistence
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/validate_shader_contracts.py
+          python tools/validate_v2510_contract.py
+          python tools/validate_v2511_contract.py
+          python tools/validate_mission_cache.py
+          cmake -S . -B build-headless -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build-headless --parallel 2
+          ctest --test-dir build-headless --output-on-failure
+
+      - name: Commit validated rewrite
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Autodidac Release Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'SandHybrid v2.5.11 exact world save rewrite'
+          git push origin HEAD:agent/v2511-world-save-rewrite
