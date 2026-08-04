@@ -442,7 +442,10 @@ int run_application() {
             ui::ignite_air_action_at(layout, selected_group, pointer);
 
         if (primary_pressed) {
-            if (epochengine::gui_lib::contains(layout.previous_scene, pointer)) {
+            const auto workspace = ui::workspace_at(layout, pointer);
+            if (workspace < ui::workspace_tab_count) {
+                shared_state.selected_workspace.store(workspace, std::memory_order_relaxed);
+            } else if (epochengine::gui_lib::contains(layout.previous_scene, pointer)) {
                 scene = previous_scene(scene);
                 shared_state.selected_scene.store(static_cast<std::uint32_t>(scene), std::memory_order_relaxed);
                 shared_state.reset.store(true, std::memory_order_release);

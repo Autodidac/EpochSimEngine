@@ -316,8 +316,10 @@ struct RenderPush final {
     std::uint32_t camera_view_width{};
     std::uint32_t camera_view_height{};
     std::uint32_t selected_inventory_slot{};
+    std::uint32_t selected_workspace{};
+    std::uint32_t render_frame{};
 };
-static_assert(sizeof(RenderPush) == 192);
+static_assert(sizeof(RenderPush) == 200);
 
 bool contains_extension(const std::vector<VkExtensionProperties>& extensions, const char* name) {
     return std::ranges::any_of(extensions, [name](const VkExtensionProperties& extension) {
@@ -376,6 +378,7 @@ struct VulkanRenderer::Impl final {
     VkCommandPool command_pool{};
     std::vector<FrameContext> frames;
     std::uint32_t frame_index{};
+    std::uint32_t render_frame_counter{};
 
     std::array<Buffer, 2> cell_buffers{};
     Buffer map_snapshot_buffer{};
@@ -2227,6 +2230,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .camera_view_height = camera_view.height,
             .selected_inventory_slot = state.selected_inventory_slot.load(std::memory_order_relaxed) %
                                        player_inventory_slot_count,
+            .selected_workspace = state.selected_workspace.load(std::memory_order_relaxed) %
+                                  ui::workspace_tab_count,
+            .render_frame = render_frame_counter++,
         };
         vkCmdPushConstants(command_buffer, graphics_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                            0, sizeof(push), &push);

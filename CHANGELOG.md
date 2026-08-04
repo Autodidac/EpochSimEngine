@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.5.9
+
+- Restored the early v2.4.1 fine-owned Half Water attraction/consolidation behavior while keeping full Water and Air eligible for validated macro packets.
+- Made Lava continuously mobile and cohesive, enabled full-tile Lava packets despite heat, propagated vent pressure through connected Lava, and added pressure-driven overburden breakout.
+- Added multi-minute Magma Vent pulse cycles with faster recharge and a larger end-of-cycle eruption window.
+- Replaced the Volcano scene's framed pool with a curved natural lake basin.
+- Painting Smoke into liquids or gases now shifts represented media upward instead of deleting it.
+- Removed generic Acid-to-Silt corrosion; inorganic corrosion produces Dirty Water and Silt remains a sediment product.
+- Restored the early suspended Beehive geometry and loaded-scene normalization.
+- Added functional workspace tabs, descriptive top-control labels, friendlier material-card `NONE` values, coherent render-only material appearance profiles, and complete cell/tile dimension telemetry.
+- Added Compact 4x4, Standard 8x4, and Large 16x4 camera-footprint world presets to the public policy API.
+- Expanded `missioncache.md` with the material-regression archaeology and screenshot evidence for the next completion pass.
+
 ## 2.5.8
 
 - Falling same-material cells now repair an existing damaged structural tile on contact instead of waiting to settle into a separate tile.

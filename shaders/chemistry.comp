@@ -399,6 +399,15 @@ bool radioactiveSourceNear(ivec2 p) {
 }
 
 
+uint maximumNeighborLavaPressure(ivec2 p) {
+    uint pressure = 0u;
+    for (uint i = 0u; i < 8u; ++i) {
+        Cell neighbor = at(p + neighborOffsets[i]);
+        if (neighbor.material == MAT_LAVA) pressure = max(pressure, stateValue(neighbor));
+    }
+    return pressure;
+}
+
 void applyStructuralHazards(ivec2 position, Cell source, inout Cell result,
                             bool nearWater, bool nearSaltwater, bool nearLava,
                             bool nearFire, bool nearAcid) {
@@ -417,6 +426,13 @@ void applyStructuralHazards(ivec2 position, Cell source, inout Cell result,
             source.material == MAT_BEESWAX || source.material == MAT_BEEHIVE) damage += 12u;
         else if (source.material == MAT_GLASS || source.material == MAT_CRYSTAL) damage += 3u;
         else damage += 1u;
+    }
+    uint eruptionPressure = nearLava ? maximumNeighborLavaPressure(position) : 0u;
+    if (eruptionPressure >= 192u &&
+        (source.material == MAT_STONE || source.material == MAT_IRON_ORE ||
+         source.material == MAT_IRON || source.material == MAT_COPPER) &&
+        (randomValue & 3u) == 0u) {
+        damage += 18u + (eruptionPressure - 192u) / 4u;
     }
     if (nearSaltwater && (randomValue & 1023u) == 0u &&
         (source.material == MAT_IRON || source.material == MAT_ALUMINUM ||
@@ -590,10 +606,31 @@ bool machineWaterFlowNear(ivec2 p) {
     return false;
 }
 
+const uint VENT_CYCLE_TICKS = 10800u;
+const uint VENT_PULSE_TICKS = 900u;
+const uint VENT_PULSE_ON_TICKS = 420u;
+const uint VENT_MAJOR_START_TICK = 10200u;
+
+uint ventCycleTick(ivec2 ventPosition) {
+    uint offset = hash32(indexOf(ventPosition) ^ pc.seed ^ 0x76e17u) % VENT_CYCLE_TICKS;
+    return (pc.step + offset) % VENT_CYCLE_TICKS;
+}
+
+bool ventPulseActive(ivec2 ventPosition) {
+    return (ventCycleTick(ventPosition) % VENT_PULSE_TICKS) < VENT_PULSE_ON_TICKS;
+}
+
+bool ventMajorEruption(ivec2 ventPosition) {
+    return ventCycleTick(ventPosition) >= VENT_MAJOR_START_TICK;
+}
+
 uint ventEmissionKind(ivec2 ventPosition, uint pressure) {
     uint roll = hash32(indexOf(ventPosition) ^ pc.step ^ 0x76e17u);
-    if (pressure >= 220u && (roll & 3u) == 0u) return 2u;
-    if (pressure >= 72u && (roll & 7u) == 0u) return 1u;
+    bool major = ventMajorEruption(ventPosition);
+    bool pulse = ventPulseActive(ventPosition);
+    if (major && pressure >= 176u && (roll & 1u) == 0u) return 2u;
+    if (pulse && pressure >= 144u && (roll & 3u) == 0u) return 2u;
+    if (pulse && pressure >= 48u && (roll & 3u) != 0u) return 1u;
     return 0u;
 }
 
@@ -1227,6 +1264,13 @@ void main() {
     } else if (source.material == MAT_LAVA) {
         uint connectedLava = lavaNeighborCount(p);
         bool isolated = connectedLava == 0u;
+        uint pressure = stateValue(source);
+        uint inheritedPressure = maximumNeighborLavaPressure(p);
+        if (inheritedPressure > 8u) pressure = max(pressure, inheritedPressure - 8u);
+        Cell aboveLava = at(p + ivec2(0, -1));
+        bool openAbove = isGas(aboveLava.material) || aboveLava.material == MAT_EMPTY;
+        if (openAbove && pressure > 12u) pressure -= 12u;
+        setStateValue(result, pressure);
         if (isolated && (nearWater || nearSaltwater)) {
             result = makeCell(MAT_STONE);
         } else {
@@ -1240,9 +1284,9 @@ void main() {
         bool blocked = ventOutletBlockedBySolid(outlet);
         uint pressure = stateValue(source);
         uint emission = blocked ? 0u : ventEmissionKind(p, pressure);
-        if (emission == 2u) pressure = pressure > 32u ? pressure - 32u : 0u;
-        else if (emission == 1u) pressure = pressure > 12u ? pressure - 12u : 0u;
-        uint recharge = blocked ? 4u : 18u;
+        if (emission == 2u) pressure = pressure > 20u ? pressure - 20u : 0u;
+        else if (emission == 1u) pressure = pressure > 6u ? pressure - 6u : 0u;
+        uint recharge = blocked ? 20u : (ventPulseActive(p) ? 24u : 8u);
         pressure = min(255u, pressure + recharge);
         setStateValue(result, pressure);
     }
@@ -1658,7 +1702,9 @@ void main() {
 
     if (result.material == source.material && nearAcid && !acidImmune(source.material) &&
         (randomValue & 31u) == 0u && randomByte > acidResistance(source.material)) {
-        result = makeCell(isOrganic(source.material) ? MAT_WASTE : MAT_SILT);
+        // Silt belongs to sediment and dirty-water settling, not generic acid
+        // corrosion. Dissolved inorganic matter becomes dirty solution.
+        result = makeCell(isOrganic(source.material) ? MAT_WASTE : MAT_DIRTY_WATER);
     }
 
     if (source.material == MAT_ACID && (nearWater || nearSaltwater) && (randomValue & 511u) == 0u) {

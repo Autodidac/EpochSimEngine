@@ -26,6 +26,12 @@ static_assert(resident_substrate_is_structural(Material::copper));
 static_assert(resident_substrate_is_structural(Material::aluminum));
 static_assert(resident_substrate_is_structural(Material::uranium));
 
+
+static_assert(world_dimensions(WorldSizePreset::compact).footprint_columns == 4u);
+static_assert(world_dimensions(WorldSizePreset::standard).footprint_columns == 8u);
+static_assert(world_dimensions(WorldSizePreset::large).footprint_columns == 16u);
+static_assert(world_dimensions(WorldSizePreset::compact).height == resident_world_height);
+
 int main() {
     constexpr auto scene_bottom = 1080u;
     constexpr auto geology_end = 1408u;

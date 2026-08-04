@@ -39,6 +39,10 @@ FIXED = [
     "VOLCANO GAS", "GAS EDGE", "REACTIONS", "HALF WATER", "WET", "ERASER",
     "SCOPE CELLS", "NONEMPTY CELLS", "TOTAL TILES", "UNCLASSIFIED", "TOTAL CHUNKS",
     "IGNITE AIR",
+    "INVENTORY", "EDITOR", "SETTINGS", "DESIGNER",
+    "SCENE FILES", "SIMULATION", "VIEW INPUT", "PRIMARY TOOLS",
+    "CELL WIDTH", "CELL HEIGHT", "CELL TOTAL",
+    "TILE WIDTH", "TILE HEIGHT", "TILE TOTAL", "NONE",
 ]
 SCENES = [
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",
@@ -78,7 +82,7 @@ def _append_card_table(storage: list[int]) -> tuple[int, int, int, int]:
     for index, material in enumerate(MATERIALS):
         name, _, strength, erosion, _, acid, strong, weak, conversions, role, danger = material
         physics = physics_for(name, strength)
-        threshold = lambda value: "N/A" if value == NO_TEMPERATURE else f"{value}C"
+        threshold = lambda value: "NONE" if value == NO_TEMPERATURE else f"{value}C"
         all_lines.append([
             f"CATEGORY: {groups[index]}",
             f"STR {strength:03d} ERO {erosion:03d} ACID {acid:03d}",

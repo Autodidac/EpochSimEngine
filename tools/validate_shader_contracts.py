@@ -173,7 +173,7 @@ def main() -> int:
                     errors.append(f"legacy alias/token remains in {source_path.relative_to(ROOT)}: {token}")
 
     beehive_glsl = (SHADERS / "beehive.glsl").read_text(encoding="utf-8")
-    for token in ("BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 28", "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 108", "BEEHIVE_EXIT_MAX_X = 12", "beehivePrefabMaterial"):
+    for token in ("BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 25", "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 92", "BEEHIVE_EXIT_MAX_X = 10", "beehivePrefabMaterial"):
         if token not in beehive_glsl:
             errors.append(f"Fix28 Beehive contract missing {token!r}")
 
@@ -197,8 +197,8 @@ def main() -> int:
         "bee_authored_home_slot_bit",
         "normalize_fix28_hives",
         "fix28_beehive_material",
-        "beehive_shell_min_radius_squared = 28",
-        "beehive_shell_max_radius_squared = 108",
+        "beehive_shell_min_radius_squared = 25",
+        "beehive_shell_max_radius_squared = 92",
     ):
         if token not in scene_image_cpp:
             errors.append(f"loaded Fix28 Beehive contract missing {token!r}")
@@ -222,10 +222,10 @@ def main() -> int:
 
 
     fullscreen_medium = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
-    for token in ("if (isHalfWaterCell(a) || isHalfWaterCell(b)) return;",
+    for token in ("halfWaterAhead", "isHalfWaterCell(a) && isOpenGas(b)",
                   "Cell reserve = sampleAt(sourcePosition - ivec2(direction * 2, 0));"):
         if token not in move:
-            errors.append(f"half-water no-crawl/supply contract missing {token!r}")
+            errors.append(f"half-water fine-attraction/supply contract missing {token!r}")
     for token in ("bool settledHalfWater = halfWater && !moving",
                   "!macroMovable && !settledHalfWater",
                   "settledMedium || settledFineMedium || settledHalfWater",
@@ -342,6 +342,19 @@ def main() -> int:
         if token not in fullscreen:
             errors.append(f"debug legend contract missing {token!r}")
 
+    appearance = (SHADERS / "material_appearance.glsl").read_text(encoding="utf-8")
+    for token in ("materialAppearanceClass", "applyMaterialAppearance", "renderFrame"):
+        if token not in appearance + fullscreen:
+            errors.append(f"render-only material appearance contract missing {token!r}")
+    paint_v259 = (SHADERS / "paint.comp").read_text(encoding="utf-8")
+    for token in ("displacePaintMediumUpward", "material == MAT_SMOKE"):
+        if token not in paint_v259:
+            errors.append(f"Smoke upward displacement contract missing {token!r}")
+    for token in ("ventCycleTick", "ventMajorEruption", "maximumNeighborLavaPressure"):
+        if token not in chemistry:
+            errors.append(f"cyclic volcanic pressure contract missing {token!r}")
+    if "MAT_DIRTY_WATER" not in chemistry or "Silt belongs to sediment" not in chemistry:
+        errors.append("acid-to-dirty-solution contract missing")
     if "std::atomic_bool camera_controls{false};" not in shared_state_hpp:
         errors.append("shared camera-control mode state is missing")
     if "camera_controls = state.camera_controls.load" not in renderer_cpp:
@@ -524,7 +537,7 @@ def main() -> int:
             errors.append(f"library terrain-generation contract missing {token!r}")
     for token in (
         "case 12u: return 205u", "case 12u: return PHASE_POWDER",
-        "if (cell.material == MAT_LAVA) return (randomValue % 7u) == 0u",
+        "if (cell.material == MAT_LAVA) return true",
         "isOpenGas(target)", "lavaNeighborCount", "ventOutletBlockedBySolid",
         "setStateValue(result, 255u)",
     ):
@@ -763,7 +776,7 @@ def main() -> int:
              "placement_mode", "active_area_count", "active_area_x", "active_area_y",
              "active_scope_mode", "camera_controls", "map_mode", "camera_origin_x",
              "camera_origin_y", "camera_view_width", "camera_view_height",
-             "selected_inventory_slot"],
+             "selected_inventory_slot", "selected_workspace", "render_frame"],
             ["gridWidth", "gridHeight", "windowWidth", "windowHeight", "selectedMaterial",
              "materialCount", "cursorX", "cursorY", "brushRadius", "statusHeight", "paletteHeight",
              "groupTabsHeight", "materialSlots", "framesPerSecond", "paused", "stepsPerFrame",
@@ -773,7 +786,7 @@ def main() -> int:
              "placementMode", "activeAreaCount", "activeAreaX", "activeAreaY",
              "activeScopeMode", "cameraControls", "mapMode", "cameraOriginX",
              "cameraOriginY", "cameraViewWidth", "cameraViewHeight",
-             "selectedInventorySlot"],
+             "selectedInventorySlot", "selectedWorkspace", "renderFrame"],
             renderer,
             "renderPc",
         ),
@@ -958,7 +971,7 @@ def main() -> int:
     for token in ("if (!tileInside(p)) continue;", "supportedStructural > 0u", "STAT_STRUCTURAL_COLLAPSES", "STAT_GAS_EDGE_ACTIVE_TILES"):
         if token not in tiles: errors.append(f"structure/atmosphere regression contract missing {token!r}")
     if re.search(r"for \(int x = 0; x < int\(TILE_SIZE\); \+\+x\) \{\s*for \(int x = 0;", tiles): errors.append("tile support sampling contains a duplicated nested x loop")
-    for token in ("activeStructuralProcess(source.material)", "machineAcceptsResource(resourcePosition, controller, resourceCell)", "machineInputRank", "currentInventory", "machineWaterFlowNear", "MAT_SLUICE_BOX", "MAT_SMELTER", "MAT_ASSEMBLER", "ventEmissionKind", "pressure > 32u ? pressure - 32u : 0u", "pressure > 12u ? pressure - 12u : 0u", "STAT_MACHINE_INPUTS", "STAT_MACHINE_OUTPUTS", "STAT_VOLCANO_LAVA_OUTPUTS", "STAT_VOLCANO_GAS_OUTPUTS"):
+    for token in ("activeStructuralProcess(source.material)", "machineAcceptsResource(resourcePosition, controller, resourceCell)", "machineInputRank", "currentInventory", "machineWaterFlowNear", "MAT_SLUICE_BOX", "MAT_SMELTER", "MAT_ASSEMBLER", "ventEmissionKind", "pressure > 20u ? pressure - 20u : 0u", "pressure > 6u ? pressure - 6u : 0u", "STAT_MACHINE_INPUTS", "STAT_MACHINE_OUTPUTS", "STAT_VOLCANO_LAVA_OUTPUTS", "STAT_VOLCANO_GAS_OUTPUTS"):
         if token not in chemistry: errors.append(f"industry/volcano regression contract missing {token!r}")
     for token in ("Functional industrial line", "material = MAT_CONVEYOR", "material = MAT_SLUICE_BOX", "material = MAT_WATER"):
         if token not in reset: errors.append(f"engineering industry scene contract missing {token!r}")
@@ -1017,7 +1030,7 @@ def main() -> int:
         if token not in tile_defs: errors.append(f"48-percent solid-collapse contract missing {token!r}")
     for token in (
         "bool bulkReadySolid = fullRegion && isBlockCapable(dominant)",
-        "bool macroMovable = (macroLiquid || macroGas || macroPowder)",
+        "bool macroMovable = (macroLiquid || macroGas || macroPowder || macroLava)",
         "if (bulkReadySolid) flags |= TILE_MACRO_SOLID | TILE_BULK_READY;",
     ):
         if token not in tiles_comp: errors.append(f"solid tile classification contract missing {token!r}")
