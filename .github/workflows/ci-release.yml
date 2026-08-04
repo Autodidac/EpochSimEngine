@@ -15,7 +15,94 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  repair_source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    outputs:
+      changed: ${{ steps.detect.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+          fetch-depth: 0
+
+      - name: Detect pending v2.5.10 source repair
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" != "push" || "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          elif grep -q 'project(SandHybrid VERSION 2.5.10 ' CMakeLists.txt; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract canonical repair script
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          workflow = Path('.github/workflows/repair-v2510b.yml').read_text(encoding='utf-8')
+          marker = "          python3 - <<'PY'\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("\n          PY\n", start)
+          block = workflow[start:end]
+          lines = [
+              line[10:] if line.startswith('          ') else line
+              for line in block.splitlines()
+          ]
+          Path('/tmp/repair_v2510.py').write_text(
+              '\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+
+      - name: Apply v2.5.10 source corrections
+        if: steps.detect.outputs.changed == 'true'
+        run: python3 /tmp/repair_v2510.py
+
+      - name: Install repair validation tools
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build glslc
+
+      - name: Validate repaired source and shaders
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_v2510_contract.py
+          for shader in reset.comp tiles.comp macro_move.comp move.comp actor.comp fullscreen.frag; do
+            glslc --target-env=vulkan1.2 -I shaders "shaders/$shader" -o "/tmp/$shader.spv"
+          done
+          cmake -S . -B build-headless -G Ninja \
+            -DSANDHYBRID_BUILD_APP=OFF \
+            -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build-headless --parallel 2
+          ctest --test-dir build-headless --output-on-failure
+
+      - name: Commit validated v2.5.10 source
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/repair-main-v2510.yml
+          git config user.name "Autodidac Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "SandHybrid v2.5.10 terrain liquid and fracture recovery"
+          git push origin HEAD:main
+
   build:
+    needs: repair_source
+    if: needs.repair_source.outputs.changed != 'true'
     strategy:
       fail-fast: false
       matrix:
