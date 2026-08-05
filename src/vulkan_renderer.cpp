@@ -3,6 +3,7 @@
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/scene.hpp"
 #include "sandhybrid/section_scheduler.hpp"
+#include "sandhybrid/simulation_policy.hpp"
 #include "sandhybrid/scene_image.hpp"
 #include "sandhybrid/ui_layout.hpp"
 #include "sandhybrid/world_layout.hpp"
@@ -316,11 +317,22 @@ struct RenderPush final {
     std::uint32_t camera_origin_y{};
     std::uint32_t camera_view_width{};
     std::uint32_t camera_view_height{};
+    std::uint32_t map_viewport_left{};
+    std::uint32_t map_viewport_top{};
+    std::uint32_t map_viewport_width{};
+    std::uint32_t map_viewport_height{};
+    std::uint32_t map_origin_x{};
+    std::uint32_t map_origin_y{};
+    std::uint32_t map_view_width{};
+    std::uint32_t map_view_height{};
     std::uint32_t selected_inventory_slot{};
     std::uint32_t selected_workspace{};
     std::uint32_t render_frame{};
+    std::uint32_t world_time{};
+    std::uint32_t day_cycle_steps{};
+    std::uint32_t designer_flags{};
 };
-static_assert(sizeof(RenderPush) == 200);
+static_assert(sizeof(RenderPush) == 244);
 
 bool contains_extension(const std::vector<VkExtensionProperties>& extensions, const char* name) {
     return std::ranges::any_of(extensions, [name](const VkExtensionProperties& extension) {
@@ -380,7 +392,6 @@ struct VulkanRenderer::Impl final {
     VkCommandPool command_pool{};
     std::vector<FrameContext> frames;
     std::uint32_t frame_index{};
-    std::uint32_t render_frame_counter{};
 
     std::array<Buffer, 2> cell_buffers{};
     Buffer map_snapshot_buffer{};
@@ -390,6 +401,7 @@ struct VulkanRenderer::Impl final {
     Buffer chunk_buffer{};
     Buffer conservation_buffer{};
     Buffer ui_text_buffer{};
+    Buffer designer_buffer{};
     Buffer scene_staging_buffer{};
     std::uint32_t current_set{};
     std::uint32_t simulation_step{};
@@ -491,6 +503,7 @@ save_slot(normalize_world_slot(requested_save_slot)) {
             if (descriptor_set_layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(device, descriptor_set_layout, nullptr);
 
             destroy_buffer(scene_staging_buffer);
+            destroy_buffer(designer_buffer);
             destroy_buffer(ui_text_buffer);
             destroy_buffer(conservation_buffer);
             destroy_buffer(chunk_buffer);
@@ -815,6 +828,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const auto ui_text_size = static_cast<VkDeviceSize>(ui::text_storage.size() * sizeof(std::uint32_t));
         ui_text_buffer = create_buffer(ui_text_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        designer_buffer = create_buffer(
+            static_cast<VkDeviceSize>(designer_grid_cell_count * sizeof(std::uint32_t)),
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         void* mapped = nullptr;
         check_vk(vkMapMemory(device, ui_text_buffer.memory, 0, ui_text_buffer.size, 0, &mapped),
                  "vkMapMemory(ui text)");
@@ -878,6 +895,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
             },
+            VkDescriptorSetLayoutBinding{
+                .binding = 9,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
         };
         const VkDescriptorSetLayoutCreateInfo layout_info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -921,7 +944,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     void create_descriptors() {
         const VkDescriptorPoolSize pool_size{
             .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 18,
+            .descriptorCount = 20,
         };
         const VkDescriptorPoolCreateInfo pool_info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -952,6 +975,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const VkDescriptorBufferInfo chunk_info{chunk_buffer.handle, 0, chunk_buffer.size};
             const VkDescriptorBufferInfo ui_text_info{ui_text_buffer.handle, 0, ui_text_buffer.size};
             const VkDescriptorBufferInfo map_info{map_snapshot_buffer.handle, 0, map_snapshot_buffer.size};
+            const VkDescriptorBufferInfo designer_info{designer_buffer.handle, 0, designer_buffer.size};
             const std::array writes{
                 VkWriteDescriptorSet{
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -1024,6 +1048,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     .descriptorCount = 1,
                     .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                     .pBufferInfo = &map_info,
+                },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptor_sets[index],
+                    .dstBinding = 9,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .pBufferInfo = &designer_info,
                 },
             };
             vkUpdateDescriptorSets(device, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
@@ -1592,9 +1624,65 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_TRANSFER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+
+            vkCmdFillBuffer(command_buffer, sunlight_buffer.handle, 0,
+                            sunlight_buffer.size, 0u);
+            buffer_barrier(command_buffer, sunlight_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            const SimulationPush sunlight_push{
+                .width = config.grid_width,
+                .height = config.grid_height,
+                .step = 0u,
+                .seed = random_seed,
+                .active_mode = 0u,
+            };
+            bind_compute(command_buffer, sunlight_pipeline, 0u);
+            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                               VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                               sizeof(sunlight_push), &sunlight_push);
+            vkCmdDispatch(command_buffer,
+                          divide_round_up(config.grid_width, sunlight_local_size), 1, 1);
+            buffer_barrier(command_buffer, sunlight_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+            buffer_barrier(command_buffer, cell_buffers[0],
+                           VK_ACCESS_TRANSFER_WRITE_BIT |
+                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT |
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT);
+            buffer_barrier(command_buffer, map_snapshot_buffer,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT);
+            const VkBufferCopy snapshot_copy{.size = map_snapshot_buffer.size};
+            vkCmdCopyBuffer(command_buffer, cell_buffers[0].handle,
+                            map_snapshot_buffer.handle, 1, &snapshot_copy);
+            buffer_barrier(command_buffer, map_snapshot_buffer,
+                           VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            buffer_barrier(command_buffer, cell_buffers[0],
+                           VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
         });
         current_set = 0u;
         simulation_step = 0u;
+        debug_sample_frame = 0u;
+        map_snapshot_step = 0u;
+        map_was_visible = false;
         needs_reset = false;
     }
 
@@ -1644,6 +1732,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     config.grid_width, config.grid_height, x, y);
                 if (material == Material::empty) continue;
                 const auto index = static_cast<std::size_t>(y) * config.grid_width + x;
+                const bool inside_authored = x >= origin_x && x < origin_x + map_width &&
+                                             y >= origin_y && y < origin_y + map_height;
+                const auto existing = static_cast<Material>(world_cells[index].material);
+                if (inside_authored && existing != Material::empty &&
+                    existing != Material::atmosphere)
+                    continue;
                 world_cells[index] = make_resident_substrate_cell(
                     material, static_cast<std::uint32_t>(index));
             }
@@ -1722,7 +1816,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         SimulationPush push{
             .width = config.grid_width,
             .height = config.grid_height,
-            .step = simulation_step,
+            .step = 0u,
             .seed = random_seed,
             .material = scene_index % scene_count,
         };
@@ -1744,20 +1838,70 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         vkCmdFillBuffer(command_buffer, tile_buffer.handle, 0, tile_buffer.size, 0u);
         vkCmdFillBuffer(command_buffer, chunk_buffer.handle, 0, chunk_buffer.size, 0u);
+        vkCmdFillBuffer(command_buffer, sunlight_buffer.handle, 0, sunlight_buffer.size, 0u);
         buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        buffer_barrier(command_buffer, sunlight_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
         for (const auto& buffer : cell_buffers) {
             buffer_barrier(command_buffer, buffer, VK_ACCESS_SHADER_WRITE_BIT,
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         }
+
+        const SimulationPush sunlight_push{
+            .width = config.grid_width,
+            .height = config.grid_height,
+            .step = 0u,
+            .seed = random_seed,
+            .active_mode = 0u,
+        };
+        bind_compute(command_buffer, sunlight_pipeline, 0u);
+        vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                           VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof(sunlight_push), &sunlight_push);
+        vkCmdDispatch(command_buffer,
+                      divide_round_up(config.grid_width, sunlight_local_size), 1, 1);
+        buffer_barrier(command_buffer, sunlight_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+        buffer_barrier(command_buffer, cell_buffers[0], VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_TRANSFER_READ_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT);
+        buffer_barrier(command_buffer, map_snapshot_buffer,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT);
+        const VkBufferCopy snapshot_copy{.size = map_snapshot_buffer.size};
+        vkCmdCopyBuffer(command_buffer, cell_buffers[0].handle,
+                        map_snapshot_buffer.handle, 1, &snapshot_copy);
+        buffer_barrier(command_buffer, map_snapshot_buffer,
+                       VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        buffer_barrier(command_buffer, cell_buffers[0], VK_ACCESS_TRANSFER_READ_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
         current_set = 0;
         simulation_step = 0;
+        debug_sample_frame = 0u;
+        map_snapshot_step = 0u;
+        map_was_visible = false;
         needs_reset = false;
     }
 
@@ -1801,13 +1945,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     }
 
     [[nodiscard]] GridView render_grid_view(const SharedState& state) const {
-        if (state.map_view.load(std::memory_order_relaxed)) {
-            return grid_view_from(
-                state.map_zoom.load(std::memory_order_relaxed),
-                state.map_center_x.load(std::memory_order_relaxed),
-                state.map_center_y.load(std::memory_order_relaxed), true);
-        }
         return camera_grid_view(state);
+    }
+
+    [[nodiscard]] GridView map_grid_view(const SharedState& state) const {
+        return grid_view_from(
+            state.map_zoom.load(std::memory_order_relaxed),
+            state.map_center_x.load(std::memory_order_relaxed),
+            state.map_center_y.load(std::memory_order_relaxed), true);
     }
 
     std::pair<std::int32_t, std::int32_t> grid_cursor(const SharedState& state) const {
@@ -1930,7 +2075,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             vkCmdDispatch(command_buffer, divide_round_up(config.grid_width, sunlight_local_size), 1, 1);
             buffer_barrier(command_buffer, sunlight_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                            VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
         }
 
         bind_compute(command_buffer, tile_pipeline, current_set);
@@ -2153,6 +2299,19 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         map_snapshot_step = simulation_step;
     }
 
+    void record_designer_snapshot(const VkCommandBuffer command_buffer, SharedState& state) {
+        if (!state.designer_dirty.exchange(false, std::memory_order_acq_rel)) return;
+        std::array<std::uint32_t, designer_grid_cell_count> snapshot{};
+        for (std::size_t index = 0; index < snapshot.size(); ++index)
+            snapshot[index] = state.designer_cells[index].load(std::memory_order_relaxed) % material_count;
+        vkCmdUpdateBuffer(command_buffer, designer_buffer.handle, 0,
+                          static_cast<VkDeviceSize>(snapshot.size() * sizeof(std::uint32_t)),
+                          snapshot.data());
+        buffer_barrier(command_buffer, designer_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    }
+
     void record_render(const VkCommandBuffer command_buffer, const std::uint32_t image_index,
                        const SharedState& state) {
         buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
@@ -2209,26 +2368,58 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const auto simulation_viewport = ui::make_simulation_viewport(
             layout, view.width, view.height);
         const auto camera_view = camera_grid_view(state);
+        const auto map_view = map_grid_view(state);
+        const auto map_overlay_viewport = ui::make_map_overlay_viewport(
+            layout, map_view.width, map_view.height);
         const epochengine::gui_lib::Vec2 pointer{
             static_cast<float>(state.mouse_x.load(std::memory_order_relaxed)),
             static_cast<float>(state.mouse_y.load(std::memory_order_relaxed))
         };
-        const bool inspect_visible = state.inspect_material.load(std::memory_order_relaxed) &&
-                                     epochengine::gui_lib::contains(simulation_viewport.rect, pointer);
+        const bool pointer_over_map = state.map_view.load(std::memory_order_relaxed) &&
+            epochengine::gui_lib::contains(map_overlay_viewport.rect, pointer);
+        const bool inspect_visible =
+            state.selected_workspace.load(std::memory_order_relaxed) % ui::workspace_tab_count != 3u &&
+            state.inspect_material.load(std::memory_order_relaxed) && !pointer_over_map &&
+            epochengine::gui_lib::contains(simulation_viewport.rect, pointer);
+        const auto selected_workspace = state.selected_workspace.load(std::memory_order_relaxed) %
+                                        ui::workspace_tab_count;
+        const bool designer_workspace = selected_workspace == 3u;
+        const auto active_selected_material = designer_workspace
+            ? state.designer_selected_material.load(std::memory_order_relaxed)
+            : state.selected_material.load(std::memory_order_relaxed);
+        const auto active_selected_group = designer_workspace
+            ? state.designer_selected_group.load(std::memory_order_relaxed)
+            : state.selected_group.load(std::memory_order_relaxed);
+        const auto active_hovered_group = designer_workspace
+            ? state.designer_hovered_group.load(std::memory_order_relaxed)
+            : state.hovered_group.load(std::memory_order_relaxed);
+        const auto active_hovered_material = designer_workspace
+            ? state.designer_hovered_material.load(std::memory_order_relaxed)
+            : state.hovered_material.load(std::memory_order_relaxed);
+        const auto designer_flags =
+            (state.designer_placement_mode.load(std::memory_order_relaxed) & 1u) |
+            ((state.designer_brush_shape.load(std::memory_order_relaxed) & 3u) << 1u) |
+            ((state.designer_mode.load(std::memory_order_relaxed) & 1u) << 3u) |
+            ((state.designer_pane.load(std::memory_order_relaxed) & 1u) << 4u) |
+            ((state.designer_zoom.load(std::memory_order_relaxed) & 0xffu) << 8u) |
+            ((state.designer_brush_radius.load(std::memory_order_relaxed) & 0xffu) << 16u);
         const RenderPush push{
             .grid_width = config.grid_width,
             .grid_height = config.grid_height,
             .window_width = swapchain_extent.width,
             .window_height = swapchain_extent.height,
-            .selected_material = state.selected_material.load(std::memory_order_relaxed),
+            .selected_material = active_selected_material,
             .material_count = material_count,
             .cursor_x = cursor_x,
             .cursor_y = cursor_y,
-            .brush_radius = [&state]() {
-                const auto material_id = state.selected_material.load(std::memory_order_relaxed);
-                const auto material = static_cast<Material>(material_id < material_count ? material_id : 0u);
+            .brush_radius = [&state, designer_workspace, active_selected_material]() {
+                if (designer_workspace)
+                    return state.designer_brush_radius.load(std::memory_order_relaxed);
+                const auto material = static_cast<Material>(
+                    active_selected_material < material_count ? active_selected_material : 0u);
                 if (material == Material::beehive) return 12u;
-                return is_block_material(material) ? 8u : state.brush_radius.load(std::memory_order_relaxed);
+                return is_block_material(material) ? 8u :
+                    state.brush_radius.load(std::memory_order_relaxed);
             }(),
             .status_height = static_cast<std::uint32_t>(layout.status.size.y),
             // Existing push slot carries compact sidebar width.
@@ -2238,9 +2429,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .frames_per_second = state.frames_per_second.load(std::memory_order_relaxed),
             .paused = state.paused.load(std::memory_order_relaxed) ? 1u : 0u,
             .steps_per_frame = state.steps_per_frame.load(std::memory_order_relaxed),
-            .selected_group = state.selected_group.load(std::memory_order_relaxed) % material_group_count,
-            .hovered_group = state.hovered_group.load(std::memory_order_relaxed),
-            .hovered_material = state.hovered_material.load(std::memory_order_relaxed),
+            .selected_group = active_selected_group % material_group_count,
+            .hovered_group = active_hovered_group,
+            .hovered_material = active_hovered_material,
             .selected_scene = state.selected_scene.load(std::memory_order_relaxed) % scene_count,
             .group_count = material_group_count,
             .scene_count = scene_count,
@@ -2257,9 +2448,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .view_origin_y = view.origin_y,
             .view_width = view.width,
             .view_height = view.height,
-            .brush_shape = state.placement_mode.load(std::memory_order_relaxed) != 0u
-                ? 1u : state.brush_shape.load(std::memory_order_relaxed) % 4u,
-            .placement_mode = state.placement_mode.load(std::memory_order_relaxed) != 0u ? 1u : 0u,
+            .brush_shape = designer_workspace
+                ? state.designer_brush_shape.load(std::memory_order_relaxed) % 4u
+                : (state.placement_mode.load(std::memory_order_relaxed) != 0u
+                    ? 1u : state.brush_shape.load(std::memory_order_relaxed) % 4u),
+            .placement_mode = designer_workspace
+                ? (state.designer_placement_mode.load(std::memory_order_relaxed) & 1u)
+                : (state.placement_mode.load(std::memory_order_relaxed) != 0u ? 1u : 0u),
             .active_area_count = state.active_section_count.load(std::memory_order_relaxed),
             .active_area_x = state.active_window_origin_x.load(std::memory_order_relaxed),
             .active_area_y = state.active_window_origin_y.load(std::memory_order_relaxed),
@@ -2270,11 +2465,23 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .camera_origin_y = camera_view.origin_y,
             .camera_view_width = camera_view.width,
             .camera_view_height = camera_view.height,
+            .map_viewport_left = static_cast<std::uint32_t>(map_overlay_viewport.rect.position.x),
+            .map_viewport_top = static_cast<std::uint32_t>(map_overlay_viewport.rect.position.y),
+            .map_viewport_width = static_cast<std::uint32_t>(map_overlay_viewport.rect.size.x),
+            .map_viewport_height = static_cast<std::uint32_t>(map_overlay_viewport.rect.size.y),
+            .map_origin_x = map_view.origin_x,
+            .map_origin_y = map_view.origin_y,
+            .map_view_width = map_view.width,
+            .map_view_height = map_view.height,
             .selected_inventory_slot = state.selected_inventory_slot.load(std::memory_order_relaxed) %
                                        player_inventory_slot_count,
-            .selected_workspace = state.selected_workspace.load(std::memory_order_relaxed) %
-                                  ui::workspace_tab_count,
-            .render_frame = render_frame_counter++,
+            .selected_workspace = selected_workspace,
+            // Presentation animation is simulation-time based so pause freezes
+            // every material effect and reset returns every effect to frame zero.
+            .render_frame = simulation_step,
+            .world_time = simulation_step,
+            .day_cycle_steps = sandhybrid::policy::day_cycle_steps,
+            .designer_flags = designer_flags,
         };
         vkCmdPushConstants(command_buffer, graphics_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                            0, sizeof(push), &push);
@@ -2295,17 +2502,20 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         check_vk(fence_result, "vkWaitForFences");
 
         const auto selected_scene = state.selected_scene.load(std::memory_order_relaxed) % scene_count;
+        const bool paused = state.paused.load(std::memory_order_relaxed);
         if (state.save_scene_image.exchange(false, std::memory_order_acq_rel)) {
             if (!needs_reset) save_world_slot(selected_scene);
             else startup_log("World save skipped until the initial scene exists.");
         }
         const bool explicit_load = state.load_scene_image.exchange(false, std::memory_order_acq_rel);
         if (state.fill_region.exchange(false, std::memory_order_acq_rel)) {
-            if (!needs_reset) fill_connected_region(state);
+            if (paused) startup_log("Fill ignored while paused.");
+            else if (!needs_reset) fill_connected_region(state);
             else startup_log("Fill skipped until the initial scene exists.");
         }
         if (state.ignite_air.exchange(false, std::memory_order_acq_rel)) {
-            if (!needs_reset) ignite_air_region();
+            if (paused) startup_log("Ignite Air ignored while paused.");
+            else if (!needs_reset) ignite_air_region();
             else startup_log("Ignite Air skipped until the initial scene exists.");
         }
         const bool reset_requested = needs_reset || state.reset.exchange(false, std::memory_order_acq_rel);
@@ -2370,12 +2580,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             reset_actor = true;
             reset_this_frame = true;
         }
-        record_paint(frame.command_buffer, state);
+        if (!paused && !reset_this_frame) record_paint(frame.command_buffer, state);
 
         const bool debug_visible = state.debug_visualization.load(std::memory_order_relaxed);
         const bool step_once = state.single_step.exchange(false, std::memory_order_acq_rel);
         const bool run_simulation = !reset_this_frame && (step_once ||
-            (simulation_tick && !state.paused.load(std::memory_order_relaxed)));
+            (simulation_tick && !paused));
         bool collect_debug_stats = false;
         if (debug_visible && run_simulation) {
             collect_debug_stats = !debug_was_visible || (debug_sample_frame % 16u) == 0u;
@@ -2386,15 +2596,30 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         debug_was_visible = debug_visible;
         if (collect_debug_stats) reset_debug_stats(frame.command_buffer);
         if (run_simulation) record_simulation_step(frame.command_buffer, state, collect_debug_stats);
-        const bool actor_action = state.fire_tool.load(std::memory_order_relaxed) ||
-                                  state.deposit_resource.load(std::memory_order_relaxed) ||
-                                  state.fire_tool_pressed.load(std::memory_order_acquire) ||
-                                  state.deposit_resource_pressed.load(std::memory_order_acquire);
-        const bool actor_motion = state.move_x.load(std::memory_order_relaxed) != 0 ||
-                                  state.move_y.load(std::memory_order_relaxed) != 0 ||
-                                  state.jump.load(std::memory_order_relaxed);
-        const bool actor_simulation = run_simulation ||
-                                      (actor_motion && !state.paused.load(std::memory_order_relaxed));
+        if (reset_this_frame) {
+            // Reset is a hard epoch boundary: no held/queued edit or actor action
+            // may leak into the freshly rebuilt scene on the next frame.
+            state.primary_down.store(false, std::memory_order_release);
+            state.fill_region.store(false, std::memory_order_release);
+            state.ignite_air.store(false, std::memory_order_release);
+            state.fire_tool_pressed.store(false, std::memory_order_release);
+            state.deposit_resource_pressed.store(false, std::memory_order_release);
+        }
+        if (paused) {
+            // Do not queue one-shot actor/tool input for the first unpaused frame.
+            state.fire_tool_pressed.exchange(false, std::memory_order_acq_rel);
+            state.deposit_resource_pressed.exchange(false, std::memory_order_acq_rel);
+        }
+        const bool actor_action = !paused &&
+            (state.fire_tool.load(std::memory_order_relaxed) ||
+             state.deposit_resource.load(std::memory_order_relaxed) ||
+             state.fire_tool_pressed.load(std::memory_order_acquire) ||
+             state.deposit_resource_pressed.load(std::memory_order_acquire));
+        const bool actor_motion = !paused &&
+            (state.move_x.load(std::memory_order_relaxed) != 0 ||
+             state.move_y.load(std::memory_order_relaxed) != 0 ||
+             state.jump.load(std::memory_order_relaxed));
+        const bool actor_simulation = run_simulation || actor_motion;
         if (run_simulation || reset_actor || actor_action || actor_motion)
             record_actor(frame.command_buffer, state, reset_actor, actor_simulation);
 
@@ -2416,10 +2641,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         }
         const bool map_visible = state.map_view.load(std::memory_order_relaxed);
         constexpr std::uint32_t map_refresh_steps = 15u;
-        if (map_visible && (!map_was_visible || reset_this_frame ||
-            simulation_step - map_snapshot_step >= map_refresh_steps))
+        if (map_visible && !paused && !reset_this_frame &&
+            (!map_was_visible || simulation_step - map_snapshot_step >= map_refresh_steps))
             record_map_snapshot(frame.command_buffer);
         map_was_visible = map_visible;
+        record_designer_snapshot(frame.command_buffer, state);
         record_render(frame.command_buffer, image_index, state);
         check_vk(vkEndCommandBuffer(frame.command_buffer), "vkEndCommandBuffer");
 

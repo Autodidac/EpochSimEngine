@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sandhybrid-v2514-test1-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: sandhybrid-v2514-test2-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -22,15 +22,18 @@ jobs:
         include:
           - os: windows-2022
             triplet: x64-windows
-            artifact: SandHybrid-Windows-x64-v2.5.14-test.1
+            artifact: SandHybrid-Windows-x64-v2.5.14-test.2
           - os: ubuntu-24.04
             triplet: x64-linux
-            artifact: SandHybrid-Linux-x64-v2.5.14-test.1
+            artifact: SandHybrid-Linux-x64-v2.5.14-test.2
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate release tree
+        run: python tools/validate_release_tree.py
 
       - name: Validate generated and shader contracts
         run: python tools/validate_shader_contracts.py
@@ -40,6 +43,14 @@ jobs:
 
       - name: Validate v2.5.11 world persistence
         run: python tools/validate_v2511_contract.py
+
+      - name: Validate phase-one runtime recovery
+        run: python tools/validate_v2513_contract.py
+
+      - name: Audit ecology and hive motion
+        run: |
+          python tools/audit_ecology_motion.py
+          python tools/audit_fix34.py
 
       - name: Validate canonical mission cache
         run: python tools/validate_mission_cache.py
@@ -124,7 +135,7 @@ jobs:
         shell: bash
         run: |
           cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md CHANGELOG.md \
-            MAP_VIEW.md SCENE_LAYOUT.md SAVE_LAYOUT.md RELEASE_NOTES_v2.5.14-test.1.md \
+            MAP_VIEW.md SCENE_LAYOUT.md SAVE_LAYOUT.md RELEASE_NOTES.md VALIDATION.md \
             "dist/${{ matrix.artifact }}/"
 
       - name: Archive Windows package
@@ -166,7 +177,7 @@ jobs:
         with:
           path: dist
 
-      - name: Publish v2.5.14-test.1 prerelease
+      - name: Publish v2.5.14-test.2 prerelease
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -178,25 +189,31 @@ jobs:
             printf '%s\n' "${assets[@]}" >&2
             exit 1
           fi
-          if gh release view v2.5.14-test.1 >/dev/null 2>&1; then
-            gh release upload v2.5.14-test.1 "${assets[@]}" --clobber
-            gh release edit v2.5.14-test.1 \
-              --title 'SandHybrid v2.5.14-test.1' \
-              --notes-file RELEASE_NOTES_v2.5.14-test.1.md \
+          if gh release view v2.5.14-test.2 >/dev/null 2>&1; then
+            gh release upload v2.5.14-test.2 "${assets[@]}" --clobber
+            gh release edit v2.5.14-test.2 \
+              --title 'SandHybrid v2.5.14-test.2' \
+              --notes-file RELEASE_NOTES.md \
               --prerelease
           else
-            gh release create v2.5.14-test.1 "${assets[@]}" \
+            gh release create v2.5.14-test.2 "${assets[@]}" \
               --target "$GITHUB_SHA" \
-              --title 'SandHybrid v2.5.14-test.1' \
-              --notes-file RELEASE_NOTES_v2.5.14-test.1.md \
+              --title 'SandHybrid v2.5.14-test.2' \
+              --notes-file RELEASE_NOTES.md \
               --prerelease
           fi
 
-      - name: Remove completed repair branches
+      - name: Remove completed and obsolete branches
         shell: bash
         run: |
-          git push origin --delete agent/v2510-source-repair || true
-          git push origin --delete agent/v260-ui-collapse-laser || true
-          git push origin --delete agent/v2511-world-save-rewrite || true
-          git push origin --delete agent/v2.5.14-phase2-atmosphere-life || true
-          # Preserve agent/nonoverlap-core-hygiene per Adam's explicit instruction.
+          for branch in \
+            agent/nonoverlap-core-hygiene \
+            agent/v2.5.13-top28-pass1 \
+            agent/v2512-feedback-trigger \
+            agent/v2512-publisher \
+            agent/v2512-runtime-ui-completion \
+            agent/v2512-runtime-ui-recovery \
+            agent/v2513-p0-tranche-1 \
+            agent/v2.5.14-cleanup-release; do
+            git push origin --delete "$branch" || true
+          done

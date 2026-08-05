@@ -43,6 +43,8 @@ FIXED = [
     "SCENE FILES", "SIMULATION", "VIEW INPUT", "PRIMARY TOOLS",
     "CELL WIDTH", "CELL HEIGHT", "CELL TOTAL",
     "TILE WIDTH", "TILE HEIGHT", "TILE TOTAL", "NONE",
+    "BLUEPRINTS", "EMPTY SLOT", "BLUEPRINT DESIGNER", "STATIC MODEL",
+    "MAP CHUNK", "DESIGNER INVENTORY", "DAY NIGHT CYCLE", "SUNLIGHT",
 ]
 SCENES = [
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",

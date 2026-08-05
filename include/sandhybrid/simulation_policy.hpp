@@ -38,9 +38,13 @@ inline constexpr std::uint32_t water_half_units_per_full_cell = 2u;
 inline constexpr std::uint32_t water_ledge_release_units = 3u;
 inline constexpr std::uint32_t water_full_horizontal_passes = 4u;
 inline constexpr std::uint32_t water_half_horizontal_passes = 8u;
-inline constexpr std::uint32_t canonical_air_state = 220u;
+inline constexpr std::uint32_t canonical_air_state = 54u;
 inline constexpr bool half_water_stores_ambient_air_pressure = false;
+inline constexpr std::uint32_t half_water_attraction_min_cells = 2u;
+inline constexpr std::uint32_t half_water_attraction_max_cells = 4u;
+inline constexpr std::uint32_t half_water_rest_ticks = 12u;
 inline constexpr std::uint32_t sunlight_update_interval = 4u;
+inline constexpr std::uint32_t day_cycle_steps = 21'600u; // six minutes at 60 simulation steps/s
 inline constexpr std::uint32_t vent_eruption_pressure = 176u;
 inline constexpr std::uint32_t vent_pulse_lava_pressure = 144u;
 inline constexpr std::uint32_t vent_gas_release_pressure = 48u;
@@ -49,6 +53,56 @@ inline constexpr std::uint32_t vent_pulse_ticks = 900u;
 inline constexpr std::uint32_t vent_pulse_on_ticks = 420u;
 inline constexpr std::uint32_t vent_major_start_tick = 10'200u;
 inline constexpr std::uint32_t wet_density_bonus = 32u;
+
+
+[[nodiscard]] constexpr bool half_water_attraction_distance(
+    const std::uint32_t distance,
+    const bool clear_path) noexcept {
+    return clear_path && distance >= half_water_attraction_min_cells &&
+           distance <= half_water_attraction_max_cells;
+}
+
+[[nodiscard]] constexpr bool half_water_can_sleep(
+    const std::uint32_t age,
+    const bool moving,
+    const bool reacting,
+    const bool hot,
+    const bool attraction_pending) noexcept {
+    return age >= half_water_rest_ticks && !moving && !reacting && !hot &&
+           !attraction_pending;
+}
+
+[[nodiscard]] constexpr bool medium_packet_tries_macro(
+    const bool full_region,
+    const bool half_water,
+    const bool structural,
+    const bool reacting) noexcept {
+    return full_region && !half_water && !structural && !reacting;
+}
+
+[[nodiscard]] constexpr bool medium_packet_needs_fine_fallback(
+    const bool full_region,
+    const bool macro_moved,
+    const bool perimeter_compatible,
+    const bool productive_move) noexcept {
+    return full_region && !macro_moved &&
+           (!perimeter_compatible || productive_move);
+}
+
+[[nodiscard]] constexpr bool simulation_clock_advances(
+    const bool paused,
+    const bool reset_this_frame,
+    const bool simulation_tick,
+    const bool single_step) noexcept {
+    return !reset_this_frame && (single_step || (simulation_tick && !paused));
+}
+
+[[nodiscard]] constexpr bool map_snapshot_refresh_allowed(
+    const bool paused,
+    const bool reset_this_frame,
+    const bool visible) noexcept {
+    return visible && !paused && !reset_this_frame;
+}
 
 [[nodiscard]] constexpr std::uint32_t effective_wet_density(
     const std::uint32_t dry_density, const bool wet) noexcept {

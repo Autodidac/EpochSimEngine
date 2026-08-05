@@ -166,8 +166,6 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
     if (x >= world_width || y >= world_height || world_width == 0u || world_height == 0u)
         return {Material::empty, false, false, false};
 
-    const auto scene_left = authored_scene_origin_x(world_width);
-    const auto scene_right = (std::min)(world_width, scene_left + pre_expansion_world_width);
     const auto scene_top = authored_scene_origin_y(world_height);
     const auto scene_bottom = (std::min)(world_height, scene_top + pre_expansion_world_height);
     const auto horizontal_shell = (std::min)(world_width, resident_world_shell_cells);
@@ -179,11 +177,12 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
     const auto scene_height = scene_bottom - scene_top;
     const auto foundation = (std::min)(scene_height, authored_scene_foundation_cells);
     const auto foundation_start = scene_bottom - foundation;
-    const bool outside_authored_scene = x < scene_left || x >= scene_right;
     if (y < scene_bottom) {
         if (y >= foundation_start) return {Material::stone, true, false, false};
-        if (!outside_authored_scene) return {Material::empty, false, false, false};
-
+        // The shared surface crosses the authored footprint instead of stopping
+        // at its left/right edges. Authored non-empty cells are composited over
+        // this substrate by reset/load code, preserving structures and basins
+        // while every scene receives continuous ground like the map overview.
         const auto nominal_surface = static_cast<std::int32_t>(scene_bottom) -
   static_cast<std::int32_t>(foundation * 2u);
         const auto surface_y = nominal_surface +

@@ -8,7 +8,8 @@ def require(path: str, needle: str) -> None:
         raise SystemExit(f"{path}: missing {needle!r}")
 
 
-require("include/sandhybrid/world_layout.hpp", "outside_authored_scene")
+require("include/sandhybrid/world_layout.hpp", "The shared surface crosses the authored footprint")
+require("shaders/reset.comp", "substrateCell && (!authored || material == MAT_EMPTY)")
 require("include/sandhybrid/world_layout.hpp", "resident_transition_material")
 require("include/sandhybrid/terrain_generation.hpp", "neighboring_vein_material")
 require("include/sandhybrid/terrain_generation.hpp", "rubble_pocket_selected")
@@ -22,7 +23,10 @@ require("shaders/tiles.glsl", "TILE_FRACTURE_ARMED")
 require("shaders/tiles.comp", "thresholdCollapse = fractureArmed")
 require("shaders/move.comp", "releaseCollapsingStructural")
 require("shaders/fullscreen.frag", "bool tinyDash")
-require("src/app.cpp", "designer_workspace &&")
+require("src/app.cpp", "material_workspace && epochengine::gui_lib::contains(layout.cursor_circle")
+require("src/app.cpp", "const bool over_map = map_view_enabled")
+require("src/vulkan_renderer.cpp", "make_map_overlay_viewport")
+require("shaders/fullscreen.frag", "bool mapSample = mapOverlayPixel()")
 require("src/vulkan_renderer.cpp", "std::array<std::int32_t, 15> phases")
 if "source.age < 18u" in (ROOT / "shaders/move.comp").read_text(encoding="utf-8"):
     raise SystemExit("legacy liquid age friction remains")

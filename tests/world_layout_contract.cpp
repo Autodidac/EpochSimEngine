@@ -19,6 +19,7 @@ static_assert(resident_substrate_material(resident_world_width, resident_world_h
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 1079u) == Material::stone);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 1068u) != Material::empty);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 3000u, 1068u) != Material::empty);
+static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1500u, 1068u) != Material::empty);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 0u) == Material::stone);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1416u) == Material::lava);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 1280u, 1432u) == Material::stone);
