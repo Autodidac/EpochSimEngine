@@ -1,0 +1,103 @@
+name: Apply v2.5.12 runtime and workspace recovery
+
+on:
+  push:
+    branches:
+      - agent/v2512-runtime-ui-completion
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/v2512-runtime-ui-completion
+          fetch-depth: 0
+
+      - name: Reconstruct and verify source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            .v2512-payload-00 \
+            .v2512-payload-01 \
+            .v2512-payload-03 \
+            .v2512-payload-04 \
+            .v2512-payload-05 \
+            > /tmp/v2512.patch.gz.b64
+          test "$(wc -c < /tmp/v2512.patch.gz.b64)" = "70052"
+          base64 --decode /tmp/v2512.patch.gz.b64 > /tmp/v2512.patch.gz
+          echo "078fc1382c0478dd20e28fd0c1ba433685c6c132df33f1c7c8b65a2a44412617  /tmp/v2512.patch.gz" | sha256sum --check
+          gzip --decompress --stdout /tmp/v2512.patch.gz > /tmp/v2512.patch
+          echo "9b9d7bd6102b926da436e412caf0c1c4369b0cd5e5d9ac1944f7bc3d4dd93b6f  /tmp/v2512.patch" | sha256sum --check
+
+      - name: Apply source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --3way --index --exclude=missioncache.md /tmp/v2512.patch
+
+      - name: Restore canonical mission cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            .v2512-missioncache-00 \
+            .v2512-missioncache-01 \
+            .v2512-missioncache-02 \
+            .v2512-missioncache-03 \
+            > /tmp/v2512-missioncache.gz.b64
+          test "$(wc -c < /tmp/v2512-missioncache.gz.b64)" = "36472"
+          base64 --decode /tmp/v2512-missioncache.gz.b64 > /tmp/v2512-missioncache.gz
+          echo "06a2b22db8512a7d9cf2b1a1a6e06e675d9dff4e73ff45313937dabd38ed6f4d  /tmp/v2512-missioncache.gz" | sha256sum --check
+          gzip --decompress --stdout /tmp/v2512-missioncache.gz > missioncache.md
+          echo "58f2bd874cc741559dd832b178b62053ccdc3598647a1e4607c859824b5c07b7  missioncache.md" | sha256sum --check
+
+      - name: Remove one-shot transport files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .v2512-payload-* .v2512-missioncache-*
+          rm -f .github/workflows/v2512-apply-runtime-ui.yml
+          git add -A
+
+      - name: Validate contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_mission_cache.py
+          python3 tools/validate_v2510_contract.py
+          python3 tools/validate_v2511_contract.py
+          python3 tools/validate_v2512_contract.py
+          python3 tools/validate_shader_contracts.py
+          python3 tools/validate_no_simulation_coroutines.py
+          python3 tools/validate_project_branding.py
+
+      - name: Configure headless release
+        shell: bash
+        run: >-
+          cmake -S . -B build-headless -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DSANDHYBRID_BUILD_APP=OFF
+          -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF
+          -DSANDHYBRID_WARNINGS_AS_ERRORS=ON
+          -DBUILD_TESTING=ON
+
+      - name: Build headless release
+        run: cmake --build build-headless --parallel 2
+
+      - name: Test headless release
+        run: ctest --test-dir build-headless --output-on-failure --timeout 240
+
+      - name: Commit validated v2.5.12 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "SandHybrid v2.5.12 runtime and workspace recovery"
+          git push origin HEAD:agent/v2512-runtime-ui-completion
