@@ -1,37 +1,124 @@
-name: SandHybrid Source Export
+name: Publish SandHybrid v2.5.14-test.2
 
 on:
-  pull_request:
-    branches:
-      - main
-    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  actions: read
 
 jobs:
-  export:
+  publish:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout exact PR source
+      - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: Package source
+      - name: Download validated Windows and Linux packages
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 31036882123 --repo Autodidac/EpochSimEngine --dir dist
+          mapfile -t assets < <(find dist -type f \( -name '*.zip' -o -name '*.tar.gz' \) -print | sort)
+          if [[ "${#assets[@]}" -ne 2 ]]; then
+            printf 'Expected exactly two package assets, found %s\n' "${#assets[@]}" >&2
+            printf '%s\n' "${assets[@]}" >&2
+            exit 1
+          fi
+          printf '%s\n' "${assets[@]}" > "${RUNNER_TEMP}/assets.txt"
+
+      - name: Publish verified GitHub prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t assets < "${RUNNER_TEMP}/assets.txt"
+          if gh release view v2.5.14-test.2 --repo Autodidac/EpochSimEngine >/dev/null 2>&1; then
+            gh release upload v2.5.14-test.2 "${assets[@]}" --repo Autodidac/EpochSimEngine --clobber
+            gh release edit v2.5.14-test.2 --repo Autodidac/EpochSimEngine \
+              --target 2ef2e9b2daf83e453ed7f6dcc43bce9a8434597c \
+              --title 'SandHybrid v2.5.14-test.2' \
+              --notes-file RELEASE_NOTES.md \
+              --prerelease
+          else
+            gh release create v2.5.14-test.2 "${assets[@]}" --repo Autodidac/EpochSimEngine \
+              --target 2ef2e9b2daf83e453ed7f6dcc43bce9a8434597c \
+              --title 'SandHybrid v2.5.14-test.2' \
+              --notes-file RELEASE_NOTES.md \
+              --prerelease
+          fi
+          gh release view v2.5.14-test.2 --repo Autodidac/EpochSimEngine \
+            --json tagName,isPrerelease,url,assets
+
+      - name: Delete audited stale branches
         shell: bash
         run: |
           set -euo pipefail
-          git archive --format=tar.gz --output="${RUNNER_TEMP}/SandHybrid-source.tar.gz" HEAD
-          sha256sum "${RUNNER_TEMP}/SandHybrid-source.tar.gz" > "${RUNNER_TEMP}/SandHybrid-source.tar.gz.sha256"
+          for branch in \
+            agent/nonoverlap-core-hygiene \
+            agent/v2.5.13-top28-pass1 \
+            agent/v2512-feedback-trigger \
+            agent/v2512-publisher \
+            agent/v2512-runtime-ui-completion \
+            agent/v2512-runtime-ui-recovery \
+            agent/v2513-p0-tranche-1 \
+            agent/v2.5.14-cleanup-release; do
+            git push origin --delete "$branch" || true
+          done
 
-      - name: Upload source artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: SandHybrid-source
-          path: |
-            ${{ runner.temp }}/SandHybrid-source.tar.gz
-            ${{ runner.temp }}/SandHybrid-source.tar.gz.sha256
-          if-no-files-found: error
-          retention-days: 1
+      - name: Restore permanent source-export workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > .github/workflows/source-export.yml <<'YAML'
+          name: SandHybrid Source Export
+
+          on:
+            pull_request:
+              branches:
+                - main
+              types: [opened, synchronize, reopened]
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+
+          jobs:
+            export:
+              runs-on: ubuntu-24.04
+              steps:
+                - name: Checkout exact PR source
+                  uses: actions/checkout@v4
+                  with:
+                    fetch-depth: 1
+
+                - name: Package source
+                  shell: bash
+                  run: |
+                    set -euo pipefail
+                    git archive --format=tar.gz --output="${RUNNER_TEMP}/SandHybrid-source.tar.gz" HEAD
+                    sha256sum "${RUNNER_TEMP}/SandHybrid-source.tar.gz" > "${RUNNER_TEMP}/SandHybrid-source.tar.gz.sha256"
+
+                - name: Upload source artifact
+                  uses: actions/upload-artifact@v4
+                  with:
+                    name: SandHybrid-source
+                    path: |
+                      ${{ runner.temp }}/SandHybrid-source.tar.gz
+                      ${{ runner.temp }}/SandHybrid-source.tar.gz.sha256
+                    if-no-files-found: error
+                    retention-days: 1
+          YAML
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/source-export.yml
+          git commit -m 'Restore source export after v2.5.14-test.2 publication'
+          git push origin HEAD:main
