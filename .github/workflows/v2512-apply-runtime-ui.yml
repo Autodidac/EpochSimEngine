@@ -1,15 +1,18 @@
 name: Apply v2.5.12 runtime and workspace recovery
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/v2512-runtime-ui-completion
+      - main
+    types:
+      - synchronize
 
 permissions:
   contents: write
 
 jobs:
   apply-and-validate:
+    if: github.head_ref == 'agent/v2512-runtime-ui-completion'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
