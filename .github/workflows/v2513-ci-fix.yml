@@ -1,0 +1,64 @@
+name: Apply v2.5.13 CI fix
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: v2513-ci-fix-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'agent/v2513-p0-tranche-1' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Detect pending fix
+        id: gate
+        shell: bash
+        run: |
+          if [[ -f .release-transport/v2513-ci-fix.patch ]]; then
+            echo 'apply=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'apply=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply cache-first shader fix
+        if: steps.gate.outputs.apply == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply .release-transport/v2513-ci-fix.patch
+          rm .release-transport/v2513-ci-fix.patch
+
+      - name: Validate fix
+        if: steps.gate.outputs.apply == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/validate_mission_cache.py
+          python tools/validate_shader_contracts.py
+          python tools/validate_v2513_contract.py
+          git diff --check
+
+      - name: Commit coherent fix
+        if: steps.gate.outputs.apply == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix canonical lightning material in lighting shader"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
