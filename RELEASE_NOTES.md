@@ -28,4 +28,6 @@ Testing prerelease combining the validated Phase 1 runtime/UI recovery with Phas
 
 ## Validation and testing focus
 
-Windows and Linux must pass full C++23 Release builds, shaders, deterministic tests, install, archive, and package upload before GitHub publishes the prerelease. Runtime/visual missions remain active until the packaged build is observed, especially liquid settling, Half Water curves, pause/reset presentation, gas transport/rendering, hive/ecology cycles, Designer behavior, and save/load persistence.
+Windows and Linux full C++23 Release/Vulkan builds, shaders, deterministic tests, installation, archive creation, and package uploads passed for the release candidate. Runtime/visual missions remain active until the packaged build is observed, especially liquid settling, Half Water curves, pause/reset presentation, gas transport/rendering, hive/ecology cycles, Designer behavior, and save/load persistence.
+
+Release source integration: PR #66, merge commit `2ef2e9b2daf83e453ed7f6dcc43bce9a8434597c`.
