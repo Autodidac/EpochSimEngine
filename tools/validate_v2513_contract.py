@@ -15,8 +15,8 @@ def require(path: str, token: str) -> None:
 
 
 # Canonical release-history and publication policy.
-require("CMakeLists.txt", "VERSION 2.5.13")
-require("CHANGELOG.md", "## 2.5.13")
+require("CMakeLists.txt", "VERSION 2.5.14")
+require("CHANGELOG.md", "## 2.5.14-test.2")
 require("RELEASE_NOTES.md", "SandHybrid v2.5.14-test.2")
 require(".github/workflows/ci-release.yml", "SandHybrid-Windows-x64-v2.5.14-test.2")
 require(".github/workflows/ci-release.yml", "gh release create v2.5.14-test.2")

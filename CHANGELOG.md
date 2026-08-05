@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.14-test.2
+
+- Integrated validated Phase 1 runtime/UI recovery with Phase 2 atmosphere and ecology contracts.
+- Removed obsolete checked-in Fix33 packages, compiled shaders, checksum artifacts, duplicate validation code, versioned release-note fragments, and stale branch transport.
+- Added permanent release-tree validation and source-only Windows/Linux prerelease publication through GitHub Releases.
+
 ## 2.5.13
 
 - Attempted the first 28 P0 missions as tranche one of five, with deterministic evidence retained per mission.
