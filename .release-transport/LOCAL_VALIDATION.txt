@@ -1,0 +1,8 @@
+Local source validation before publication:
+- GCC 14 C++23 warnings-as-errors headless build passed
+- 22/22 CTest contracts passed
+- mission cache, shader, v2.5.10, v2.5.11, v2.5.12, v2.5.13 validators passed
+- ecology and Fix34 audits passed
+- no simulation coroutines and branding validators passed
+- git diff --check passed
+Native Vulkan packaging remains gated by Windows/Linux CI.
