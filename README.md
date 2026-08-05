@@ -165,6 +165,8 @@ The interface was rebuilt as a pixel-aligned EpochGui layout. The native title b
 - inspection card separated from ordinary controls
 - `F3` debug controls visually separated from normal gameplay UI
 - compact layouts hide nonessential scene buttons rather than overlapping them
+- Inventory remains in the sidebar and switches between `INVENTORY` resource slots and the separate `BLUEPRINTS` pane
+- Designer remains in the sidebar with its isolated 64x32 authoring grid and `INVENTORY` / `BLUEPRINTS` panes; the main viewport always remains the live world
 
 ## Resource pixels and sifting
 
@@ -197,7 +199,7 @@ All scenes use the same canonical material and structural rules.
 - `OXYGEN`: selectable pure-gas material in the Engineering group
 - `[` / `]`: previous or next scene
 - `R`: reset scene
-- `P` or the `RUNNING`/`PAUSED` button: pause or resume
+- `P` or the `RUNNING`/`PAUSED` button: pause or resume simulation; direct paint, erase, fill, Ignite Air, selection, and blueprint placement remain live while paused without advancing time
 - `N`: one simulation step while paused
 - `M`: Mine/Build mode in sandbox scenes; character scenes always keep player tools active
 - `F3`: structural/debug overlay
@@ -241,7 +243,7 @@ The Windows package includes `run.bat` at its root. It locates `sandhybrid.exe` 
 - chemistry and movement early-out for stable sleeping regions
 - sunlight updated every fourth simulation tick
 - machine work restricted to valid controller/output locations
-- paused state performs no continuous simulation ticks
+- paused state performs no continuous simulation ticks, actor updates, MAP refresh, lighting/day-night, reactions, or effects; direct editor mutations still commit and dirty affected hierarchy state
 
 The resident world is 10240x1440 cells: 16 authored-map footprints wide by 4 high. It preserves the former 64-footprint total while extending only to the right. Authored 640x360 scene content remains at its original world origin (960,720), with the two complete rows above kept as sky. The active simulation gate is one contiguous clipped 4x4 window of complete 640x360 map-footprint regions around the camera; everything outside it is rejected by simulation shaders. Stable regions still exit before expensive chemistry, neighborhood, and movement work. Sparse far-region streaming remains an open mission in `missioncache.md`.
 
@@ -322,7 +324,7 @@ The vendored backend-neutral subset is documented in `third_party/EpochGui/SNAPS
 
 ## Hierarchical simulation
 
-Uniform 8x8 material regions can now move as 64-cell macro-cells using the same fall, diagonal, density, and liquid-spread rules as fine pixels. Mixed edges and half-water remain pixel simulated. Above that, 64x64 chunks cache activity and sleep state for fast rejection and large-map lookup. See `HIERARCHICAL_SIMULATION.md`.
+Uniform 8x8 material regions can move as 64-cell macro-cells using the same fall, diagonal, density, and liquid-spread rules as fine pixels. The v2.5.3 policy keeps complete moving Water and gas tiles macro-eligible; an uncommitted packet falls back to fine cells in the same tick. Mixed edges and Half Water remain pixel simulated. Above that, 64x64 chunks cache activity and sleep state for fast rejection and large-map lookup. See `HIERARCHICAL_SIMULATION.md`.
 
 
 ## Half-volume fresh water
@@ -330,9 +332,11 @@ Uniform 8x8 material regions can now move as 64-cell macro-cells using the same 
 Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and solid-supported pre-fall droplets that cannot hop along water edges or crawl after falling. See `HALF_WATER.md`.
 
 
-## v2.4.1 correction
+## v2.5.14 recovery baselines
 
-Restores the approved suspended hive, caps autonomous colonies at 100 bees, slows bee respiration, bounds fire/ember oxygen-to-CO2 exchange, stabilizes and enlarges the biohazard mask, and fixes horizontal 8x8 bulk movement so represented oxygen/CO2 is displaceable atmosphere rather than requiring literal empty cells. Runtime acceptance remains tracked in `missioncache.md`.
+The Ecosystem hive body and deterministic chamber contents match the SimpleSandSim Fix29 reference: squared shell radii 28 through 107, a chamber below 28, a queen center, deterministic Honey/Pollen/Empty contents, and a 12-cell right exit. Only the model and contents are shared; SandHybrid retains its own bee actors, forage, return, deposit, feed, migration, hazard, and 100-bee colony rules.
+
+Moving macro media match the packaged v2.5.3 reference. Runtime acceptance for both recovered baselines remains tracked in `missioncache.md`.
 
 
 ## Resident-width scene envelopes
@@ -355,7 +359,7 @@ These APIs are deterministic and covered by Windows/Linux contracts. The Vulkan 
 
 ## v2.5.6 runtime controls
 
-Right-click exclusively pans: dragging moves the current camera and holding it near a viewport edge performs gated edge panning. `WASD PAN` routes keys to the simulation camera; MAP uses its own camera and a slow full-world snapshot without changing simulation LOD or active-region scheduling. In player scenes, MINE uses left click and BUILD places the selected compact-inventory resource with left click. Hold `F` and left-click the simulation to fill; pressing `F` alone does nothing.
+Right-click exclusively pans: dragging moves the current camera and holding it near a viewport edge performs gated edge panning. `WASD PAN` routes keys to the simulation camera; MAP uses its own camera and a slow full-world snapshot without changing simulation LOD or active-region scheduling. In player scenes, MINE uses left click and BUILD places the selected resource from the sidebar Inventory pane with left click. Hold `F` and left-click the simulation to fill; pressing `F` alone does nothing.
 
 
 ## World sizes and exact saves

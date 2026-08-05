@@ -1,11 +1,11 @@
 #ifndef SANDHYBRID_BEEHIVE_GLSL
 #define SANDHYBRID_BEEHIVE_GLSL
 
-const int BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 25;
-const int BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 92;
-const int BEEHIVE_CHAMBER_RADIUS_SQUARED = 25;
+const int BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 28;
+const int BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 108;
+const int BEEHIVE_CHAMBER_RADIUS_SQUARED = 28;
 const int BEEHIVE_EXIT_MIN_X = 1;
-const int BEEHIVE_EXIT_MAX_X = 10;
+const int BEEHIVE_EXIT_MAX_X = 12;
 const int BEEHIVE_EXIT_HALF_HEIGHT = 1;
 
 // Restored suspended hive geometry from the early SandHybrid ecology scene. MATERIAL_COUNT means

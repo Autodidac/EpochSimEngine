@@ -89,6 +89,15 @@ inline constexpr std::uint32_t wet_density_bonus = 32u;
            (!perimeter_compatible || productive_move);
 }
 
+// Pause owns simulation time, never authoring input. Direct mutations are
+// committed to the canonical world without advancing clocks or dispatching a
+// simulation step. Reset is the only frame-level mutation exclusion.
+[[nodiscard]] constexpr bool editor_mutation_allowed(
+    [[maybe_unused]] const bool paused,
+    const bool reset_this_frame) noexcept {
+    return !reset_this_frame;
+}
+
 [[nodiscard]] constexpr bool simulation_clock_advances(
     const bool paused,
     const bool reset_this_frame,

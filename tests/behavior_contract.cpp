@@ -177,6 +177,9 @@ static_assert(!sandhybrid::policy::medium_packet_needs_fine_fallback(true, true,
 static_assert(!sandhybrid::policy::simulation_clock_advances(true, false, true, false));
 static_assert(sandhybrid::policy::simulation_clock_advances(true, false, false, true));
 static_assert(!sandhybrid::policy::map_snapshot_refresh_allowed(true, false, true));
+static_assert(sandhybrid::policy::editor_mutation_allowed(true, false));
+static_assert(sandhybrid::policy::editor_mutation_allowed(false, false));
+static_assert(!sandhybrid::policy::editor_mutation_allowed(true, true));
 static_assert(sandhybrid::policy::map_snapshot_refresh_allowed(false, false, true));
 static_assert(sandhybrid::policy::vent_eruption_pressure > sandhybrid::policy::vent_gas_release_pressure);
 static_assert(sandhybrid::policy::restabilization_cooldown_ticks > sandhybrid::policy::stability_ticks);

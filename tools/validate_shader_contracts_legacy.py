@@ -173,7 +173,7 @@ def main() -> int:
                     errors.append(f"legacy alias/token remains in {source_path.relative_to(ROOT)}: {token}")
 
     beehive_glsl = (SHADERS / "beehive.glsl").read_text(encoding="utf-8")
-    for token in ("BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 25", "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 92", "BEEHIVE_EXIT_MAX_X = 10", "beehivePrefabMaterial"):
+    for token in ("BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 28", "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 108", "BEEHIVE_EXIT_MAX_X = 12", "beehivePrefabMaterial"):
         if token not in beehive_glsl:
             errors.append(f"Fix28 Beehive contract missing {token!r}")
 
@@ -197,8 +197,9 @@ def main() -> int:
         "bee_authored_home_slot_bit",
         "normalize_fix28_hives",
         "fix28_beehive_material",
-        "beehive_shell_min_radius_squared = 25",
-        "beehive_shell_max_radius_squared = 92",
+        "beehive_shell_min_radius_squared = 28",
+        "beehive_shell_max_radius_squared = 108",
+        "beehive_exit_max_x = 12",
     ):
         if token not in scene_image_cpp:
             errors.append(f"loaded Fix28 Beehive contract missing {token!r}")
@@ -513,8 +514,8 @@ def main() -> int:
             errors.append(f"fullscreen tile-aligned viewport missing {token!r}")
     for token in (
         "mediumBoundaryEnclosed",
-        "bool macroLiquid = fullLiquid && !moving",
-        "bool macroGas = fullGas && !moving",
+        "bool macroLiquid = fullLiquid && (moving || liquidEnclosed)",
+        "bool macroGas = fullGas && (moving || gasEnclosed)",
         "fineFallbackMedium",
         "mediumBreakup",
         "TILE_MEDIUM_ENCLOSED",
@@ -547,8 +548,8 @@ def main() -> int:
     if "CHUNK_SLEEPING) && !chunkHas" in chunks_comp + tiles_comp:
         errors.append("stale sleeping metadata can still suppress active-section classification")
     for token in ("productiveMediumMove", "!productiveMediumMove",
-                  "bool macroLiquid = fullLiquid && !moving",
-                  "bool macroGas = fullGas && !moving",
+                  "bool macroLiquid = fullLiquid && (moving || liquidEnclosed)",
+                  "bool macroGas = fullGas && (moving || gasEnclosed)",
                   "fineFallbackMedium"):
 
         if token not in tiles_comp:
@@ -613,6 +614,9 @@ def main() -> int:
         "palette_item_count",
         "ignite_air_action_at",
         "material_card",
+        "inventory_inventory",
+        "designer_grid",
+        "designer_material_card",
     ):
         if token not in ui_layout:
             errors.append(f"compact sidebar layout contract missing {token!r}")
@@ -627,7 +631,10 @@ def main() -> int:
         "2, cardMaterial",
         "renderPc.selectedWorkspace == 0u",
         "for (uint slot = 0u; slot < 4u; ++slot)",
-        "pixel, ivec2(int(left + 10u), int(top + 21u)), 1, 182u",
+        "uint tabTop = groupTop + 25u",
+        "renderPc.selectedInventorySlot == slot",
+        "materialPixel(pixel, ivec2(int(left + 8u)",
+        "x - contentLeft, y - cardTop",
     ):
         if token not in fullscreen:
             errors.append(f"compact sidebar shader contract missing {token!r}")

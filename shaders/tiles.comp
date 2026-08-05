@@ -200,11 +200,11 @@ void main() {
     bool mediumBreakup = liquidBreakup || gasBreakup;
     // A complete medium tile receives a macro transaction attempt before fine
     // movement. Exposed or partially blocked transactions retain fine fallback.
-    // Full media always get one macro opportunity first, including exposed
-    // packets. If the exact 8x8 transaction cannot commit, TILE_FINE_ACTIVE
+    // Match the packaged v2.5.3 moving-or-enclosed packet policy: moving full
+    // media and enclosed full media get macro work. If the exact 8x8 transaction cannot commit, TILE_FINE_ACTIVE
     // remains set below so the same tick falls back to canonical cells.
-    bool macroLiquid = fullLiquid && !moving;
-    bool macroGas = fullGas && !moving;
+    bool macroLiquid = fullLiquid && (moving || liquidEnclosed);
+    bool macroGas = fullGas && (moving || gasEnclosed);
     bool macroPowder = fullRegion && isPowder(dominant) &&
                        !structuralTile && !isBlockCapable(dominant);
     // Block-capable solids may use tile metadata for cohesion, support, sleep,

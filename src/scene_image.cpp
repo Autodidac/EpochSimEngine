@@ -33,11 +33,11 @@ constexpr std::uint32_t bee_target_none = 0xffffu;
 constexpr std::uint32_t bee_formation_count = 100u;
 constexpr std::uint32_t bee_metadata_mask = 0x00ffffffu;
 constexpr std::uint32_t bee_authored_home_slot_bit = 0x80u;
-constexpr std::int32_t beehive_shell_min_radius_squared = 25;
-constexpr std::int32_t beehive_shell_max_radius_squared = 92;
-constexpr std::int32_t beehive_chamber_radius_squared = 25;
+constexpr std::int32_t beehive_shell_min_radius_squared = 28;
+constexpr std::int32_t beehive_shell_max_radius_squared = 108;
+constexpr std::int32_t beehive_chamber_radius_squared = 28;
 constexpr std::int32_t beehive_exit_min_x = 1;
-constexpr std::int32_t beehive_exit_max_x = 10;
+constexpr std::int32_t beehive_exit_max_x = 12;
 constexpr std::int32_t beehive_exit_half_height = 1;
 
 

@@ -12,6 +12,9 @@ A full aligned 8x8 region is eligible for a bulk move only when all 64 cells:
 - contain no fresh-water half-unit state.
 
 One 8x8 Vulkan workgroup validates one macro-cell pair. When valid, its 64 lanes swap the canonical cells in parallel. Mixed, partial, damaged, reacting, structural, or half-water regions immediately fall back to the normal per-cell passes. This preserves pixel behavior at edges while allowing large uniform bodies to travel eight cells per bulk step.
+The v2.5.3 ownership rule is authoritative for fluids: a complete moving liquid or gas tile remains macro-eligible even at an exposed boundary, while a stationary tile requires a compatible perimeter. Eligibility only schedules an atomic packet attempt. If the destination cannot accept the exact 8x8 transaction, the tile keeps fine ownership and runs canonical per-cell movement in the same tick.
+
+Pause does not change ownership or advance either movement path. Direct editor mutations still update canonical cells and dirty the affected hierarchy while the simulation clock remains frozen.
 
 ## 64x64 sleeping chunks
 

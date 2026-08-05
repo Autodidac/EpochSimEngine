@@ -1,10 +1,13 @@
 # Changelog
 
-## 2.5.14-test.2
+## 2.5.14
 
-- Integrated validated Phase 1 runtime/UI recovery with Phase 2 atmosphere and ecology contracts.
-- Removed obsolete checked-in Fix33 packages, compiled shaders, checksum artifacts, duplicate validation code, versioned release-note fragments, and stale branch transport.
-- Added permanent release-tree validation and source-only Windows/Linux prerelease publication through GitHub Releases.
+- Restored v2.5.3 macro eligibility for complete moving Water and gas tiles while preserving fine-cell fallback for failed packet transactions.
+- Restored the SimpleSandSim Fix29 beehive shell, chamber, exit, and deterministic contents without importing its bee behavior.
+- Kept direct painting, erasing, filling, and ignition live while simulation pause freezes ticks, actors, clocks, MAP refresh, and effects.
+- Moved Inventory and its resource slots into `INVENTORY` / `BLUEPRINTS` sidebar subtabs and kept Designer?s 64x32 authoring grid entirely in the sidebar.
+- Replaced the hidden test release path with tag-gated stable `v2.5.14` Windows/Linux packages and SHA-256 assets.
+- Added the missing mission ledger and permanent repository rules for the recovered behavior and publication gate.
 
 ## 2.5.13
 

@@ -312,6 +312,8 @@ if(BUILD_TESTING)
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2512_contract.py)
         add_test(NAME sandhybrid_v2513_source_contract
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2513_contract.py)
+        add_test(NAME sandhybrid_v2514_source_contract
+       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2514_contract.py)
     endif()
 
     add_executable(sandhybrid_input_routing_contract tests/input_routing_contract.cpp)

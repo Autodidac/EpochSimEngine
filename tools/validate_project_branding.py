@@ -34,7 +34,7 @@ TEXT_SUFFIXES = {
     ".yaml",
 }
 TOP_LEVEL_TEXT_FILES = {"CMakeLists.txt", "LICENSE", "README.md", "run.bat", "vcpkg.json"}
-EXCLUDED_DIRECTORIES = {".git", ".vs", "build", "generated", "out", "third_party", "vcpkg_installed"}
+EXCLUDED_DIRECTORIES = {".git", ".vs", "build", "dist", "generated", "out", "third_party", "vcpkg_installed"}
 EXCLUDED_FILES = {
     Path("CHANGELOG.md"),
     Path("missioncache.md"),
@@ -66,7 +66,7 @@ def is_text_candidate(path: Path) -> bool:
 
 
 def project_files() -> list[Path]:
-    return sorted(path for path in ROOT.rglob("*") if path.is_file() and is_text_candidate(path))
+    return sorted(path for path in ROOT.rglob("*") if is_text_candidate(path) and path.is_file())
 
 
 def remove_host_only_exception(text: str) -> str:

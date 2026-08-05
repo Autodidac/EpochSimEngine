@@ -22,12 +22,14 @@ inline constexpr float gap = 3.0f;
 struct Layout final {
     epochengine::gui_lib::Rect status{}, simulation{}, group_tabs{}, palette{};
     epochengine::gui_lib::Rect workspace_inventory{}, workspace_editor{}, workspace_settings{}, workspace_designer{};
+    epochengine::gui_lib::Rect inventory_inventory{}, inventory_blueprints{};
     epochengine::gui_lib::Rect previous_scene{}, next_scene{}, reset_scene{}, save_scene{}, load_scene{};
     epochengine::gui_lib::Rect mode_toggle{}, pause_toggle{}, camera_controls_toggle{}, map_toggle{}, debug_toggle{};
     epochengine::gui_lib::Rect atmosphere{}, fill{}, eraser{}, keymap{}, cursor_editor{}, material_card{};
     epochengine::gui_lib::Rect placement_cells{}, placement_tiles{};
     epochengine::gui_lib::Rect designer_static_model{}, designer_map_chunk{};
     epochengine::gui_lib::Rect designer_inventory{}, designer_blueprints{};
+    epochengine::gui_lib::Rect designer_grid{}, designer_material_card{};
     epochengine::gui_lib::Rect cursor_circle{}, cursor_square{}, cursor_horizontal{}, cursor_vertical{};
     epochengine::gui_lib::Rect brush_smaller{}, brush_larger{}, zoom_out{}, zoom_in{};
 };
@@ -126,6 +128,12 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
     layout.workspace_editor = {{workspace_left + workspace_cell, 4.0f}, {workspace_cell, 24.0f}};
     layout.workspace_settings = {{workspace_left + workspace_cell * 2.0f, 4.0f}, {workspace_cell, 24.0f}};
     layout.workspace_designer = {{workspace_left + workspace_cell * 3.0f, 4.0f}, {workspace_width - workspace_cell * 3.0f, 24.0f}};
+    const float inventory_subtab_top = layout.group_tabs.position.y + 25.0f;
+    const float inventory_subtab_width = content_width / 2.0f;
+    layout.inventory_inventory = {{content_left, inventory_subtab_top},
+                                  {inventory_subtab_width, 28.0f}};
+    layout.inventory_blueprints = {{content_left + inventory_subtab_width, inventory_subtab_top},
+                                   {content_width - inventory_subtab_width, 28.0f}};
 
     constexpr float row_left_padding = 8.0f;
     constexpr float row_right_padding = 8.0f;
@@ -207,6 +215,14 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
     const float card_top = cursor_top + float(cursor_editor_height) + gap;
     layout.material_card = {{content_left, card_top},
                             {content_width, (std::max)(1.0f, float(screen_height) - card_top - margin)}};
+    const float designer_grid_height = (std::min)(
+        content_width * 0.5f, (std::max)(1.0f, layout.material_card.size.y * 0.5f));
+    layout.designer_grid = {{content_left, card_top},
+                            {content_width, designer_grid_height}};
+    const float designer_card_top = card_top + designer_grid_height + gap;
+    layout.designer_material_card = {
+        {content_left, designer_card_top},
+        {content_width, (std::max)(1.0f, float(screen_height) - designer_card_top - margin)}};
     return layout;
 }
 
@@ -292,11 +308,12 @@ inline constexpr MaterialGroup ignite_air_group = MaterialGroup::fire_chemistry;
 [[nodiscard]] inline epochengine::gui_lib::Rect inventory_slot_rect(
     const Layout& layout, const std::uint32_t window_height,
     const std::uint32_t index) noexcept {
-    constexpr float slot_gap = 3.0f;
-    constexpr float slot_height = 37.0f;
-    const float left = layout.status.position.x + margin;
-    const float width = (std::max)(1.0f, layout.status.size.x - margin * 2.0f);
-    const float top = (std::max)(0.0f, static_cast<float>(window_height) - 88.0f);
+    (void)window_height;
+    constexpr float slot_gap = 5.0f;
+    constexpr float slot_height = 52.0f;
+    const float left = layout.inventory_inventory.position.x;
+    const float width = layout.inventory_inventory.size.x + layout.inventory_blueprints.size.x;
+    const float top = layout.inventory_inventory.position.y + layout.inventory_inventory.size.y + gap;
     const float slot_width = (width - slot_gap) * 0.5f;
     const auto column = index % 2u;
     const auto row = index / 2u;

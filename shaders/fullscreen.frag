@@ -383,6 +383,7 @@ uint designerPlacementMode() { return renderPc.designerFlags & 1u; }
 uint designerBrushShape() { return (renderPc.designerFlags >> 1u) & 3u; }
 uint designerMode() { return (renderPc.designerFlags >> 3u) & 1u; }
 uint designerPane() { return (renderPc.designerFlags >> 4u) & 1u; }
+uint inventoryPane() { return (renderPc.designerFlags >> 5u) & 1u; }
 uint designerZoom() { return max((renderPc.designerFlags >> 8u) & 255u, 1u); }
 uint designerBrushRadius() { return max((renderPc.designerFlags >> 16u) & 255u, 1u); }
 
@@ -841,7 +842,7 @@ void main() {
                     pixel, ivec2(int(left + 8u), int(modeTop + 8u)), 1, modeIds[mode]);
             }
             uint paneTop = keymapTop + 59u;
-            uint paneIds[2] = uint[2](186u, 180u);
+            uint paneIds[2] = uint[2](166u, 181u);
             for (uint pane = 0u; pane < 2u; ++pane) {
                 uint left = contentLeft + pane * halfWidth;
                 uint right = pane == 1u ? contentLeft + contentWidth : left + halfWidth;
@@ -973,6 +974,22 @@ void main() {
             : (renderPc.selectedWorkspace == 2u ? keymapBottom + 3u : groupTop + 178u);
         uint cardBottom = renderPc.windowHeight > 5u
             ? renderPc.windowHeight - 5u : renderPc.windowHeight;
+        if (renderPc.selectedWorkspace == 3u) {
+            uint cardHeight = cardBottom > cardTop ? cardBottom - cardTop : 1u;
+            uint designerGridHeight = min(contentWidth / 2u, max(cardHeight / 2u, 1u));
+            uint designerGridBottom = min(cardTop + designerGridHeight, cardBottom);
+            if (y >= cardTop && y < designerGridBottom) {
+                vec4 designerColor = designerGridColor(
+                    x - contentLeft, y - cardTop, max(contentWidth, 1u),
+                    max(designerGridBottom - cardTop, 1u));
+                if (borderPixel(x, y, contentLeft, cardTop,
+                                contentLeft + contentWidth, designerGridBottom))
+                    designerColor.rgb = vec3(0.20, 0.42, 0.58);
+                outColor = designerColor;
+                return;
+            }
+            cardTop = min(designerGridBottom + 3u, cardBottom);
+        }
         ivec2 cursor = clamp(ivec2(renderPc.cursorX, renderPc.cursorY), ivec2(0),
                               ivec2(int(renderPc.gridWidth) - 1, int(renderPc.gridHeight) - 1));
         Cell inspected = cellAt(cursor);
@@ -1013,25 +1030,57 @@ void main() {
         if (renderPc.selectedWorkspace == 0u && y >= groupTop && y < groupTop + 175u) {
             color = vec3(0.032, 0.043, 0.058);
             bool inventoryText = fixedPixel(
-                pixel, ivec2(int(contentLeft + 8u), int(groupTop + 6u)), 2, 181u);
-            uint slotGap = 5u;
-            uint slotTop = groupTop + 30u;
-            uint slotWidth = max((contentWidth - slotGap) / 2u, 1u);
-            uint slotHeight = 62u;
-            for (uint slot = 0u; slot < 4u; ++slot) {
-                uint column = slot % 2u;
-                uint row = slot / 2u;
-                uint left = contentLeft + column * (slotWidth + slotGap);
-                uint right = column == 1u ? contentLeft + contentWidth : left + slotWidth;
-                uint top = slotTop + row * (slotHeight + slotGap);
-                uint bottom = top + slotHeight;
-                if (x >= left && x < right && y >= top && y < bottom) {
-                    color = vec3(0.045, 0.062, 0.084);
-                    if (borderPixel(x, y, left, top, right, bottom))
-                        color = vec3(0.12, 0.20, 0.28);
-                }
+                pixel, ivec2(int(contentLeft + 8u), int(groupTop + 6u)), 2, 166u);
+            uint tabTop = groupTop + 25u;
+            uint tabBottom = tabTop + 28u;
+            uint halfWidth = contentWidth / 2u;
+            for (uint tab = 0u; tab < 2u; ++tab) {
+                uint left = contentLeft + tab * halfWidth;
+                uint right = tab == 1u ? contentLeft + contentWidth : left + halfWidth;
+                bool tabSelected = inventoryPane() == tab;
+                if (x >= left && x < right && y >= tabTop && y < tabBottom)
+                    color = tabSelected ? vec3(0.11, 0.24, 0.34) : vec3(0.050, 0.068, 0.090);
+                if (borderPixel(x, y, left, tabTop, right, tabBottom))
+                    color = tabSelected ? vec3(0.22, 0.50, 0.66) : vec3(0.10, 0.16, 0.22);
                 inventoryText = inventoryText || fixedPixel(
-                    pixel, ivec2(int(left + 10u), int(top + 21u)), 1, 182u);
+                    pixel, ivec2(int(left + 10u), int(tabTop + 7u)), 1,
+                    tab == 0u ? 166u : 181u);
+            }
+            uint paneTop = tabBottom + 3u;
+            if (inventoryPane() == 1u) {
+                if (x >= contentLeft && x < contentLeft + contentWidth &&
+                    y >= paneTop && y < groupTop + 170u)
+                    color = vec3(0.040, 0.054, 0.072);
+                if (borderPixel(x, y, contentLeft, paneTop,
+                                contentLeft + contentWidth, groupTop + 170u))
+                    color = vec3(0.10, 0.16, 0.22);
+                inventoryText = inventoryText || fixedPixel(
+                    pixel, ivec2(int(contentLeft + 10u), int(paneTop + 10u)), 2, 182u);
+            } else {
+                uint slotGap = 5u;
+                uint slotWidth = max((contentWidth - slotGap) / 2u, 1u);
+                uint slotHeight = 52u;
+                for (uint slot = 0u; slot < 4u; ++slot) {
+                    uint column = slot % 2u;
+                    uint row = slot / 2u;
+                    uint left = contentLeft + column * (slotWidth + slotGap);
+                    uint right = column == 1u ? contentLeft + contentWidth : left + slotWidth;
+                    uint top = paneTop + row * (slotHeight + slotGap);
+                    uint bottom = top + slotHeight;
+                    bool selected = renderPc.selectedInventorySlot == slot;
+                    if (x >= left && x < right && y >= top && y < bottom) {
+                        color = selected ? vec3(0.11, 0.24, 0.34) : vec3(0.045, 0.062, 0.084);
+                        if (borderPixel(x, y, left, top, right, bottom))
+                            color = selected ? vec3(0.22, 0.50, 0.66) : vec3(0.12, 0.20, 0.28);
+                    }
+                    uint slotMaterial = slot == 0u ? MAT_IRON :
+                        (slot == 1u ? MAT_GOLD : (slot == 2u ? MAT_COPPER : MAT_ALUMINUM));
+                    uint slotCount = slot == 0u ? actor.iron :
+                        (slot == 1u ? actor.gold : (slot == 2u ? actor.copper : actor.aluminum));
+                    inventoryText = inventoryText ||
+                        materialPixel(pixel, ivec2(int(left + 8u), int(top + 7u)), 1, slotMaterial) ||
+                        numberPixel(pixel, ivec2(int(left + 8u), int(top + 28u)), 1, slotCount);
+                }
             }
             if (inventoryText) color = vec3(0.94, 0.97, 1.0);
             outColor = vec4(color, 1.0);
@@ -1054,17 +1103,6 @@ void main() {
         return;
     }
     bool mapSample = mapOverlayPixel();
-    if (!mapSample && renderPc.selectedWorkspace == 3u) {
-        uint sampleX = x - renderPc.viewportLeft;
-        uint sampleY = y - renderPc.viewportTop;
-        vec4 designerColor = designerGridColor(
-            sampleX, sampleY, max(renderPc.viewportWidth, 1u), max(renderPc.viewportHeight, 1u));
-        if (x < renderPc.viewportLeft + 3u || x + 3u >= viewportRight ||
-            y < renderPc.viewportTop + 3u || y + 3u >= viewportBottom)
-            designerColor.rgb = vec3(0.20, 0.42, 0.58);
-        outColor = designerColor;
-        return;
-    }
     uint sampleLeft = mapSample ? renderPc.mapViewportLeft : renderPc.viewportLeft;
     uint sampleTop = mapSample ? renderPc.mapViewportTop : renderPc.viewportTop;
     uint sampleWidth = max(mapSample ? renderPc.mapViewportWidth : renderPc.viewportWidth, 1u);
@@ -1191,7 +1229,8 @@ void main() {
   color = vec4(1.0, 0.96, 0.72, 1.0);
     }
 
-    if (renderPc.inspectMode == 0u && !mapSample) {
+    if (renderPc.selectedWorkspace == 1u &&
+        renderPc.inspectMode == 0u && !mapSample) {
         ivec2 delta = grid - ivec2(renderPc.cursorX, renderPc.cursorY);
         int distanceSquared = delta.x * delta.x + delta.y * delta.y;
         if (renderPc.miningMode != 0u) {

@@ -382,6 +382,7 @@ int run_application(const ApplicationOptions& options) {
         const auto map_view = camera_view(shared_state, simulation_config, true);
         const auto simulation_viewport = ui::make_simulation_viewport(
             layout, visible_view.width, visible_view.height);
+        const ui::SimulationViewport designer_grid_viewport{layout.designer_grid, 0u};
         const auto map_overlay_viewport = ui::make_map_overlay_viewport(
             layout, map_view.width, map_view.height);
         const epochengine::gui_lib::Vec2 pointer{
@@ -391,6 +392,7 @@ int run_application(const ApplicationOptions& options) {
         const bool primary_pressed = input.primary_pressed;
         const auto selected_workspace = shared_state.selected_workspace.load(
             std::memory_order_relaxed) % ui::workspace_tab_count;
+        const bool inventory_workspace = selected_workspace == 0u;
         const bool editor_workspace = selected_workspace == 1u;
         const bool designer_workspace = selected_workspace == 3u;
         const bool material_workspace = editor_workspace || designer_workspace;
@@ -399,11 +401,13 @@ int run_application(const ApplicationOptions& options) {
         const bool over_map = map_view_enabled && epochengine::gui_lib::contains(
             map_overlay_viewport.rect, pointer);
         const bool over_world = over_simulation && !over_map;
+        const bool over_designer_grid = designer_workspace && epochengine::gui_lib::contains(
+            layout.designer_grid, pointer);
         if (input.wheel_delta != 0) {
             if (over_map) {
                 zoom_at_pointer(shared_state, simulation_config, map_overlay_viewport,
                                 input.mouse_x, input.mouse_y, input.wheel_delta, true);
-            } else if (over_world && designer_workspace) {
+            } else if (over_designer_grid) {
                 const auto zoom = static_cast<int>(
                     shared_state.designer_zoom.load(std::memory_order_relaxed));
                 shared_state.designer_zoom.store(static_cast<std::uint32_t>(
@@ -612,6 +616,17 @@ int run_application(const ApplicationOptions& options) {
             } else if (epochengine::gui_lib::contains(layout.debug_toggle, pointer)) {
                 const bool debug = shared_state.debug_visualization.load(std::memory_order_relaxed);
                 shared_state.debug_visualization.store(!debug, std::memory_order_release);
+            } else if (inventory_workspace && epochengine::gui_lib::contains(layout.inventory_inventory, pointer)) {
+                shared_state.inventory_pane.store(0u, std::memory_order_relaxed);
+            } else if (inventory_workspace && epochengine::gui_lib::contains(layout.inventory_blueprints, pointer)) {
+                shared_state.inventory_pane.store(1u, std::memory_order_relaxed);
+            } else if (inventory_workspace &&
+                       shared_state.inventory_pane.load(std::memory_order_relaxed) == 0u &&
+                       ui::inventory_slot_at(layout, input.height, pointer) <
+                           player_inventory_slot_count) {
+                shared_state.selected_inventory_slot.store(
+                    ui::inventory_slot_at(layout, input.height, pointer),
+                    std::memory_order_relaxed);
             } else if (designer_workspace && epochengine::gui_lib::contains(layout.designer_static_model, pointer)) {
                 shared_state.designer_mode.store(0u, std::memory_order_relaxed);
             } else if (designer_workspace && epochengine::gui_lib::contains(layout.designer_map_chunk, pointer)) {
@@ -685,20 +700,18 @@ int run_application(const ApplicationOptions& options) {
         const bool mining = shared_state.mining_mode.load(std::memory_order_relaxed);
         const bool inspecting = input.inspect_material;
         const bool fill_click = editor_workspace && input.fill_modifier && primary_pressed &&
-                                over_world && !pan_button_down && !world_paused;
+                                over_world && !pan_button_down;
         if (fill_click) shared_state.fill_region.store(true, std::memory_order_release);
 
-        const bool designer_paint_active = designer_workspace && over_world &&
+        const bool designer_paint_active = designer_workspace && over_designer_grid &&
                                            input.primary_down && !inspecting &&
-                                           !input.fill_modifier && !pan_button_down &&
-                                           !world_paused;
+                                           !input.fill_modifier && !pan_button_down;
         if (designer_paint_active)
-            paint_designer_grid(shared_state, simulation_viewport, input.mouse_x, input.mouse_y);
+            paint_designer_grid(shared_state, designer_grid_viewport, input.mouse_x, input.mouse_y);
 
         const bool player_build = scene_player_present && !mining;
         const bool paint_active = editor_workspace && over_world && !scene_player_present && !mining &&
-                                  !inspecting && !input.fill_modifier && !pan_button_down &&
-                                  !world_paused;
+                                  !inspecting && !input.fill_modifier && !pan_button_down;
         shared_state.primary_down.store(input.primary_down && paint_active,
                                          std::memory_order_relaxed);
         // Right mouse is camera-only. Erasing is an explicit left-click Eraser

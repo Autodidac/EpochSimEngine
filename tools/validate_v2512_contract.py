@@ -9,6 +9,11 @@ def require(path: str, token: str) -> None:
     if token not in text:
         raise SystemExit(f"{path}: missing {token!r}")
 
+def reject(path: str, token: str) -> None:
+    if token in (ROOT / path).read_text(encoding="utf-8"):
+        raise SystemExit(f"{path}: obsolete token remains {token!r}")
+
+
 
 # Non-modal map overlay and independent input.
 for token in (
@@ -35,7 +40,10 @@ for token in (
 for token in (
     "material_workspace && epochengine::gui_lib::contains(layout.cursor_circle",
     "shared_state.designer_brush_shape : shared_state.brush_shape",
-    "paint_designer_grid(shared_state, simulation_viewport",
+    "const ui::SimulationViewport designer_grid_viewport{layout.designer_grid",
+    "paint_designer_grid(shared_state, designer_grid_viewport",
+    "layout.inventory_inventory",
+    "layout.inventory_blueprints",
     "designer_grid_columns = 64u",
 ):
     path = "include/sandhybrid/shared_state.hpp" if token == "designer_grid_columns = 64u" else "src/app.cpp"
@@ -54,8 +62,14 @@ for token in (
     "vec4 designerGridColor",
     "designerPlacementMode()",
     "designerBrushRadius()",
+    "inventoryPane()",
+    "x - contentLeft, y - cardTop",
+    "renderPc.selectedWorkspace == 1u &&",
+    "renderPc.selectedInventorySlot == slot",
 ):
     require("shaders/fullscreen.frag", token)
+reject("shaders/fullscreen.frag", "if (!mapSample && renderPc.selectedWorkspace == 3u)")
+require("tests/ui_layout_contract.cpp", "layout.designer_grid.position.x < sidebar_left")
 for token in (
     "record_designer_snapshot",
     "VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT",
@@ -82,12 +96,15 @@ for token in (
 for token in (
     ".render_frame = simulation_step",
     ".world_time = simulation_step",
-    "if (!paused && !reset_this_frame) record_paint",
-    "Fill ignored while paused.",
+    "policy::editor_mutation_allowed(paused, reset_this_frame)",
     "vkCmdFillBuffer(command_buffer, sunlight_buffer.handle",
     "vkCmdCopyBuffer(command_buffer, cell_buffers[0].handle",
 ):
     require("src/vulkan_renderer.cpp", token)
+reject("src/vulkan_renderer.cpp", "Fill ignored while paused.")
+reject("src/vulkan_renderer.cpp", "Ignite Air ignored while paused.")
+reject("src/vulkan_renderer.cpp", "if (!paused && !reset_this_frame) record_paint")
+require("tests/behavior_contract.cpp", "editor_mutation_allowed(true, false)")
 for token in (
     "!world_paused",
     "shared_state.move_x.store(world_paused ? 0",

@@ -60,10 +60,15 @@ This command builds the real application and all GLSL shaders, runs the static s
 - Authored terrain remains stable, while deliberate sand/silt/cargo samples remain loose and simulated.
 - CO2 renders near-black, hydrogen renders pink, and the enlarged UI hit rectangles match the fragment-shader controls.
 
+- With `F3` counters visible, complete moving Water and gas tiles increment macro attempts/moves as in v2.5.3; blocked packets continue visibly through fine fallback instead of freezing.
+- In Ecosystem, compare the suspended hive body, chamber, exit, queen center, and Honey/Pollen/Empty contents against the Fix29 reference without changing SandHybrid bee behavior.
+- While `PAUSED`, paint, erase, fill, and Ignite Air, confirm the edit appears immediately, and confirm clocks, actors, reactions, lighting, MAP refresh, and effects do not advance.
+- Verify Inventory and Designer remain inside the sidebar at wide and compact sizes; each exposes `INVENTORY` and `BLUEPRINTS`, and Designer never replaces the world viewport.
 
-## v2.5.14-test.2 recovery gates
+## v2.5.14 stable release gates
 
 - `tools/validate_v2513_contract.py` preserves the first-28 P0 recovery contracts without hard-coding an obsolete release tag.
+- `tools/validate_v2514_contract.py` rejects the regressed macro, hive, paused-editing, main-viewport Designer, and hidden test-release paths.
 - `tools/validate_release_tree.py` rejects tracked packages, executables, compiled shaders, payload chunks, one-shot workflows, and versioned release-note fragments.
-- Windows and Linux full Release CI compile every shader, build with warnings as errors, run CTest, install the package, archive it, and publish only through GitHub Releases.
+- Windows and Linux full Release CI compile every shader, build with warnings as errors, run CTest, install the package, archive it, generate SHA-256 files, and publish only from the stable `v2.5.14` tag.
 - Runtime and visual acceptance stays active in `missioncache.md`; deterministic contracts are evidence, not a substitute for eye testing.

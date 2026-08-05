@@ -14,12 +14,10 @@ def require(path: str, token: str) -> None:
         raise SystemExit(f"{path}: missing {token!r}")
 
 
-# Canonical release-history and publication policy.
+# Canonical v2.5.13 history remains present while current release policy is
+# owned by the newest release contract.
+require("CHANGELOG.md", "## 2.5.13")
 require("CMakeLists.txt", "VERSION 2.5.14")
-require("CHANGELOG.md", "## 2.5.14-test.2")
-require("RELEASE_NOTES.md", "SandHybrid v2.5.14-test.2")
-require(".github/workflows/ci-release.yml", "SandHybrid-Windows-x64-v2.5.14-test.2")
-require(".github/workflows/ci-release.yml", "gh release create v2.5.14-test.2")
 if list(ROOT.glob("RELEASE_NOTES_v*.md")):
     raise SystemExit("versioned release-note files remain; CHANGELOG.md must own history")
 
@@ -54,8 +52,8 @@ require("shaders/move.comp", "material == MAT_ATMOSPHERE && volume == 0u ? 54u :
 for token in (
     "halfWaterPartnerVisible",
     "halfWaterAttractionPending",
-    "bool macroLiquid = fullLiquid && !moving",
-    "bool macroGas = fullGas && !moving",
+    "bool macroLiquid = fullLiquid && (moving || liquidEnclosed)",
+    "bool macroGas = fullGas && (moving || gasEnclosed)",
     "fineFallbackMedium",
 ):
     require("shaders/tiles.comp", token)
@@ -73,7 +71,7 @@ for token in (
 # Every tranche mission resolves to explicit deterministic/source evidence.
 evidence = {
     "MC-012": (("tests/behavior_contract.cpp", ("medium_packet_tries_macro",)),),
-    "MC-013": (("shaders/tiles.comp", ("bool macroLiquid = fullLiquid && !moving",)),),
+    "MC-013": (("shaders/tiles.comp", ("bool macroLiquid = fullLiquid && (moving || liquidEnclosed)",)),),
     "MC-017": (("tests/behavior_contract.cpp", ("half_water_can_sleep",)),),
     "MC-018": (("tests/packet_transaction_contract.cpp", ("blocked", "commit")),),
     "MC-026": (("tests/atmosphere_contract.cpp", ("transfer_atmosphere", "respire")),),

@@ -2401,6 +2401,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             ((state.designer_brush_shape.load(std::memory_order_relaxed) & 3u) << 1u) |
             ((state.designer_mode.load(std::memory_order_relaxed) & 1u) << 3u) |
             ((state.designer_pane.load(std::memory_order_relaxed) & 1u) << 4u) |
+            ((state.inventory_pane.load(std::memory_order_relaxed) & 1u) << 5u) |
             ((state.designer_zoom.load(std::memory_order_relaxed) & 0xffu) << 8u) |
             ((state.designer_brush_radius.load(std::memory_order_relaxed) & 0xffu) << 16u);
         const RenderPush push{
@@ -2509,13 +2510,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         }
         const bool explicit_load = state.load_scene_image.exchange(false, std::memory_order_acq_rel);
         if (state.fill_region.exchange(false, std::memory_order_acq_rel)) {
-            if (paused) startup_log("Fill ignored while paused.");
-            else if (!needs_reset) fill_connected_region(state);
+            if (!needs_reset) fill_connected_region(state);
             else startup_log("Fill skipped until the initial scene exists.");
         }
         if (state.ignite_air.exchange(false, std::memory_order_acq_rel)) {
-            if (paused) startup_log("Ignite Air ignored while paused.");
-            else if (!needs_reset) ignite_air_region();
+            if (!needs_reset) ignite_air_region();
             else startup_log("Ignite Air skipped until the initial scene exists.");
         }
         const bool reset_requested = needs_reset || state.reset.exchange(false, std::memory_order_acq_rel);
@@ -2580,7 +2579,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             reset_actor = true;
             reset_this_frame = true;
         }
-        if (!paused && !reset_this_frame) record_paint(frame.command_buffer, state);
+        if (policy::editor_mutation_allowed(paused, reset_this_frame))
+            record_paint(frame.command_buffer, state);
 
         const bool debug_visible = state.debug_visualization.load(std::memory_order_relaxed);
         const bool step_once = state.single_step.exchange(false, std::memory_order_acq_rel);

@@ -1,38 +1,30 @@
-# SandHybrid v2.5.14-test.2
+# SandHybrid v2.5.14
 
-Testing prerelease combining the validated Phase 1 runtime/UI recovery with Phase 2 atmosphere and ecology contracts.
+Stable recovery release for macro-tile motion, the Ecosystem beehive, paused editing, and sidebar workspace ownership.
 
-## Runtime and UI recovery
+## Recovered behavior
 
-- Half Water restores canonical balanced Air, attracts only visible partners two to four cells away, remains fine-owned, and sleeps only after bounded rest conditions.
-- Complete Water/gas regions attempt macro movement first and immediately retain fine fallback when the packet cannot commit.
-- Pause freezes simulation clocks, MAP refresh, lighting/day-night, particles, actors, tools, and presentation effects; reset returns state and queued input to step zero.
-- MAP remains independently navigable, Designer owns a separate 64x32 authoring grid, and Editor retains world-placement controls.
-- Authored terrain, lighting, scene origin, hive placement, and workspace hit boxes are revalidated by deterministic contracts.
+- Restores the v2.5.3 macro policy: complete moving Water and gas tiles receive an 8x8 packet attempt, while blocked or incompatible packets retain same-tick fine-cell fallback.
+- Restores only the SimpleSandSim Fix29 beehive body and deterministic chamber contents: the 28-108 shell, chamber, queen center, Honey/Pollen/Empty contents, and 12-cell right exit. SandHybrid ecology and actor behavior remain unchanged.
+- `PAUSED` still freezes simulation ticks, actors, clocks, MAP refresh, lighting/day-night, particles, and presentation effects, but direct editing remains live without advancing the simulation.
+- Inventory lives in the sidebar with `INVENTORY` and `BLUEPRINTS` subtabs. The Inventory pane shows and selects the player?s Iron, Gold, Copper, and Aluminum resources.
+- Designer lives entirely in the sidebar with its isolated 64x32 grid and `INVENTORY` / `BLUEPRINTS` subtabs; selecting Designer no longer replaces the world viewport.
 
-## Atmosphere and ecology
+## Retained systems
 
-- Packed N2/O2/Ar/CO2/Ne/H2/He/vapor/contaminant inspection and conserved pressure transfer.
-- Density/buoyancy routing, sealed/paused/unloaded boundaries, wall-tangential gas motion, reabsorption, respiration, and combustion policies.
-- Connected balanced-Air fill, upper-left connected-Air ignition, corner-pressure contracts, and zero-pressure Half Water ambient bookkeeping.
-- Actor-owned player, bee, queen, ant, and beetle records outside material identity.
-- Bee forage/return/deposit/feed/migration/hazard policy with a hard 100-bee cap and recurring readable biohazard formation.
-- Ant and beetle behavior intent, explicit habitat transactions, Fix28 hive classification/home mapping, and expanded life telemetry.
+- Half Water keeps canonical balanced-Air bookkeeping, visible two-to-four-cell attraction, fine ownership, and bounded rest conditions.
+- Packed atmosphere, actor-owned ecology, machinery transactions, continuous terrain, exact saves, and independent MAP navigation remain covered by deterministic contracts.
+- SandHybrid?s bee forage, return, deposit, feed, migration, hazard, and 100-bee colony policy are retained; no SimpleSandSim bee simulation was imported.
 
-## Repository cleanup
+## Release validation
 
-- Removed obsolete checked-in Fix33 Windows/Linux package archives and checksums.
-- Removed versioned release-note fragments; release history is consolidated in `CHANGELOG.md`.
-- Added a release-tree validator that rejects binary packages, generated SPIR-V, payload transports, one-shot workflows, and stale versioned notes.
-- Audited every remaining branch: validated source was integrated; transport-only, fully merged, and obsolete branches are deleted after publication.
+The release source must pass the complete shader/interface suite, deterministic C++23 contracts, Windows and Linux Release builds, tests, install steps, archives, and SHA-256 generation. The tag-gated workflow publishes these four assets:
 
-## Validation and testing focus
+- `SandHybrid-Windows-x64-v2.5.14.zip`
+- `SandHybrid-Windows-x64-v2.5.14.zip.sha256`
+- `SandHybrid-Linux-x64-v2.5.14.tar.gz`
+- `SandHybrid-Linux-x64-v2.5.14.tar.gz.sha256`
 
-Windows and Linux full C++23 Release/Vulkan builds, shaders, deterministic tests, installation, archive creation, and package uploads passed for the release candidate. Runtime/visual missions remain active until the packaged build is observed, especially liquid settling, Half Water curves, pause/reset presentation, gas transport/rendering, hive/ecology cycles, Designer behavior, and save/load persistence.
+Local Windows/MSVC and native Linux/GNU Release builds compiled all 12 shaders and passed all 24 CTest targets before publication. The tag workflow repeats those builds and produces the published checksum files.
 
-Release source integration: PR #66, merge commit `2ef2e9b2daf83e453ed7f6dcc43bce9a8434597c`.
-
-Validated GitHub Actions artifacts:
-
-- Windows artifact digest: `sha256:f21baae8c7dd305a1781ff728f007b9ae7ba04b848473821bec963af9c4e36d3`
-- Linux artifact digest: `sha256:0dd7b1d17c83d10e96095ba3e08ce9d2bb028e2183ad552e66f4123089d9582d`
+Runtime and visual missions remain active in `missioncache.md` until the packaged executables are observed; static validation alone does not close them.

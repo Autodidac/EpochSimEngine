@@ -87,6 +87,25 @@ int main() {
 
     const auto compact = sandhybrid::ui::make_layout(480u, 320u);
     if (compact.simulation.size.y <= 0.0f || compact.status.size.x < 300.0f) return 10;
+    const auto sidebar_left = layout.simulation.position.x + layout.simulation.size.x;
+    const auto sidebar_right = layout.status.position.x + layout.status.size.x;
+    if (layout.inventory_inventory.position.x < sidebar_left ||
+        layout.inventory_blueprints.position.x < sidebar_left ||
+        layout.inventory_blueprints.position.x + layout.inventory_blueprints.size.x > sidebar_right ||
+        !designer_nonoverlap(layout.inventory_inventory, layout.inventory_blueprints)) return 20;
+    if (layout.designer_grid.position.x < sidebar_left ||
+        layout.designer_material_card.position.x < sidebar_left ||
+        layout.designer_grid.position.x + layout.designer_grid.size.x > sidebar_right ||
+        layout.designer_material_card.position.x + layout.designer_material_card.size.x > sidebar_right ||
+        layout.designer_grid.position.y + layout.designer_grid.size.y >
+            layout.designer_material_card.position.y) return 21;
+    if (layout.inventory_inventory.position.y < layout.group_tabs.position.y ||
+        layout.inventory_blueprints.position.y < layout.group_tabs.position.y ||
+        layout.inventory_inventory.position.y + layout.inventory_inventory.size.y >
+            layout.group_tabs.position.y + layout.group_tabs.size.y ||
+        layout.inventory_blueprints.position.y + layout.inventory_blueprints.size.y >
+            layout.group_tabs.position.y + layout.group_tabs.size.y) return 22;
+
     if (compact.reset_scene.size.x <= 0.0f || compact.pause_toggle.size.x <= 0.0f ||
         compact.atmosphere.size.x <= 0.0f || compact.eraser.size.x <= 0.0f ||
         compact.fill.size.x <= 0.0f) return 11;
