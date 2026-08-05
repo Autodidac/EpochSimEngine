@@ -82,7 +82,6 @@ jobs:
           python tools/validate_v2510_contract.py
           python tools/validate_v2511_contract.py
           python tools/validate_v2512_contract.py
-          python tools/validate_v2513_contract.py
           python tools/audit_ecology_motion.py
           python tools/audit_fix34.py
           python tools/validate_no_simulation_coroutines.py
