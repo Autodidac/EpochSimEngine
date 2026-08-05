@@ -1,0 +1,1 @@
+The canonical mission cache was updated before implementation in local commit a09e3af; implementation followed in b841d74. Publication reconstructs the final validated state while preserving the cache-first evidence in missioncache.md and CHANGELOG.md.
