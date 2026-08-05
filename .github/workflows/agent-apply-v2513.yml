@@ -1,0 +1,42 @@
+name: Apply v2.5.13 recovery patch
+
+on:
+  push:
+    branches:
+      - agent/v2.5.13-top28-pass1
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/v2.5.13-top28-pass1
+          fetch-depth: 0
+      - name: Reconstruct and verify patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/agent-v2513-patch/part-* > /tmp/v2513-pass1.patch.xz.b64
+          echo 'ea8e884ab917917d5f11046fa0ad8039f663142cad80547dfeaa85dcdc549b14  /tmp/v2513-pass1.patch.xz.b64' | sha256sum -c -
+          base64 --decode /tmp/v2513-pass1.patch.xz.b64 > /tmp/v2513-pass1.patch.xz
+          echo 'aa89d15db120946de44a392b2ae3a41be98101e5ed00ae8fb12984f3075915d7  /tmp/v2513-pass1.patch.xz' | sha256sum -c -
+          xz --decompress --stdout /tmp/v2513-pass1.patch.xz > /tmp/v2513-pass1.patch
+          echo '1053311e59143db99944fc2bdfe50dca48aae5b83eaff705f1fb68a7df364b27  /tmp/v2513-pass1.patch' | sha256sum -c -
+      - name: Apply validated source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check --exclude='.github/workflows/*' /tmp/v2513-pass1.patch
+          git apply --index --exclude='.github/workflows/*' /tmp/v2513-pass1.patch
+          git rm -r .github/agent-v2513-patch
+          git rm .github/workflows/agent-apply-v2513.yml
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Complete v2.5.13 top-28 recovery pass 1'
+          git push origin HEAD:agent/v2.5.13-top28-pass1
