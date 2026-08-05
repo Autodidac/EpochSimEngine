@@ -1,9 +1,10 @@
 name: Agent source export
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/v2.5.13-top28-pass1
+      - main
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
