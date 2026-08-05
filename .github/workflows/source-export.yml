@@ -1,37 +1,37 @@
-name: SandHybrid Source Export
+name: Finalize v2.5.14 metadata
 
 on:
   pull_request:
     branches:
       - main
-    types: [opened, synchronize, reopened]
-  workflow_dispatch:
+    types: [synchronize]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout exact PR source
+      - name: Checkout exact PR branch
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
 
-      - name: Package source
+      - name: Align metadata and restore permanent workflow
         shell: bash
         run: |
           set -euo pipefail
-          git archive --format=tar.gz --output="${RUNNER_TEMP}/SandHybrid-source.tar.gz" HEAD
-          sha256sum "${RUNNER_TEMP}/SandHybrid-source.tar.gz" > "${RUNNER_TEMP}/SandHybrid-source.tar.gz.sha256"
-
-      - name: Upload source artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: SandHybrid-source
-          path: |
-            ${{ runner.temp }}/SandHybrid-source.tar.gz
-            ${{ runner.temp }}/SandHybrid-source.tar.gz.sha256
-          if-no-files-found: error
-          retention-days: 1
+          python tools/finalize_v2514_metadata.py
+          python tools/validate_release_tree.py
+          python tools/validate_v2513_contract.py
+          python tools/validate_mission_cache.py
+          git rm tools/finalize_v2514_metadata.py
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add CMakeLists.txt CHANGELOG.md tools/validate_v2513_contract.py .github/workflows/source-export.yml
+          git commit -m 'Align v2.5.14-test.2 package metadata'
+          git push origin HEAD:${{ github.head_ref }}
