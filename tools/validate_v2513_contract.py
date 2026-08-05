@@ -126,5 +126,7 @@ for shader in sorted((ROOT / "shaders").iterdir()):
         raise SystemExit(f"{shader.relative_to(ROOT)}: undefined material IDs: {undefined}")
 require("shaders/fullscreen.frag",
         "cell.material == MAT_LIGHTNING || cell.material == MAT_EMBER")
+require("src/vulkan_renderer.cpp",
+        ".day_cycle_steps = sandhybrid::policy::day_cycle_steps,")
 
 print("v2.5.13 first-28 P0 tranche contracts valid.")

@@ -2480,7 +2480,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             // every material effect and reset returns every effect to frame zero.
             .render_frame = simulation_step,
             .world_time = simulation_step,
-            .day_cycle_steps = sandhybrid::day_cycle_steps,
+            .day_cycle_steps = sandhybrid::policy::day_cycle_steps,
             .designer_flags = designer_flags,
         };
         vkCmdPushConstants(command_buffer, graphics_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
