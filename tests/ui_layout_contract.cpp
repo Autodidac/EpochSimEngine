@@ -58,6 +58,33 @@ int main() {
         static_cast<std::uint32_t>(wide_map.rect.size.y) != 120u ||
         wide_map.tile_pixel_size != 0u) return 14;
 
+    const auto map_overlay = sandhybrid::ui::make_map_overlay_viewport(
+        layout, sandhybrid::resident_world_width, sandhybrid::resident_world_height);
+    if (map_overlay.rect.position.x <= layout.simulation.position.x ||
+        map_overlay.rect.position.y != 16.0f ||
+        map_overlay.rect.size.x > layout.simulation.size.x * 0.71f ||
+        map_overlay.rect.size.y > layout.simulation.size.y * 0.26f ||
+        map_overlay.rect.size.x / map_overlay.rect.size.y < 7.0f) return 18;
+
+    const auto designer_contains = [](const auto outer, const auto inner) constexpr {
+        return inner.position.x >= outer.position.x &&
+               inner.position.y >= outer.position.y &&
+               inner.position.x + inner.size.x <= outer.position.x + outer.size.x &&
+               inner.position.y + inner.size.y <= outer.position.y + outer.size.y;
+    };
+    const auto designer_nonoverlap = [](const auto a, const auto b) constexpr {
+        return a.position.x + a.size.x <= b.position.x ||
+               b.position.x + b.size.x <= a.position.x ||
+               a.position.y + a.size.y <= b.position.y ||
+               b.position.y + b.size.y <= a.position.y;
+    };
+    if (!designer_contains(layout.keymap, layout.designer_static_model) ||
+        !designer_contains(layout.keymap, layout.designer_map_chunk) ||
+        !designer_contains(layout.keymap, layout.designer_inventory) ||
+        !designer_contains(layout.keymap, layout.designer_blueprints) ||
+        !designer_nonoverlap(layout.designer_static_model, layout.designer_map_chunk) ||
+        !designer_nonoverlap(layout.designer_inventory, layout.designer_blueprints)) return 19;
+
     const auto compact = sandhybrid::ui::make_layout(480u, 320u);
     if (compact.simulation.size.y <= 0.0f || compact.status.size.x < 300.0f) return 10;
     if (compact.reset_scene.size.x <= 0.0f || compact.pause_toggle.size.x <= 0.0f ||

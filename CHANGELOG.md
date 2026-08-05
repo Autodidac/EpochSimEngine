@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.5.13
+
+- Attempted the first 28 P0 missions as tranche one of five, with deterministic evidence retained per mission.
+- Fixed Half Water ambient-Air restoration to canonical balanced Air and prevented pending two-to-four-cell attraction pairs from sleeping.
+- Enabled macro-first movement for complete exposed Water/gas packets with same-tick fine fallback when a packet transaction cannot commit.
+- Anchored reset generation/effects to time zero, cleared queued edit/actor inputs, and stopped map-snapshot refresh while paused.
+- Revalidated packed Atmosphere, actor-medium impulses, Fix28 hives and 100-bee ecology, machinery transactions, continuous ground, scene origins, saves, deposits, and workspace input ownership.
+- Restored MC-123 as the packaged cross-system acceptance gate and made mission-cache validation reject P0 references without active rows.
+- Consolidated release notes into the current `RELEASE_NOTES.md`, removed obsolete checked-in Fix33 packages, and kept `CHANGELOG.md` as the sole historical release record.
+
+
+## 2.5.12
+
+- Restored MAP as an independently zoomable/pannable top overlay without replacing the simulation view.
+- Kept world cursor and placement controls in Editor and added separate Designer-only palette, brush, placement, zoom, and isolated 64×32 grid state for blueprint authoring.
+- Extended the shared terrain surface through every authored scene while preserving non-empty authored structures.
+- Added visible simulation-time day/night and sunlight-driven presentation.
+- Made pause freeze world mutation and render effects, and made reset rebuild lighting/map/effect state and view framing.
+- Added v2.5.12 source contracts and carried all unaccepted blueprint, lighting, runtime, and performance work forward in `missioncache.md`.
+
 ## 2.5.11
 
 - Replaced gameplay PPM saves with exact, versioned, checksummed whole-world `.shw` saves.
@@ -50,8 +70,6 @@
 - Adds reusable CPU/GLSL terrain generation with complete tile-first metal veins and loose resource cells only inside deliberate collapsible sand traps.
 - Enlarges the Volcano scene into a map-scale cone and natural lake.
 - Adds complete live debug hierarchy totals for scope/nonempty cells, total/active/sleeping/unclassified tiles, and total/active/sleeping/dirty chunks; movement rows now use their real counter names.
-
-# Changelog
 
 ## 2.5.6
 

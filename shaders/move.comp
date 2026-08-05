@@ -177,7 +177,7 @@ Cell restoredMediumFrom(Cell source, uint material, uint volume) {
     source.temperature = 20;
     source.aux &= ~(AUX_WATER_HALF | AUX_MOVED | AUX_STATE_MASK |
                     AUX_HALF_MEDIUM_MATERIAL_MASK | AUX_HALF_MEDIUM_VOLUME_MASK);
-    setStateValue(source, material == MAT_ATMOSPHERE && volume == 0u ? 220u : volume);
+    setStateValue(source, material == MAT_ATMOSPHERE && volume == 0u ? 54u : volume);
     return source;
 }
 

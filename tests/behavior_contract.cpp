@@ -160,7 +160,24 @@ static_assert(sandhybrid::policy::water_ledge_can_release(2u, 2u));
 static_assert(sandhybrid::policy::water_half_horizontal_passes ==
               sandhybrid::policy::water_full_horizontal_passes * 2u);
 static_assert(!sandhybrid::policy::half_water_stores_ambient_air_pressure);
-static_assert(sandhybrid::policy::canonical_air_state == 220u);
+static_assert(sandhybrid::policy::canonical_air_state == 54u);
+
+static_assert(sandhybrid::policy::half_water_attraction_distance(2u, true));
+static_assert(sandhybrid::policy::half_water_attraction_distance(4u, true));
+static_assert(!sandhybrid::policy::half_water_attraction_distance(1u, true));
+static_assert(!sandhybrid::policy::half_water_attraction_distance(5u, true));
+static_assert(!sandhybrid::policy::half_water_attraction_distance(3u, false));
+static_assert(!sandhybrid::policy::half_water_can_sleep(11u, false, false, false, false));
+static_assert(sandhybrid::policy::half_water_can_sleep(12u, false, false, false, false));
+static_assert(!sandhybrid::policy::half_water_can_sleep(12u, false, false, false, true));
+static_assert(sandhybrid::policy::medium_packet_tries_macro(true, false, false, false));
+static_assert(!sandhybrid::policy::medium_packet_tries_macro(true, true, false, false));
+static_assert(sandhybrid::policy::medium_packet_needs_fine_fallback(true, false, false, false));
+static_assert(!sandhybrid::policy::medium_packet_needs_fine_fallback(true, true, false, true));
+static_assert(!sandhybrid::policy::simulation_clock_advances(true, false, true, false));
+static_assert(sandhybrid::policy::simulation_clock_advances(true, false, false, true));
+static_assert(!sandhybrid::policy::map_snapshot_refresh_allowed(true, false, true));
+static_assert(sandhybrid::policy::map_snapshot_refresh_allowed(false, false, true));
 static_assert(sandhybrid::policy::vent_eruption_pressure > sandhybrid::policy::vent_gas_release_pressure);
 static_assert(sandhybrid::policy::restabilization_cooldown_ticks > sandhybrid::policy::stability_ticks);
 static_assert(sandhybrid::resident_world_footprint_columns == 16u);

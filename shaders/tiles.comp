@@ -42,6 +42,18 @@ bool mediumBoundaryEnclosed(ivec2 origin, bool gasBoundary) {
     return true;
 }
 
+
+bool halfWaterPartnerVisible(ivec2 position, int direction) {
+    for (int distance = 2; distance <= 4; ++distance) {
+        ivec2 candidatePosition = position + ivec2(direction * distance, 0);
+        if (!tileInside(candidatePosition)) return false;
+        Cell candidate = cells[indexOf(candidatePosition)];
+        if (isHalfWater(candidate)) return true;
+        if (candidate.material != MAT_EMPTY && !isCellGas(candidate)) return false;
+    }
+    return false;
+}
+
 void main() {
     uvec2 tile = gl_GlobalInvocationID.xy;
     uint columns = tileColumns(pc.width);
@@ -67,6 +79,7 @@ void main() {
     bool activeContent = false;
     bool wetContent = false;
     bool halfWater = false;
+    bool halfWaterAttractionPending = false;
     bool activeAgent = false;
     bool productiveMediumMove = false;
     bool hasQueen = false;
@@ -90,7 +103,11 @@ void main() {
             if (cell.material < MATERIAL_COUNT) ++counts[cell.material];
             minimumAge = min(minimumAge, cell.age);
             wetContent = wetContent || isMacroWetMaterial(cell);
-            halfWater = halfWater || isHalfWater(cell);
+            const bool halfCell = isHalfWater(cell);
+            halfWater = halfWater || halfCell;
+            if (halfCell)
+                halfWaterAttractionPending = halfWaterAttractionPending ||
+                    halfWaterPartnerVisible(p, -1) || halfWaterPartnerVisible(p, 1);
             ivec2 local = ivec2(x, y);
             if (cell.material == MAT_QUEEN_BEE) { if (!hasQueen) queenLocal = local; hasQueen = true; }
             if (cell.material == MAT_BEEHIVE) hasHive = true;
@@ -181,10 +198,13 @@ void main() {
     bool gasBreakup = gasBoundaryFine &&
         !tileHas(previous, TILE_MEDIUM_BREAKUP);
     bool mediumBreakup = liquidBreakup || gasBreakup;
-    // Exposed full media remain macro packets only while their cells are actively
-    // moving. Once motion ends they return to fine cells at the boundary.
-    bool macroLiquid = fullLiquid && liquidEnclosed && !moving;
-    bool macroGas = fullGas && gasEnclosed && !moving;
+    // A complete medium tile receives a macro transaction attempt before fine
+    // movement. Exposed or partially blocked transactions retain fine fallback.
+    // Full media always get one macro opportunity first, including exposed
+    // packets. If the exact 8x8 transaction cannot commit, TILE_FINE_ACTIVE
+    // remains set below so the same tick falls back to canonical cells.
+    bool macroLiquid = fullLiquid && !moving;
+    bool macroGas = fullGas && !moving;
     bool macroPowder = fullRegion && isPowder(dominant) &&
                        !structuralTile && !isBlockCapable(dominant);
     // Block-capable solids may use tile metadata for cohesion, support, sleep,
@@ -248,8 +268,9 @@ void main() {
     bool settledFineMedium = boundaryFineMedium && !moving && !reacting && !hot &&
                              !mediumBreakup && !productiveMediumMove;
     bool settledHalfWater = halfWater && !moving && !reacting && !hot &&
-                            minimumAge >= 12u;
-    bool fineActive = represented != 0u && !macroMovable && !settledHalfWater &&
+                            minimumAge >= 12u && !halfWaterAttractionPending;
+    bool fineFallbackMedium = boundaryFineMedium && !settledFineMedium;
+    bool fineActive = represented != 0u && (!macroMovable || fineFallbackMedium) && !settledHalfWater &&
             (collapsing || activeAgent || moving || reacting || hot || mediumBreakup ||
                        !uniformMaterial || represented < TILE_CELL_COUNT);
 

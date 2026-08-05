@@ -11,10 +11,10 @@ scene_image = (root / "src/scene_image.cpp").read_text(encoding="utf-8")
 renderer = (root / "src/vulkan_renderer.cpp").read_text(encoding="utf-8")
 test = (root / "tests/scene_image_contract.cpp").read_text(encoding="utf-8")
 
-match = re.search(r"BEE_BIOHAZARD_PACKED\[BEE_FORMATION_COUNT\].*?\((.*?)\);", swarm, re.S)
+match = re.search(r"BEE_INITIAL_PACKED\[BEE_FORMATION_COUNT\].*?\((.*?)\);", swarm, re.S)
 values = [int(value) for value in re.findall(r"(\d+)u", match.group(1))] if match else []
-if len(values) != 200 or len(set(values)) != 200 or values != sorted(values):
-    errors.append("biohazard table must contain exactly 200 unique sorted anchors")
+if len(values) != 100 or len(set(values)) != 100 or values != sorted(values):
+    errors.append("formation anchor table must contain exactly 100 unique sorted anchors")
 points = [((value & 127) - 64, (value >> 7) - 64) for value in values]
 if points:
     if min(x*x + y*y for x, y in points) < 144:
@@ -23,10 +23,10 @@ if points:
     upper = sum(y < -18 for x, y in points)
     lower_left = sum(x < -18 and y > 0 for x, y in points)
     lower_right = sum(x > 18 and y > 0 for x, y in points)
-    if central < 48 or min(upper, lower_left, lower_right) < 20:
+    if central < 14 or min(upper, lower_left, lower_right) < 18:
         errors.append("swarm no longer has a central ring and three distinct curved lobes")
-for token in ("beeSwarmWave", "beeFormationOffset(slot) +", "return boundedSidestep;",
-              "preserveAgentAge", "activeAgentPair"):
+for token in ("beeBiohazardTargetOffset", "beeFormationOffset(targetSlot) * 5 / 4",
+              "if (boundedSidestep) return true;", "preserveAgentAge", "activeAgentPair"):
     if token not in swarm + move:
         errors.append(f"bee movement contract missing {token!r}")
 if "shapePhase" in swarm:

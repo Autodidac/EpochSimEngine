@@ -26,10 +26,42 @@ struct Layout final {
     epochengine::gui_lib::Rect mode_toggle{}, pause_toggle{}, camera_controls_toggle{}, map_toggle{}, debug_toggle{};
     epochengine::gui_lib::Rect atmosphere{}, fill{}, eraser{}, keymap{}, cursor_editor{}, material_card{};
     epochengine::gui_lib::Rect placement_cells{}, placement_tiles{};
+    epochengine::gui_lib::Rect designer_static_model{}, designer_map_chunk{};
+    epochengine::gui_lib::Rect designer_inventory{}, designer_blueprints{};
     epochengine::gui_lib::Rect cursor_circle{}, cursor_square{}, cursor_horizontal{}, cursor_vertical{};
     epochengine::gui_lib::Rect brush_smaller{}, brush_larger{}, zoom_out{}, zoom_in{};
 };
 struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32_t tile_pixel_size{}; };
+
+[[nodiscard]] inline SimulationViewport make_map_overlay_viewport(
+    const Layout& layout, std::uint32_t map_width, std::uint32_t map_height) noexcept {
+    const auto panel_width = (std::max)(1u, static_cast<std::uint32_t>(layout.simulation.size.x));
+    const auto panel_height = (std::max)(1u, static_cast<std::uint32_t>(layout.simulation.size.y));
+    const auto safe_width = (std::max)(map_width, 1u);
+    const auto safe_height = (std::max)(map_height, 1u);
+
+    const auto maximum_width = (std::max)(160u, panel_width * 7u / 10u);
+    const auto maximum_height = (std::max)(72u, panel_height / 4u);
+    std::uint32_t viewport_width = (std::min)(panel_width > 24u ? panel_width - 24u : panel_width,
+                                               maximum_width);
+    std::uint32_t viewport_height = (std::max)(1u, static_cast<std::uint32_t>(
+        static_cast<std::uint64_t>(viewport_width) * safe_height / safe_width));
+    if (viewport_height > maximum_height) {
+        viewport_height = maximum_height;
+        viewport_width = (std::max)(1u, static_cast<std::uint32_t>(
+            static_cast<std::uint64_t>(viewport_height) * safe_width / safe_height));
+    }
+    viewport_width = (std::min)(viewport_width, panel_width);
+    viewport_height = (std::min)(viewport_height, panel_height);
+
+    const auto left = layout.simulation.position.x +
+                      float((panel_width - viewport_width) / 2u);
+    constexpr float top_margin = 16.0f;
+    const auto top = layout.simulation.position.y +
+                     (panel_height > viewport_height + static_cast<std::uint32_t>(top_margin)
+                          ? top_margin : 0.0f);
+    return {{{left, top}, {float(viewport_width), float(viewport_height)}}, 0u};
+}
 
 [[nodiscard]] inline SimulationViewport make_simulation_viewport(
     const Layout& layout, std::uint32_t grid_width, std::uint32_t grid_height) noexcept {
@@ -136,6 +168,15 @@ struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32
 
     const float keymap_top = layout.palette.position.y + layout.palette.size.y + gap;
     layout.keymap = {{content_left, keymap_top}, {content_width, float(keymap_height)}};
+    const float designer_button_width = content_width / 2.0f;
+    layout.designer_static_model = {{content_left, keymap_top + 25.0f},
+                                    {designer_button_width, 28.0f}};
+    layout.designer_map_chunk = {{content_left + designer_button_width, keymap_top + 25.0f},
+                                 {content_width - designer_button_width, 28.0f}};
+    layout.designer_inventory = {{content_left, keymap_top + 59.0f},
+                                  {designer_button_width, 28.0f}};
+    layout.designer_blueprints = {{content_left + designer_button_width, keymap_top + 59.0f},
+                                   {content_width - designer_button_width, 28.0f}};
     const float cursor_top = keymap_top + float(keymap_height) + gap;
     layout.cursor_editor = {{content_left, cursor_top},
                             {content_width, float(cursor_editor_height)}};

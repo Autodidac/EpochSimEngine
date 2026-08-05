@@ -44,6 +44,19 @@ def main() -> int:
         fail("no active mission rows found")
 
     ids = [row[0] for row in rows]
+    priority_line = next(
+        (line for line in text.splitlines() if line.startswith("- **P0 / primary release gate:**")),
+        "",
+    )
+    priority_ids = re.findall(r"MC-\d{3}", priority_line)
+    missing_priority = sorted(set(priority_ids).difference(ids))
+    if missing_priority:
+        fail(f"P0 mission IDs have no active row: {', '.join(missing_priority)}")
+    duplicate_priority = sorted({mission_id for mission_id in priority_ids
+                                 if priority_ids.count(mission_id) > 1})
+    if duplicate_priority:
+        fail(f"duplicate P0 mission IDs: {', '.join(duplicate_priority)}")
+
     duplicates = sorted({mission_id for mission_id in ids if ids.count(mission_id) > 1})
     if duplicates:
         fail(f"duplicate active mission IDs: {', '.join(duplicates)}")

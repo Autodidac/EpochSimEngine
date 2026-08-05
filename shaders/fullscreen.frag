@@ -12,11 +12,13 @@
 
 layout(location = 0) out vec4 outColor;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
+layout(std430, binding = 2) readonly buffer SunlightBuffer { uint sunlight[]; };
 layout(std430, binding = 3) readonly buffer ActorBuffer { ActorState actor; };
 layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
 layout(std430, binding = 5) readonly buffer DebugStatsBuffer { uint debugStats[]; };
 layout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };
 layout(std430, binding = 8) readonly buffer MapCells { Cell mapCells[]; };
+layout(std430, binding = 9) readonly buffer DesignerCells { uint designerCells[]; };
 
 layout(push_constant) uniform RenderPush {
     uint gridWidth;
@@ -66,9 +68,20 @@ layout(push_constant) uniform RenderPush {
     uint cameraOriginY;
     uint cameraViewWidth;
     uint cameraViewHeight;
+    uint mapViewportLeft;
+    uint mapViewportTop;
+    uint mapViewportWidth;
+    uint mapViewportHeight;
+    uint mapOriginX;
+    uint mapOriginY;
+    uint mapViewWidth;
+    uint mapViewHeight;
     uint selectedInventorySlot;
     uint selectedWorkspace;
     uint renderFrame;
+    uint worldTime;
+    uint dayCycleSteps;
+    uint designerFlags;
 } renderPc;
 
 uint glyphRow(uint code, uint row) {
@@ -344,10 +357,67 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
     return true;
 }
 
+bool mapOverlayPixel() {
+    if (renderPc.mapMode == 0u || renderPc.mapViewportWidth == 0u ||
+        renderPc.mapViewportHeight == 0u) return false;
+    uvec2 pixel = uvec2(gl_FragCoord.xy);
+    return pixel.x >= renderPc.mapViewportLeft &&
+           pixel.x < renderPc.mapViewportLeft + renderPc.mapViewportWidth &&
+           pixel.y >= renderPc.mapViewportTop &&
+           pixel.y < renderPc.mapViewportTop + renderPc.mapViewportHeight;
+}
+
+bool mapOverlayBorderPixel() {
+    if (!mapOverlayPixel()) return false;
+    uvec2 pixel = uvec2(gl_FragCoord.xy);
+    uint right = renderPc.mapViewportLeft + renderPc.mapViewportWidth;
+    uint bottom = renderPc.mapViewportTop + renderPc.mapViewportHeight;
+    return pixel.x < renderPc.mapViewportLeft + 2u || pixel.x + 2u >= right ||
+           pixel.y < renderPc.mapViewportTop + 2u || pixel.y + 2u >= bottom;
+}
+
+const uint DESIGNER_GRID_COLUMNS = 64u;
+const uint DESIGNER_GRID_ROWS = 32u;
+
+uint designerPlacementMode() { return renderPc.designerFlags & 1u; }
+uint designerBrushShape() { return (renderPc.designerFlags >> 1u) & 3u; }
+uint designerMode() { return (renderPc.designerFlags >> 3u) & 1u; }
+uint designerPane() { return (renderPc.designerFlags >> 4u) & 1u; }
+uint designerZoom() { return max((renderPc.designerFlags >> 8u) & 255u, 1u); }
+uint designerBrushRadius() { return max((renderPc.designerFlags >> 16u) & 255u, 1u); }
+
+vec4 designerGridColor(uint sampleX, uint sampleY, uint sampleWidth, uint sampleHeight) {
+    uint zoom = min(designerZoom(), 4u);
+    uint visibleColumns = max(8u, DESIGNER_GRID_COLUMNS / zoom);
+    uint visibleRows = max(8u, DESIGNER_GRID_ROWS / zoom);
+    uint originX = (DESIGNER_GRID_COLUMNS - visibleColumns) / 2u;
+    uint originY = (DESIGNER_GRID_ROWS - visibleRows) / 2u;
+    uint gridX = min(DESIGNER_GRID_COLUMNS - 1u,
+                     originX + sampleX * visibleColumns / max(sampleWidth, 1u));
+    uint gridY = min(DESIGNER_GRID_ROWS - 1u,
+                     originY + sampleY * visibleRows / max(sampleHeight, 1u));
+    uint material = min(designerCells[gridY * DESIGNER_GRID_COLUMNS + gridX],
+                        renderPc.materialCount - 1u);
+    vec3 color = material == MAT_EMPTY
+        ? vec3(0.028, 0.038, 0.052)
+        : materialColor(material, 0u, gridX * 4099u + gridY * 131u,
+                        ivec2(int(gridX), int(gridY))).rgb;
+    uint cellPixelWidth = max(sampleWidth / visibleColumns, 1u);
+    uint cellPixelHeight = max(sampleHeight / visibleRows, 1u);
+    bool cellEdge = cellPixelWidth >= 4u &&
+        ((sampleX * visibleColumns) % max(sampleWidth, 1u) < visibleColumns ||
+         (sampleY * visibleRows) % max(sampleHeight, 1u) < visibleRows);
+    bool tileEdge = (gridX & 7u) == 0u || (gridY & 7u) == 0u;
+    if (cellEdge) color *= 0.72;
+    if (tileEdge) color = mix(color, vec3(0.24, 0.43, 0.58), 0.32);
+    if (designerMode() != 0u) color = mix(color, vec3(0.08, 0.13, 0.19), 0.38);
+    return vec4(color, 1.0);
+}
+
 Cell cellAt(ivec2 p) {
     p = clamp(p, ivec2(0), ivec2(int(renderPc.gridWidth) - 1, int(renderPc.gridHeight) - 1));
     uint index = uint(p.y) * renderPc.gridWidth + uint(p.x);
-    return renderPc.mapMode != 0u ? mapCells[index] : cells[index];
+    return mapOverlayPixel() ? mapCells[index] : cells[index];
 }
 TileState tileAt(ivec2 p) { return tiles[tileIndex(p, renderPc.gridWidth)]; }
 ChunkState chunkAt(ivec2 p) { return chunks[chunkIndex(p, renderPc.gridWidth)]; }
@@ -355,6 +425,30 @@ ChunkState chunkAt(ivec2 p) { return chunks[chunkIndex(p, renderPc.gridWidth)]; 
 vec3 backgroundColor(ivec2 grid) {
     float depth = float(grid.y) / float(max(renderPc.gridHeight, 1u));
     return mix(vec3(0.055, 0.105, 0.18), vec3(0.018, 0.024, 0.037), depth);
+}
+
+float daylightFactor() {
+    float cycle = float(renderPc.worldTime % max(renderPc.dayCycleSteps, 1u)) /
+                  float(max(renderPc.dayCycleSteps, 1u));
+    // Reset begins at noon; simulation time then advances through sunset,
+    // midnight, sunrise, and back to noon. Pausing freezes the phase.
+    float sunArc = cos(cycle * 6.28318530718);
+    return smoothstep(-0.22, 0.18, sunArc);
+}
+
+vec3 applyWorldLighting(vec3 color, Cell cell, ivec2 grid, bool mapSample) {
+    uint index = uint(grid.y) * renderPc.gridWidth + uint(grid.x);
+    float daylight = daylightFactor();
+    float directSun = float(sunlight[index]) / 255.0;
+    float ambient = mix(0.19, 0.62, daylight);
+    float illumination = mapSample
+        ? mix(0.48, 1.0, daylight)
+        : clamp(ambient + directSun * daylight * 0.42, 0.16, 1.0);
+    bool luminous = cell.material == MAT_LAVA || cell.material == MAT_FIRE ||
+                    cell.material == MAT_PLASMA || cell.material == MAT_EMBER;
+    if (luminous) illumination = max(illumination, 0.95);
+    vec3 nightTint = vec3(0.54, 0.67, 0.88);
+    return color * illumination * mix(nightTint, vec3(1.0), daylight);
 }
 
 vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
@@ -383,7 +477,7 @@ vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
 
 vec4 worldColor(Cell cell, ivec2 grid) {
     vec4 base = materialColor(cell.material, cell.age, cell.aux, grid);
-    base = applyMaterialAppearance(cell, grid, renderPc.renderFrame, base);
+    base = applyMaterialAppearance(cell, grid, renderPc.worldTime, base);
     if ((cell.aux & AUX_WET) != 0u && !isCellLiquid(cell) && !isCellGas(cell)) {
         base.rgb = mix(base.rgb, vec3(0.08, 0.24, 0.42), 0.20);
         base.rgb *= 0.84;
@@ -609,7 +703,7 @@ void main() {
         uint groupRows = max((renderPc.groupCount + 1u) / 2u, 1u);
         uint groupCellWidth = max(contentWidth / 2u, 1u);
         uint groupCellHeight = max(renderPc.groupTabsHeight / groupRows, 1u);
-        if (renderPc.selectedWorkspace == 1u &&
+        if ((renderPc.selectedWorkspace == 1u || renderPc.selectedWorkspace == 3u) &&
             y >= groupTop && y < groupTop + renderPc.groupTabsHeight &&
             x >= contentLeft && x < contentLeft + contentWidth) {
             uint column = min((x - contentLeft) / groupCellWidth, 1u);
@@ -643,7 +737,7 @@ void main() {
         uint slotRows = max((slotCount + 1u) / 2u, 1u);
         uint cellWidth = max(contentWidth / 2u, 1u);
         uint cellHeight = max(palettePanelHeight / slotRows, 1u);
-        if (renderPc.selectedWorkspace == 1u &&
+        if ((renderPc.selectedWorkspace == 1u || renderPc.selectedWorkspace == 3u) &&
             y >= paletteTop && y < paletteTop + palettePanelHeight &&
             x >= contentLeft && x < contentLeft + contentWidth) {
             uint column = min((x - contentLeft) / cellWidth, 1u);
@@ -683,9 +777,101 @@ void main() {
             return;
         }
 
-        uint keymapTop = groupTop;
-        uint keymapBottom = keymapTop + 124u;
+        uint settingsLightTop = groupTop;
+        uint settingsLightBottom = settingsLightTop + 78u;
         if (renderPc.selectedWorkspace == 2u &&
+            y >= settingsLightTop && y < settingsLightBottom &&
+            x >= contentLeft && x < contentLeft + contentWidth) {
+            color = vec3(0.035, 0.047, 0.064);
+            if (borderPixel(x, y, contentLeft, settingsLightTop,
+                            contentLeft + contentWidth, settingsLightBottom))
+                color = vec3(0.12, 0.20, 0.28);
+            bool lightingText = fixedPixel(
+                pixel, ivec2(int(contentLeft + 8u), int(settingsLightTop + 7u)), 2, 187u) ||
+                fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(settingsLightTop + 48u)), 1, 188u);
+            uint barLeft = contentLeft + 8u;
+            uint barRight = contentLeft + contentWidth - 8u;
+            uint barTop = settingsLightTop + 31u;
+            uint barBottom = barTop + 10u;
+            float cycle = float(renderPc.worldTime % max(renderPc.dayCycleSteps, 1u)) /
+                          float(max(renderPc.dayCycleSteps, 1u));
+            uint marker = barLeft + uint(cycle * float(max(barRight - barLeft - 1u, 1u)));
+            if (x >= barLeft && x < barRight && y >= barTop && y < barBottom) {
+                color = mix(vec3(0.025, 0.045, 0.10), vec3(0.90, 0.68, 0.26), daylightFactor());
+                if (x + 1u >= marker && x <= marker + 1u) color = vec3(1.0);
+            }
+            uint sunlightLeft = contentLeft + 78u;
+            uint sunlightRight = contentLeft + contentWidth - 8u;
+            uint sunlightTop = settingsLightTop + 49u;
+            uint sunlightBottom = sunlightTop + 15u;
+            if (x >= sunlightLeft && x < sunlightRight &&
+                y >= sunlightTop && y < sunlightBottom) {
+                uint fillRight = sunlightLeft + uint(daylightFactor() *
+                    float(max(sunlightRight - sunlightLeft, 1u)));
+                color = x < fillRight ? vec3(0.90, 0.72, 0.28) : vec3(0.055, 0.07, 0.09);
+            }
+            if (lightingText) color = vec3(0.93, 0.96, 0.99);
+            outColor = vec4(color, 1.0);
+            return;
+        }
+
+        uint keymapTop = (renderPc.selectedWorkspace == 1u || renderPc.selectedWorkspace == 3u)
+            ? paletteTop + palettePanelHeight + 3u
+            : (renderPc.selectedWorkspace == 2u ? settingsLightBottom + 3u : groupTop);
+        uint keymapBottom = keymapTop + 124u;
+        if (renderPc.selectedWorkspace == 3u &&
+            y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {
+            color = vec3(0.035, 0.047, 0.064);
+            if (borderPixel(x, y, contentLeft, keymapTop, contentLeft + contentWidth, keymapBottom))
+                color = vec3(0.12, 0.20, 0.28);
+            bool designerText = fixedPixel(
+                pixel, ivec2(int(contentLeft + 8u), int(keymapTop + 6u)), 2, 183u);
+            uint halfWidth = max(contentWidth / 2u, 1u);
+            uint modeTop = keymapTop + 25u;
+            uint modeIds[2] = uint[2](184u, 185u);
+            for (uint mode = 0u; mode < 2u; ++mode) {
+                uint left = contentLeft + mode * halfWidth;
+                uint right = mode == 1u ? contentLeft + contentWidth : left + halfWidth;
+                if (x >= left && x < right && y >= modeTop && y < modeTop + 28u) {
+                    color = mode == designerMode() ? vec3(0.14, 0.30, 0.45)
+                                                   : vec3(0.055, 0.07, 0.09);
+                    if (borderPixel(x, y, left, modeTop, right, modeTop + 28u)) color *= 0.55;
+                }
+                designerText = designerText || fixedPixel(
+                    pixel, ivec2(int(left + 8u), int(modeTop + 8u)), 1, modeIds[mode]);
+            }
+            uint paneTop = keymapTop + 59u;
+            uint paneIds[2] = uint[2](186u, 180u);
+            for (uint pane = 0u; pane < 2u; ++pane) {
+                uint left = contentLeft + pane * halfWidth;
+                uint right = pane == 1u ? contentLeft + contentWidth : left + halfWidth;
+                if (x >= left && x < right && y >= paneTop && y < paneTop + 28u) {
+                    color = pane == designerPane() ? vec3(0.12, 0.25, 0.37)
+                                                   : vec3(0.048, 0.064, 0.086);
+                    if (borderPixel(x, y, left, paneTop, right, paneTop + 28u)) color *= 0.55;
+                }
+                designerText = designerText || fixedPixel(
+                    pixel, ivec2(int(left + 8u), int(paneTop + 8u)), 1, paneIds[pane]);
+            }
+            uint slotsTop = keymapTop + 92u;
+            uint slotGap = 4u;
+            uint slotWidth = max((contentWidth - slotGap * 3u) / 4u, 1u);
+            for (uint slot = 0u; slot < 4u; ++slot) {
+                uint left = contentLeft + slot * (slotWidth + slotGap);
+                uint right = slot == 3u ? contentLeft + contentWidth : left + slotWidth;
+                if (x >= left && x < right && y >= slotsTop && y < keymapBottom - 5u) {
+                    color = vec3(0.044, 0.059, 0.080);
+                    if (borderPixel(x, y, left, slotsTop, right, keymapBottom - 5u))
+                        color = vec3(0.12, 0.20, 0.28);
+                }
+                designerText = designerText || fixedPixel(
+                    pixel, ivec2(int(left + 5u), int(slotsTop + 7u)), 1, 182u);
+            }
+            if (designerText) color = vec3(0.93, 0.96, 0.99);
+            outColor = vec4(color, 1.0);
+            return;
+        }
+        if ((renderPc.selectedWorkspace == 1u || renderPc.selectedWorkspace == 2u) &&
             y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {
             color = vec3(0.035, 0.047, 0.064);
             if (borderPixel(x, y, contentLeft, keymapTop, contentLeft + contentWidth, keymapBottom))
@@ -706,9 +892,9 @@ void main() {
             return;
         }
 
-        uint cursorTop = groupTop;
+        uint cursorTop = keymapBottom + 3u;
         uint cursorBottom = cursorTop + 112u;
-        if (renderPc.selectedWorkspace == 3u &&
+        if ((renderPc.selectedWorkspace == 1u || renderPc.selectedWorkspace == 3u) &&
             y >= cursorTop && y < cursorBottom && x >= contentLeft && x < contentLeft + contentWidth) {
             color = vec3(0.035, 0.047, 0.064);
             if (borderPixel(x, y, contentLeft, cursorTop, contentLeft + contentWidth, cursorBottom))
@@ -722,7 +908,9 @@ void main() {
                 uint left = contentLeft + mode * placementWidth;
                 uint right = mode == 1u ? contentLeft + contentWidth : left + placementWidth;
                 if (x >= left && x < right && y >= placementTop && y < placementTop + 26u) {
-                    color = mode == renderPc.placementMode ? vec3(0.14, 0.30, 0.45)
+                    uint activePlacement = renderPc.selectedWorkspace == 3u
+                        ? designerPlacementMode() : renderPc.placementMode;
+                    color = mode == activePlacement ? vec3(0.14, 0.30, 0.45)
                                                            : vec3(0.055, 0.07, 0.09);
                     if (borderPixel(x, y, left, placementTop, right, placementTop + 26u)) color *= 0.55;
                 }
@@ -738,7 +926,9 @@ void main() {
                 uint left = contentLeft + shape * shapeWidth;
                 uint right = shape == 3u ? contentLeft + contentWidth : left + shapeWidth;
                 if (x >= left && x < right && y >= shapeTop && y < shapeTop + 24u) {
-                    color = shape == renderPc.brushShape ? vec3(0.14, 0.30, 0.45) : vec3(0.055, 0.07, 0.09);
+                    uint activeShape = renderPc.selectedWorkspace == 3u
+                        ? designerBrushShape() : renderPc.brushShape;
+                    color = shape == activeShape ? vec3(0.14, 0.30, 0.45) : vec3(0.055, 0.07, 0.09);
                     if (borderPixel(x, y, left, shapeTop, right, shapeTop + 24u)) color *= 0.55;
                 }
                 int labelWidth = int(fixedTextLength(shapeIds[shape])) * 6 - 1;
@@ -762,9 +952,11 @@ void main() {
                 }
             }
             cursorText = cursorText || fixedPixel(pixel, ivec2(int(contentLeft + 53u), int(controlTop + 2u)), 1, 104u) ||
-                numberPixel(pixel, ivec2(int(contentLeft + halfWidth / 2u - 8u), int(controlTop + 13u)), 1, renderPc.brushRadius) ||
+                numberPixel(pixel, ivec2(int(contentLeft + halfWidth / 2u - 8u), int(controlTop + 13u)), 1,
+                            renderPc.selectedWorkspace == 3u ? designerBrushRadius() : renderPc.brushRadius) ||
                 fixedPixel(pixel, ivec2(int(contentLeft + halfWidth + 53u), int(controlTop + 2u)), 1, 105u) ||
                 numberPixel(pixel, ivec2(int(contentLeft + halfWidth + halfWidth / 2u - 8u), int(controlTop + 13u)), 1,
+                            renderPc.selectedWorkspace == 3u ? designerZoom() :
                             max(renderPc.gridWidth / max(renderPc.viewWidth, 1u), 1u));
             bool minusLeft = glyphPixel(pixel, ivec2(int(brushMinusLeft + 17u), int(controlTop + 6u)), 2, 45u);
             bool plusLeft = glyphPixel(pixel, ivec2(int(brushPlusLeft + 17u), int(controlTop + 6u)), 2, 43u);
@@ -776,17 +968,18 @@ void main() {
             return;
         }
 
-        uint cardTop = paletteTop + palettePanelHeight + 3u;
-        uint actorPanel = actor.enabled != 0u ? 106u : 5u;
-        uint cardBottom = renderPc.windowHeight > actorPanel + 5u
-            ? renderPc.windowHeight - actorPanel - 5u : renderPc.windowHeight;
+        uint cardTop = (renderPc.selectedWorkspace == 1u || renderPc.selectedWorkspace == 3u)
+            ? cursorBottom + 3u
+            : (renderPc.selectedWorkspace == 2u ? keymapBottom + 3u : groupTop + 178u);
+        uint cardBottom = renderPc.windowHeight > 5u
+            ? renderPc.windowHeight - 5u : renderPc.windowHeight;
         ivec2 cursor = clamp(ivec2(renderPc.cursorX, renderPc.cursorY), ivec2(0),
                               ivec2(int(renderPc.gridWidth) - 1, int(renderPc.gridHeight) - 1));
         Cell inspected = cellAt(cursor);
         uint cardMaterial = renderPc.inspectMode != 0u ? inspected.material :
             (renderPc.hoveredMaterial < renderPc.materialCount ? renderPc.hoveredMaterial : renderPc.selectedMaterial);
         cardMaterial = min(cardMaterial, renderPc.materialCount - 1u);
-        if (renderPc.selectedWorkspace == 1u && y >= cardTop && y < cardBottom) {
+        if (y >= cardTop && y < cardBottom) {
             if (borderPixel(x, y, contentLeft, cardTop, contentLeft + contentWidth, cardBottom))
                 color = vec3(0.13, 0.29, 0.43);
             if (renderPc.inspectMode != 0u && isHalfWater(inspected)) {
@@ -817,47 +1010,34 @@ void main() {
             return;
         }
 
-        if (actor.enabled != 0u && renderPc.selectedWorkspace == 0u) {
-            uint top = groupTop;
-            if (y >= top) {
-                color = vec3(0.032, 0.043, 0.058);
-                bool actorText = fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(top + 5u)), 1, 45u) ||
-                    numberPixel(pixel, ivec2(int(contentLeft + 34u), int(top + 5u)), 1, actor.health) ||
-                    fixedPixel(pixel, ivec2(int(contentLeft + 82u), int(top + 5u)), 1, 46u) ||
-                    numberPixel(pixel, ivec2(int(contentLeft + 112u), int(top + 5u)), 1, actor.oxygen) ||
-                    fixedPixel(pixel, ivec2(int(contentLeft + 164u), int(top + 5u)), 1, 47u) ||
-                    numberPixel(pixel, ivec2(int(contentLeft + 200u), int(top + 5u)), 1, actor.ammo);
-
-                uint inventoryTop = top + 20u;
-                uint slotGap = 3u;
-                uint slotWidth = max((contentWidth - slotGap) / 2u, 1u);
-                uint slotHeight = 37u;
-                uint materials[4] = uint[4](MAT_IRON, MAT_GOLD, MAT_COPPER, MAT_ALUMINUM);
-                uint counts[4] = uint[4](actor.iron, actor.gold, actor.copper, actor.aluminum);
-                for (uint slot = 0u; slot < 4u; ++slot) {
-                    uint column = slot % 2u;
-                    uint row = slot / 2u;
-                    uint left = contentLeft + column * (slotWidth + slotGap);
-                    uint right = column == 1u ? contentLeft + contentWidth : left + slotWidth;
-                    uint slotTop = inventoryTop + row * (slotHeight + slotGap);
-                    uint slotBottom = slotTop + slotHeight;
-                    if (x >= left && x < right && y >= slotTop && y < slotBottom) {
-                        color = slot == renderPc.selectedInventorySlot
-                            ? vec3(0.14, 0.30, 0.45) : vec3(0.045, 0.062, 0.084);
-                        if (borderPixel(x, y, left, slotTop, right, slotBottom))
-                            color = slot == renderPc.selectedInventorySlot
-                                ? vec3(0.34, 0.78, 1.00) : vec3(0.12, 0.20, 0.28);
-                    }
-                    actorText = actorText || materialPixel(
-                        pixel, ivec2(int(left + 6u), int(slotTop + 6u)), 1, materials[slot]) ||
-                        numberPixel(pixel, ivec2(int(right - 46u), int(slotTop + 6u)),
-                                    2, counts[slot]);
+        if (renderPc.selectedWorkspace == 0u && y >= groupTop && y < groupTop + 175u) {
+            color = vec3(0.032, 0.043, 0.058);
+            bool inventoryText = fixedPixel(
+                pixel, ivec2(int(contentLeft + 8u), int(groupTop + 6u)), 2, 181u);
+            uint slotGap = 5u;
+            uint slotTop = groupTop + 30u;
+            uint slotWidth = max((contentWidth - slotGap) / 2u, 1u);
+            uint slotHeight = 62u;
+            for (uint slot = 0u; slot < 4u; ++slot) {
+                uint column = slot % 2u;
+                uint row = slot / 2u;
+                uint left = contentLeft + column * (slotWidth + slotGap);
+                uint right = column == 1u ? contentLeft + contentWidth : left + slotWidth;
+                uint top = slotTop + row * (slotHeight + slotGap);
+                uint bottom = top + slotHeight;
+                if (x >= left && x < right && y >= top && y < bottom) {
+                    color = vec3(0.045, 0.062, 0.084);
+                    if (borderPixel(x, y, left, top, right, bottom))
+                        color = vec3(0.12, 0.20, 0.28);
                 }
-                if (actorText) color = vec3(0.94, 0.97, 1.0);
-                outColor = vec4(color, 1.0);
-                return;
+                inventoryText = inventoryText || fixedPixel(
+                    pixel, ivec2(int(left + 10u), int(top + 21u)), 1, 182u);
             }
+            if (inventoryText) color = vec3(0.94, 0.97, 1.0);
+            outColor = vec4(color, 1.0);
+            return;
         }
+
         if (text) color = vec3(0.94, 0.97, 1.0);
         outColor = vec4(color, 1.0);
         return;
@@ -873,29 +1053,49 @@ void main() {
         outColor = vec4(bar, 1.0);
         return;
     }
-    uint simulationHeight = max(renderPc.viewportHeight, 1u);
-    uint simulationX = x - renderPc.viewportLeft;
-    uint simulationY = y - renderPc.viewportTop;
-    uint gridX = min(renderPc.gridWidth - 1u, renderPc.viewOriginX +
-                      simulationX * max(renderPc.viewWidth, 1u) / max(renderPc.viewportWidth, 1u));
-    uint gridY = min(renderPc.gridHeight - 1u, renderPc.viewOriginY +
-                      simulationY * max(renderPc.viewHeight, 1u) / simulationHeight);
+    bool mapSample = mapOverlayPixel();
+    if (!mapSample && renderPc.selectedWorkspace == 3u) {
+        uint sampleX = x - renderPc.viewportLeft;
+        uint sampleY = y - renderPc.viewportTop;
+        vec4 designerColor = designerGridColor(
+            sampleX, sampleY, max(renderPc.viewportWidth, 1u), max(renderPc.viewportHeight, 1u));
+        if (x < renderPc.viewportLeft + 3u || x + 3u >= viewportRight ||
+            y < renderPc.viewportTop + 3u || y + 3u >= viewportBottom)
+            designerColor.rgb = vec3(0.20, 0.42, 0.58);
+        outColor = designerColor;
+        return;
+    }
+    uint sampleLeft = mapSample ? renderPc.mapViewportLeft : renderPc.viewportLeft;
+    uint sampleTop = mapSample ? renderPc.mapViewportTop : renderPc.viewportTop;
+    uint sampleWidth = max(mapSample ? renderPc.mapViewportWidth : renderPc.viewportWidth, 1u);
+    uint sampleHeight = max(mapSample ? renderPc.mapViewportHeight : renderPc.viewportHeight, 1u);
+    uint sampleX = x - sampleLeft;
+    uint sampleY = y - sampleTop;
+    uint sampleOriginX = mapSample ? renderPc.mapOriginX : renderPc.viewOriginX;
+    uint sampleOriginY = mapSample ? renderPc.mapOriginY : renderPc.viewOriginY;
+    uint sampleViewWidth = max(mapSample ? renderPc.mapViewWidth : renderPc.viewWidth, 1u);
+    uint sampleViewHeight = max(mapSample ? renderPc.mapViewHeight : renderPc.viewHeight, 1u);
+    uint gridX = min(renderPc.gridWidth - 1u, sampleOriginX +
+                      sampleX * sampleViewWidth / sampleWidth);
+    uint gridY = min(renderPc.gridHeight - 1u, sampleOriginY +
+                      sampleY * sampleViewHeight / sampleHeight);
     ivec2 grid = ivec2(int(gridX), int(gridY));
     Cell cell = cellAt(grid);
     vec4 color = worldColor(cell, grid);
+    color.rgb = applyWorldLighting(color.rgb, cell, grid, mapSample);
 
-    if (renderPc.debugMode != 0u || renderPc.mapMode != 0u) {
+    if (renderPc.debugMode != 0u || mapSample) {
         bool activeArea = sectionActiveAt(grid, renderPc.activeAreaX, renderPc.activeAreaY,
                                           renderPc.activeScopeMode);
         bool mediumCell = isCellGas(cell) || isCellLiquid(cell) || isHalfWater(cell);
-        if (!activeArea) color.rgb *= renderPc.mapMode != 0u ? 0.82 : 0.52;
+        if (!activeArea) color.rgb *= mapSample ? 0.82 : 0.52;
         ivec2 activeLocal = ivec2(grid.x % ACTIVE_REGION_WIDTH_CELLS,
                                   grid.y % ACTIVE_REGION_HEIGHT_CELLS);
         if (activeArea && (activeLocal.x == 0 || activeLocal.y == 0)) {
-            float boundaryAlpha = renderPc.mapMode != 0u ? 0.22 : 0.58;
+            float boundaryAlpha = mapSample ? 0.22 : 0.58;
             color.rgb = mix(color.rgb, vec3(0.18, 0.95, 1.00), boundaryAlpha);
         }
-        if (renderPc.debugMode != 0u && renderPc.mapMode == 0u) {
+        if (renderPc.debugMode != 0u && !mapSample) {
             TileState tile = tileAt(grid);
             ChunkState chunk = chunkAt(grid);
             ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));
@@ -932,7 +1132,7 @@ void main() {
                 overlay = debugKeyColor(9u); alpha = 0.38;
             }
             bool stateEdge = local.x <= 1 || local.y <= 1 || local.x >= 6 || local.y >= 6;
-            if (renderPc.mapMode != 0u) {
+            if (mapSample) {
                 alpha *= mediumCell ? (stateEdge ? 0.055 : 0.0) : 0.30;
                 if (!mediumCell && !stateEdge) alpha *= 0.16;
             } else if (mediumCell) {
@@ -947,14 +1147,14 @@ void main() {
             vec3 chunkOverlay = chunkHas(chunk, CHUNK_DIRTY) ? vec3(1.00, 0.10, 0.04) :
                 (chunkHas(chunk, CHUNK_SLEEPING) ? vec3(0.035, 0.10, 0.30)
                                                  : vec3(0.05, 0.42, 0.90));
-            float chunkAlpha = renderPc.mapMode != 0u
+            float chunkAlpha = mapSample
                 ? (mediumCell ? 0.0 : 0.045)
                 : (mediumCell ? 0.0 : (chunkHas(chunk, CHUNK_SLEEPING) ? 0.10 : 0.06));
             color.rgb = mix(color.rgb, chunkOverlay, chunkAlpha);
 
         }
 
-        if (renderPc.mapMode != 0u) {
+        if (mapSample) {
             uint cameraRight = renderPc.cameraOriginX + renderPc.cameraViewWidth;
             uint cameraBottom = renderPc.cameraOriginY + renderPc.cameraViewHeight;
             bool inCamera = gridX >= renderPc.cameraOriginX && gridX < cameraRight &&
@@ -966,8 +1166,11 @@ void main() {
         }
     }
 
+    if (mapSample && mapOverlayBorderPixel()) {
+        color.rgb = vec3(0.68, 0.82, 0.92);
+    }
 
-    if (actor.enabled != 0u && actor.health != 0u && actor.shotTimer > 0u) {
+    if (!mapSample && actor.enabled != 0u && actor.health != 0u && actor.shotTimer > 0u) {
         vec2 toolOrigin = vec2(float(actor.x), float(actor.y - 4));
         vec2 toolHit = vec2(float(actor.hitX), float(actor.hitY));
         vec2 ray = toolHit - toolOrigin;
@@ -977,7 +1180,7 @@ void main() {
         float beamDistance = segmentDistance(samplePoint, toolOrigin, toolHit);
         uint beamStep = uint(floor(along * sqrt(raySquared)));
         uint burstHash = hash32(uint(grid.x) * 2246822519u ^ uint(grid.y) * 3266489917u ^
-                      renderPc.renderFrame * 668265263u ^ actor.shotTimer * 374761393u);
+                      renderPc.worldTime * 668265263u ^ actor.shotTimer * 374761393u);
         bool tinyDash = ((beamStep + actor.shotTimer) % 7u) < 2u;
         if (beamDistance < 0.46 && tinyDash && (burstHash & 3u) != 0u)
   color = actor.shotTimer > 4u ? vec4(1.0, 0.28, 0.68, 1.0)
@@ -988,7 +1191,7 @@ void main() {
   color = vec4(1.0, 0.96, 0.72, 1.0);
     }
 
-    if (renderPc.inspectMode == 0u && renderPc.mapMode == 0u) {
+    if (renderPc.inspectMode == 0u && !mapSample) {
         ivec2 delta = grid - ivec2(renderPc.cursorX, renderPc.cursorY);
         int distanceSquared = delta.x * delta.x + delta.y * delta.y;
         if (renderPc.miningMode != 0u) {

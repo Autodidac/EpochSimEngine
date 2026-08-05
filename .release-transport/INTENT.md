@@ -1,1 +1,0 @@
-Cache-first v2.5.13 tranche: attempt the first 28 P0 missions in canonical order, prioritize Half Water, pause/reset determinism, hierarchy movement, ecology, persistence, controls, and packaging. Unverified packaged behavior remains active in missioncache.md.
