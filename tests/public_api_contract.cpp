@@ -1,6 +1,6 @@
 #include <sandhybrid/library.hpp>
 
-static_assert(sandhybrid::library_api_version == 3u);
+static_assert(sandhybrid::library_api_version == 4u);
 static_assert(sandhybrid::library_name == "SandHybrid");
 static_assert(sandhybrid::core_library_capabilities.native_startup_owned_by_consumer);
 static_assert(!sandhybrid::core_library_capabilities.windowing_required);
@@ -9,6 +9,8 @@ static_assert(sandhybrid::core_library_capabilities.packed_atmosphere_available)
 static_assert(sandhybrid::core_library_capabilities.transactional_packets_available);
 static_assert(sandhybrid::core_library_capabilities.actor_medium_contracts_available);
 static_assert(sandhybrid::core_library_capabilities.machinery_transactions_available);
+static_assert(sandhybrid::core_library_capabilities.deterministic_gas_transport_available);
+static_assert(sandhybrid::core_library_capabilities.ecology_actor_policies_available);
 
 int main() {
     const auto schedule = sandhybrid::make_section_schedule(
