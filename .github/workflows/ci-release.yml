@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sandhybrid-v2511-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: sandhybrid-v2514-test1-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -22,10 +22,10 @@ jobs:
         include:
           - os: windows-2022
             triplet: x64-windows
-            artifact: SandHybrid-Windows-x64-v2.5.11
+            artifact: SandHybrid-Windows-x64-v2.5.14-test.1
           - os: ubuntu-24.04
             triplet: x64-linux
-            artifact: SandHybrid-Linux-x64-v2.5.11
+            artifact: SandHybrid-Linux-x64-v2.5.14-test.1
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
 
@@ -124,7 +124,7 @@ jobs:
         shell: bash
         run: |
           cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md CHANGELOG.md \
-            MAP_VIEW.md SCENE_LAYOUT.md SAVE_LAYOUT.md RELEASE_NOTES_v2.5.11.md \
+            MAP_VIEW.md SCENE_LAYOUT.md SAVE_LAYOUT.md RELEASE_NOTES_v2.5.14-test.1.md \
             "dist/${{ matrix.artifact }}/"
 
       - name: Archive Windows package
@@ -166,7 +166,7 @@ jobs:
         with:
           path: dist
 
-      - name: Publish v2.5.11 release
+      - name: Publish v2.5.14-test.1 prerelease
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -178,18 +178,18 @@ jobs:
             printf '%s\n' "${assets[@]}" >&2
             exit 1
           fi
-          if gh release view v2.5.11 >/dev/null 2>&1; then
-            gh release upload v2.5.11 "${assets[@]}" --clobber
-            gh release edit v2.5.11 \
-              --title 'SandHybrid v2.5.11' \
-              --notes-file RELEASE_NOTES_v2.5.11.md \
-              --latest
+          if gh release view v2.5.14-test.1 >/dev/null 2>&1; then
+            gh release upload v2.5.14-test.1 "${assets[@]}" --clobber
+            gh release edit v2.5.14-test.1 \
+              --title 'SandHybrid v2.5.14-test.1' \
+              --notes-file RELEASE_NOTES_v2.5.14-test.1.md \
+              --prerelease
           else
-            gh release create v2.5.11 "${assets[@]}" \
+            gh release create v2.5.14-test.1 "${assets[@]}" \
               --target "$GITHUB_SHA" \
-              --title 'SandHybrid v2.5.11' \
-              --notes-file RELEASE_NOTES_v2.5.11.md \
-              --latest
+              --title 'SandHybrid v2.5.14-test.1' \
+              --notes-file RELEASE_NOTES_v2.5.14-test.1.md \
+              --prerelease
           fi
 
       - name: Remove completed repair branches
@@ -198,4 +198,5 @@ jobs:
           git push origin --delete agent/v2510-source-repair || true
           git push origin --delete agent/v260-ui-collapse-laser || true
           git push origin --delete agent/v2511-world-save-rewrite || true
+          git push origin --delete agent/v2.5.14-phase2-atmosphere-life || true
           # Preserve agent/nonoverlap-core-hygiene per Adam's explicit instruction.
