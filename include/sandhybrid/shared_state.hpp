@@ -4,6 +4,7 @@
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/scene.hpp"
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 
@@ -12,6 +13,10 @@ namespace sandhybrid {
 inline constexpr std::uint32_t default_brush_radius = 2u;
 inline constexpr std::uint32_t default_brush_shape = 1u; // square
 inline constexpr std::uint32_t player_inventory_slot_count = 4u;
+inline constexpr std::uint32_t designer_grid_columns = 64u;
+inline constexpr std::uint32_t designer_grid_rows = 32u;
+inline constexpr std::uint32_t designer_grid_cell_count =
+    designer_grid_columns * designer_grid_rows;
 
 struct SharedState final {
     std::atomic_bool quit{false};
@@ -52,6 +57,18 @@ struct SharedState final {
     std::atomic_int map_center_y{static_cast<int>(resident_world_height / 2u)};
     std::atomic_uint32_t selected_inventory_slot{0};
     std::atomic_uint32_t selected_workspace{1}; // 0 inventory, 1 editor, 2 settings, 3 designer
+    std::atomic_uint32_t designer_mode{0}; // 0 static model, 1 map chunk
+    std::atomic_uint32_t designer_pane{0}; // 0 inventory, 1 blueprints
+    std::atomic_uint32_t designer_selected_material{static_cast<std::uint32_t>(Material::sand)};
+    std::atomic_uint32_t designer_selected_group{static_cast<std::uint32_t>(MaterialGroup::ground)};
+    std::atomic_uint32_t designer_hovered_material{material_count};
+    std::atomic_uint32_t designer_hovered_group{material_group_count};
+    std::atomic_uint32_t designer_brush_radius{1};
+    std::atomic_uint32_t designer_brush_shape{default_brush_shape};
+    std::atomic_uint32_t designer_placement_mode{0}; // 0 cells, 1 aligned 8x8 tile
+    std::atomic_uint32_t designer_zoom{1};
+    std::array<std::atomic_uint32_t, designer_grid_cell_count> designer_cells{};
+    std::atomic_bool designer_dirty{true};
     std::atomic_uint32_t section_worker_count{0};
     std::atomic_uint32_t active_section_count{0};
     std::atomic_int active_window_origin_x{0};
@@ -68,6 +85,11 @@ struct SharedState final {
     std::atomic_bool fire_tool_pressed{false};
     std::atomic_bool deposit_resource{false};
     std::atomic_bool deposit_resource_pressed{false};
+
+    SharedState() noexcept {
+        for (auto& cell : designer_cells)
+            cell.store(static_cast<std::uint32_t>(Material::empty), std::memory_order_relaxed);
+    }
 };
 
 } // namespace sandhybrid

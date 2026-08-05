@@ -44,6 +44,5 @@ for token in (
 
 require("CMakeLists.txt", "sandhybrid_world_save_contract")
 require("CMakeLists.txt", "src/world_save.cpp")
-require("CMakeLists.txt", "VERSION 2.5.11")
 require("missioncache.md", "MC-145")
 require("missioncache.md", "MC-146")

@@ -141,8 +141,6 @@ uint residentLayerMaterial(int zone, int localY, int boundaryA, int boundaryB,
 uvec2 residentWorldSubstrateSample(ivec2 worldPosition) {
     int width = int(pc.width);
     int height = int(pc.height);
-    int sceneLeft = authoredWorldOrigin().x;
-    int sceneRight = min(width, sceneLeft + AUTHORED_WORLD_CELLS.x);
     int sceneTop = authoredWorldOrigin().y;
     int sceneBottom = min(height, sceneTop + AUTHORED_WORLD_CELLS.y);
     int horizontalShell = min(width, BRICK_SIZE);
@@ -155,11 +153,11 @@ uvec2 residentWorldSubstrateSample(ivec2 worldPosition) {
 
     int foundation = min(sceneBottom - sceneTop, BRICK_SIZE);
     int foundationStart = sceneBottom - foundation;
-    bool outsideAuthored = worldPosition.x < sceneLeft || worldPosition.x >= sceneRight;
     if (worldPosition.y < sceneBottom) {
         if (worldPosition.y >= foundationStart)
   return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
-        if (!outsideAuthored) return uvec2(MAT_EMPTY, 0u);
+        // Continue the common surface through the authored footprint. Scene
+        // objects and scene-authored terrain remain authoritative when nonempty.
         int nominalSurface = sceneBottom - foundation * 2;
         int surfaceY = nominalSurface + residentGroundBoundaryOffset(worldPosition.x, 0x63u, 5);
         if (worldPosition.y < surfaceY) return uvec2(MAT_EMPTY, 0u);
@@ -708,9 +706,10 @@ void main() {
     uint substrateMaterial = substrateSample.x;
     bool substrateCell = substrateMaterial != MAT_EMPTY ||
                          (substrateSample.y & TERRAIN_FLAG_SAND_TRAP) != 0u;
-    if (substrateCell) material = substrateMaterial;
+    bool useSubstrate = substrateCell && (!authored || material == MAT_EMPTY);
+    if (useSubstrate) material = substrateMaterial;
     if (material == MAT_EMPTY) material = MAT_ATMOSPHERE;
-    bool structural = substrateCell
+    bool structural = useSubstrate
         ? residentSubstrateStructural(substrateSample)
         : (authored && authoredStructuralCell(scene, local, material));
     Cell cell = structural ? makeStructuralCell(material, true) : makeCell(material);

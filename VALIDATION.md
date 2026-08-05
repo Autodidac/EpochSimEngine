@@ -1,4 +1,4 @@
-# SandHybrid Fix22 validation matrix
+# SandHybrid Validation Matrix
 
 The project separates three validation levels:
 
@@ -50,7 +50,7 @@ validate_windows.bat Release
 
 This command builds the real application and all GLSL shaders, runs the static shader/interface validator, rebuilds the two C++23 contracts with warnings-as-errors, and runs CTest. Runtime visual and GPU checks still require launching the produced executable because they depend on the installed Vulkan driver and GPU.
 
-## Fix22 regression checks
+## Core regression checks
 
 - A complete mouse down/up pair received within one native poll still produces exactly one `primary_pressed` or `secondary_pressed` edge.
 - Character primary action drills ordinary terrain even while plasma ammunition is carried. Plasma is consumed only when the first ray hit is a hostile target.
@@ -59,3 +59,11 @@ This command builds the real application and all GLSL shaders, runs the static s
 - Ambient empty cells restore oxygen and never cause passive health loss. Health damage requires prolonged zero-oxygen exposure inside a concentrated toxic pocket.
 - Authored terrain remains stable, while deliberate sand/silt/cargo samples remain loose and simulated.
 - CO2 renders near-black, hydrogen renders pink, and the enlarged UI hit rectangles match the fragment-shader controls.
+
+
+## v2.5.14-test.2 recovery gates
+
+- `tools/validate_v2513_contract.py` preserves the first-28 P0 recovery contracts without hard-coding an obsolete release tag.
+- `tools/validate_release_tree.py` rejects tracked packages, executables, compiled shaders, payload chunks, one-shot workflows, and versioned release-note fragments.
+- Windows and Linux full Release CI compile every shader, build with warnings as errors, run CTest, install the package, archive it, and publish only through GitHub Releases.
+- Runtime and visual acceptance stays active in `missioncache.md`; deterministic contracts are evidence, not a substitute for eye testing.

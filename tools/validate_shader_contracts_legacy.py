@@ -227,7 +227,7 @@ def main() -> int:
         if token not in move:
             errors.append(f"half-water fine-attraction/supply contract missing {token!r}")
     for token in ("bool settledHalfWater = halfWater && !moving",
-                  "!macroMovable && !settledHalfWater",
+                  "(!macroMovable || fineFallbackMedium) && !settledHalfWater",
                   "settledMedium || settledFineMedium || settledHalfWater",
                   "!mediumBreakup && !productiveMediumMove"):
         if token not in tiles:
@@ -255,7 +255,7 @@ def main() -> int:
         "pressure = min(255u, pressure + recharge)",
         "if (cell.material == MAT_ASH) return (randomValue % 5u) != 0u;",
         "chunkPairSleeping(a, b) && sleepSafe(a, firstCell) && sleepSafe(b, secondCell)",
-        "renderPc.debugMode != 0u && renderPc.mapMode == 0u",
+        "renderPc.debugMode != 0u && !mapSample",
     ):
         if token not in world_layout + reset_shader + bee_swarm + actor_shader + scene_image_cpp + chemistry + move + fullscreen_medium:
             errors.append(f"runtime screenshot propagation contract missing {token!r}")
@@ -321,7 +321,7 @@ def main() -> int:
         "Balanced Air is an ambient marker",
         "volume == 0u && material != MAT_ATMOSPHERE",
         "ambientAir ? 0u : representedGasVolume(target)",
-        "material == MAT_ATMOSPHERE && volume == 0u ? 220u : volume",
+        "material == MAT_ATMOSPHERE && volume == 0u ? 54u : volume",
     ):
         if token not in move:
             errors.append(f"Half Water ambient-Air isolation contract missing {token!r}")
@@ -513,8 +513,9 @@ def main() -> int:
             errors.append(f"fullscreen tile-aligned viewport missing {token!r}")
     for token in (
         "mediumBoundaryEnclosed",
-        "fullLiquid && liquidEnclosed && !moving",
-        "fullGas && gasEnclosed && !moving",
+        "bool macroLiquid = fullLiquid && !moving",
+        "bool macroGas = fullGas && !moving",
+        "fineFallbackMedium",
         "mediumBreakup",
         "TILE_MEDIUM_ENCLOSED",
         "TILE_MEDIUM_BREAKUP",
@@ -546,8 +547,10 @@ def main() -> int:
     if "CHUNK_SLEEPING) && !chunkHas" in chunks_comp + tiles_comp:
         errors.append("stale sleeping metadata can still suppress active-section classification")
     for token in ("productiveMediumMove", "!productiveMediumMove",
-                  "fullLiquid && liquidEnclosed && !moving",
-                  "fullGas && gasEnclosed && !moving"):
+                  "bool macroLiquid = fullLiquid && !moving",
+                  "bool macroGas = fullGas && !moving",
+                  "fineFallbackMedium"):
+
         if token not in tiles_comp:
             errors.append(f"fine Water/Atmosphere equilibrium contract missing {token!r}")
 
@@ -622,8 +625,9 @@ def main() -> int:
         "3, cardMaterial",
         "cardPixel(pixel",
         "2, cardMaterial",
-        "actor.iron",
-        "renderPc.selectedInventorySlot",
+        "renderPc.selectedWorkspace == 0u",
+        "for (uint slot = 0u; slot < 4u; ++slot)",
+        "pixel, ivec2(int(left + 10u), int(top + 21u)), 1, 182u",
     ):
         if token not in fullscreen:
             errors.append(f"compact sidebar shader contract missing {token!r}")
@@ -643,7 +647,7 @@ def main() -> int:
         "Buffer ui_text_buffer{}",
         ".binding = 6",
         ".stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT",
-        ".descriptorCount = 18",
+        ".descriptorCount = 20",
         ".dstBinding = 6",
         "ui::text_storage.data()",
     ):
@@ -776,7 +780,10 @@ def main() -> int:
              "placement_mode", "active_area_count", "active_area_x", "active_area_y",
              "active_scope_mode", "camera_controls", "map_mode", "camera_origin_x",
              "camera_origin_y", "camera_view_width", "camera_view_height",
-             "selected_inventory_slot", "selected_workspace", "render_frame"],
+             "map_viewport_left", "map_viewport_top", "map_viewport_width", "map_viewport_height",
+             "map_origin_x", "map_origin_y", "map_view_width", "map_view_height",
+             "selected_inventory_slot", "selected_workspace", "render_frame", "world_time",
+             "day_cycle_steps", "designer_flags"],
             ["gridWidth", "gridHeight", "windowWidth", "windowHeight", "selectedMaterial",
              "materialCount", "cursorX", "cursorY", "brushRadius", "statusHeight", "paletteHeight",
              "groupTabsHeight", "materialSlots", "framesPerSecond", "paused", "stepsPerFrame",
@@ -786,7 +793,10 @@ def main() -> int:
              "placementMode", "activeAreaCount", "activeAreaX", "activeAreaY",
              "activeScopeMode", "cameraControls", "mapMode", "cameraOriginX",
              "cameraOriginY", "cameraViewWidth", "cameraViewHeight",
-             "selectedInventorySlot", "selectedWorkspace", "renderFrame"],
+             "mapViewportLeft", "mapViewportTop", "mapViewportWidth", "mapViewportHeight",
+             "mapOriginX", "mapOriginY", "mapViewWidth", "mapViewHeight",
+             "selectedInventorySlot", "selectedWorkspace", "renderFrame", "worldTime",
+             "dayCycleSteps", "designerFlags"],
             renderer,
             "renderPc",
         ),
@@ -810,7 +820,7 @@ def main() -> int:
     hydrogen_case = re.search(r"case\s+MAT_HYDROGEN:(.*?break;)", materials, re.S)
     if not hydrogen_case or "1.00" not in hydrogen_case.group(1) or "0.68" not in hydrogen_case.group(1):
         errors.append("hydrogen no longer uses the requested pink presentation")
-    if "renderPc.debugMode != 0u || renderPc.mapMode != 0u" not in renderer or "local.x == 0 || local.y == 0" not in renderer:
+    if "renderPc.debugMode != 0u || mapSample" not in renderer or "local.x == 0 || local.y == 0" not in renderer:
         errors.append("tile grid is not isolated behind debug/map visualization")
     actor = (SHADERS / "actor.comp").read_text(encoding="utf-8")
     reset = (SHADERS / "reset.comp").read_text(encoding="utf-8")
@@ -883,10 +893,10 @@ def main() -> int:
             errors.append(f"shared resident world-layout contract missing {token!r}")
     for token in (
         "route_directional_input(",
-        "camera_direction_x = directional_input.camera_x",
-        "camera_direction_y = directional_input.camera_y",
-        "shared_state.move_x.store(directional_input.player_x",
-        "shared_state.move_y.store(directional_input.player_y",
+        "int camera_direction_x = designer_workspace ? 0 :",
+        "int camera_direction_y = designer_workspace ? 0 :",
+        "shared_state.move_x.store(world_paused ? 0 : directional_input.player_x",
+        "shared_state.move_y.store(world_paused ? 0 : directional_input.player_y",
         "layout.placement_cells",
         "layout.placement_tiles",
         "authored_scene_origin_x(config.grid_width)",
@@ -996,8 +1006,16 @@ def main() -> int:
     if "contains(layout.fill" in app_cpp and "contains(layout.eraser" in app_cpp:
         fill_handler = app_cpp.split("contains(layout.fill", 1)[1].split(
             "contains(layout.eraser", 1)[0]
-        if "fill_region.store(true" not in fill_handler:
-            errors.append("Fill control does not trigger the region-fill command")
+        if "fill_region.store(true" in fill_handler:
+            errors.append("Fill sidebar control mutates immediately instead of requiring a world click")
+        if "World Fill remains click-confirmed" not in fill_handler:
+            errors.append("Fill sidebar control no longer documents click-confirmed behavior")
+    for token in (
+        "const bool fill_click = editor_workspace && input.fill_modifier && primary_pressed",
+        "if (fill_click) shared_state.fill_region.store(true",
+    ):
+        if token not in app_cpp:
+            errors.append(f"click-confirmed Fill input contract missing {token!r}")
     if "material == Material::atmosphere) cell.aux |= 54u" not in renderer_cpp:
         errors.append("CPU Fill path does not preserve Atmosphere oxygen composition")
     for token in (

@@ -16,7 +16,7 @@ errors = []
 required = {
     "materials": ["MAT_PLANT_STEM) temperature = 20", "AUX_PLANT_STEM | 1u"],
     "tiles": ["activeContent", "!activeContent", "activeAgent", "activeLoose"],
-    "move": ["sleepSafe", "beeMovementTarget", "return beeOrbitTarget(bee.aux, movePc.step);",
+    "move": ["sleepSafe", "beeMovementTarget", "return beeOrbitTarget(bee.aux, movePc.step, movePc.width, movePc.height);",
              "if (targetDistance < sourceDistance) return true;", "boundedSidestep",
              "Dense agents circulate around the moving hidden-mask target", "insectMoveAllowed",
              "isPassableLifeMedium", "insectMediumMoveAllowed",
@@ -32,8 +32,8 @@ required = {
                   "Painted and loaded orphan bees self-seed",
                   "respiringNeighborDemand", "beeRoll < demand.x",
                   "fireRespiration", "BEE_COLONY_MAX"],
-    "reset": ["approved suspended hive", "queen.x - 38",
-              "q2 >= 25 && q2 < 92", "q.x >= 1 && q.x <= 10"],
+    "reset": ["Canonical Fix28 compact Beehive", "queen.x - 38",
+              "beehivePrefabMaterial", "includeFormation"],
 }
 for name, tokens in required.items():
     for token in tokens:

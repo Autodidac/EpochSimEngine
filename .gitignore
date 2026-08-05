@@ -10,3 +10,15 @@ compile_commands.json
 
 __pycache__/
 *.py[cod]
+
+# Generated packages and compiled runtime artifacts belong in GitHub Actions/Releases.
+dist/
+release/
+*.zip
+*.tar.gz
+*.7z
+*.exe
+*.dll
+*.lib
+*.pdb
+*.spv
