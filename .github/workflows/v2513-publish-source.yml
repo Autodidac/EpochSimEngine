@@ -24,6 +24,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
+      - name: Preserve workflow tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/original-workflows"
+          cp -a .github/workflows/. "$RUNNER_TEMP/original-workflows/"
+
       - name: Reconstruct validated patch
         shell: bash
         run: |
@@ -62,6 +69,9 @@ jobs:
             release/SandHybrid_Linux_x64_Fix33.tar.gz \
             release/SandHybrid_Windows_x64_Fix33.sha256 \
             release/SandHybrid_Windows_x64_Fix33.zip
+          rm -rf .github/workflows
+          mkdir -p .github/workflows
+          cp -a "$RUNNER_TEMP/original-workflows/." .github/workflows/
 
       - name: Validate transported source
         shell: bash
