@@ -15,7 +15,7 @@
 
 namespace sandhybrid {
 
-inline constexpr std::uint32_t library_api_version = 3u;
+inline constexpr std::uint32_t library_api_version = 4u;
 inline constexpr std::string_view library_name = "SandHybrid";
 
 struct LibraryCapabilities final {
@@ -26,6 +26,8 @@ struct LibraryCapabilities final {
     bool transactional_packets_available{true};
     bool actor_medium_contracts_available{true};
     bool machinery_transactions_available{true};
+    bool deterministic_gas_transport_available{true};
+    bool ecology_actor_policies_available{true};
 };
 
 inline constexpr LibraryCapabilities core_library_capabilities{};
