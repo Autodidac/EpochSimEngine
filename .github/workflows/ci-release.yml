@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sandhybrid-v2511-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: sandhybrid-v2513-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -22,10 +22,10 @@ jobs:
         include:
           - os: windows-2022
             triplet: x64-windows
-            artifact: SandHybrid-Windows-x64-v2.5.11
+            artifact: SandHybrid-Windows-x64-v2.5.13
           - os: ubuntu-24.04
             triplet: x64-linux
-            artifact: SandHybrid-Linux-x64-v2.5.11
+            artifact: SandHybrid-Linux-x64-v2.5.13
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
 
@@ -40,6 +40,17 @@ jobs:
 
       - name: Validate v2.5.11 world persistence
         run: python tools/validate_v2511_contract.py
+
+      - name: Validate map, pause, reset, and lighting
+        run: python tools/validate_v2512_contract.py
+
+      - name: Validate v2.5.13 first P0 tranche
+        run: python tools/validate_v2513_contract.py
+
+      - name: Audit ecology and hive motion
+        run: |
+          python tools/audit_ecology_motion.py
+          python tools/audit_fix34.py
 
       - name: Validate canonical mission cache
         run: python tools/validate_mission_cache.py
@@ -124,7 +135,7 @@ jobs:
         shell: bash
         run: |
           cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md CHANGELOG.md \
-            MAP_VIEW.md SCENE_LAYOUT.md SAVE_LAYOUT.md RELEASE_NOTES_v2.5.11.md \
+            MAP_VIEW.md SCENE_LAYOUT.md SAVE_LAYOUT.md RELEASE_NOTES.md \
             "dist/${{ matrix.artifact }}/"
 
       - name: Archive Windows package
@@ -166,7 +177,7 @@ jobs:
         with:
           path: dist
 
-      - name: Publish v2.5.11 release
+      - name: Publish v2.5.13 release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -178,17 +189,17 @@ jobs:
             printf '%s\n' "${assets[@]}" >&2
             exit 1
           fi
-          if gh release view v2.5.11 >/dev/null 2>&1; then
-            gh release upload v2.5.11 "${assets[@]}" --clobber
-            gh release edit v2.5.11 \
-              --title 'SandHybrid v2.5.11' \
-              --notes-file RELEASE_NOTES_v2.5.11.md \
+          if gh release view v2.5.13 >/dev/null 2>&1; then
+            gh release upload v2.5.13 "${assets[@]}" --clobber
+            gh release edit v2.5.13 \
+              --title 'SandHybrid v2.5.13' \
+              --notes-file RELEASE_NOTES.md \
               --latest
           else
-            gh release create v2.5.11 "${assets[@]}" \
+            gh release create v2.5.13 "${assets[@]}" \
               --target "$GITHUB_SHA" \
-              --title 'SandHybrid v2.5.11' \
-              --notes-file RELEASE_NOTES_v2.5.11.md \
+              --title 'SandHybrid v2.5.13' \
+              --notes-file RELEASE_NOTES.md \
               --latest
           fi
 
@@ -198,4 +209,10 @@ jobs:
           git push origin --delete agent/v2510-source-repair || true
           git push origin --delete agent/v260-ui-collapse-laser || true
           git push origin --delete agent/v2511-world-save-rewrite || true
+          git push origin --delete agent/v2512-feedback-trigger || true
+          git push origin --delete agent/v2512-runtime-ui-recovery || true
+          git push origin --delete agent/v2512-runtime-ui-completion || true
+          git push origin --delete agent/v2512-map-overlay-blueprints || true
+          git push origin --delete agent/v2513-p0-tranche-1 || true
+          git push origin --delete agent/v2512-publisher || true
           # Preserve agent/nonoverlap-core-hygiene per Adam's explicit instruction.
