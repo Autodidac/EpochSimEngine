@@ -114,4 +114,17 @@ for mission, checks in evidence.items():
 require("tools/audit_ecology_motion.py", "BEE_COLONY_MAX = 100u")
 require("tools/audit_fix34.py", "BEE_INITIAL_PACKED")
 require("missioncache.md", "Cross-system packaged runtime acceptance")
+
+# Every material identifier used by a shader must exist in the canonical ID table.
+material_ids = set(re.findall(r"const uint (MAT_[A-Z0-9_]+)", text("shaders/material_ids.glsl")))
+for shader in sorted((ROOT / "shaders").iterdir()):
+    if shader.suffix not in {".comp", ".frag", ".vert", ".glsl"}:
+        continue
+    references = set(re.findall(r"\b(MAT_[A-Z0-9_]+)\b", shader.read_text(encoding="utf-8")))
+    undefined = sorted(references - material_ids)
+    if undefined:
+        raise SystemExit(f"{shader.relative_to(ROOT)}: undefined material IDs: {undefined}")
+require("shaders/fullscreen.frag",
+        "cell.material == MAT_LIGHTNING || cell.material == MAT_EMBER")
+
 print("v2.5.13 first-28 P0 tranche contracts valid.")

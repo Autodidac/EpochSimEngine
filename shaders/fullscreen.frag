@@ -445,7 +445,7 @@ vec3 applyWorldLighting(vec3 color, Cell cell, ivec2 grid, bool mapSample) {
         ? mix(0.48, 1.0, daylight)
         : clamp(ambient + directSun * daylight * 0.42, 0.16, 1.0);
     bool luminous = cell.material == MAT_LAVA || cell.material == MAT_FIRE ||
-                    cell.material == MAT_PLASMA || cell.material == MAT_EMBER;
+                    cell.material == MAT_LIGHTNING || cell.material == MAT_EMBER;
     if (luminous) illumination = max(illumination, 0.95);
     vec3 nightTint = vec3(0.54, 0.67, 0.88);
     return color * illumination * mix(nightTint, vec3(1.0), daylight);
