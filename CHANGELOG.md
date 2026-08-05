@@ -1,13 +1,5 @@
 # Changelog
 
-## 2.5.14-test.1
-
-- Completed the 25-mission Phase 2 deterministic pass across packed atmosphere and actor-owned ecology.
-- Added exact gas inspection, pressure equalization, enrichment/reabsorption, respiration/combustion conservation, density/buoyancy motion, hard boundary policy, frictionless wall tangency, corner validation, connected Air fill, upper-left Ignite Air, and zero-pressure Half Water ambient bookkeeping.
-- Added actor components and deterministic bee, ant, beetle, habitat, Fix28 hive, scene-home, bounded medium-impulse, and life-debug policies.
-- Advanced the platform-neutral public core API to version 4 and expanded atmosphere, actor, ecology, and public API contracts.
-- Preserved all packaged Vulkan, rendering, save/load, navigation, and multi-cycle runtime acceptance as active mission-cache work.
-
 ## 2.5.11
 
 - Replaced gameplay PPM saves with exact, versioned, checksummed whole-world `.shw` saves.
