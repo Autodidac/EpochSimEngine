@@ -1,12 +1,14 @@
 #pragma once
 
 #include "sandhybrid/camera_policy.hpp"
+#include "sandhybrid/blueprint.hpp"
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/scene.hpp"
 
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 
 namespace sandhybrid {
 
@@ -73,6 +75,16 @@ struct SharedState final {
     std::atomic_uint32_t designer_zoom{1};
     std::array<std::atomic_uint32_t, designer_grid_cell_count> designer_cells{};
     std::atomic_bool designer_dirty{true};
+    mutable std::mutex blueprint_mutex{};
+    std::array<Blueprint, blueprint_slot_count> blueprints{};
+    std::atomic_uint32_t selected_blueprint_slot{0};
+    std::atomic_uint32_t blueprint_rotation{0};
+    std::atomic_bool blueprint_mirror_x{false};
+    std::atomic_bool blueprint_mirror_y{false};
+    std::atomic_bool blueprint_placement_active{false};
+    std::atomic_bool blueprint_place_requested{false};
+    std::atomic_bool blueprint_library_dirty{false};
+    std::atomic_uint32_t blueprint_revision{0};
     std::atomic_uint32_t section_worker_count{0};
     std::atomic_uint32_t active_section_count{0};
     std::atomic_int active_window_origin_x{0};

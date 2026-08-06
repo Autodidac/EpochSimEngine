@@ -332,6 +332,11 @@ Uniform 8x8 material regions can move as 64-cell macro-cells using the same fall
 Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and solid-supported pre-fall droplets that cannot hop along water edges or crawl after falling. See `HALF_WATER.md`.
 
 
+## v2.5.16 sidebar Blueprints and paused editing
+
+Inventory and Designer remain normal sidebar workspaces with exactly `INVENTORY` and `BLUEPRINTS` subtabs. Four shared slots now report real occupied/empty state. Designer publishes authored Static Models or Map Chunks directly to those slots without replacing the world viewport. An occupied slot produces a camera-correct world footprint and a confirmed world left-click performs one all-or-nothing placement.
+
+Blueprint placement remains live while `PAUSED`, including in character scenes. It cannot share a click with paint, Fill, mining, or deposit and cannot leak through load/reset. The exact bounded selection/copy, thumbnails, and persistence portions remain active in `missioncache.md`.
 ## v2.5.15 recovery baselines
 
 The Sandbox, Ecosystem, build-tool, and loaded-map hive use the hard-coded Ecosystem model that SimpleSandSim Fix36 explicitly restored from immediately before PR #19: queen centers (512,234)/(512,232), loose Wood perch offsets x=-37..29 and y=-16..-13, squared shell radii 25 through 91, a chamber below 25, deterministic Honey/Pollen/Empty contents, and a right exit through x=10. Only the model and contents are shared; SandHybrid retains its own bee actors, forage, return, deposit, feed, migration, hazard, and 100-bee colony rules.

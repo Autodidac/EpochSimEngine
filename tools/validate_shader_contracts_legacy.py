@@ -790,7 +790,7 @@ def main() -> int:
              "map_viewport_left", "map_viewport_top", "map_viewport_width", "map_viewport_height",
              "map_origin_x", "map_origin_y", "map_view_width", "map_view_height",
              "selected_inventory_slot", "selected_workspace", "render_frame", "world_time",
-             "day_cycle_steps", "designer_flags"],
+             "day_cycle_steps", "designer_flags", "blueprint_flags"],
             ["gridWidth", "gridHeight", "windowWidth", "windowHeight", "selectedMaterial",
              "materialCount", "cursorX", "cursorY", "brushRadius", "statusHeight", "paletteHeight",
              "groupTabsHeight", "materialSlots", "framesPerSecond", "paused", "stepsPerFrame",
@@ -803,7 +803,7 @@ def main() -> int:
              "mapViewportLeft", "mapViewportTop", "mapViewportWidth", "mapViewportHeight",
              "mapOriginX", "mapOriginY", "mapViewWidth", "mapViewHeight",
              "selectedInventorySlot", "selectedWorkspace", "renderFrame", "worldTime",
-             "dayCycleSteps", "designerFlags"],
+             "dayCycleSteps", "designerFlags", "blueprintFlags"],
             renderer,
             "renderPc",
         ),
@@ -1010,8 +1010,12 @@ def main() -> int:
             errors.append("Atmosphere control must select balanced air without triggering Fill")
     else:
         errors.append("Atmosphere and Fill handlers are not both present")
-    if "contains(layout.fill" in app_cpp and "contains(layout.eraser" in app_cpp:
-        fill_handler = app_cpp.split("contains(layout.fill", 1)[1].split(
+    fill_handler_marker = (
+        "else if (editor_workspace && "
+        "epochengine::gui_lib::contains(layout.fill"
+    )
+    if fill_handler_marker in app_cpp and "contains(layout.eraser" in app_cpp:
+        fill_handler = app_cpp.split(fill_handler_marker, 1)[1].split(
             "contains(layout.eraser", 1)[0]
         if "fill_region.store(true" in fill_handler:
             errors.append("Fill sidebar control mutates immediately instead of requiring a world click")

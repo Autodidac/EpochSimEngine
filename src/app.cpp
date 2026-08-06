@@ -6,6 +6,7 @@
 #include "sandhybrid/scene.hpp"
 #include "sandhybrid/section_scheduler.hpp"
 #include "sandhybrid/shared_state.hpp"
+#include "sandhybrid/simulation_policy.hpp"
 #include "sandhybrid/ui_layout.hpp"
 #include "sandhybrid/vulkan_renderer.hpp"
 #include "sandhybrid/window.hpp"
@@ -150,6 +151,48 @@ void paint_designer_grid(SharedState& state, const ui::SimulationViewport& viewp
     state.designer_dirty.store(true, std::memory_order_release);
 }
 
+[[nodiscard]] bool publish_designer_blueprint(
+    SharedState& state, const std::uint32_t slot) {
+    if (slot >= blueprint_slot_count) return false;
+
+    std::array<SceneCell, designer_grid_cell_count> cells{};
+    for (std::size_t index = 0u; index < cells.size(); ++index) {
+        cells[index].material =
+            state.designer_cells[index].load(std::memory_order_relaxed) % material_count;
+    }
+    const auto kind = state.designer_mode.load(std::memory_order_relaxed) == 0u
+        ? BlueprintKind::static_model : BlueprintKind::map_chunk;
+    const auto name = std::string{kind == BlueprintKind::static_model ? "DESIGN " : "MAP "} +
+                      std::to_string(slot + 1u);
+    const auto captured = kind == BlueprintKind::static_model
+        ? capture_trimmed_blueprint(
+              cells, designer_grid_columns, designer_grid_rows, name)
+        : capture_blueprint(
+              cells, designer_grid_columns, designer_grid_rows,
+              SelectionBounds{0u, 0u, designer_grid_columns - 1u,
+                              designer_grid_rows - 1u},
+              name);
+    if (!captured.has_value()) return false;
+
+    auto blueprint = *captured;
+    blueprint.kind = kind;
+    {
+        const std::scoped_lock lock{state.blueprint_mutex};
+        state.blueprints[slot] = blueprint;
+    }
+    state.selected_blueprint_slot.store(slot, std::memory_order_relaxed);
+    state.blueprint_placement_active.store(true, std::memory_order_release);
+    state.blueprint_library_dirty.store(true, std::memory_order_release);
+    state.blueprint_revision.fetch_add(1u, std::memory_order_acq_rel);
+    return true;
+}
+
+[[nodiscard]] bool blueprint_slot_occupied(
+    SharedState& state, const std::uint32_t slot) {
+    if (slot >= blueprint_slot_count) return false;
+    const std::scoped_lock lock{state.blueprint_mutex};
+    return state.blueprints[slot].occupied;
+}
 void zoom_at_pointer(SharedState& state, const SimulationConfig& config,
                      const ui::SimulationViewport& viewport, const std::int32_t mouse_x,
                      const std::int32_t mouse_y, const int delta,
@@ -568,6 +611,20 @@ int run_application(const ApplicationOptions& options) {
         const bool hovered_ignite_air = editor_workspace &&
             ui::ignite_air_action_at(layout, selected_group, pointer);
 
+        const bool editor_tool_click = editor_workspace && (
+            epochengine::gui_lib::contains(layout.atmosphere, pointer) ||
+            epochengine::gui_lib::contains(layout.fill, pointer) ||
+            epochengine::gui_lib::contains(layout.eraser, pointer) ||
+            epochengine::gui_lib::contains(layout.placement_cells, pointer) ||
+            epochengine::gui_lib::contains(layout.placement_tiles, pointer) ||
+            epochengine::gui_lib::contains(layout.cursor_circle, pointer) ||
+            epochengine::gui_lib::contains(layout.cursor_square, pointer) ||
+            epochengine::gui_lib::contains(layout.cursor_horizontal, pointer) ||
+            epochengine::gui_lib::contains(layout.cursor_vertical, pointer) ||
+            hovered_group < material_group_count ||
+            hovered_material != Material::count || hovered_ignite_air);
+        if (primary_pressed && editor_tool_click)
+            shared_state.blueprint_placement_active.store(false, std::memory_order_release);
         if (primary_pressed) {
             const auto workspace = ui::workspace_at(layout, pointer);
             if (workspace < ui::workspace_tab_count) {
@@ -624,6 +681,15 @@ int run_application(const ApplicationOptions& options) {
                 shared_state.selected_inventory_slot.store(
                     ui::inventory_slot_at(layout, input.height, pointer),
                     std::memory_order_relaxed);
+                shared_state.blueprint_placement_active.store(false, std::memory_order_release);
+            } else if (inventory_workspace &&
+                       shared_state.inventory_pane.load(std::memory_order_relaxed) == 1u &&
+                       ui::inventory_slot_at(layout, input.height, pointer) <
+                           blueprint_slot_count) {
+                const auto slot = ui::inventory_slot_at(layout, input.height, pointer);
+                shared_state.selected_blueprint_slot.store(slot, std::memory_order_relaxed);
+                shared_state.blueprint_placement_active.store(
+                    blueprint_slot_occupied(shared_state, slot), std::memory_order_release);
             } else if (designer_workspace && epochengine::gui_lib::contains(layout.designer_static_model, pointer)) {
                 shared_state.designer_mode.store(0u, std::memory_order_relaxed);
             } else if (designer_workspace && epochengine::gui_lib::contains(layout.designer_map_chunk, pointer)) {
@@ -632,6 +698,12 @@ int run_application(const ApplicationOptions& options) {
                 shared_state.designer_pane.store(0u, std::memory_order_relaxed);
             } else if (designer_workspace && epochengine::gui_lib::contains(layout.designer_blueprints, pointer)) {
                 shared_state.designer_pane.store(1u, std::memory_order_relaxed);
+            } else if (designer_workspace &&
+                       shared_state.designer_pane.load(std::memory_order_relaxed) == 1u &&
+                       ui::designer_blueprint_slot_at(layout, pointer) < blueprint_slot_count) {
+                const auto slot = ui::designer_blueprint_slot_at(layout, pointer);
+                if (!publish_designer_blueprint(shared_state, slot))
+                    std::fprintf(stderr, "[SandHybrid] Designer blueprint slot needs authored cells.\n");
             } else if (material_workspace && epochengine::gui_lib::contains(layout.placement_cells, pointer)) {
                 (designer_workspace ? shared_state.designer_placement_mode : shared_state.placement_mode)
                     .store(0u, std::memory_order_relaxed);
@@ -697,10 +769,20 @@ int run_application(const ApplicationOptions& options) {
         const bool world_paused = shared_state.paused.load(std::memory_order_relaxed);
         const bool mining = shared_state.mining_mode.load(std::memory_order_relaxed);
         const bool inspecting = input.inspect_material;
+        const bool blueprint_placement_active =
+            shared_state.blueprint_placement_active.load(std::memory_order_acquire);
+        const bool blueprint_place_click = editor_workspace && blueprint_placement_active &&
+            primary_pressed && over_world && !inspecting && !input.fill_modifier &&
+            !pan_button_down;
+        if (blueprint_place_click)
+            shared_state.blueprint_place_requested.store(true, std::memory_order_release);
+
         const bool fill_click = editor_workspace && input.fill_modifier && primary_pressed &&
-                                over_world && !pan_button_down;
+                                over_world && !pan_button_down &&
+                                !blueprint_placement_active;
         const bool armed_fill_click = editor_workspace && primary_pressed && over_world &&
-            !pan_button_down && shared_state.fill_armed.exchange(false, std::memory_order_acq_rel);
+            !blueprint_placement_active && !pan_button_down &&
+            shared_state.fill_armed.exchange(false, std::memory_order_acq_rel);
         if (fill_click) shared_state.fill_region.store(true, std::memory_order_release);
         else if (armed_fill_click)
             shared_state.fill_region.store(true, std::memory_order_release);
@@ -712,8 +794,10 @@ int run_application(const ApplicationOptions& options) {
             paint_designer_grid(shared_state, designer_grid_viewport, input.mouse_x, input.mouse_y);
 
         const bool player_build = scene_player_present && !mining;
-        const bool paint_active = editor_workspace && over_world && !scene_player_present && !mining &&
-                                  !inspecting && !input.fill_modifier && !pan_button_down;
+        const bool paint_active = policy::world_editor_paint_allowed(
+            editor_workspace, over_world, inspecting, input.fill_modifier,
+            pan_button_down, scene_player_present, mining, world_paused) &&
+            !blueprint_placement_active;
         shared_state.primary_down.store(input.primary_down && paint_active,
                                          std::memory_order_relaxed);
         // Right mouse is camera-only. Erasing is an explicit left-click Eraser
@@ -722,14 +806,15 @@ int run_application(const ApplicationOptions& options) {
 
         const bool tool_active = editor_workspace && over_world && scene_player_present && mining &&
                                  !inspecting && !input.fill_modifier && !pan_button_down &&
-                                 !world_paused;
+                                 !world_paused && !blueprint_placement_active;
         shared_state.fire_tool.store(input.primary_down && tool_active,
                                      std::memory_order_relaxed);
         if (primary_pressed && tool_active)
             shared_state.fire_tool_pressed.store(true, std::memory_order_release);
 
         const bool build_active = editor_workspace && over_world && player_build && !inspecting &&
-                                  !input.fill_modifier && !pan_button_down && !world_paused;
+                                  !input.fill_modifier && !pan_button_down && !world_paused &&
+                                  !blueprint_placement_active;
         shared_state.deposit_resource.store(input.primary_down && build_active,
                                              std::memory_order_relaxed);
         if (primary_pressed && build_active)

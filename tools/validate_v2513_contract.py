@@ -17,7 +17,7 @@ def require(path: str, token: str) -> None:
 # Canonical v2.5.13 history remains present while current release policy is
 # owned by the newest release contract.
 require("CHANGELOG.md", "## 2.5.13")
-require("CMakeLists.txt", "VERSION 2.5.15")
+require("CMakeLists.txt", "VERSION 2.5.16")
 if list(ROOT.glob("RELEASE_NOTES_v*.md")):
     raise SystemExit("versioned release-note files remain; CHANGELOG.md must own history")
 

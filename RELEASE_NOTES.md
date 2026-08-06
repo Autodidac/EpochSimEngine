@@ -1,30 +1,34 @@
-# SandHybrid v2.5.15
+# SandHybrid v2.5.16
 
-Stable runtime recovery for macro-tile motion, Half Water, the exact suspended Beehive, and world-cursor editing.
+Stable sidebar Blueprint and paused-editing recovery on top of the v2.5.15 macro-tile, Half Water, suspended Beehive, cursor, and Fill fixes.
 
-## Recovered behavior
+## Corrected behavior
 
-- Full uniform compatible liquid and gas targets remain eligible for an exact 8x8 macro displacement even when boundary scheduling marks them fine-active. Mixed, partial, structural, incompatible, or already-moved targets still reject the transaction and use same-tick fine fallback.
-- Intact macro packets stay out of the ordinary fine pass unless either side genuinely needs fine fallback.
-- Half Water falls first, merges with adjacent halves, attracts only across a clear two-to-four-cell gap, cannot use generic full-Water diagonal wandering, and cannot sleep with fall, merge, attraction, reaction, heat, or motion pending.
-- Sandbox, Ecosystem, the Beehive tool, and loaded-map normalization now share the exact hard-coded Ecosystem hive restored by SimpleSandSim Fix36 from immediately before PR #19: queen centers (512,234)/(512,232), loose Wood perch x=-37..29 and y=-16..-13, shell 25 <= radius squared < 92, chamber radius squared < 25, queen center, deterministic Empty/Honey/Pollen contents, and exit x=1..10 with absolute y <= 1.
-- The visible world cursor now shares the committed edit position, effective radius, and shape, keeps logical pointer geometry distinct from physical framebuffer presentation during resize and high-DPI display, and disappears instead of clamping to the viewport edge while the pointer is in the sidebar.
-- FILL is a one-shot armed tool: its sidebar control does not mutate the world, and the next confirmed world left-click supplies the connected region. Holding F and left-clicking remains the direct shortcut.
-- PAUSED continues to freeze simulation, actors, clocks, MAP refresh, lighting/day-night, particles, and effects while direct Editor mutations remain live without advancing simulation time.
+- Paused Editor painting is no longer suppressed merely because the selected scene contains a player or was in mining mode. Simulation, actors, clocks, lighting, MAP refresh, and effects remain frozen.
+- Inventory and Designer now share four real Blueprint slots. Occupied, empty, and selected state is rendered honestly in both sidebar-only workspaces.
+- The Designer can publish a trimmed named Static Model or a full-grid Map Chunk into a selected slot without replacing or mutating the main world viewport.
+- Selecting an occupied Inventory Blueprint activates a camera-correct world footprint preview. Invalid boundary placement is visibly rejected.
+- World placement validates the entire transformed footprint before mutation. Static models place canonical material cells while preserving transparent empty space; Map Chunks can preserve exact empty and non-empty cell state.
+- Blueprint paste is live while paused, writes both resident cell buffers transactionally, and is discarded across load/reset boundaries instead of replaying later.
+- FILL, painting, mining, and resource deposit cannot fire on the same click as an active Blueprint paste.
 
-## Retained systems
+## Preserved recovery baselines
 
-- SandHybrid retains its own bee actors, forage, return, deposit, feed, migration, hazard response, authored-home metadata, and 100-bee colony policy. No SimpleSandSim bee population or runtime behavior is imported.
-- Inventory remains sidebar-only with INVENTORY and BLUEPRINTS subtabs.
-- Designer remains sidebar-only with its isolated authoring grid, independent cursor state, and INVENTORY and BLUEPRINTS subtabs; it never replaces the world viewport.
+- Complete moving liquid and gas tiles retain the packaged v2.5.3 macro-first path with same-tick fine fallback.
+- Half Water retains its fine-owned fall, merge, clear-gap attraction, no generic diagonal wandering, and no premature sleep behavior.
+- Sandbox, Ecosystem, the Beehive tool, and loaded-map normalization retain the exact hard-coded pre-PR19 Fix36 hive body and contents without importing SimpleSandSim bee behavior.
+- World cursor input remains logical-window based and distinct from physical framebuffer scaling.
+- Inventory and Designer remain sidebar-only and each owns exactly `INVENTORY` and `BLUEPRINTS` subtabs.
 
-## Release validation
+## Validation and active work
 
-The exact release source must pass the complete shader/interface suite, deterministic C++23 contracts, native Windows and Linux Release builds and tests, install/package/archive audits, and SHA-256 generation. The stable tag workflow publishes exactly these four assets:
+The release source must pass the complete shader/interface suite, 26 deterministic C++23 contracts, native Windows and Linux Release builds/tests, fresh installs, archives, content audits, and SHA-256 generation. Runtime frames must show PAUSED state, the world still visible beside Inventory/Designer, real occupied/empty Blueprint slots, and successful transactional paused placement.
 
-- SandHybrid-Windows-x64-v2.5.15.zip
-- SandHybrid-Windows-x64-v2.5.15.zip.sha256
-- SandHybrid-Linux-x64-v2.5.15.tar.gz
-- SandHybrid-Linux-x64-v2.5.15.tar.gz.sha256
+`missioncache.md` remains authoritative. Selection marquee operations, exact copied-world Map Chunks, thumbnails, Blueprint persistence, repeated pause/reset stress, and every other unaccepted mission remain active rather than being reported complete from this tranche.
 
-Runtime and visual missions remain active in missioncache.md until the packaged executables are observed; static validation alone does not close them.
+The stable tag workflow publishes exactly these four assets:
+
+- SandHybrid-Windows-x64-v2.5.16.zip
+- SandHybrid-Windows-x64-v2.5.16.zip.sha256
+- SandHybrid-Linux-x64-v2.5.16.tar.gz
+- SandHybrid-Linux-x64-v2.5.16.tar.gz.sha256

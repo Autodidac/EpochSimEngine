@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SandHybrid VERSION 2.5.15 LANGUAGES CXX)
+project(SandHybrid VERSION 2.5.16 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -256,6 +256,7 @@ install(TARGETS SandHybrid
 set(SANDHYBRID_CORE_PUBLIC_HEADERS
     include/sandhybrid/actor_medium.hpp
     include/sandhybrid/atmosphere.hpp
+    include/sandhybrid/blueprint.hpp
     include/sandhybrid/camera_policy.hpp
     include/sandhybrid/inventory.hpp
     include/sandhybrid/machinery.hpp
@@ -314,6 +315,8 @@ if(BUILD_TESTING)
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2513_contract.py)
         add_test(NAME sandhybrid_v2515_source_contract
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2515_contract.py)
+        add_test(NAME sandhybrid_v2516_source_contract
+       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2516_contract.py)
     endif()
 
     add_executable(sandhybrid_input_routing_contract tests/input_routing_contract.cpp)
@@ -339,6 +342,11 @@ if(BUILD_TESTING)
     target_compile_features(sandhybrid_behavior_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_behavior_contract)
     add_test(NAME sandhybrid_behavior_contract COMMAND sandhybrid_behavior_contract)
+    add_executable(sandhybrid_blueprint_contract tests/blueprint_contract.cpp)
+    target_include_directories(sandhybrid_blueprint_contract PRIVATE include)
+    target_compile_features(sandhybrid_blueprint_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_blueprint_contract)
+    add_test(NAME sandhybrid_blueprint_contract COMMAND sandhybrid_blueprint_contract)
 
     add_executable(sandhybrid_scene_spawn_contract tests/scene_spawn_contract.cpp)
     target_link_libraries(sandhybrid_scene_spawn_contract PRIVATE SandHybrid::SandHybrid)

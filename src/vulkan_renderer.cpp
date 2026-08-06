@@ -331,8 +331,9 @@ struct RenderPush final {
     std::uint32_t world_time{};
     std::uint32_t day_cycle_steps{};
     std::uint32_t designer_flags{};
+    std::uint32_t blueprint_flags{};
 };
-static_assert(sizeof(RenderPush) == 244);
+static_assert(sizeof(RenderPush) == 248);
 
 bool contains_extension(const std::vector<VkExtensionProperties>& extensions, const char* name) {
     return std::ranges::any_of(extensions, [name](const VkExtensionProperties& extension) {
@@ -1587,6 +1588,80 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     std::to_string(changed) + " cells.");
     }
 
+    void place_selected_blueprint(SharedState& state) {
+        const auto slot =
+            state.selected_blueprint_slot.load(std::memory_order_relaxed) %
+            blueprint_slot_count;
+        Blueprint blueprint{};
+        {
+            const std::scoped_lock lock{state.blueprint_mutex};
+            blueprint = state.blueprints[slot];
+        }
+        if (!blueprint.occupied) {
+            startup_log("Blueprint placement skipped: selected slot is empty.");
+            return;
+        }
+
+        const BlueprintTransform transform{
+            .rotation = static_cast<BlueprintRotation>(
+                state.blueprint_rotation.load(std::memory_order_relaxed) & 3u),
+            .mirror_x =
+                state.blueprint_mirror_x.load(std::memory_order_relaxed),
+            .mirror_y =
+                state.blueprint_mirror_y.load(std::memory_order_relaxed),
+        };
+        const auto cursor_x =
+            state.last_world_cursor_x.load(std::memory_order_relaxed);
+        const auto cursor_y =
+            state.last_world_cursor_y.load(std::memory_order_relaxed);
+        if (cursor_x < 0 || cursor_y < 0) {
+            startup_log("Blueprint placement rejected outside the world.");
+            return;
+        }
+        const auto origin = blueprint_centered_origin(
+            blueprint, config.grid_width, config.grid_height,
+            static_cast<std::uint32_t>(cursor_x),
+            static_cast<std::uint32_t>(cursor_y), transform);
+        if (!origin.has_value()) {
+            startup_log("Blueprint placement rejected at the world boundary.");
+            return;
+        }
+
+        auto placement = blueprint;
+        if (placement.kind == BlueprintKind::static_model) {
+            const auto empty = static_cast<std::uint32_t>(Material::empty);
+            for (std::uint32_t y = 0u; y < placement.height; ++y) {
+                for (std::uint32_t x = 0u; x < placement.width; ++x) {
+                    const auto source_index =
+                        static_cast<std::size_t>(y) * placement.width + x;
+                    const auto material = placement.cells[source_index].material;
+                    if (material == empty) continue;
+                    const auto [destination_x, destination_y] =
+                        blueprint_destination_coordinate(
+                            placement, transform, x, y);
+                    const auto world_index =
+                        (origin->second + destination_y) * config.grid_width +
+                        origin->first + destination_x;
+                    placement.cells[source_index] =
+                        make_fill_cell(material, world_index);
+                }
+            }
+        }
+
+        auto cells = download_scene_cells();
+        const bool include_empty =
+            placement.kind == BlueprintKind::map_chunk;
+        if (!place_blueprint_transactional(
+                placement, cells, config.grid_width, config.grid_height,
+                origin->first, origin->second, transform, include_empty)) {
+            startup_log("Blueprint placement rejected without changing the world.");
+            return;
+        }
+        upload_scene_cells(cells);
+        startup_log("Placed blueprint slot " + std::to_string(slot + 1u) +
+                    " transactionally.");
+    }
+
     void upload_scene_cells(const std::span<const SceneCell> cells) {
         if (cells.size_bytes() != scene_staging_buffer.size)
             throw std::runtime_error("Scene image produced an unexpected cell count.");
@@ -2409,6 +2484,36 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             ((state.inventory_pane.load(std::memory_order_relaxed) & 1u) << 5u) |
             ((state.designer_zoom.load(std::memory_order_relaxed) & 0xffu) << 8u) |
             ((state.designer_brush_radius.load(std::memory_order_relaxed) & 0xffu) << 16u);
+        const auto selected_blueprint =
+            state.selected_blueprint_slot.load(std::memory_order_relaxed) %
+            blueprint_slot_count;
+        std::uint32_t blueprint_flags = selected_blueprint << 4u;
+        {
+            const std::scoped_lock lock{state.blueprint_mutex};
+            for (std::uint32_t slot = 0u; slot < blueprint_slot_count; ++slot) {
+                if (state.blueprints[slot].occupied)
+                    blueprint_flags |= 1u << slot;
+            }
+            const auto& blueprint = state.blueprints[selected_blueprint];
+            if (blueprint.occupied) {
+                const BlueprintTransform transform{
+                    .rotation = static_cast<BlueprintRotation>(
+                        state.blueprint_rotation.load(std::memory_order_relaxed) & 3u),
+                    .mirror_x =
+                        state.blueprint_mirror_x.load(std::memory_order_relaxed),
+                    .mirror_y =
+                        state.blueprint_mirror_y.load(std::memory_order_relaxed),
+                };
+                const auto [width, height] =
+                    blueprint_transformed_extent(blueprint, transform);
+                blueprint_flags |= (width & 0x7fu) << 8u;
+                blueprint_flags |= (height & 0x7fu) << 16u;
+                blueprint_flags |=
+                    (static_cast<std::uint32_t>(blueprint.kind) & 1u) << 24u;
+            }
+        }
+        if (state.blueprint_placement_active.load(std::memory_order_relaxed))
+            blueprint_flags |= 1u << 6u;
         const RenderPush push{
             .grid_width = config.grid_width,
             .grid_height = config.grid_height,
@@ -2488,6 +2593,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .world_time = simulation_step,
             .day_cycle_steps = sandhybrid::policy::day_cycle_steps,
             .designer_flags = designer_flags,
+            .blueprint_flags = blueprint_flags,
         };
         vkCmdPushConstants(command_buffer, graphics_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                            0, sizeof(push), &push);
@@ -2535,6 +2641,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
           startup_log("No valid world save or authored PPM exists for the selected scene.");
       }
   }
+        }
+        if (state.blueprint_place_requested.exchange(
+                false, std::memory_order_acq_rel)) {
+            if (!reset_requested && !image_loaded && !needs_reset)
+                place_selected_blueprint(state);
+            else
+                startup_log("Blueprint placement skipped across a load/reset boundary.");
         }
 
         std::uint32_t image_index{};
@@ -2609,6 +2722,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             state.ignite_air.store(false, std::memory_order_release);
             state.fire_tool_pressed.store(false, std::memory_order_release);
             state.deposit_resource_pressed.store(false, std::memory_order_release);
+            state.blueprint_place_requested.store(false, std::memory_order_release);
         }
         if (paused) {
             // Do not queue one-shot actor/tool input for the first unpaused frame.

@@ -106,6 +106,14 @@ int main() {
         !designer_contains(layout.keymap, layout.designer_blueprints) ||
         !designer_nonoverlap(layout.designer_static_model, layout.designer_map_chunk) ||
         !designer_nonoverlap(layout.designer_inventory, layout.designer_blueprints)) return 19;
+    for (std::uint32_t slot = 0u; slot < sandhybrid::blueprint_slot_count; ++slot) {
+        const auto rect = sandhybrid::ui::designer_blueprint_slot_rect(layout, slot);
+        if (!designer_contains(layout.keymap, rect) ||
+            sandhybrid::ui::designer_blueprint_slot_at(
+                layout, {rect.position.x + rect.size.x * 0.5f,
+                         rect.position.y + rect.size.y * 0.5f}) != slot)
+            return 25;
+    }
 
     const auto compact = sandhybrid::ui::make_layout(480u, 320u);
     if (compact.simulation.size.y <= 0.0f || compact.status.size.x < 300.0f) return 10;

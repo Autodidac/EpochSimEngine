@@ -138,6 +138,19 @@ inline constexpr std::uint32_t wet_density_bonus = 32u;
     const bool reset_this_frame) noexcept {
     return !reset_this_frame;
 }
+[[nodiscard]] constexpr bool world_editor_paint_allowed(
+    const bool editor_workspace,
+    const bool pointer_over_world,
+    const bool inspecting,
+    const bool fill_modifier,
+    const bool panning,
+    const bool player_scene,
+    const bool mining,
+    const bool paused) noexcept {
+    return editor_workspace && pointer_over_world && !inspecting &&
+           !fill_modifier && !panning &&
+           (paused || (!player_scene && !mining));
+}
 
 [[nodiscard]] constexpr bool simulation_clock_advances(
     const bool paused,

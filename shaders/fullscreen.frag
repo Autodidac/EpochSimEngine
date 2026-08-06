@@ -82,6 +82,7 @@ layout(push_constant) uniform RenderPush {
     uint worldTime;
     uint dayCycleSteps;
     uint designerFlags;
+    uint blueprintFlags;
 } renderPc;
 
 uint glyphRow(uint code, uint row) {
@@ -386,6 +387,17 @@ uint designerPane() { return (renderPc.designerFlags >> 4u) & 1u; }
 uint inventoryPane() { return (renderPc.designerFlags >> 5u) & 1u; }
 uint designerZoom() { return max((renderPc.designerFlags >> 8u) & 255u, 1u); }
 uint designerBrushRadius() { return max((renderPc.designerFlags >> 16u) & 255u, 1u); }
+bool blueprintSlotOccupied(uint slot) {
+    return slot < 4u && (renderPc.blueprintFlags & (1u << slot)) != 0u;
+}
+uint selectedBlueprintSlot() { return (renderPc.blueprintFlags >> 4u) & 3u; }
+bool blueprintPlacementActive() {
+    return (renderPc.blueprintFlags & (1u << 6u)) != 0u &&
+           blueprintSlotOccupied(selectedBlueprintSlot());
+}
+uint blueprintWidth() { return (renderPc.blueprintFlags >> 8u) & 0x7fu; }
+uint blueprintHeight() { return (renderPc.blueprintFlags >> 16u) & 0x7fu; }
+uint blueprintKind() { return (renderPc.blueprintFlags >> 24u) & 1u; }
 
 vec4 designerGridColor(uint sampleX, uint sampleY, uint sampleWidth, uint sampleHeight) {
     uint zoom = min(designerZoom(), 4u);
@@ -857,16 +869,26 @@ void main() {
             uint slotsTop = keymapTop + 92u;
             uint slotGap = 4u;
             uint slotWidth = max((contentWidth - slotGap * 3u) / 4u, 1u);
-            for (uint slot = 0u; slot < 4u; ++slot) {
-                uint left = contentLeft + slot * (slotWidth + slotGap);
-                uint right = slot == 3u ? contentLeft + contentWidth : left + slotWidth;
-                if (x >= left && x < right && y >= slotsTop && y < keymapBottom - 5u) {
-                    color = vec3(0.044, 0.059, 0.080);
-                    if (borderPixel(x, y, left, slotsTop, right, keymapBottom - 5u))
-                        color = vec3(0.12, 0.20, 0.28);
+            if (designerPane() == 1u) {
+                for (uint slot = 0u; slot < 4u; ++slot) {
+                    uint left = contentLeft + slot * (slotWidth + slotGap);
+                    uint right = slot == 3u ? contentLeft + contentWidth : left + slotWidth;
+                    bool occupied = blueprintSlotOccupied(slot);
+                    bool selected = slot == selectedBlueprintSlot();
+                    if (x >= left && x < right && y >= slotsTop && y < keymapBottom - 5u) {
+                        color = selected
+                            ? (occupied ? vec3(0.10, 0.34, 0.38) : vec3(0.13, 0.16, 0.20))
+                            : (occupied ? vec3(0.075, 0.18, 0.22) : vec3(0.044, 0.059, 0.080));
+                        if (borderPixel(x, y, left, slotsTop, right, keymapBottom - 5u))
+                            color = selected ? vec3(0.28, 0.78, 0.82)
+                                             : vec3(0.12, 0.20, 0.28);
+                    }
+                    designerText = designerText || fixedPixel(
+                        pixel, ivec2(int(left + 5u), int(slotsTop + 4u)), 1,
+                        occupied ? 181u : 182u) ||
+                        numberPixel(pixel, ivec2(int(right - 11u), int(slotsTop + 14u)),
+                                    1, slot + 1u);
                 }
-                designerText = designerText || fixedPixel(
-                    pixel, ivec2(int(left + 5u), int(slotsTop + 7u)), 1, 182u);
             }
             if (designerText) color = vec3(0.93, 0.96, 0.99);
             outColor = vec4(color, 1.0);
@@ -1048,14 +1070,32 @@ void main() {
             }
             uint paneTop = tabBottom + 3u;
             if (inventoryPane() == 1u) {
-                if (x >= contentLeft && x < contentLeft + contentWidth &&
-                    y >= paneTop && y < groupTop + 170u)
-                    color = vec3(0.040, 0.054, 0.072);
-                if (borderPixel(x, y, contentLeft, paneTop,
-                                contentLeft + contentWidth, groupTop + 170u))
-                    color = vec3(0.10, 0.16, 0.22);
-                inventoryText = inventoryText || fixedPixel(
-                    pixel, ivec2(int(contentLeft + 10u), int(paneTop + 10u)), 2, 182u);
+                uint slotGap = 5u;
+                uint slotWidth = max((contentWidth - slotGap) / 2u, 1u);
+                uint slotHeight = 52u;
+                for (uint slot = 0u; slot < 4u; ++slot) {
+                    uint column = slot % 2u;
+                    uint row = slot / 2u;
+                    uint left = contentLeft + column * (slotWidth + slotGap);
+                    uint right = column == 1u ? contentLeft + contentWidth : left + slotWidth;
+                    uint top = paneTop + row * (slotHeight + slotGap);
+                    uint bottom = top + slotHeight;
+                    bool occupied = blueprintSlotOccupied(slot);
+                    bool selected = slot == selectedBlueprintSlot();
+                    if (x >= left && x < right && y >= top && y < bottom) {
+                        color = selected
+                            ? (occupied ? vec3(0.10, 0.34, 0.38) : vec3(0.12, 0.15, 0.19))
+                            : (occupied ? vec3(0.065, 0.16, 0.20) : vec3(0.040, 0.054, 0.072));
+                        if (borderPixel(x, y, left, top, right, bottom))
+                            color = selected ? vec3(0.28, 0.78, 0.82)
+                                             : vec3(0.10, 0.16, 0.22);
+                    }
+                    inventoryText = inventoryText || fixedPixel(
+                        pixel, ivec2(int(left + 8u), int(top + 7u)), 1,
+                        occupied ? 181u : 182u) ||
+                        numberPixel(pixel, ivec2(int(left + 8u), int(top + 27u)),
+                                    1, slot + 1u);
+                }
             } else {
                 uint slotGap = 5u;
                 uint slotWidth = max((contentWidth - slotGap) / 2u, 1u);
@@ -1233,7 +1273,29 @@ void main() {
         renderPc.inspectMode == 0u && !mapSample) {
         ivec2 delta = grid - ivec2(renderPc.cursorX, renderPc.cursorY);
         int distanceSquared = delta.x * delta.x + delta.y * delta.y;
-        if (renderPc.miningMode != 0u) {
+        if (blueprintPlacementActive() &&
+            blueprintWidth() > 0u && blueprintHeight() > 0u) {
+            int width = int(blueprintWidth());
+            int height = int(blueprintHeight());
+            int left = renderPc.cursorX - width / 2;
+            int top = renderPc.cursorY - height / 2;
+            int right = left + width;
+            int bottom = top + height;
+            bool inside = grid.x >= left && grid.x < right &&
+                          grid.y >= top && grid.y < bottom;
+            bool edge = inside &&
+                (grid.x == left || grid.x + 1 == right ||
+                 grid.y == top || grid.y + 1 == bottom);
+            bool valid = left >= 0 && top >= 0 &&
+                         right <= int(renderPc.gridWidth) &&
+                         bottom <= int(renderPc.gridHeight);
+            if (inside)
+                color.rgb = mix(color.rgb,
+                    blueprintKind() == 0u ? vec3(0.15, 0.95, 0.88)
+                                          : vec3(0.45, 0.72, 1.00),
+                    edge ? (valid ? 0.92 : 0.82) : 0.12);
+            if (edge && !valid) color.rgb = vec3(1.00, 0.28, 0.22);
+        } else if (renderPc.miningMode != 0u) {
             bool cross = (abs(delta.x) <= 4 && delta.y == 0) || (abs(delta.y) <= 4 && delta.x == 0);
             bool ring = distanceSquared >= 8 && distanceSquared <= 14;
             if (cross || ring) color.rgb = vec3(1.0, 0.88, 0.26);

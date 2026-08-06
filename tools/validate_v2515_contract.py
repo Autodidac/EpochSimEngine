@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v2.5.15 stable recovery and publication contract."""
+"""Validate the retained v2.5.15 macro, hive, cursor, pause, and sidebar recovery."""
 
 from pathlib import Path
 
@@ -20,23 +20,9 @@ def reject(path: str, token: str) -> None:
         raise SystemExit(f"{path}: obsolete token remains {token!r}")
 
 
-# Stable, visible, tag-gated publication with packaged checksums.
-require("CMakeLists.txt", "VERSION 2.5.15")
+# Canonical history remains while the newest contract owns current publication.
+require("CMakeLists.txt", "VERSION 2.5.16")
 require("CHANGELOG.md", "## 2.5.15")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.15")
-for token in (
-    "SandHybrid-Windows-x64-v2.5.15",
-    "SandHybrid-Linux-x64-v2.5.15",
-    "refs/tags/v2.5.15",
-    "Generate Windows SHA-256",
-    "Generate Linux SHA-256",
-    "Expected two packages and two checksums",
-    "gh release create v2.5.15",
-    "--verify-tag",
-):
-    require(".github/workflows/ci-release.yml", token)
-reject(".github/workflows/ci-release.yml", "v2.5.15-test")
-reject(".github/workflows/ci-release.yml", "--prerelease")
 
 # v2.5.3 macro ownership: moving complete media get a packet attempt.
 for token in (
@@ -150,7 +136,7 @@ require("tests/ui_layout_contract.cpp", "layout.designer_grid.position.x < sideb
 # Repository memory and mission status retain the release invariants.
 for token in ("v2.5.3", "Fix36", "Half Water falls first", "World cursor controls belong to Editor", "sidebar-only", "no prerelease marker"):
     require("AGENTS.md", token)
-require("MISSION_LEDGER.md", "Target: `v2.5.15`")
+require("MISSION_LEDGER.md", "/releases/tag/v2.5.15")
 require("missioncache.md", "MC-153")
 
-print("v2.5.15 stable macro, hive, pause-editing, sidebar, and release contracts valid.")
+print("v2.5.15 historical macro, hive, cursor, pause-editing, and sidebar contracts valid.")

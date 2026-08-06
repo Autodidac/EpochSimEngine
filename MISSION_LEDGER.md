@@ -4,26 +4,36 @@
 
 ## Current release target
 
-- Target: `v2.5.15` as a normal public GitHub release after recovery validation.
-- State: v2.5.14 was published normally, but packaged user observation contradicted its macro-tile and Half Water behavior. v2.5.15 native Windows and Linux Release builds now pass 24/24 tests and fresh packages are staged; packaged Windows observation accepts sidebar presentation and corrected logical cursor ownership, while macro-tile, Half Water, hive-content, pause-editing, and full scene-cycle runtime acceptance remain active.
+- Target: `v2.5.16` as the next normal public GitHub release for the paused-player editing and real Blueprint-slot recovery.
+- State: v2.5.15 is published as a normal visible release from commit `0eac09f0795f4c1b025f703a8fffb6b171039756`. The v2.5.16 candidate adds paused direct editing in character scenes plus real shared Blueprint slots, Designer publication, honest Inventory/Designer slot state, a world footprint preview, and transactional paused paste. Native Windows and Linux Release builds, 26/26 tests on each platform, fresh archives, content audits, checksums, and packaged Windows paused-paste observation pass. Stable tag publication and final GitHub asset/source verification remain pending. Selection marquee, copied-world chunks, thumbnails, Blueprint persistence, and repeated packaged reset stress remain active.
 - Public prerelease tags and `-test` release names are forbidden.
 
-## v2.5.14 publication record
+## v2.5.15 publication record
 
-- Release: https://github.com/Autodidac/EpochSimEngine/releases/tag/v2.5.14
-- Commit: `71d6098ce6ec99bc89475af6859382a2b31ce9a4`
-- Windows SHA-256: `cc80807b3afd1560c973b17753aea0792450026f4b8f169e99798a86d0329d5c`
-- Linux SHA-256: `cf8ec6c96480a974230b77e81242e067cf2fbaa4fa21f01db4cb0aae86092e81`
-- Acceptance result: stable publication passed; macro-tile and Half Water packaged runtime acceptance failed and the affected missions were reopened.
+- Release: https://github.com/Autodidac/EpochSimEngine/releases/tag/v2.5.15
+- Commit: `0eac09f0795f4c1b025f703a8fffb6b171039756`
+- Windows SHA-256: `46015c86a22d48d80e4fb6f69d553dd3ef24580ea82dfeb72511a779ac462435`
+- Linux SHA-256: `4575e9949774366cacf2f73333c43c33fdd4fb59b415c28158affad09b8e27b4`
+- Acceptance result: stable publication and native package gates passed. Packaged Windows observation accepted sidebar ownership, the hard-coded suspended hive location, and corrected logical cursor ownership. Macro-tile motion, Half Water motion, chamber contents, complete pause/edit/reset cycling, and broad cross-system runtime acceptance remain active.
+
+## v2.5.16 candidate package record
+
+- Windows candidate SHA-256: `6d6d48e4bed8a913d2c40dfad68f3e5c2d0fee20d79f8bdd452eecc046f57433`
+- Linux candidate SHA-256: `a98158b77aa1cb38fd9be67a04e2549293ce7c0a3b6ec177840823b0b7e74af3`
+- Both native Release builds pass 26/26 tests. Both archives carry the platform executable, 12 compiled shaders, installed public headers including `blueprint.hpp`, library/development files, launchers, and canonical package documentation.
+- The packaged Windows executable publishes Designer slot 1, enters `PAUSED`, commits a transactional world paste, renders Inventory/Blueprint slot state beside the world, and exits cleanly. Broader visual/runtime missions remain active.
+- Local SHA-256 files are generated and verified after the package documents are copied. The publication record must use the independently produced GitHub workflow asset hashes after tag completion.
 
 ## Recovery baselines
 
 - Macro tiles: v2.5.3 moving full-liquid/full-gas eligibility, exact displacement into full uniform compatible targets even when their scheduling metadata is fine-active, intact-packet exclusion from non-fallback fine passes, and same-tick fine fallback when a packet cannot commit.
 - Half Water: v2.4.1 fine-owned conserved fall, merge, dedicated passes, and bounded two-to-four-cell attraction. A half cannot sleep with fall/merge/attraction work pending and cannot wander through generic diagonal Water flow.
 - Beehive: exact hard-coded pre-PR19 Ecosystem model restored by SimpleSandSim Fix36: queen centers (512,234)/(512,232), loose Wood perch x=-37..29 and y=-16..-13, shell 25 <= radius² < 92, chamber radius² < 25, queen center, exit x=1..10 with |y|<=1, and deterministic Empty/Honey/Pollen chamber contents. SandHybrid actor/ecology behavior remains SandHybrid-owned.
-- Pause: simulation and presentation clocks freeze while direct editor mutations remain live and do not advance the simulation.
-- Inventory: sidebar-only with `INVENTORY` and `BLUEPRINTS` subtabs.
-- Designer: sidebar-only authoring grid with INVENTORY and BLUEPRINTS subtabs; the main viewport continues to show the world. Editor and Designer cursor controls are isolated, and the visible world cursor shares the committed edit mapping/radius/shape without a sidebar-edge ghost.
+- Pause: simulation and presentation clocks freeze while direct editor mutations remain live, including in character scenes, and do not advance or replay the simulation.
+- Inventory: sidebar-only with exactly `INVENTORY` and `BLUEPRINTS` subtabs. Blueprint slots report real occupied/empty state and activate world placement only when occupied.
+- Designer: sidebar-only authoring grid with exactly `INVENTORY` and `BLUEPRINTS` subtabs; the main viewport continues to show the world. Editor and Designer cursor controls are isolated. Designer publication copies exact authored material layout into a shared named slot without mutating the world.
+- Cursor: visible world position, shape, radius, and Blueprint footprint use logical-window input and the same effective edit mapping; framebuffer scaling never creates a sidebar-edge ghost.
+- Blueprint placement: validate the complete transformed footprint before mutation, preserve exact map-chunk `SceneCell` state, canonicalize authored static-model cells, and clear queued paste across reset/load boundaries.
 
 ## Publication gate
 

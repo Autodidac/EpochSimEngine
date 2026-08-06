@@ -65,10 +65,12 @@ This command builds the real application and all GLSL shaders, runs the static s
 - While `PAUSED`, paint, erase, fill, and Ignite Air, confirm the edit appears immediately, and confirm clocks, actors, reactions, lighting, MAP refresh, and effects do not advance.
 - Verify Inventory and Designer remain inside the sidebar at wide and compact sizes; each exposes `INVENTORY` and `BLUEPRINTS`, and Designer never replaces the world viewport.
 
-## v2.5.15 stable release gates
+## v2.5.16 stable release gates
 
 - `tools/validate_v2513_contract.py` preserves the first-28 P0 recovery contracts without hard-coding an obsolete release tag.
-- `tools/validate_v2515_contract.py` rejects the regressed macro, hive, paused-editing, main-viewport Designer, and hidden test-release paths.
+- `tools/validate_v2515_contract.py` retains the macro, Half Water, hive, cursor, Fill, paused-editing, and sidebar recovery baselines.
+- `tools/validate_v2516_contract.py` requires real Blueprint slots, exact transactional placement, paused character-scene editing, honest sidebar rendering, and a normal stable publication path.
 - `tools/validate_release_tree.py` rejects tracked packages, executables, compiled shaders, payload chunks, one-shot workflows, and versioned release-note fragments.
-- Windows and Linux full Release CI compile every shader, build with warnings as errors, run CTest, install the package, archive it, generate SHA-256 files, and publish only from the stable `v2.5.15` tag.
+- Windows and Linux full Release CI compile every shader, build with warnings as errors, run CTest, install the package, archive it, generate SHA-256 files, and publish only from the stable `v2.5.16` tag.
+- Local release-candidate evidence: native Windows and Linux Release builds each passed 26/26 tests; fresh package audits found the executable, 12 SPIR-V shaders, installed Blueprint header, library/development files, launchers, and canonical docs. Packaged Windows automation completed a transactional Blueprint paste while PAUSED and exited cleanly.
 - Runtime and visual acceptance stays active in `missioncache.md`; deterministic contracts are evidence, not a substitute for eye testing.

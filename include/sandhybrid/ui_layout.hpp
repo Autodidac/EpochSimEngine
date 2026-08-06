@@ -1,4 +1,5 @@
 #pragma once
+#include "sandhybrid/blueprint.hpp"
 #include "sandhybrid/material.hpp"
 #include <gui/floating_window.hpp>
 #include <gui/font.hpp>
@@ -353,5 +354,31 @@ inline constexpr MaterialGroup ignite_air_group = MaterialGroup::fire_chemistry;
         if (epochengine::gui_lib::contains(inventory_slot_rect(layout, window_height, index), point))
             return index;
     return 4u;
+}
+[[nodiscard]] inline epochengine::gui_lib::Rect designer_blueprint_slot_rect(
+    const Layout& layout, const std::uint32_t index) noexcept {
+    constexpr float slot_gap = 4.0f;
+    const float left = layout.keymap.position.x;
+    const float width = layout.keymap.size.x;
+    const float top = layout.keymap.position.y + 92.0f;
+    const float bottom = layout.keymap.position.y + layout.keymap.size.y - 5.0f;
+    const float slot_width = (std::max)(1.0f, (width - slot_gap * 3.0f) / 4.0f);
+    const auto clamped = (std::min)(index, blueprint_slot_count - 1u);
+    const float slot_left =
+        left + static_cast<float>(clamped) * (slot_width + slot_gap);
+    const float slot_right = clamped == blueprint_slot_count - 1u
+        ? left + width : slot_left + slot_width;
+    return {{slot_left, top},
+            {(std::max)(1.0f, slot_right - slot_left),
+             (std::max)(1.0f, bottom - top)}};
+}
+
+[[nodiscard]] inline std::uint32_t designer_blueprint_slot_at(
+    const Layout& layout, const epochengine::gui_lib::Vec2 point) noexcept {
+    for (std::uint32_t index = 0u; index < blueprint_slot_count; ++index)
+        if (epochengine::gui_lib::contains(
+                designer_blueprint_slot_rect(layout, index), point))
+            return index;
+    return blueprint_slot_count;
 }
 } // namespace sandhybrid::ui

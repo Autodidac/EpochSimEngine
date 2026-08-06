@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 2.5.16
+
+- Restored paused direct Editor painting in character scenes even when player/mining routing would suppress it while running.
+- Replaced hard-coded EMPTY Blueprint placeholders with four synchronized shared slots and honest occupied/empty/selected rendering in the sidebar-only Inventory and Designer workspaces.
+- Added Designer publication of named Static Models and Map Chunks, deterministic rotation/mirroring geometry, transactional all-or-nothing world paste, and a camera-correct valid/invalid footprint preview.
+- Kept Blueprint paste live while PAUSED, prevented paint/Fill/tool/deposit overlap, and discarded queued paste across load/reset boundaries.
+- Added exact-cell Blueprint and selection-geometry contracts; Native Windows and Linux Release builds each pass 26/26 tests, and packaged Windows automation verifies PAUSED transactional placement plus real Inventory/Designer Blueprint state.
+
 ## 2.5.15
 
 - Corrected macro packet ownership so full uniform compatible targets remain eligible even when marked fine-active, while intact packets stay out of ordinary fine passes and mixed/partial boundaries retain same-tick fine fallback.
