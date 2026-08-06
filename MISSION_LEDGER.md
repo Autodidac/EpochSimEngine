@@ -2,10 +2,10 @@
 
 `missioncache.md` is the authoritative mission registry. This ledger records the current release handoff and the non-negotiable publication gate; it never replaces or closes active mission acceptance criteria.
 
-## Current release target
+## Current release
 
-- Target: `v2.5.16` as the next normal public GitHub release for the paused-player editing and real Blueprint-slot recovery.
-- State: v2.5.15 is published as a normal visible release from commit `0eac09f0795f4c1b025f703a8fffb6b171039756`. The v2.5.16 candidate adds paused direct editing in character scenes plus real shared Blueprint slots, Designer publication, honest Inventory/Designer slot state, a world footprint preview, and transactional paused paste. Native Windows and Linux Release builds, 26/26 tests on each platform, fresh archives, content audits, checksums, and packaged Windows paused-paste observation pass. Stable tag publication and final GitHub asset/source verification remain pending. Selection marquee, copied-world chunks, thumbnails, Blueprint persistence, and repeated packaged reset stress remain active.
+- Current release: `v2.5.16`, published as the latest normal public GitHub release for the paused-player editing and real Blueprint-slot recovery.
+- State: v2.5.16 is published from commit `aa497b8e75bb30a55db1b96a94f35c3fc75dd8c3`. Its branch and tag workflows passed native Windows/Linux Release builds, tests, packaging, and uploads; GitHub reports it as latest, non-draft, and non-prerelease with exactly two packages and two checksums. Selection marquee, copied-world chunks, thumbnails, Blueprint persistence, repeated packaged reset stress, and every other unaccepted mission remain active.
 - Public prerelease tags and `-test` release names are forbidden.
 
 ## v2.5.15 publication record
@@ -16,13 +16,15 @@
 - Linux SHA-256: `4575e9949774366cacf2f73333c43c33fdd4fb59b415c28158affad09b8e27b4`
 - Acceptance result: stable publication and native package gates passed. Packaged Windows observation accepted sidebar ownership, the hard-coded suspended hive location, and corrected logical cursor ownership. Macro-tile motion, Half Water motion, chamber contents, complete pause/edit/reset cycling, and broad cross-system runtime acceptance remain active.
 
-## v2.5.16 candidate package record
+## v2.5.16 publication record
 
-- Windows candidate SHA-256: `6d6d48e4bed8a913d2c40dfad68f3e5c2d0fee20d79f8bdd452eecc046f57433`
-- Linux candidate SHA-256: `a98158b77aa1cb38fd9be67a04e2549293ce7c0a3b6ec177840823b0b7e74af3`
+- Release: https://github.com/Autodidac/EpochSimEngine/releases/tag/v2.5.16
+- Commit: `aa497b8e75bb30a55db1b96a94f35c3fc75dd8c3`
+- Windows published SHA-256: `8d2311ff24de30ee6ff245c9359dcc2ff7881326894c89fbb0eda31c151b8154`
+- Linux published SHA-256: `60585da68cfb634767745d4ba1865f24f3ec424daa5bc97289ed3b210e5d565f`
 - Both native Release builds pass 26/26 tests. Both archives carry the platform executable, 12 compiled shaders, installed public headers including `blueprint.hpp`, library/development files, launchers, and canonical package documentation.
 - The packaged Windows executable publishes Designer slot 1, enters `PAUSED`, commits a transactional world paste, renders Inventory/Blueprint slot state beside the world, and exits cleanly. Broader visual/runtime missions remain active.
-- Local SHA-256 files are generated and verified after the package documents are copied. The publication record must use the independently produced GitHub workflow asset hashes after tag completion.
+- GitHub reports the package asset digests above, and both published checksum files name the same package hashes.
 
 ## Recovery baselines
 
