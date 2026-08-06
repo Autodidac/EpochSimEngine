@@ -83,8 +83,19 @@ layout(push_constant) uniform RenderPush {
     uint dayCycleSteps;
     uint designerFlags;
     uint blueprintFlags;
+    uint framebufferWidth;
+    uint framebufferHeight;
 } renderPc;
 
+uvec2 logicalWindowPixel() {
+    vec2 logicalSize = vec2(max(renderPc.windowWidth, 1u),
+                            max(renderPc.windowHeight, 1u));
+    vec2 framebufferSize = vec2(max(renderPc.framebufferWidth, 1u),
+                                max(renderPc.framebufferHeight, 1u));
+    uvec2 pixel = uvec2(gl_FragCoord.xy * logicalSize / framebufferSize);
+    return min(pixel, uvec2(max(renderPc.windowWidth, 1u) - 1u,
+                            max(renderPc.windowHeight, 1u) - 1u));
+}
 uint glyphRow(uint code, uint row) {
     if (row >= 7u) return 0u;
     uvec2 bits = epochGuiGlyphBits(code);
@@ -361,7 +372,7 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
 bool mapOverlayPixel() {
     if (renderPc.mapMode == 0u || renderPc.mapViewportWidth == 0u ||
         renderPc.mapViewportHeight == 0u) return false;
-    uvec2 pixel = uvec2(gl_FragCoord.xy);
+    uvec2 pixel = logicalWindowPixel();
     return pixel.x >= renderPc.mapViewportLeft &&
            pixel.x < renderPc.mapViewportLeft + renderPc.mapViewportWidth &&
            pixel.y >= renderPc.mapViewportTop &&
@@ -370,7 +381,7 @@ bool mapOverlayPixel() {
 
 bool mapOverlayBorderPixel() {
     if (!mapOverlayPixel()) return false;
-    uvec2 pixel = uvec2(gl_FragCoord.xy);
+    uvec2 pixel = logicalWindowPixel();
     uint right = renderPc.mapViewportLeft + renderPc.mapViewportWidth;
     uint bottom = renderPc.mapViewportTop + renderPc.mapViewportHeight;
     return pixel.x < renderPc.mapViewportLeft + 2u || pixel.x + 2u >= right ||
@@ -552,9 +563,9 @@ float segmentDistance(vec2 point, vec2 start, vec2 finish) {
 }
 
 void main() {
-    ivec2 pixel = ivec2(gl_FragCoord.xy);
-    uint x = uint(clamp(gl_FragCoord.x, 0.0, float(renderPc.windowWidth - 1u)));
-    uint y = uint(clamp(gl_FragCoord.y, 0.0, float(renderPc.windowHeight - 1u)));
+    ivec2 pixel = ivec2(logicalWindowPixel());
+    uint x = uint(pixel.x);
+    uint y = uint(pixel.y);
 
     uint sidebarWidth = min(renderPc.paletteHeight, renderPc.windowWidth);
     uint sidebarLeft = renderPc.windowWidth - sidebarWidth;

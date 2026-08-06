@@ -1,34 +1,33 @@
-# SandHybrid v2.5.16
+# SandHybrid v2.5.17
 
-Stable sidebar Blueprint and paused-editing recovery on top of the v2.5.15 macro-tile, Half Water, suspended Beehive, cursor, and Fill fixes.
+Stable packaged-state recovery for macro Water/gas tiles, Half Water, the hard-coded suspended Beehive, and high-DPI cursor ownership.
 
 ## Corrected behavior
 
-- Paused Editor painting is no longer suppressed merely because the selected scene contains a player or was in mining mode. Simulation, actors, clocks, lighting, MAP refresh, and effects remain frozen.
-- Inventory and Designer now share four real Blueprint slots. Occupied, empty, and selected state is rendered honestly in both sidebar-only workspaces.
-- The Designer can publish a trimmed named Static Model or a full-grid Map Chunk into a selected slot without replacing or mutating the main world viewport.
-- Selecting an occupied Inventory Blueprint activates a camera-correct world footprint preview. Invalid boundary placement is visibly rejected.
-- World placement validates the entire transformed footprint before mutation. Static models place canonical material cells while preserving transparent empty space; Map Chunks can preserve exact empty and non-empty cell state.
-- Blueprint paste is live while paused, writes both resident cell buffers transactionally, and is discarded across load/reset boundaries instead of replaying later.
-- FILL, painting, mining, and resource deposit cannot fire on the same click as an active Blueprint paste.
+- Ordinary full Water created by CPU Fill, Blueprint placement, PPM import, or normalization can no longer inherit the reserved Half Water flag from random auxiliary bits.
+- Complete 8x8 Water and Hydrogen packets execute exact macro displacement through the production Vulkan pipelines. A blocked Water packet remains conserved and performs same-tick fine fallback.
+- Half Water falls before lateral work, attracts only across a clear two-to-four-cell gap, merges without losing represented half-units, and is created only by the accepted supplied-ledge branch.
+- Sandbox, Ecosystem, Beehive painting, and loaded-map normalization share the exact Fix36 pre-PR19 prefab entropy. The hard-coded Ecosystem reset now reproduces the same shell, chamber, exit, queen, wide Wood perch, and Empty/Honey/Pollen contents.
+- Fragment rendering now converts physical framebuffer pixels to logical window coordinates before applying the shared UI/world layout. The preview, committed edit, camera, shape, and radius use one mapping; moving into the sidebar removes the world preview instead of clamping a ghost to the edge.
+- Paused painting remains live. A Windows Release capture at 150% display scaling shows `PAUSED`, a committed Sand edit under the centered cursor, and no world cursor after entering the sidebar.
 
-## Preserved recovery baselines
+## Packaged Vulkan acceptance
 
-- Complete moving liquid and gas tiles retain the packaged v2.5.3 macro-first path with same-tick fine fallback.
-- Half Water retains its fine-owned fall, merge, clear-gap attraction, no generic diagonal wandering, and no premature sleep behavior.
-- Sandbox, Ecosystem, the Beehive tool, and loaded-map normalization retain the exact hard-coded pre-PR19 Fix36 hive body and contents without importing SimpleSandSim bee behavior.
-- World cursor input remains logical-window based and distinct from physical framebuffer scaling.
-- Inventory and Designer remain sidebar-only and each owns exactly `INVENTORY` and `BLUEPRINTS` subtabs.
+The installed executable exposes an opt-in deterministic state-readback gate:
+
+```text
+sandhybrid --world-size compact --runtime-acceptance-report runtime-acceptance.json
+```
+
+It runs the shipped compute pipelines and resident buffers in one canonical 640x360 authored envelope, writes JSON, exits 0 only when every check passes, and exits 3 for a behavioral mismatch. It covers exact liquid/gas macro packets, blocked fine fallback, Half Water fall/attraction/merge/ledge creation, and the generated Ecosystem hive contents. Normal startup is unchanged when the option is absent.
 
 ## Validation and active work
 
-The release source must pass the complete shader/interface suite, 26 deterministic C++23 contracts, native Windows and Linux Release builds/tests, fresh installs, archives, content audits, and SHA-256 generation. Runtime frames must show PAUSED state, the world still visible beside Inventory/Designer, real occupied/empty Blueprint slots, and successful transactional paused placement.
-
-`missioncache.md` remains authoritative. Selection marquee operations, exact copied-world Map Chunks, thumbnails, Blueprint persistence, repeated pause/reset stress, and every other unaccepted mission remain active rather than being reported complete from this tranche.
+The exact-source native Windows and Linux C++23 Release builds each pass 27/27 deterministic and shader/interface tests, and both executables pass all seven focused Vulkan checks (NVIDIA RTX 5080 on Windows; Mesa llvmpipe on Linux). Fresh Windows and Linux installs also pass the same seven checks. Fresh ZIP/tarball content audits pass and both SHA-256 files verify. Stable publication remains the final gate. `missioncache.md` remains authoritative: broader liquid settling, wet granular parity, scene cycling, machinery, save/load, selection, reset stress, and every other unaccepted criterion remain active rather than being reported complete from this focused recovery.
 
 The stable tag workflow publishes exactly these four assets:
 
-- SandHybrid-Windows-x64-v2.5.16.zip
-- SandHybrid-Windows-x64-v2.5.16.zip.sha256
-- SandHybrid-Linux-x64-v2.5.16.tar.gz
-- SandHybrid-Linux-x64-v2.5.16.tar.gz.sha256
+- SandHybrid-Windows-x64-v2.5.17.zip
+- SandHybrid-Windows-x64-v2.5.17.zip.sha256
+- SandHybrid-Linux-x64-v2.5.17.tar.gz
+- SandHybrid-Linux-x64-v2.5.17.tar.gz.sha256

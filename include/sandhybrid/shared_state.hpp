@@ -22,6 +22,7 @@ inline constexpr std::uint32_t designer_grid_cell_count =
 
 struct SharedState final {
     std::atomic_bool quit{false};
+    std::atomic_int runtime_acceptance_exit_code{0};
     std::atomic_bool paused{false};
     std::atomic_bool single_step{false};
     std::atomic_bool reset{false};

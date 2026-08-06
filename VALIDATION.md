@@ -65,12 +65,31 @@ This command builds the real application and all GLSL shaders, runs the static s
 - While `PAUSED`, paint, erase, fill, and Ignite Air, confirm the edit appears immediately, and confirm clocks, actors, reactions, lighting, MAP refresh, and effects do not advance.
 - Verify Inventory and Designer remain inside the sidebar at wide and compact sizes; each exposes `INVENTORY` and `BLUEPRINTS`, and Designer never replaces the world viewport.
 
-## v2.5.16 stable release gates
+## Packaged Vulkan state-readback command
 
-- `tools/validate_v2513_contract.py` preserves the first-28 P0 recovery contracts without hard-coding an obsolete release tag.
+Run this from a fresh native package on a system with a working Vulkan presentation device:
+
+```text
+sandhybrid --world-size compact --runtime-acceptance-report runtime-acceptance.json
+```
+
+The executable runs focused dispatches of the production tile, macro-movement, and fine-movement pipelines inside one canonical 640x360 authored envelope, writes a schema-1 JSON report, and exits 0 only when all checks pass. Movement dispatch is bounded to the first 192 columns and rows because every seeded movement scenario lies inside that rectangle; the full 640x360 reset pipeline is still used for the hard-coded hive. Unrelated chemistry, actor, effect, and sunlight passes are intentionally omitted from this diagnostic. Normal gameplay dispatch and world sizes are unchanged. Exit 3 means at least one observed state contradicted the accepted behavior. The report covers:
+
+- exact one-packet 8x8 Water displacement;
+- exact one-packet 8x8 Hydrogen displacement;
+- conserved fine fallback from a blocked Water packet;
+- Half Water fall, clear-gap two-to-four-cell attraction, merge, and supplied-ledge creation;
+- exact generated Ecosystem hive support, shell, queen, exit, and Empty/Honey/Pollen chamber contents.
+
+This focused gate does not close broader leveling, perimeter ownership, wet granular, save/load, machinery, bee-lifecycle, or complete scene-cycle acceptance.
+
+## v2.5.17 stable release gates
+
+- `tools/validate_v2513_contract.py` preserves the first-28 P0 recovery contracts.
 - `tools/validate_v2515_contract.py` retains the macro, Half Water, hive, cursor, Fill, paused-editing, and sidebar recovery baselines.
-- `tools/validate_v2516_contract.py` requires real Blueprint slots, exact transactional placement, paused character-scene editing, honest sidebar rendering, and a normal stable publication path.
+- `tools/validate_v2516_contract.py` retains real Blueprint slots, exact transactional placement, paused character-scene editing, and honest sidebar rendering.
+- `tools/validate_v2517_contract.py` requires reserved Half Water state, one canonical Fix36 prefab entropy, the packaged Vulkan readback harness, high-DPI logical rendering, and a normal stable publication path.
 - `tools/validate_release_tree.py` rejects tracked packages, executables, compiled shaders, payload chunks, one-shot workflows, and versioned release-note fragments.
-- Windows and Linux full Release CI compile every shader, build with warnings as errors, run CTest, install the package, archive it, generate SHA-256 files, and publish only from the stable `v2.5.16` tag.
-- Local release-candidate evidence: native Windows and Linux Release builds each passed 26/26 tests; fresh package audits found the executable, 12 SPIR-V shaders, installed Blueprint header, library/development files, launchers, and canonical docs. Packaged Windows automation completed a transactional Blueprint paste while PAUSED and exited cleanly.
-- Runtime and visual acceptance stays active in `missioncache.md`; deterministic contracts are evidence, not a substitute for eye testing.
+- Windows and Linux full Release builds compile every shader, build with warnings as errors, run all CTests, install the package, archive it, audit its contents, and generate SHA-256 files.
+- Before publication, both fresh native packages must execute the Vulkan state-readback command successfully. Windows high-DPI capture must also show a paused committed edit beneath its cursor and no world ghost in the sidebar.
+- Runtime and visual acceptance stays active in `missioncache.md`; deterministic contracts and focused readback are evidence, not substitutes for every remaining mission scenario.

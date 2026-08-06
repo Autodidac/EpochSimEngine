@@ -11,6 +11,9 @@ const int BEEHIVE_SUPPORT_MIN_X = -37;
 const int BEEHIVE_SUPPORT_MAX_X = 29;
 const int BEEHIVE_SUPPORT_MIN_Y = -16;
 const int BEEHIVE_SUPPORT_MAX_Y = -13;
+const uint BEEHIVE_CANONICAL_WIDTH = 640u;
+const ivec2 BEEHIVE_CANONICAL_ECOSYSTEM_QUEEN = ivec2(512, 232);
+const uint BEEHIVE_CANONICAL_SEED = 0xD17A5EEDu;
 
 // Exact suspended Ecosystem hive restored by SimpleSandSim Fix36 from the hard-coded map
 // immediately before PR #19. SandHybrid owns the surrounding bee population and behavior.
@@ -19,6 +22,11 @@ bool beehiveSupportOffset(ivec2 offset) {
            offset.y >= BEEHIVE_SUPPORT_MIN_Y && offset.y <= BEEHIVE_SUPPORT_MAX_Y;
 }
 
+uint beehivePrefabEntropy(ivec2 offset) {
+    ivec2 canonical = BEEHIVE_CANONICAL_ECOSYSTEM_QUEEN + offset;
+    uint canonicalIndex = uint(canonical.y) * BEEHIVE_CANONICAL_WIDTH + uint(canonical.x);
+    return hash32(canonicalIndex ^ BEEHIVE_CANONICAL_SEED);
+}
 // MATERIAL_COUNT means the position belongs to the surrounding SandHybrid swarm.
 uint beehivePrefabMaterial(ivec2 offset, uint entropy) {
     if (beehiveSupportOffset(offset)) return MAT_WOOD;

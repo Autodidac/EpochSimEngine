@@ -332,6 +332,19 @@ Uniform 8x8 material regions can move as 64-cell macro-cells using the same fall
 Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and solid-supported pre-fall droplets that cannot hop along water edges or crawl after falling. See `HALF_WATER.md`.
 
 
+## v2.5.17 packaged state acceptance
+
+The shipped executable can run a deterministic Vulkan seed/step/readback gate against its real compiled compute pipelines and resident cell buffers:
+
+```text
+sandhybrid --world-size compact --runtime-acceptance-report runtime-acceptance.json
+```
+
+The process uses one canonical 640x360 authored envelope, writes JSON, and returns exit code 0 only when exact Water and gas macro packets, blocked fine fallback, Half Water fall/attraction/merge/supplied-ledge creation, and the generated Ecosystem hive all match their accepted state. A mismatch returns exit code 3. The mode is opt-in and does not alter normal gameplay world sizes or startup.
+
+Full Water constructors reserve the Half Water flag instead of filling it with random auxiliary entropy. The reset shader, Beehive tool, and loaded-map normalization also share the canonical Fix36 Ecosystem-local chamber entropy, so the hard-coded Empty/Honey/Pollen pattern no longer changes by entry path.
+
+High-DPI presentation converts physical fragment coordinates into the same logical window geometry used by input before laying out the world and sidebar. Preview position, committed edit, camera, brush shape, and brush radius therefore remain aligned, and entering the sidebar hides the world cursor rather than producing an edge ghost.
 ## v2.5.16 sidebar Blueprints and paused editing
 
 Inventory and Designer remain normal sidebar workspaces with exactly `INVENTORY` and `BLUEPRINTS` subtabs. Four shared slots now report real occupied/empty state. Designer publishes authored Static Models or Map Chunks directly to those slots without replacing the world viewport. An occupied slot produces a camera-correct world footprint and a confirmed world left-click performs one all-or-nothing placement.

@@ -13,6 +13,7 @@ constexpr std::uint32_t aux_bee_swarm = 0x08000000u;
 constexpr std::uint32_t aux_structural = 0x04000000u;
 constexpr std::uint32_t aux_supported = 0x02000000u;
 constexpr std::uint32_t aux_moved = 0x01000000u;
+constexpr std::uint32_t aux_water_half = 0x00800000u;
 constexpr std::uint32_t aux_state_mask = 0x000000ffu;
 constexpr std::uint32_t bee_target_none = 0xffffu;
 constexpr std::uint32_t bee_authored_home_slot_bit = 0x80u;
@@ -26,6 +27,8 @@ int main() {
     // 31 stone cells: below the cohesive minimum, so the imported pixels crumble.
     for (std::uint32_t index = 0u; index < 31u; ++index)
         source[index].material = static_cast<std::uint32_t>(sandhybrid::Material::stone);
+
+    source[31u].material = static_cast<std::uint32_t>(sandhybrid::Material::water);
 
     // 40 glass cells in the second aligned region: coherent but deliberately weakened.
     for (std::uint32_t index = 0u; index < 40u; ++index)
@@ -54,6 +57,16 @@ int main() {
         (weak_stone.aux & aux_supported) != 0u ||
         (weak_stone.aux & aux_moved) == 0u ||
         (weak_stone.aux & aux_state_mask) != 48u) return 3;
+
+    const auto imported_water = loaded[31u];
+    if (imported_water.material != static_cast<std::uint32_t>(sandhybrid::Material::water) ||
+        (imported_water.aux & aux_water_half) != 0u) return 14;
+    if (loaded[(queen_y - 2u) * width + queen_x - 3u].material !=
+        static_cast<std::uint32_t>(sandhybrid::Material::honey)) return 15;
+    if (loaded[(queen_y - 4u) * width + queen_x - 2u].material !=
+        static_cast<std::uint32_t>(sandhybrid::Material::pollen)) return 16;
+    if (loaded[(queen_y - 4u) * width + queen_x - 1u].material !=
+        static_cast<std::uint32_t>(sandhybrid::Material::empty)) return 17;
 
     const auto reduced_glass = loaded[8u];
     const auto glass_health = reduced_glass.aux & aux_state_mask;

@@ -9,7 +9,7 @@ namespace {
 
 void print_usage() {
     std::fprintf(stderr,
-        "Usage: sandhybrid [--world-size SIZE] [--save-slot NAME]\n"
+        "Usage: sandhybrid [--world-size SIZE] [--save-slot NAME] [--runtime-acceptance-report FILE]\n"
         "World sizes: compact, standard, large\n"
         "Aliases: small=compact, medium=standard\n"
         "Save slots are portable named folders; the default is quick.\n");
@@ -70,6 +70,24 @@ int main(const int argc, char** argv) {
         if (argument.starts_with(save_slot_prefix)) {
             options.save_slot = sandhybrid::normalize_world_slot(
                 argument.substr(save_slot_prefix.size()));
+            continue;
+        }
+        if (argument == "--runtime-acceptance-report") {
+            if (index + 1 >= argc) {
+                std::fprintf(stderr, "[SandHybrid] --runtime-acceptance-report requires a path.\n");
+                print_usage();
+                return 2;
+            }
+            options.runtime_acceptance_report = argv[++index];
+            continue;
+        }
+        constexpr std::string_view acceptance_prefix{"--runtime-acceptance-report="};
+        if (argument.starts_with(acceptance_prefix)) {
+            options.runtime_acceptance_report = argument.substr(acceptance_prefix.size());
+            if (options.runtime_acceptance_report.empty()) {
+                std::fprintf(stderr, "[SandHybrid] --runtime-acceptance-report requires a path.\n");
+                return 2;
+            }
             continue;
         }
         std::fprintf(stderr, "[SandHybrid] Unknown option: %.*s\n",

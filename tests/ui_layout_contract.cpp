@@ -73,6 +73,14 @@ int main() {
         static_cast<std::int32_t>(hidpi_viewport.rect.position.x + hidpi_viewport.rect.size.x * 0.5f),
         static_cast<std::int32_t>(hidpi_viewport.rect.position.y + hidpi_viewport.rect.size.y * 0.5f));
     if (logical_center != framebuffer_center) return 24;
+    const auto scaled_center = sandhybrid::ui::framebuffer_to_logical_pointer(
+        600u, 540u, 1920u, 1080u, 1280u, 720u);
+    if (scaled_center != std::pair<std::uint32_t, std::uint32_t>{400u, 360u}) return 25;
+    const auto logical_sidebar_left = static_cast<std::uint32_t>(
+        layout.simulation.position.x + layout.simulation.size.x);
+    const auto scaled_sidebar_left = sandhybrid::ui::framebuffer_to_logical_pointer(
+        logical_sidebar_left * 3u / 2u, 300u, 1920u, 1080u, 1280u, 720u);
+    if (scaled_sidebar_left.first != logical_sidebar_left) return 26;
 
     const auto wide_map = sandhybrid::ui::make_simulation_viewport(
         layout, sandhybrid::resident_world_width, sandhybrid::resident_world_height);

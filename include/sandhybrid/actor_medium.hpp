@@ -308,6 +308,29 @@ struct HabitatTransaction final {
     return {true, false, false};
 }
 
+inline constexpr std::uint32_t pre_pr19_hive_canonical_width = 640u;
+inline constexpr std::int32_t pre_pr19_hive_canonical_queen_x = 512;
+inline constexpr std::int32_t pre_pr19_hive_canonical_queen_y = 232;
+inline constexpr std::uint32_t pre_pr19_hive_canonical_seed = 0xD17A5EEDu;
+
+[[nodiscard]] constexpr std::uint32_t pre_pr19_hive_hash(
+    std::uint32_t value) noexcept {
+    value ^= value >> 16u;
+    value *= 0x7feb352du;
+    value ^= value >> 15u;
+    value *= 0x846ca68bu;
+    value ^= value >> 16u;
+    return value;
+}
+
+[[nodiscard]] constexpr std::uint32_t canonical_pre_pr19_hive_entropy(
+    const std::int32_t dx,
+    const std::int32_t dy) noexcept {
+    const auto x = static_cast<std::uint32_t>(pre_pr19_hive_canonical_queen_x + dx);
+    const auto y = static_cast<std::uint32_t>(pre_pr19_hive_canonical_queen_y + dy);
+    return pre_pr19_hive_hash(
+        (y * pre_pr19_hive_canonical_width + x) ^ pre_pr19_hive_canonical_seed);
+}
 enum class HivePart : std::uint8_t {
     empty = 0,
     support,

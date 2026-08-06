@@ -17,6 +17,7 @@ struct SimulationConfig final {
     std::uint32_t frames_in_flight{2};
     std::uint32_t max_frames_per_second{120};
     WorldSizePreset world_size{WorldSizePreset::large};
+    std::string runtime_acceptance_report{};
 };
 
 class VulkanRenderer final {

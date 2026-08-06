@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 2.5.17
+
+- Added opt-in packaged Vulkan seed/step/readback acceptance with nonzero failure status and JSON evidence for exact Water/gas macro packets, blocked fine fallback, Half Water fall/attraction/merge/ledge creation, and the hard-coded Ecosystem hive.
+- Fixed CPU-created full Water randomly inheriting the reserved Half Water flag by excluding `0x00800000` from constructor entropy in Fill, Blueprint, PPM import, and normalization paths.
+- Unified Fix36 chamber entropy across generated reset, the Beehive tool, and loaded-map normalization so the hard-coded shell, chamber, exit, queen, perch, and Empty/Honey/Pollen contents no longer diverge by coordinate or salt.
+- Corrected high-DPI rendering by converting physical fragment coordinates to logical window geometry before shared sidebar/world layout, keeping the preview and committed edit aligned and removing sidebar ghost cursors.
+- Added exact entropy, imported full-Water, loaded-hive-content, and 150%-scale logical-pointer contracts while retaining every broader unaccepted mission.
+
 ## 2.5.16
 
 - Restored paused direct Editor painting in character scenes even when player/mining routing would suppress it while running.
@@ -22,7 +30,7 @@
 - Restored v2.5.3 macro eligibility for complete moving Water and gas tiles while preserving fine-cell fallback for failed packet transactions.
 - Restored the SimpleSandSim Fix29 beehive shell, chamber, exit, and deterministic contents without importing its bee behavior.
 - Kept direct painting, erasing, filling, and ignition live while simulation pause freezes ticks, actors, clocks, MAP refresh, and effects.
-- Moved Inventory and its resource slots into `INVENTORY` / `BLUEPRINTS` sidebar subtabs and kept Designer?s 64x32 authoring grid entirely in the sidebar.
+- Moved Inventory and its resource slots into `INVENTORY` / `BLUEPRINTS` sidebar subtabs and kept Designer's 64x32 authoring grid entirely in the sidebar.
 - Replaced the hidden test release path with tag-gated stable `v2.5.14` Windows/Linux packages and SHA-256 assets.
 - Added the missing mission ledger and permanent repository rules for the recovered behavior and publication gate.
 

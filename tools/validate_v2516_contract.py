@@ -21,21 +21,21 @@ def reject(path: str, token: str) -> None:
 
 
 # Normal visible release and exact package names.
-require("CMakeLists.txt", "VERSION 2.5.16")
+require("CMakeLists.txt", "VERSION 2.5.17")
 require("CHANGELOG.md", "## 2.5.16")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.16")
+require("RELEASE_NOTES.md", "# SandHybrid v2.5.17")
 for token in (
-    "SandHybrid-Windows-x64-v2.5.16",
-    "SandHybrid-Linux-x64-v2.5.16",
-    "refs/tags/v2.5.16",
+    "SandHybrid-Windows-x64-v2.5.17",
+    "SandHybrid-Linux-x64-v2.5.17",
+    "refs/tags/v2.5.17",
     "Generate Windows SHA-256",
     "Generate Linux SHA-256",
     "Expected two packages and two checksums",
-    "gh release create v2.5.16",
+    "gh release create v2.5.17",
     "--verify-tag",
 ):
     require(".github/workflows/ci-release.yml", token)
-reject(".github/workflows/ci-release.yml", "v2.5.16-test")
+reject(".github/workflows/ci-release.yml", "v2.5.17-test")
 reject(".github/workflows/ci-release.yml", "--prerelease")
 
 # Exact bounded payload and transactional transformation core.
@@ -101,7 +101,8 @@ for token in (
     "occupied ? 181u : 182u",
 ):
     require("shaders/fullscreen.frag", token)
-for token in ("blueprint_flags", "sizeof(RenderPush) == 248"):
+for token in ("blueprint_flags", "framebuffer_width", "framebuffer_height",
+              "sizeof(RenderPush) == 256"):
     require("src/vulkan_renderer.cpp", token)
 for token in (
     "designer_blueprint_slot_rect",

@@ -229,7 +229,7 @@ ivec2 sandboxQueen() { return ivec2(AUTHORED_WORLD_CELLS.x * 4 / 5, AUTHORED_WOR
 // Canonical Fix36 pre-PR19 Ecosystem suspended hive shared by both maps and the tool.
 void applyBeehive(ivec2 p, ivec2 queen, inout uint material, bool includeFormation) {
     ivec2 offset = p - queen;
-    uint prefab = beehivePrefabMaterial(offset, hash32(indexOf(p) ^ pc.seed ^ 0xb33u));
+    uint prefab = beehivePrefabMaterial(offset, beehivePrefabEntropy(offset));
     if (prefab != MATERIAL_COUNT) material = prefab;
     if (includeFormation) {
         int slot = beeFormationSlotFromOffset(offset);

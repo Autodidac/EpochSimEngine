@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SandHybrid VERSION 2.5.16 LANGUAGES CXX)
+project(SandHybrid VERSION 2.5.17 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -317,6 +317,8 @@ if(BUILD_TESTING)
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2515_contract.py)
         add_test(NAME sandhybrid_v2516_source_contract
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2516_contract.py)
+        add_test(NAME sandhybrid_v2517_source_contract
+       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2517_contract.py)
     endif()
 
     add_executable(sandhybrid_input_routing_contract tests/input_routing_contract.cpp)

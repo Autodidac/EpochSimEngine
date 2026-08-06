@@ -77,12 +77,23 @@ int main() {
         sandhybrid::HivePart::pollen) return 26;
     if (sandhybrid::classify_pre_pr19_hive_cell(0, 1, 0u) !=
         sandhybrid::HivePart::chamber) return 27;
+    if (sandhybrid::canonical_pre_pr19_hive_entropy(-1, -4) != 0x95ef5950u)
+        return 28;
+    if (sandhybrid::classify_pre_pr19_hive_cell(
+            -1, -4, sandhybrid::canonical_pre_pr19_hive_entropy(-1, -4)) !=
+        sandhybrid::HivePart::chamber) return 29;
+    if (sandhybrid::classify_pre_pr19_hive_cell(
+            -3, -2, sandhybrid::canonical_pre_pr19_hive_entropy(-3, -2)) !=
+        sandhybrid::HivePart::honey) return 30;
+    if (sandhybrid::classify_pre_pr19_hive_cell(
+            -2, -4, sandhybrid::canonical_pre_pr19_hive_entropy(-2, -4)) !=
+        sandhybrid::HivePart::pollen) return 31;
     if (sandhybrid::hive_home_from_scene_origin({1280, 720}, {100, 50}) !=
-        sandhybrid::GridPosition{1380, 770}) return 28;
+        sandhybrid::GridPosition{1380, 770}) return 32;
 
     sandhybrid::LifeDebugCounters counters{};
     sandhybrid::account_actor(counters, bee);
     if (counters.species_counts[
-            sandhybrid::species_index(sandhybrid::ActorSpecies::bee)] != 1u) return 29;
+            sandhybrid::species_index(sandhybrid::ActorSpecies::bee)] != 1u) return 33;
     return 0;
 }

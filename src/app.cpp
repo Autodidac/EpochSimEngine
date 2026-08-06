@@ -299,12 +299,16 @@ int run_application(const ApplicationOptions& options) {
     std::fprintf(stderr, "[SandHybrid] Native window created.\n");
     SharedState shared_state{};
     const auto world = world_dimensions(options.world_size);
+    const bool runtime_acceptance = !options.runtime_acceptance_report.empty();
     const SimulationConfig simulation_config{
-        .grid_width = world.width,
-        .grid_height = world.height,
+        // State acceptance needs one complete canonical authored envelope, not a
+        // multi-region gameplay residency allocation. Normal startup is unchanged.
+        .grid_width = runtime_acceptance ? pre_expansion_world_width : world.width,
+        .grid_height = runtime_acceptance ? pre_expansion_world_height : world.height,
         .frames_in_flight = 2u,
         .max_frames_per_second = 120u,
         .world_size = options.world_size,
+        .runtime_acceptance_report = options.runtime_acceptance_report,
     };
     reset_camera_to_zero(shared_state, simulation_config);
     reset_map_view(shared_state, simulation_config);
@@ -843,7 +847,7 @@ int run_application(const ApplicationOptions& options) {
         }
     }
 
-    return 0;
+    return shared_state.runtime_acceptance_exit_code.load(std::memory_order_acquire);
 }
 
 } // namespace sandhybrid

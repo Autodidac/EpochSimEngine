@@ -37,6 +37,27 @@ struct Layout final {
 };
 struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32_t tile_pixel_size{}; };
 
+[[nodiscard]] inline constexpr std::pair<std::uint32_t, std::uint32_t>
+framebuffer_to_logical_pointer(
+    const std::uint32_t framebuffer_x,
+    const std::uint32_t framebuffer_y,
+    const std::uint32_t framebuffer_width,
+    const std::uint32_t framebuffer_height,
+    const std::uint32_t logical_width,
+    const std::uint32_t logical_height) noexcept {
+    const auto safe_framebuffer_width = (std::max)(framebuffer_width, 1u);
+    const auto safe_framebuffer_height = (std::max)(framebuffer_height, 1u);
+    const auto safe_logical_width = (std::max)(logical_width, 1u);
+    const auto safe_logical_height = (std::max)(logical_height, 1u);
+    return {
+        (std::min)(safe_logical_width - 1u, static_cast<std::uint32_t>(
+            static_cast<std::uint64_t>(framebuffer_x) * safe_logical_width /
+            safe_framebuffer_width)),
+        (std::min)(safe_logical_height - 1u, static_cast<std::uint32_t>(
+            static_cast<std::uint64_t>(framebuffer_y) * safe_logical_height /
+            safe_framebuffer_height)),
+    };
+}
 [[nodiscard]] inline constexpr std::pair<std::int32_t, std::int32_t> pointer_to_grid(
     const SimulationViewport& viewport,
     const std::uint32_t view_origin_x, const std::uint32_t view_origin_y,

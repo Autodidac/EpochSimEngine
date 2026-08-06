@@ -1,5 +1,6 @@
 #include "sandhybrid/scene_image.hpp"
 
+#include "sandhybrid/actor_medium.hpp"
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/material_color.hpp"
 
@@ -25,7 +26,7 @@ constexpr std::uint32_t aux_structural = 0x04000000u;
 constexpr std::uint32_t aux_supported = 0x02000000u;
 constexpr std::uint32_t aux_moved = 0x01000000u;
 constexpr std::uint32_t aux_state_mask = 0x000000ffu;
-constexpr std::uint32_t aux_random_mask = 0x00ffff00u;
+constexpr std::uint32_t aux_random_mask = 0x007fff00u;
 constexpr std::uint32_t tile_size = 8u;
 constexpr std::uint32_t minimum_cohesive_cells = 32u;
 constexpr std::uint32_t full_strength_cells = 52u;
@@ -138,7 +139,7 @@ void normalize_pre_pr19_hives(std::vector<std::uint32_t>& materials,
       const auto index = static_cast<std::size_t>(y) * width +
                          static_cast<std::size_t>(x);
       const auto material = pre_pr19_beehive_material(
-          offset_x, offset_y, hash32(static_cast<std::uint32_t>(index) ^ 0xb33u));
+          offset_x, offset_y, canonical_pre_pr19_hive_entropy(offset_x, offset_y));
       if (material == Material::count) continue;
       const auto existing = static_cast<Material>(materials[index]);
       if (existing == Material::bee || existing == Material::ant ||
