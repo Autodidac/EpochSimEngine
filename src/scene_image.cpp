@@ -33,12 +33,16 @@ constexpr std::uint32_t bee_target_none = 0xffffu;
 constexpr std::uint32_t bee_formation_count = 100u;
 constexpr std::uint32_t bee_metadata_mask = 0x00ffffffu;
 constexpr std::uint32_t bee_authored_home_slot_bit = 0x80u;
-constexpr std::int32_t beehive_shell_min_radius_squared = 28;
-constexpr std::int32_t beehive_shell_max_radius_squared = 108;
-constexpr std::int32_t beehive_chamber_radius_squared = 28;
+constexpr std::int32_t beehive_shell_min_radius_squared = 25;
+constexpr std::int32_t beehive_shell_max_radius_squared = 92;
+constexpr std::int32_t beehive_chamber_radius_squared = 25;
 constexpr std::int32_t beehive_exit_min_x = 1;
-constexpr std::int32_t beehive_exit_max_x = 12;
+constexpr std::int32_t beehive_exit_max_x = 10;
 constexpr std::int32_t beehive_exit_half_height = 1;
+constexpr std::int32_t beehive_support_min_x = -37;
+constexpr std::int32_t beehive_support_max_x = 29;
+constexpr std::int32_t beehive_support_min_y = -16;
+constexpr std::int32_t beehive_support_max_y = -13;
 
 
 constexpr std::uint32_t hash32(std::uint32_t value) noexcept {
@@ -63,7 +67,7 @@ std::uint32_t pack_bee_metadata(std::uint32_t aux, const std::uint32_t home_x,
     return (aux & ~bee_metadata_mask) | metadata;
 }
 
-Material fix28_beehive_material(const std::int32_t offset_x,
+Material pre_pr19_beehive_material(const std::int32_t offset_x,
                       const std::int32_t offset_y,
                       const std::uint32_t entropy) noexcept {
     const auto radius_squared = offset_x * offset_x + offset_y * offset_y;
@@ -73,7 +77,7 @@ Material fix28_beehive_material(const std::int32_t offset_x,
         return Material::empty;
     if (radius_squared < beehive_chamber_radius_squared) {
         if ((entropy & 3u) == 0u) return Material::empty;
-        return (entropy & 4u) == 0u ? Material::honey : Material::pollen;
+        return ((entropy >> 2u) & 1u) == 0u ? Material::honey : Material::pollen;
     }
     if (radius_squared >= beehive_shell_min_radius_squared &&
         radius_squared < beehive_shell_max_radius_squared)
@@ -86,7 +90,7 @@ bool legacy_hive_material(const Material material) noexcept {
  material == Material::pollen || material == Material::queen_bee;
 }
 
-void normalize_fix28_hives(std::vector<std::uint32_t>& materials,
+void normalize_pre_pr19_hives(std::vector<std::uint32_t>& materials,
                  const std::uint32_t width,
                  const std::uint32_t height) {
     std::vector<std::size_t> queens;
@@ -111,8 +115,8 @@ void normalize_fix28_hives(std::vector<std::uint32_t>& materials,
           materials[index] = static_cast<std::uint32_t>(Material::empty);
   }
         }
-        for (std::int32_t offset_y = -16; offset_y <= -13; ++offset_y) {
-            for (std::int32_t offset_x = -37; offset_x <= 29; ++offset_x) {
+        for (std::int32_t offset_y = beehive_support_min_y; offset_y <= beehive_support_max_y; ++offset_y) {
+            for (std::int32_t offset_x = beehive_support_min_x; offset_x <= beehive_support_max_x; ++offset_x) {
                 const auto x = queen_x + offset_x;
                 const auto y = queen_y + offset_y;
                 if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
@@ -133,7 +137,7 @@ void normalize_fix28_hives(std::vector<std::uint32_t>& materials,
           continue;
       const auto index = static_cast<std::size_t>(y) * width +
                          static_cast<std::size_t>(x);
-      const auto material = fix28_beehive_material(
+      const auto material = pre_pr19_beehive_material(
           offset_x, offset_y, hash32(static_cast<std::uint32_t>(index) ^ 0xb33u));
       if (material == Material::count) continue;
       const auto existing = static_cast<Material>(materials[index]);
@@ -380,7 +384,7 @@ bool load_scene_ppm(const std::filesystem::path& path,
         }
     }
 
-    normalize_fix28_hives(materials, width, height);
+    normalize_pre_pr19_hives(materials, width, height);
     normalize_legacy_open_air(materials, width, height);
     std::fill(counts.begin(), counts.end(), std::uint16_t{0});
     for (std::uint32_t y = 0u; y < height; ++y) {

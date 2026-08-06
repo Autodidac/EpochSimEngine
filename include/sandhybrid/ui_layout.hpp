@@ -4,6 +4,7 @@
 #include <gui/font.hpp>
 #include <algorithm>
 #include <cstdint>
+#include <utility>
 
 namespace sandhybrid::ui {
 inline constexpr std::uint32_t preferred_sidebar_width = 424u;
@@ -34,6 +35,29 @@ struct Layout final {
     epochengine::gui_lib::Rect brush_smaller{}, brush_larger{}, zoom_out{}, zoom_in{};
 };
 struct SimulationViewport final { epochengine::gui_lib::Rect rect{}; std::uint32_t tile_pixel_size{}; };
+
+[[nodiscard]] inline constexpr std::pair<std::int32_t, std::int32_t> pointer_to_grid(
+    const SimulationViewport& viewport,
+    const std::uint32_t view_origin_x, const std::uint32_t view_origin_y,
+    const std::uint32_t view_width, const std::uint32_t view_height,
+    const std::int32_t pointer_x, const std::int32_t pointer_y) noexcept {
+    const auto viewport_width = (std::max)(
+        1u, static_cast<std::uint32_t>(viewport.rect.size.x));
+    const auto viewport_height = (std::max)(
+        1u, static_cast<std::uint32_t>(viewport.rect.size.y));
+    const auto local_x = std::clamp(
+        pointer_x - static_cast<std::int32_t>(viewport.rect.position.x),
+        0, static_cast<std::int32_t>(viewport_width - 1u));
+    const auto local_y = std::clamp(
+        pointer_y - static_cast<std::int32_t>(viewport.rect.position.y),
+        0, static_cast<std::int32_t>(viewport_height - 1u));
+    return {
+        static_cast<std::int32_t>(view_origin_x +
+            static_cast<std::uint64_t>(local_x) * view_width / viewport_width),
+        static_cast<std::int32_t>(view_origin_y +
+            static_cast<std::uint64_t>(local_y) * view_height / viewport_height),
+    };
+}
 
 [[nodiscard]] inline SimulationViewport make_map_overlay_viewport(
     const Layout& layout, std::uint32_t map_width, std::uint32_t map_height) noexcept {

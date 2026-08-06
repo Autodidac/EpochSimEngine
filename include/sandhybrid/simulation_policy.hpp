@@ -54,6 +54,20 @@ inline constexpr std::uint32_t vent_pulse_on_ticks = 420u;
 inline constexpr std::uint32_t vent_major_start_tick = 10'200u;
 inline constexpr std::uint32_t wet_density_bonus = 32u;
 
+[[nodiscard]] constexpr std::uint32_t effective_world_brush_radius(
+    const bool beehive,
+    const bool tile_mode,
+    const std::uint32_t requested_radius) noexcept {
+    if (tile_mode) return tile_size;
+    return beehive ? 64u : requested_radius;
+}
+
+[[nodiscard]] constexpr std::uint32_t effective_world_brush_shape(
+    const bool tile_mode,
+    const std::uint32_t requested_shape) noexcept {
+    return tile_mode ? 1u : requested_shape % 4u;
+}
+
 
 [[nodiscard]] constexpr bool half_water_attraction_distance(
     const std::uint32_t distance,
@@ -67,9 +81,36 @@ inline constexpr std::uint32_t wet_density_bonus = 32u;
     const bool moving,
     const bool reacting,
     const bool hot,
-    const bool attraction_pending) noexcept {
+    const bool attraction_pending,
+    const bool fall_pending,
+    const bool merge_pending) noexcept {
     return age >= half_water_rest_ticks && !moving && !reacting && !hot &&
-           !attraction_pending;
+           !attraction_pending && !fall_pending && !merge_pending;
+}
+
+// TILE_FINE_ACTIVE is scheduling metadata, not a reason to reject an otherwise
+// exact 8x8 displacement. Successful macro commits mark both tiles moved before
+// the fine pass; mixed and partial targets still fail the exact transaction.
+[[nodiscard]] constexpr bool macro_target_allows(
+    const std::uint32_t represented_cells,
+    const bool uniform_material,
+    [[maybe_unused]] const bool fine_active,
+    const bool macro_moved,
+    const bool representative_matches,
+    const bool material_can_displace) noexcept {
+    if (macro_moved) return false;
+    if (represented_cells == 0u) return true;
+    return represented_cells == macro_tile_cells && uniform_material &&
+           representative_matches && material_can_displace;
+}
+
+[[nodiscard]] constexpr bool fine_pair_skips_intact_macro(
+    const bool first_macro,
+    const bool second_macro,
+    const bool first_needs_fine,
+    const bool second_needs_fine) noexcept {
+    return (first_macro || second_macro) &&
+           !(first_needs_fine || second_needs_fine);
 }
 
 [[nodiscard]] constexpr bool medium_packet_tries_macro(

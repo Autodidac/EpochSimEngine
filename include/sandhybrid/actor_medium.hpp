@@ -319,18 +319,18 @@ enum class HivePart : std::uint8_t {
     pollen
 };
 
-[[nodiscard]] constexpr HivePart classify_fix28_hive_cell(
+[[nodiscard]] constexpr HivePart classify_pre_pr19_hive_cell(
     const std::int32_t dx,
-    const std::int32_t dy) noexcept {
-    if (dy == -12 && dx >= -14 && dx <= 14) return HivePart::support;
+    const std::int32_t dy,
+    const std::uint32_t entropy = 1u) noexcept {
+    if (dx >= -37 && dx <= 29 && dy >= -16 && dy <= -13) return HivePart::support;
     if (dx == 0 && dy == 0) return HivePart::queen;
-    if (dx >= 1 && dx <= 12 && dy >= -1 && dy <= 1) return HivePart::exit;
+    if (dx >= 1 && dx <= 10 && dy >= -1 && dy <= 1) return HivePart::exit;
     const auto radius_squared = dx * dx + dy * dy;
-    if (radius_squared >= 28 && radius_squared < 108) return HivePart::shell;
-    if (radius_squared < 28) {
-        if (dy >= 1 && dx < 0) return HivePart::honey;
-        if (dy >= 1 && dx > 0) return HivePart::pollen;
-        return HivePart::chamber;
+    if (radius_squared >= 25 && radius_squared < 92) return HivePart::shell;
+    if (radius_squared < 25) {
+        if ((entropy & 3u) == 0u) return HivePart::chamber;
+        return ((entropy >> 2u) & 1u) == 0u ? HivePart::honey : HivePart::pollen;
     }
     return HivePart::empty;
 }

@@ -1547,7 +1547,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
     void fill_connected_region(SharedState& state) {
         auto cells = download_scene_cells();
-        const auto [cursor_x, cursor_y] = grid_cursor(state);
+        const auto cursor_x = state.last_world_cursor_x.load(std::memory_order_relaxed);
+        const auto cursor_y = state.last_world_cursor_y.load(std::memory_order_relaxed);
         if (cursor_x < 0 || cursor_y < 0 ||
             cursor_x >= static_cast<std::int32_t>(config.grid_width) ||
             cursor_y >= static_cast<std::int32_t>(config.grid_height)) return;
@@ -1956,24 +1957,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     }
 
     std::pair<std::int32_t, std::int32_t> grid_cursor(const SharedState& state) const {
+        // GLFW pointer coordinates are logical window units; the swapchain may
+        // be larger on high-DPI displays, so edits stay in input space.
         const auto width = (std::max)(state.window_width.load(std::memory_order_relaxed), 1u);
         const auto height = (std::max)(state.window_height.load(std::memory_order_relaxed), 1u);
         const auto layout = ui::make_layout(width, height);
         const auto view = render_grid_view(state);
         const auto viewport = ui::make_simulation_viewport(layout, view.width, view.height);
-        const auto viewport_width = (std::max)(static_cast<std::uint32_t>(viewport.rect.size.x), 1u);
-        const auto viewport_height = (std::max)(static_cast<std::uint32_t>(viewport.rect.size.y), 1u);
-        const auto mouse_x = std::clamp(
-            state.mouse_x.load(std::memory_order_relaxed) - static_cast<int>(viewport.rect.position.x),
-            0, static_cast<int>(viewport_width - 1u));
-        const auto mouse_y = std::clamp(
-            state.mouse_y.load(std::memory_order_relaxed) - static_cast<int>(viewport.rect.position.y),
-            0, static_cast<int>(viewport_height - 1u));
-        const auto grid_x = static_cast<std::int32_t>(view.origin_x +
-            static_cast<std::uint64_t>(mouse_x) * view.width / viewport_width);
-        const auto grid_y = static_cast<std::int32_t>(view.origin_y +
-            static_cast<std::uint64_t>(mouse_y) * view.height / viewport_height);
-        return {grid_x, grid_y};
+        return ui::pointer_to_grid(
+            viewport, view.origin_x, view.origin_y, view.width, view.height,
+            state.mouse_x.load(std::memory_order_relaxed),
+            state.mouse_y.load(std::memory_order_relaxed));
     }
 
     void record_paint(const VkCommandBuffer command_buffer, const SharedState& state) {
@@ -1986,9 +1980,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const auto material = erase ? static_cast<std::uint32_t>(Material::oxygen)
                                     : state.selected_material.load(std::memory_order_relaxed);
         const bool tile_mode = state.placement_mode.load(std::memory_order_relaxed) != 0u;
-        const auto radius = tile_mode ? 8u
-            : (material == static_cast<std::uint32_t>(Material::beehive) ? 64u : requested_radius);
-        const auto shape = tile_mode ? 1u : state.brush_shape.load(std::memory_order_relaxed) % 4u;
+        const auto radius = policy::effective_world_brush_radius(
+            material == static_cast<std::uint32_t>(Material::beehive),
+            tile_mode, requested_radius);
+        const auto shape = policy::effective_world_brush_shape(
+            tile_mode, state.brush_shape.load(std::memory_order_relaxed));
         const auto packed_material = material | (shape << 16u) | (tile_mode ? (1u << 18u) : 0u);
         SimulationPush push{
             .width = config.grid_width,
@@ -2371,16 +2367,25 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const auto map_view = map_grid_view(state);
         const auto map_overlay_viewport = ui::make_map_overlay_viewport(
             layout, map_view.width, map_view.height);
+        const auto input_layout = ui::make_layout(
+            (std::max)(state.window_width.load(std::memory_order_relaxed), 1u),
+            (std::max)(state.window_height.load(std::memory_order_relaxed), 1u));
+        const auto input_simulation_viewport = ui::make_simulation_viewport(
+            input_layout, view.width, view.height);
+        const auto input_map_overlay_viewport = ui::make_map_overlay_viewport(
+            input_layout, map_view.width, map_view.height);
         const epochengine::gui_lib::Vec2 pointer{
             static_cast<float>(state.mouse_x.load(std::memory_order_relaxed)),
             static_cast<float>(state.mouse_y.load(std::memory_order_relaxed))
         };
         const bool pointer_over_map = state.map_view.load(std::memory_order_relaxed) &&
-            epochengine::gui_lib::contains(map_overlay_viewport.rect, pointer);
+            epochengine::gui_lib::contains(input_map_overlay_viewport.rect, pointer);
+        const bool pointer_over_world =
+            epochengine::gui_lib::contains(input_simulation_viewport.rect, pointer) && !pointer_over_map;
         const bool inspect_visible =
             state.selected_workspace.load(std::memory_order_relaxed) % ui::workspace_tab_count != 3u &&
             state.inspect_material.load(std::memory_order_relaxed) && !pointer_over_map &&
-            epochengine::gui_lib::contains(simulation_viewport.rect, pointer);
+            epochengine::gui_lib::contains(input_simulation_viewport.rect, pointer);
         const auto selected_workspace = state.selected_workspace.load(std::memory_order_relaxed) %
                                         ui::workspace_tab_count;
         const bool designer_workspace = selected_workspace == 3u;
@@ -2411,16 +2416,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .window_height = swapchain_extent.height,
             .selected_material = active_selected_material,
             .material_count = material_count,
-            .cursor_x = cursor_x,
-            .cursor_y = cursor_y,
+            .cursor_x = pointer_over_world ? cursor_x : -1'000'000,
+            .cursor_y = pointer_over_world ? cursor_y : -1'000'000,
             .brush_radius = [&state, designer_workspace, active_selected_material]() {
                 if (designer_workspace)
                     return state.designer_brush_radius.load(std::memory_order_relaxed);
-                const auto material = static_cast<Material>(
-                    active_selected_material < material_count ? active_selected_material : 0u);
-                if (material == Material::beehive) return 12u;
-                return is_block_material(material) ? 8u :
-                    state.brush_radius.load(std::memory_order_relaxed);
+                return policy::effective_world_brush_radius(
+                    active_selected_material == static_cast<std::uint32_t>(Material::beehive),
+                    state.placement_mode.load(std::memory_order_relaxed) != 0u,
+                    state.brush_radius.load(std::memory_order_relaxed));
             }(),
             .status_height = static_cast<std::uint32_t>(layout.status.size.y),
             // Existing push slot carries compact sidebar width.
@@ -2451,8 +2455,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .view_height = view.height,
             .brush_shape = designer_workspace
                 ? state.designer_brush_shape.load(std::memory_order_relaxed) % 4u
-                : (state.placement_mode.load(std::memory_order_relaxed) != 0u
-                    ? 1u : state.brush_shape.load(std::memory_order_relaxed) % 4u),
+                : policy::effective_world_brush_shape(
+                    state.placement_mode.load(std::memory_order_relaxed) != 0u,
+                    state.brush_shape.load(std::memory_order_relaxed)),
             .placement_mode = designer_workspace
                 ? (state.designer_placement_mode.load(std::memory_order_relaxed) & 1u)
                 : (state.placement_mode.load(std::memory_order_relaxed) != 0u ? 1u : 0u),

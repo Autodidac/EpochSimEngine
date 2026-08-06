@@ -63,20 +63,26 @@ int main() {
     const auto blocked = sandhybrid::transact_habitat_birth(habitat, 600u);
     if (!blocked.blocked_capacity) return 20;
 
-    if (sandhybrid::classify_fix28_hive_cell(0, -12) !=
+    if (sandhybrid::classify_pre_pr19_hive_cell(-37, -16) !=
         sandhybrid::HivePart::support) return 21;
-    if (sandhybrid::classify_fix28_hive_cell(0, 0) !=
+    if (sandhybrid::classify_pre_pr19_hive_cell(0, 0) !=
         sandhybrid::HivePart::queen) return 22;
-    if (sandhybrid::classify_fix28_hive_cell(6, 0) !=
+    if (sandhybrid::classify_pre_pr19_hive_cell(10, 1) !=
         sandhybrid::HivePart::exit) return 23;
-    if (sandhybrid::classify_fix28_hive_cell(0, 8) !=
+    if (sandhybrid::classify_pre_pr19_hive_cell(0, 9) !=
         sandhybrid::HivePart::shell) return 24;
+    if (sandhybrid::classify_pre_pr19_hive_cell(0, 1, 1u) !=
+        sandhybrid::HivePart::honey) return 25;
+    if (sandhybrid::classify_pre_pr19_hive_cell(0, 1, 5u) !=
+        sandhybrid::HivePart::pollen) return 26;
+    if (sandhybrid::classify_pre_pr19_hive_cell(0, 1, 0u) !=
+        sandhybrid::HivePart::chamber) return 27;
     if (sandhybrid::hive_home_from_scene_origin({1280, 720}, {100, 50}) !=
-        sandhybrid::GridPosition{1380, 770}) return 25;
+        sandhybrid::GridPosition{1380, 770}) return 28;
 
     sandhybrid::LifeDebugCounters counters{};
     sandhybrid::account_actor(counters, bee);
     if (counters.species_counts[
-            sandhybrid::species_index(sandhybrid::ActorSpecies::bee)] != 1u) return 26;
+            sandhybrid::species_index(sandhybrid::ActorSpecies::bee)] != 1u) return 29;
     return 0;
 }

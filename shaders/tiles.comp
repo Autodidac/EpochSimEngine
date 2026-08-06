@@ -54,6 +54,24 @@ bool halfWaterPartnerVisible(ivec2 position, int direction) {
     return false;
 }
 
+bool halfWaterNeighborPending(ivec2 position) {
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+            if (x == 0 && y == 0) continue;
+            ivec2 neighborPosition = position + ivec2(x, y);
+            if (tileInside(neighborPosition) &&
+                isHalfWater(cells[indexOf(neighborPosition)])) return true;
+        }
+    }
+    return false;
+}
+
+bool halfWaterCanFall(Cell water, Cell below) {
+    if (below.material == MAT_EMPTY || isCellGas(below)) return true;
+    return isCellLiquid(below) &&
+           materialDensity(water.material) > materialDensity(below.material);
+}
+
 void main() {
     uvec2 tile = gl_GlobalInvocationID.xy;
     uint columns = tileColumns(pc.width);
@@ -80,6 +98,8 @@ void main() {
     bool wetContent = false;
     bool halfWater = false;
     bool halfWaterAttractionPending = false;
+    bool halfWaterFallPending = false;
+    bool halfWaterMergePending = false;
     bool activeAgent = false;
     bool productiveMediumMove = false;
     bool hasQueen = false;
@@ -133,6 +153,12 @@ void main() {
                 Cell left = tileInside(p + ivec2(-1, 0)) ? cells[indexOf(p + ivec2(-1, 0))] : Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
                 Cell right = tileInside(p + ivec2(1, 0)) ? cells[indexOf(p + ivec2(1, 0))] : Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
                 if (isCellLiquid(cell)) {
+                    if (halfCell) {
+                        halfWaterFallPending = halfWaterFallPending ||
+                            halfWaterCanFall(cell, below);
+                        halfWaterMergePending = halfWaterMergePending ||
+                            halfWaterNeighborPending(p);
+                    }
                     productiveMediumMove = productiveMediumMove || isCellGas(below) ||
                         isCellGas(left) || isCellGas(right) ||
                         (isCellLiquid(below) && materialDensity(cell.material) > materialDensity(below.material));
@@ -268,7 +294,8 @@ void main() {
     bool settledFineMedium = boundaryFineMedium && !moving && !reacting && !hot &&
                              !mediumBreakup && !productiveMediumMove;
     bool settledHalfWater = halfWater && !moving && !reacting && !hot &&
-                            minimumAge >= 12u && !halfWaterAttractionPending;
+                            minimumAge >= 12u && !halfWaterAttractionPending &&
+                            !halfWaterFallPending && !halfWaterMergePending;
     bool fineFallbackMedium = boundaryFineMedium && !settledFineMedium;
     bool fineActive = represented != 0u && (!macroMovable || fineFallbackMedium) && !settledHalfWater &&
             (collapsing || activeAgent || moving || reacting || hot || mediumBreakup ||

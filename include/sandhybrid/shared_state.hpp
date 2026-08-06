@@ -26,6 +26,7 @@ struct SharedState final {
     std::atomic_bool save_scene_image{false};
     std::atomic_bool load_scene_image{false};
     std::atomic_bool fill_region{false};
+    std::atomic_bool fill_armed{false};
     std::atomic_bool ignite_air{false};
 
     std::atomic_uint32_t window_width{1280};
@@ -34,6 +35,8 @@ struct SharedState final {
 
     std::atomic_int mouse_x{0};
     std::atomic_int mouse_y{0};
+    std::atomic_int last_world_cursor_x{0};
+    std::atomic_int last_world_cursor_y{0};
     std::atomic_bool primary_down{false};
     std::atomic_bool secondary_down{false};
     std::atomic_bool inspect_material{false};

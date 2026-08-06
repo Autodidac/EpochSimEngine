@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+## 2.5.15
+
+- Corrected macro packet ownership so full uniform compatible targets remain eligible even when marked fine-active, while intact packets stay out of ordinary fine passes and mixed/partial boundaries retain same-tick fine fallback.
+- Kept Half Water awake for available fall, neighboring merge, or bounded attraction work and restored the early guard against generic diagonal full-Water wandering.
+- Restored the exact Fix36 pre-PR19 hard-coded Ecosystem suspended hive across Sandbox, Ecosystem, the Beehive tool, loaded-map normalization, metadata homes, tests, and repository memory without importing foreign bee behavior.
+- Unified visible cursor and committed edit mapping/radius/shape, kept logical pointer coordinates distinct from the physical framebuffer during resize/high-DPI presentation, hid the sidebar-edge ghost outline, and made FILL an armed world-click-confirmed tool.
+- Reopened the affected packaged runtime missions after v2.5.14 user observation contradicted the static/build recovery evidence.
 ## 2.5.14
 
 - Restored v2.5.3 macro eligibility for complete moving Water and gas tiles while preserving fine-cell fallback for failed packet transactions.

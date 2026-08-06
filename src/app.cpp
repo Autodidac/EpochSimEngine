@@ -76,18 +76,8 @@ struct CameraView final {
     const ui::SimulationViewport& viewport, const std::int32_t mouse_x,
     const std::int32_t mouse_y, const bool map_view) noexcept {
     const auto view = camera_view(state, config, map_view);
-    const auto viewport_width = (std::max)(1u, static_cast<std::uint32_t>(viewport.rect.size.x));
-    const auto viewport_height = (std::max)(1u, static_cast<std::uint32_t>(viewport.rect.size.y));
-    const auto local_x = std::clamp(mouse_x - static_cast<int>(viewport.rect.position.x),
-                                    0, static_cast<int>(viewport_width - 1u));
-    const auto local_y = std::clamp(mouse_y - static_cast<int>(viewport.rect.position.y),
-                                    0, static_cast<int>(viewport_height - 1u));
-    return {
-        static_cast<std::int32_t>(view.origin_x +
-            static_cast<std::uint64_t>(local_x) * view.width / viewport_width),
-        static_cast<std::int32_t>(view.origin_y +
-            static_cast<std::uint64_t>(local_y) * view.height / viewport_height),
-    };
+    return ui::pointer_to_grid(
+        viewport, view.origin_x, view.origin_y, view.width, view.height, mouse_x, mouse_y);
 }
 
 struct DesignerView final {
@@ -401,6 +391,13 @@ int run_application(const ApplicationOptions& options) {
         const bool over_map = map_view_enabled && epochengine::gui_lib::contains(
             map_overlay_viewport.rect, pointer);
         const bool over_world = over_simulation && !over_map;
+        if (over_world) {
+            const auto [world_x, world_y] = pointer_grid(
+                shared_state, simulation_config, simulation_viewport,
+                input.mouse_x, input.mouse_y, false);
+            shared_state.last_world_cursor_x.store(world_x, std::memory_order_relaxed);
+            shared_state.last_world_cursor_y.store(world_y, std::memory_order_relaxed);
+        }
         const bool over_designer_grid = designer_workspace && epochengine::gui_lib::contains(
             layout.designer_grid, pointer);
         if (input.wheel_delta != 0) {
@@ -680,9 +677,10 @@ int run_application(const ApplicationOptions& options) {
             } else if (material_workspace && epochengine::gui_lib::contains(layout.atmosphere, pointer)) {
                 active_selected_material.store(
                     static_cast<std::uint32_t>(Material::atmosphere), std::memory_order_relaxed);
-            } else if (epochengine::gui_lib::contains(layout.fill, pointer)) {
-                // World Fill remains click-confirmed. Designer Fill will reuse
-                // the bounded selection model when MC-149 lands.
+            } else if (editor_workspace && epochengine::gui_lib::contains(layout.fill, pointer)) {
+                // World Fill remains click-confirmed: the sidebar control arms
+                // one operation, and the next world left-click supplies its target.
+                shared_state.fill_armed.store(true, std::memory_order_release);
             } else if (material_workspace && epochengine::gui_lib::contains(layout.eraser, pointer)) {
                 active_selected_material.store(static_cast<std::uint32_t>(Material::empty),
                                                std::memory_order_relaxed);
@@ -701,7 +699,11 @@ int run_application(const ApplicationOptions& options) {
         const bool inspecting = input.inspect_material;
         const bool fill_click = editor_workspace && input.fill_modifier && primary_pressed &&
                                 over_world && !pan_button_down;
+        const bool armed_fill_click = editor_workspace && primary_pressed && over_world &&
+            !pan_button_down && shared_state.fill_armed.exchange(false, std::memory_order_acq_rel);
         if (fill_click) shared_state.fill_region.store(true, std::memory_order_release);
+        else if (armed_fill_click)
+            shared_state.fill_region.store(true, std::memory_order_release);
 
         const bool designer_paint_active = designer_workspace && over_designer_grid &&
                                            input.primary_down && !inspecting &&

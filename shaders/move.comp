@@ -977,6 +977,10 @@ bool pairSleeping(ivec2 a, ivec2 b) {
         return true;
     }
     bool finePair = tileNeedsFine(tileA) || tileNeedsFine(tileB);
+    if (!finePair && (tileIsMacro(tileA) || tileIsMacro(tileB))) {
+        if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], 2u);
+        return true;
+    }
     if (!finePair && (tileHas(tileA, TILE_SETTLED_MEDIUM) ||
                       tileHas(tileB, TILE_SETTLED_MEDIUM))) {
         if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], 2u);
@@ -1122,11 +1126,11 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
 
     bool cohesiveMud = source.material == MAT_MUD &&
         (below.material == MAT_DIRT || below.material == MAT_STONE || below.material == MAT_MUD);
-    if (!upward && isHalfWaterCell(source) && supportedAt(sourcePosition, source) &&
+    if (!upward && source.material == MAT_WATER && supportedAt(sourcePosition, source) &&
         isOpenGas(target)) {
         int direction = targetPosition.x > sourcePosition.x ? 1 : -1;
         Cell trailing = sampleAt(sourcePosition - ivec2(direction, 0));
-        if (waterHalfUnits(trailing) < 1u) return;
+        if (waterHalfUnits(source) != 2u || waterHalfUnits(trailing) < 1u) return;
     }
     if (!upward && !cohesiveMud &&
         (isCellPowder(source) || isCellLiquid(source) || isLooseSolid(source)) &&

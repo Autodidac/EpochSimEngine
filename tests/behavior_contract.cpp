@@ -149,6 +149,11 @@ static_assert(!sandhybrid::policy::medium_tile_breaks_to_fine(true, true, false)
 static_assert(sandhybrid::material_names[static_cast<std::uint32_t>(sandhybrid::Material::dirt)] == "Soil");
 static_assert(sandhybrid::default_brush_radius == 2u);
 static_assert(sandhybrid::default_brush_shape == 1u);
+static_assert(sandhybrid::policy::effective_world_brush_radius(false, false, 2u) == 2u);
+static_assert(sandhybrid::policy::effective_world_brush_radius(true, false, 2u) == 64u);
+static_assert(sandhybrid::policy::effective_world_brush_radius(true, true, 2u) == 8u);
+static_assert(sandhybrid::policy::effective_world_brush_shape(false, 3u) == 3u);
+static_assert(sandhybrid::policy::effective_world_brush_shape(true, 3u) == 1u);
 static_assert(sandhybrid::policy::effective_wet_density(1050u, true) > 100u);
 static_assert(sandhybrid::policy::effective_wet_density(1050u, false) == 1050u);
 static_assert(sandhybrid::material_count == 67u);
@@ -167,9 +172,30 @@ static_assert(sandhybrid::policy::half_water_attraction_distance(4u, true));
 static_assert(!sandhybrid::policy::half_water_attraction_distance(1u, true));
 static_assert(!sandhybrid::policy::half_water_attraction_distance(5u, true));
 static_assert(!sandhybrid::policy::half_water_attraction_distance(3u, false));
-static_assert(!sandhybrid::policy::half_water_can_sleep(11u, false, false, false, false));
-static_assert(sandhybrid::policy::half_water_can_sleep(12u, false, false, false, false));
-static_assert(!sandhybrid::policy::half_water_can_sleep(12u, false, false, false, true));
+static_assert(!sandhybrid::policy::half_water_can_sleep(
+    11u, false, false, false, false, false, false));
+static_assert(sandhybrid::policy::half_water_can_sleep(
+    12u, false, false, false, false, false, false));
+static_assert(!sandhybrid::policy::half_water_can_sleep(
+    12u, false, false, false, true, false, false));
+static_assert(!sandhybrid::policy::half_water_can_sleep(
+    12u, false, false, false, false, true, false));
+static_assert(!sandhybrid::policy::half_water_can_sleep(
+    12u, false, false, false, false, false, true));
+// A uniform full Air target may be fine-active at a Water boundary and still
+// accepts the exact atomic packet displacement. Partial/mixed targets do not.
+static_assert(sandhybrid::policy::macro_target_allows(
+    64u, true, true, false, true, true));
+static_assert(!sandhybrid::policy::macro_target_allows(
+    63u, true, true, false, true, true));
+static_assert(!sandhybrid::policy::macro_target_allows(
+    64u, false, true, false, true, true));
+static_assert(!sandhybrid::policy::macro_target_allows(
+    64u, true, false, true, true, true));
+static_assert(sandhybrid::policy::fine_pair_skips_intact_macro(
+    true, false, false, false));
+static_assert(!sandhybrid::policy::fine_pair_skips_intact_macro(
+    true, false, false, true));
 static_assert(sandhybrid::policy::medium_packet_tries_macro(true, false, false, false));
 static_assert(!sandhybrid::policy::medium_packet_tries_macro(true, true, false, false));
 static_assert(sandhybrid::policy::medium_packet_needs_fine_fallback(true, false, false, false));

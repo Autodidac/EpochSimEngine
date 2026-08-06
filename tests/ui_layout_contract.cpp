@@ -51,6 +51,28 @@ int main() {
     if (viewport.rect.size.x / 80.0f != viewport.rect.size.y / 45.0f) return 8;
     if (viewport.rect.position.x < 0.0f ||
         viewport.rect.position.y < layout.simulation.position.y) return 9;
+    const auto grid_top_left = sandhybrid::ui::pointer_to_grid(
+        viewport, 1280u, 720u, 640u, 360u,
+        static_cast<std::int32_t>(viewport.rect.position.x),
+        static_cast<std::int32_t>(viewport.rect.position.y));
+    const auto grid_bottom_right = sandhybrid::ui::pointer_to_grid(
+        viewport, 1280u, 720u, 640u, 360u,
+        static_cast<std::int32_t>(viewport.rect.position.x + viewport.rect.size.x - 1.0f),
+        static_cast<std::int32_t>(viewport.rect.position.y + viewport.rect.size.y - 1.0f));
+    if (grid_top_left != std::pair<std::int32_t, std::int32_t>{1280, 720} ||
+        grid_bottom_right != std::pair<std::int32_t, std::int32_t>{1919, 1079}) return 23;
+    const auto hidpi_layout = sandhybrid::ui::make_layout(2560u, 1440u);
+    const auto hidpi_viewport = sandhybrid::ui::make_simulation_viewport(
+        hidpi_layout, 640u, 360u);
+    const auto logical_center = sandhybrid::ui::pointer_to_grid(
+        viewport, 1280u, 720u, 640u, 360u,
+        static_cast<std::int32_t>(viewport.rect.position.x + viewport.rect.size.x * 0.5f),
+        static_cast<std::int32_t>(viewport.rect.position.y + viewport.rect.size.y * 0.5f));
+    const auto framebuffer_center = sandhybrid::ui::pointer_to_grid(
+        hidpi_viewport, 1280u, 720u, 640u, 360u,
+        static_cast<std::int32_t>(hidpi_viewport.rect.position.x + hidpi_viewport.rect.size.x * 0.5f),
+        static_cast<std::int32_t>(hidpi_viewport.rect.position.y + hidpi_viewport.rect.size.y * 0.5f));
+    if (logical_center != framebuffer_center) return 24;
 
     const auto wide_map = sandhybrid::ui::make_simulation_viewport(
         layout, sandhybrid::resident_world_width, sandhybrid::resident_world_height);

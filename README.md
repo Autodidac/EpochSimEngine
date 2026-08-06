@@ -332,9 +332,9 @@ Uniform 8x8 material regions can move as 64-cell macro-cells using the same fall
 Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and solid-supported pre-fall droplets that cannot hop along water edges or crawl after falling. See `HALF_WATER.md`.
 
 
-## v2.5.14 recovery baselines
+## v2.5.15 recovery baselines
 
-The Ecosystem hive body and deterministic chamber contents match the SimpleSandSim Fix29 reference: squared shell radii 28 through 107, a chamber below 28, a queen center, deterministic Honey/Pollen/Empty contents, and a 12-cell right exit. Only the model and contents are shared; SandHybrid retains its own bee actors, forage, return, deposit, feed, migration, hazard, and 100-bee colony rules.
+The Sandbox, Ecosystem, build-tool, and loaded-map hive use the hard-coded Ecosystem model that SimpleSandSim Fix36 explicitly restored from immediately before PR #19: queen centers (512,234)/(512,232), loose Wood perch offsets x=-37..29 and y=-16..-13, squared shell radii 25 through 91, a chamber below 25, deterministic Honey/Pollen/Empty contents, and a right exit through x=10. Only the model and contents are shared; SandHybrid retains its own bee actors, forage, return, deposit, feed, migration, hazard, and 100-bee colony rules.
 
 Moving macro media match the packaged v2.5.3 reference. Runtime acceptance for both recovered baselines remains tracked in `missioncache.md`.
 

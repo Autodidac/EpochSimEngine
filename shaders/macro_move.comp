@@ -78,7 +78,10 @@ bool materialCanDisplace(Cell source, Cell target) {
 }
 
 bool targetTileAllows(TileState targetState, Cell source, Cell targetRepresentative) {
-    if (tileHas(targetState, TILE_FINE_ACTIVE) || tileHas(targetState, TILE_MACRO_MOVED)) return false;
+    // Fine-active is a fallback/scheduling flag. A complete uniform target can
+    // still participate in an exact atomic packet displacement; the commit
+    // marks both tiles moved before fine simulation begins.
+    if (tileHas(targetState, TILE_MACRO_MOVED)) return false;
     if (tileOccupancy(targetState) == 0u) return true;
     if (!tileHas(targetState, TILE_UNIFORM) || tileOccupancy(targetState) != TILE_CELL_COUNT) return false;
     return targetState.material == targetRepresentative.material && materialCanDisplace(source, targetRepresentative);

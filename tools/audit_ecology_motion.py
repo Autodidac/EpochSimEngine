@@ -32,7 +32,7 @@ required = {
                   "Painted and loaded orphan bees self-seed",
                   "respiringNeighborDemand", "beeRoll < demand.x",
                   "fireRespiration", "BEE_COLONY_MAX"],
-    "reset": ["Canonical Fix28 compact Beehive", "queen.x - 38",
+    "reset": ["Canonical Fix36 pre-PR19 Ecosystem suspended hive", "beehiveSupportForScene",
               "beehivePrefabMaterial", "includeFormation"],
 }
 for name, tokens in required.items():
