@@ -127,6 +127,6 @@ for token in (
 require("MISSION_LEDGER.md", "v2.5.16")
 require("MISSION_LEDGER.md", "/releases/tag/v2.5.15")
 require("MISSION_LEDGER.md", "/releases/tag/v2.5.16")
-require("missioncache.md", "aa497b8e75bb30a55db1b96a94f35c3fc75dd8c3")
+require("MISSION_LEDGER.md", "aa497b8e75bb30a55db1b96a94f35c3fc75dd8c3")
 
 print("v2.5.16 real Blueprint, paused-editing, sidebar, and stable release contracts valid.")
