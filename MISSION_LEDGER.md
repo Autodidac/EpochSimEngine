@@ -4,17 +4,18 @@
 
 ## Current release
 
-- Current release: `v2.5.16`, published as the latest normal public GitHub release for the paused-player editing and real Blueprint-slot recovery.
-- State: v2.5.16 is published from commit `aa497b8e75bb30a55db1b96a94f35c3fc75dd8c3`. Its branch and tag workflows passed native Windows/Linux Release builds, tests, packaging, and uploads; GitHub reports it as latest, non-draft, and non-prerelease with exactly two packages and two checksums. Selection marquee, copied-world chunks, thumbnails, Blueprint persistence, repeated packaged reset stress, and every other unaccepted mission remain active.
+- Current release: `v2.5.17`, published as the latest normal public GitHub release for macro/Half Water, hard-coded hive contents, and high-DPI cursor recovery.
+- State: v2.5.17 is published from commit `791bf7160ce95ec27c5a31717e845cb6ba95e381`. Main workflow `31069315698` and tag workflow `31069325459` passed native Windows/Linux Release builds, 27/27 tests per platform, packaging, checksums, uploads, and stable publication. GitHub reports it as latest, non-draft, and non-prerelease with exactly two packages and two checksums. The 129 unaccepted missions and all criteria outside the focused evidence remain active.
 - Public prerelease tags and `-test` release names are forbidden.
 
-## v2.5.17 release candidate
+## v2.5.17 publication record
 
-- Target: `v2.5.17`, ordinary stable tag and visible release only; no prerelease marker and no `-test` suffix.
+- Release: https://github.com/Autodidac/EpochSimEngine/releases/tag/v2.5.17; ordinary stable tag and visible release, with no prerelease marker or `-test` suffix.
 - Focus: recover observed production macro Water/gas packets, Half Water state/conservation, exact hard-coded Fix36 hive contents, and logical/physical cursor ownership without closing broader mission criteria.
 - Implemented evidence: both exact-source native Release executables run a packaged Vulkan state-readback mode against focused dispatches of the production tile/macro/fine pipelines and return nonzero on any mismatch. Movement dispatch is bounded to the seeded first 192 columns and rows and omits unrelated chemistry, actor, effect, and sunlight work; full 640x360 reset still generates the hive. Windows on an NVIDIA RTX 5080 and Linux on Mesa llvmpipe pass exact Water and Hydrogen packet moves, blocked Water fine fallback, Half Water fall/attraction/merge/supplied-ledge creation, and the generated Ecosystem hive with zero mismatches.
 - Visual evidence: on a 150% Windows display, direct Release-window capture shows `PAUSED`, a committed Sand edit beneath the centered world cursor, and no world cursor after the logical pointer enters the sidebar.
-- Native/package gate: exact-source Windows and Linux Release builds each pass 27/27 tests. Fresh Windows (NVIDIA RTX 5080) and Linux (Mesa llvmpipe) installed packages both pass all seven focused Vulkan checks with identical conserved counts. Fresh ZIP/tarball audits find the executables, 12 shaders, 20 public headers, CMake development package, and 14 canonical docs; both SHA-256 files verify. Required before publication: stable tag workflow success and final release URL/digests. Every unaccepted criterion outside this focused evidence remains active.
+- Native/package gate: exact-source Windows and Linux Release builds each pass 27/27 tests. Fresh Windows (NVIDIA RTX 5080) and Linux (Mesa llvmpipe) installed packages both pass all seven focused Vulkan checks with identical conserved counts. Fresh ZIP/tarball audits find the executables, 12 shaders, 20 public headers, CMake development package, and 14 canonical docs; both SHA-256 files verify. Both GitHub workflows and stable publication passed. Every unaccepted criterion outside this focused evidence remains active.
+- Published package SHA-256: Windows `1aa90d0cbafc0b2703ebff3a8ecca9e5c30005578f663a3b5a77f4944735be44`; Linux `edc3690b08ea1c65bdb2ff2f79ce3341f3adf8517a8c4eb1617987d156d574bd`. The downloaded public assets match both checksum files and GitHub asset digests.
 ## v2.5.15 publication record
 
 - Release: https://github.com/Autodidac/EpochSimEngine/releases/tag/v2.5.15

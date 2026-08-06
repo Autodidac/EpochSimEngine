@@ -120,7 +120,7 @@ for token in (
     "packaged Vulkan state-readback",
 ):
     require("missioncache.md", token)
-require("MISSION_LEDGER.md", "v2.5.17 release candidate")
+require("MISSION_LEDGER.md", "v2.5.17 publication record")
 require("VALIDATION.md", "--runtime-acceptance-report")
 
 print("v2.5.17 packaged macro, Half Water, hive, cursor, and stable release contracts valid.")

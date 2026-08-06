@@ -334,6 +334,8 @@ Fresh water supports conserved faint half-cells, a three-half-unit ledge release
 
 ## v2.5.17 packaged state acceptance
 
+The stable public release is [SandHybrid v2.5.17](https://github.com/Autodidac/EpochSimEngine/releases/tag/v2.5.17). It is the latest normal release, with native Windows/Linux packages and SHA-256 files and no prerelease marker.
+
 The shipped executable can run a deterministic Vulkan seed/step/readback gate against its real compiled compute pipelines and resident cell buffers:
 
 ```text
