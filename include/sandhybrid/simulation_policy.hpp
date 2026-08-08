@@ -190,6 +190,13 @@ inline constexpr std::uint32_t wet_density_bonus = 32u;
 }
 
 
+inline constexpr std::uint32_t macro_packet_interval_ticks = 2u;
+inline constexpr std::uint32_t exposed_packet_breakup_ticks = 2u;
+
+[[nodiscard]] constexpr bool macro_packet_step_due(
+    const std::uint32_t simulation_step) noexcept {
+    return simulation_step % macro_packet_interval_ticks == 0u;
+}
 // A full gas/liquid region is a temporary 8x8 transfer packet at exposed
 // boundaries. Once packet motion ends, only a completely compatible perimeter
 // may retain coarse ownership; otherwise the canonical fine cells take over.
@@ -210,8 +217,10 @@ inline constexpr std::uint32_t wet_density_bonus = 32u;
 [[nodiscard]] constexpr bool medium_tile_breaks_to_fine(
     const bool full_region,
     const bool moving,
-    const bool perimeter_compatible) noexcept {
-    return full_region && !moving && !perimeter_compatible;
+    const bool perimeter_compatible,
+    const std::uint32_t exposed_ticks) noexcept {
+    return full_region && !moving && !perimeter_compatible &&
+           exposed_ticks >= exposed_packet_breakup_ticks;
 }
 
 [[nodiscard]] constexpr bool chunk_can_sleep(

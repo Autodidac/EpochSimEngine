@@ -143,8 +143,12 @@ static_assert(!sandhybrid::policy::gas_tile_eligible(true, false, false));
 static_assert(sandhybrid::policy::liquid_tile_eligible(true, true, false));
 static_assert(sandhybrid::policy::liquid_tile_eligible(true, false, true));
 static_assert(!sandhybrid::policy::liquid_tile_eligible(true, false, false));
-static_assert(sandhybrid::policy::medium_tile_breaks_to_fine(true, false, false));
-static_assert(!sandhybrid::policy::medium_tile_breaks_to_fine(true, true, false));
+static_assert(!sandhybrid::policy::medium_tile_breaks_to_fine(true, false, false, 1u));
+static_assert(sandhybrid::policy::medium_tile_breaks_to_fine(true, false, false, 2u));
+static_assert(!sandhybrid::policy::medium_tile_breaks_to_fine(true, true, false, 2u));
+static_assert(sandhybrid::policy::macro_packet_step_due(0u));
+static_assert(!sandhybrid::policy::macro_packet_step_due(1u));
+static_assert(sandhybrid::policy::macro_packet_step_due(2u));
 
 static_assert(sandhybrid::material_names[static_cast<std::uint32_t>(sandhybrid::Material::dirt)] == "Soil");
 static_assert(sandhybrid::default_brush_radius == 2u);

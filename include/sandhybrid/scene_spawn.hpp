@@ -19,8 +19,8 @@ struct SceneSpawn final {
 [[nodiscard]] constexpr SceneSpawn scene_local_spawn(const Scene scene) noexcept {
     switch (scene) {
     case Scene::gold_mine: return {78, 127, 18u, true};
-    case Scene::demolition: return {80, 324, 12u, true};
-    case Scene::frontier_base: return {168, 200, 24u, true};
+    case Scene::demolition: return {80, 327, 12u, true};
+    case Scene::frontier_base: return {168, 207, 24u, true};
     default: return {};
     }
 }

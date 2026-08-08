@@ -216,8 +216,17 @@ void main() {
     bool fullGas = fullRegion && isGas(dominant);
     bool liquidEnclosed = fullLiquid && mediumBoundaryEnclosed(origin, false);
     bool gasEnclosed = fullGas && mediumBoundaryEnclosed(origin, true);
-    bool liquidBoundaryFine = fullLiquid && !moving && !liquidEnclosed;
-    bool gasBoundaryFine = fullGas && !moving && !gasEnclosed;
+    bool macroStepDue = (pc.reserved & 2u) != 0u;
+    bool macroCadenceCarry = (fullLiquid || fullGas) &&
+                             tileHas(previous, TILE_MACRO_MOVED);
+    bool liquidBoundaryCandidate = fullLiquid && !moving && !liquidEnclosed &&
+                                   !macroCadenceCarry;
+    bool gasBoundaryCandidate = fullGas && !moving && !gasEnclosed &&
+                                !macroCadenceCarry;
+    uint mediumExposureTicks = (liquidBoundaryCandidate || gasBoundaryCandidate)
+        ? min(tileStableTicks(previous) + 1u, 2u) : 0u;
+    bool liquidBoundaryFine = liquidBoundaryCandidate && mediumExposureTicks >= 2u;
+    bool gasBoundaryFine = gasBoundaryCandidate && mediumExposureTicks >= 2u;
     bool boundaryFineMedium = liquidBoundaryFine || gasBoundaryFine;
     bool liquidBreakup = liquidBoundaryFine &&
         !tileHas(previous, TILE_MEDIUM_BREAKUP);
@@ -229,8 +238,8 @@ void main() {
     // Match the packaged v2.5.3 moving-or-enclosed packet policy: moving full
     // media and enclosed full media get macro work. If the exact 8x8 transaction cannot commit, TILE_FINE_ACTIVE
     // remains set below so the same tick falls back to canonical cells.
-    bool macroLiquid = fullLiquid && (moving || liquidEnclosed);
-    bool macroGas = fullGas && (moving || gasEnclosed);
+    bool macroLiquid = fullLiquid && (moving || liquidEnclosed || macroCadenceCarry);
+    bool macroGas = fullGas && (moving || gasEnclosed || macroCadenceCarry);
     bool macroPowder = fullRegion && isPowder(dominant) &&
                        !structuralTile && !isBlockCapable(dominant);
     // Block-capable solids may use tile metadata for cohesion, support, sleep,
@@ -269,15 +278,16 @@ void main() {
     bool candidate = !structuralTile && cooldown == 0u && stabilizable && physicallySupported &&
                      occupied >= TILE_STABILITY_OCCUPANCY && stable == occupied &&
                      !moving && !hot && !reacting;
-    uint stableTicks = candidate ? min(tileStableTicks(previous) + 1u, TILE_STABILIZE_TICKS) : 0u;
+    uint stableTicks = candidate ? min(tileStableTicks(previous) + 1u, TILE_STABILIZE_TICKS) :
+                       mediumExposureTicks;
     bool stableRegion = candidate && stableTicks >= TILE_STABILIZE_TICKS;
     bool unsupportedStructural = structuralTile && !durableStructuralTile &&
                        !physicallySupported;
     bool thresholdCollapse = fractureArmed && structural < TILE_MIN_COHESIVE_CELLS;
     bool collapsing = thresholdCollapse || unsupportedStructural;
-    if (pc.reserved != 0u && collapsing && !tileHas(previous, TILE_COLLAPSING))
+    if ((pc.reserved & 1u) != 0u && collapsing && !tileHas(previous, TILE_COLLAPSING))
         atomicAdd(debugStats[STAT_STRUCTURAL_COLLAPSES], 1u);
-    if (pc.reserved != 0u && gasBreakup)
+    if ((pc.reserved & 1u) != 0u && gasBreakup)
         atomicAdd(debugStats[STAT_GAS_EDGE_ACTIVE_TILES], 1u);
     bool terrainStable = (structuralTile || stableRegion) && !collapsing;
     bool supported = terrainStable &&
@@ -317,6 +327,7 @@ void main() {
     if (beeHazard) flags |= TILE_BEE_HAZARD;
     if (uniformMaterial) flags |= TILE_UNIFORM;
     if (macroMovable) flags |= TILE_MACRO_MOVABLE;
+    if (macroCadenceCarry && !macroStepDue) flags |= TILE_MACRO_MOVED;
     if (fineActive) flags |= TILE_FINE_ACTIVE;
     if (settledMedium) flags |= TILE_SETTLED_MEDIUM;
     if (wetContent) flags |= TILE_WET_CONTENT;

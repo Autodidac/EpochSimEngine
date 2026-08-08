@@ -380,6 +380,39 @@ void updateBreathing(inout ActorState state) {
     }
 }
 
+bool spawnSupportedAndBreathable(ivec2 center) {
+    if (!bodyClear(center) || !groundedAt(center)) return false;
+    uint head = actorAt(center + ivec2(0, -4)).material;
+    return head == MAT_ATMOSPHERE || head == MAT_OXYGEN;
+}
+
+void recoverActorSpawn(inout ActorState state) {
+    if (state.enabled == 0u) return;
+    ivec2 configured = ivec2(state.x, state.y);
+    if (spawnSupportedAndBreathable(configured)) return;
+
+    // Scene edits must not silently bury or suffocate the player. Search the
+    // nearby authored tile columns deterministically and keep the closest valid
+    // supported Air position.
+    bool found = false;
+    ivec2 recovered = configured;
+    for (int tileBand = 0; tileBand <= 8 && !found; ++tileBand) {
+        int distanceX = tileBand * 8;
+        for (int side = 0; side < (tileBand == 0 ? 1 : 2) && !found; ++side) {
+            int offsetX = tileBand == 0 ? 0 : (side == 0 ? distanceX : -distanceX);
+            for (int offsetY = -24; offsetY <= 96; ++offsetY) {
+                ivec2 candidate = configured + ivec2(offsetX, offsetY);
+                if (spawnSupportedAndBreathable(candidate)) {
+                    recovered = candidate;
+                    found = true;
+                    break;
+                }
+            }
+        }
+    }
+    state.x = recovered.x;
+    state.y = recovered.y;
+}
 void resetActor(inout ActorState state) {
     state = ActorState(0, 0, 0, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
                        255u, 255u, 0, 0, actorPc.scene, 0u, 0u, 0u, 0u, 1u);
@@ -393,15 +426,16 @@ void resetActor(inout ActorState state) {
         state.enabled = 1u;
     } else if (actorPc.scene == SCENE_DEMOLITION) {
         state.x = authoredOriginX + 80;
-        state.y = authoredOriginY + 324;
+        state.y = authoredOriginY + 327;
         state.ammo = 12u;
         state.enabled = 1u;
     } else if (actorPc.scene == SCENE_FRONTIER_BASE) {
         state.x = authoredOriginX + 168;
-        state.y = authoredOriginY + 200;
+        state.y = authoredOriginY + 207;
         state.ammo = 24u;
         state.enabled = 1u;
     }
+    recoverActorSpawn(state);
     state.hitX = state.x;
     state.hitY = state.y - 4;
 }

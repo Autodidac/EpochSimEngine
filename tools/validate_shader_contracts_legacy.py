@@ -297,7 +297,7 @@ def main() -> int:
         if token not in ui_layout_hpp:
             errors.append(f"grouped editor layout contract missing {token!r}")
     fullscreen = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
-    for token in ("mediumCell", "stateEdge", "utilityLabels[3] = uint[3](67u, 159u, 108u)",
+    for token in ("mediumCell", "stateEdge", "utilityLabels[3] = uint[3](67u, 159u, renderPc.selectedWorkspace == 3u ? 160u : 108u)",
                   "debugScale", "palettePanelHeight = 124u",
                   "keymapBottom = keymapTop + 124u",
                   "cursorBottom = cursorTop + 112u",
@@ -514,8 +514,8 @@ def main() -> int:
             errors.append(f"fullscreen tile-aligned viewport missing {token!r}")
     for token in (
         "mediumBoundaryEnclosed",
-        "bool macroLiquid = fullLiquid && (moving || liquidEnclosed)",
-        "bool macroGas = fullGas && (moving || gasEnclosed)",
+        "bool macroLiquid = fullLiquid && (moving || liquidEnclosed || macroCadenceCarry)",
+        "bool macroGas = fullGas && (moving || gasEnclosed || macroCadenceCarry)",
         "fineFallbackMedium",
         "mediumBreakup",
         "TILE_MEDIUM_ENCLOSED",
@@ -548,8 +548,8 @@ def main() -> int:
     if "CHUNK_SLEEPING) && !chunkHas" in chunks_comp + tiles_comp:
         errors.append("stale sleeping metadata can still suppress active-section classification")
     for token in ("productiveMediumMove", "!productiveMediumMove",
-                  "bool macroLiquid = fullLiquid && (moving || liquidEnclosed)",
-                  "bool macroGas = fullGas && (moving || gasEnclosed)",
+                  "bool macroLiquid = fullLiquid && (moving || liquidEnclosed || macroCadenceCarry)",
+                  "bool macroGas = fullGas && (moving || gasEnclosed || macroCadenceCarry)",
                   "fineFallbackMedium"):
 
         if token not in tiles_comp:

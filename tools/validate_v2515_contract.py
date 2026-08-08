@@ -21,13 +21,13 @@ def reject(path: str, token: str) -> None:
 
 
 # Canonical history remains while the newest contract owns current publication.
-require("CMakeLists.txt", "VERSION 2.5.18")
+require("CMakeLists.txt", "VERSION 2.5.19")
 require("CHANGELOG.md", "## 2.5.15")
 
 # v2.5.3 macro ownership: moving complete media get a packet attempt.
 for token in (
-    "bool macroLiquid = fullLiquid && (moving || liquidEnclosed)",
-    "bool macroGas = fullGas && (moving || gasEnclosed)",
+    "bool macroLiquid = fullLiquid && (moving || liquidEnclosed || macroCadenceCarry)",
+    "bool macroGas = fullGas && (moving || gasEnclosed || macroCadenceCarry)",
     "fineFallbackMedium",
 ):
     require("shaders/tiles.comp", token)

@@ -138,7 +138,17 @@ uint residentLayerMaterial(int zone, int localY, int boundaryA, int boundaryB,
                             blend, position, uint(zone * 31 + 19));
 }
 
-uvec2 residentWorldSubstrateSample(ivec2 worldPosition) {
+int sceneSurfaceTileRow(uint scene) {
+    if (scene == SCENE_VOLCANO || scene == SCENE_WATERWORKS ||
+        scene == SCENE_GOLD_MINE) return 43;
+    if (scene == SCENE_ECOSYSTEM) return 37;
+    if (scene == SCENE_ENGINEERING) return 42;
+    if (scene == SCENE_DEMOLITION) return 41;
+    if (scene == SCENE_FRONTIER_BASE) return 17;
+    return 40;
+}
+
+uvec2 residentWorldSubstrateSample(ivec2 worldPosition, uint scene) {
     int width = int(pc.width);
     int height = int(pc.height);
     int sceneTop = authoredWorldOrigin().y;
@@ -156,16 +166,14 @@ uvec2 residentWorldSubstrateSample(ivec2 worldPosition) {
     if (worldPosition.y < sceneBottom) {
         if (worldPosition.y >= foundationStart)
   return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
-        // Continue the common surface through the authored footprint. Scene
-        // objects and scene-authored terrain remain authoritative when nonempty.
-        // Continue the authored Sandbox plateau cleanly across every scene.
-        // Four dirt rows sit between the grass top and the shared foundation.
-        int surfaceY = sceneBottom - foundation * 5;
+        // Continue the active scene's own terrain height. Grass, Dirt, and the
+        // foundation all begin on complete aligned 8x8 tile rows.
+        int surfaceY = sceneTop + sceneSurfaceTileRow(scene) * foundation;
         if (worldPosition.y < surfaceY) return uvec2(MAT_EMPTY, 0u);
-        if (worldPosition.y == surfaceY)
-          return uvec2(MAT_GRASS, TERRAIN_FLAG_STRUCTURAL);
-        if (worldPosition.y < surfaceY + foundation * 4)
-          return uvec2(MAT_DIRT, TERRAIN_FLAG_STRUCTURAL);
+        if (worldPosition.y < surfaceY + foundation)
+            return uvec2(MAT_GRASS, TERRAIN_FLAG_STRUCTURAL);
+        if (worldPosition.y < foundationStart)
+            return uvec2(MAT_DIRT, TERRAIN_FLAG_STRUCTURAL);
         uint biome = residentSurfaceBiome(worldPosition);
         return uvec2(biome, TERRAIN_FLAG_STRUCTURAL);
     }
@@ -299,41 +307,41 @@ uint volcanoMaterial(ivec2 p) {
     if (b.y == chamberCenter.y + 3 && abs(b.x - center) <= 3)
         material = MAT_MAGMA_VENT;
 
-    // Open crater with a retained lava lake and a vent at its base.
-    int craterCenterX = center * BRICK_SIZE + BRICK_SIZE / 2;
-    int craterDx = abs(p.x - craterCenterX);
-    int craterSurface = (top + 4) * BRICK_SIZE;
-    int craterBed = craterSurface + 18 + max(0, 34 - craterDx) / 2;
-    if (craterDx <= 44 && p.y >= craterSurface && p.y < craterBed)
+    // Open, tile-stepped crater with a retained lava lake and vent. The stepped
+    // bowl keeps the scenic silhouette without partial structural/liquid tiles.
+    int craterHalf = 6;
+    int craterDxBrick = abs(b.x - center);
+    int craterSurfaceRow = top + 4;
+    int craterBedRow = craterSurfaceRow + 3 + max(0, craterHalf - craterDxBrick) / 2;
+    if (craterDxBrick <= craterHalf && b.y >= craterSurfaceRow && b.y < craterBedRow)
         material = MAT_LAVA;
-    if (craterDx <= 52 && p.y >= craterBed && p.y < craterBed + 6)
+    if (craterDxBrick <= craterHalf + 1 && b.y == craterBedRow)
         material = MAT_STONE;
-    if (p.y >= craterSurface - 10 && p.y < craterSurface && craterDx <= 48)
+    if (craterDxBrick <= craterHalf && b.y == craterSurfaceRow - 1)
         material = MAT_EMPTY;
-    if (p.y == craterBed - 1 && craterDx <= 6)
+    if (craterDxBrick <= 1 && b.y == craterBedRow - 1)
         material = MAT_MAGMA_VENT;
 
-    // Natural map-scale water lake. All coordinates are authored-local.
-    int authoredWidth = min(int(pc.width), AUTHORED_WORLD_CELLS.x);
-    int lakeLeft = max((center + 18) * BRICK_SIZE, authoredWidth * 3 / 5);
-    int lakeRight = authoredWidth - BRICK_SIZE * 3;
+    // Natural map-scale water lake built from complete global brick cells.
+    int lakeLeft = max(center + 18, world.x * 3 / 5);
+    int lakeRight = world.x - 3;
     int lakeCenter = (lakeLeft + lakeRight) / 2;
-    int lakeHalfSpan = max(24, (lakeRight - lakeLeft) / 2);
-    int lakeSurface = (floorRow - 9) * BRICK_SIZE + 2;
-    int lakeFloorLimit = floorRow * BRICK_SIZE - 2;
-    int lakeDx = abs(p.x - lakeCenter);
-    if (lakeRight > lakeLeft && lakeDx <= lakeHalfSpan) {
-        int centerFactor = lakeHalfSpan - lakeDx;
-        int bowlDepth = 8 + centerFactor * 62 / max(lakeHalfSpan, 1);
-        int rough = int(hash32(uint(p.x / 7) ^ pc.seed ^ 0x1a6eu) & 3u) - 1;
-        int bedY = min(lakeFloorLimit, lakeSurface + bowlDepth + rough);
-        if (p.y >= lakeSurface && p.y < bedY) material = MAT_WATER;
-        else if (p.y >= bedY && p.y < lakeFloorLimit + 5)
-  material = p.y < bedY + 6 ? MAT_DIRT : MAT_STONE;
-        if (p.y == lakeSurface - 1 && lakeDx > lakeHalfSpan - BRICK_SIZE * 2)
-  material = MAT_GRASS;
+    int lakeHalfSpan = max(3, (lakeRight - lakeLeft) / 2);
+    int lakeSurfaceRow = floorRow - 9;
+    int lakeDxBrick = abs(b.x - lakeCenter);
+    if (lakeRight > lakeLeft && lakeDxBrick <= lakeHalfSpan) {
+        int centerFactor = lakeHalfSpan - lakeDxBrick;
+        int bowlDepth = 1 + centerFactor * 8 / max(lakeHalfSpan, 1);
+        int bedRow = min(floorRow - 1, lakeSurfaceRow + bowlDepth);
+        if (b.y >= lakeSurfaceRow && b.y < bedRow) material = MAT_WATER;
+        else if (b.y == bedRow) material = MAT_DIRT;
+        else if (b.y > bedRow && b.y < floorRow) material = MAT_STONE;
+        if (b.y == lakeSurfaceRow - 1 &&
+            lakeDxBrick > lakeHalfSpan - 2) material = MAT_GRASS;
     }
 
+    int craterSurface = craterSurfaceRow * BRICK_SIZE;
+    int craterDx = abs(p.x - (center * BRICK_SIZE + BRICK_SIZE / 2));
     if (material == MAT_EMPTY && p.y < craterSurface &&
         p.y > max(8, top * BRICK_SIZE - 128) && craterDx < 118 &&
         (hash32(indexOf(p) ^ pc.seed ^ 0x51a9u) % 31u) == 0u)
@@ -708,11 +716,13 @@ void main() {
     bool authored = insideAuthoredWorld(p);
     ivec2 local = authoredLocalCoordinate(p);
     uint material = authored ? materialForScene(scene, local) : MAT_EMPTY;
-    uvec2 substrateSample = residentWorldSubstrateSample(p);
+    uvec2 substrateSample = residentWorldSubstrateSample(p, scene);
     uint substrateMaterial = substrateSample.x;
     bool substrateCell = substrateMaterial != MAT_EMPTY ||
                          (substrateSample.y & TERRAIN_FLAG_SAND_TRAP) != 0u;
-    bool useSubstrate = substrateCell && (!authored || material == MAT_EMPTY);
+    // A non-Blank authored scene owns its entire 640x360 envelope, including
+    // intentional Air rooms and basins. Only Blank inherits substrate inside it.
+    bool useSubstrate = substrateCell && (!authored || scene == SCENE_BLANK);
     if (useSubstrate) material = substrateMaterial;
     if (material == MAT_EMPTY) material = MAT_ATMOSPHERE;
     bool structural = useSubstrate

@@ -119,8 +119,9 @@ void main() {
             Cell source = sourceOrigin.x >= 0 ? macroAt(sourceOrigin) : Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
             Cell target = macroAt(targetOrigin);
             uint randomValue = macroHash(sourceTile, uint(macroPc.phase) + 1u);
-            bool valid = sourceOrigin.x >= 0 && macroSourceAllows(sourceState, source, randomValue) &&
-                         targetTileAllows(targetState, source, target);
+            bool sourceEligible = sourceOrigin.x >= 0 &&
+                                  macroSourceAllows(sourceState, source, randomValue);
+            bool valid = sourceEligible && targetTileAllows(targetState, source, target);
             bool allowed = false;
             if (valid && macroPc.phase == 5) {
                 allowed = tileHas(sourceState, TILE_MACRO_GAS);
@@ -133,6 +134,17 @@ void main() {
                 // the already-validated density/displacement contract rather than MAT_EMPTY.
                 allowed = (tileHas(sourceState, TILE_MACRO_LIQUID) || tileHas(sourceState, TILE_MACRO_GAS)) &&
                           regionSupported(sourceOrigin, source);
+            }
+            if (!allowed && sourceEligible &&
+                (tileHas(sourceState, TILE_MACRO_LIQUID) ||
+                 tileHas(sourceState, TILE_MACRO_GAS))) {
+                // A due macro transaction that cannot commit hands the intact
+                // packet to fine motion in this same tick. Later macro phases
+                // may still succeed and clear this fallback flag atomically.
+                sourceState.flags = (sourceState.flags | TILE_ACTIVE | TILE_FINE_ACTIVE) &
+                                    ~(TILE_SLEEPING | TILE_SETTLED_MEDIUM);
+                tiles[sourceTileIndex] = sourceState;
+                markMacroChunkDirty(sourceOrigin);
             }
             if (allowed) {
                 sourceTileShared = sourceTile;
@@ -162,7 +174,7 @@ void main() {
     if (gl_LocalInvocationIndex == 0u) {
         TileState sourceState = tiles[sourceTileIndexShared];
         TileState targetState = tiles[targetTileIndexShared];
-        uint staleMediumFlags = TILE_SLEEPING | TILE_SETTLED_MEDIUM |
+        uint staleMediumFlags = TILE_SLEEPING | TILE_FINE_ACTIVE | TILE_SETTLED_MEDIUM |
                                 TILE_MEDIUM_ENCLOSED | TILE_MEDIUM_BREAKUP;
         sourceState.flags = (sourceState.flags | TILE_ACTIVE | TILE_MACRO_MOVED) & ~staleMediumFlags;
         targetState.flags = (targetState.flags | TILE_ACTIVE | TILE_MACRO_MOVED) & ~staleMediumFlags;

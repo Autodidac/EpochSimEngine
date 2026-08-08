@@ -8,13 +8,13 @@ def require(path: str, needle: str) -> None:
         raise SystemExit(f"{path}: missing {needle!r}")
 
 
-require("include/sandhybrid/world_layout.hpp", "The shared surface crosses the authored footprint")
-require("shaders/reset.comp", "substrateCell && (!authored || material == MAT_EMPTY)")
+require("include/sandhybrid/world_layout.hpp", "Continue each authored scene's own surface height")
+require("shaders/reset.comp", "substrateCell && (!authored || scene == SCENE_BLANK)")
 require("include/sandhybrid/world_layout.hpp", "resident_transition_material")
 require("include/sandhybrid/terrain_generation.hpp", "neighboring_vein_material")
 require("include/sandhybrid/terrain_generation.hpp", "rubble_pocket_selected")
-require("shaders/reset.comp", "int authoredWidth = min(int(pc.width), AUTHORED_WORLD_CELLS.x)")
-require("shaders/reset.comp", "Open crater with a retained lava lake")
+require("shaders/reset.comp", "Natural map-scale water lake built from complete global brick cells")
+require("shaders/reset.comp", "Open, tile-stepped crater with a retained lava lake")
 require("shaders/move.comp", "liquidSpreadReach")
 require("shaders/move.comp", "Interior cells therefore settle")
 require("shaders/macro_move.comp", "MAT_HONEY) return (randomValue & 1u) == 0u")

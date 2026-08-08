@@ -4,9 +4,16 @@
 
 ## Current release
 
-- Current release: `v2.5.18`, published as the latest normal public GitHub release for terrain, Half Water, bounded Blueprints, the hard-coded hive, and EpochGui recovery.
-- State: v2.5.18 is published from commit `351a5393afffead716262e45bf7670e888f7d32b`. Main workflow `31259694107`, tag workflow `31260334364`, and tagged hygiene workflow `31260334357` passed. GitHub reports it as latest, non-draft, and non-prerelease with exactly two packages and two checksums. The 129 unaccepted missions and all criteria outside the focused evidence remain active.
+- Current candidate: `v2.5.19`, pending exact-source Windows/Linux package gates and stable publication for scenic full-tile scenes, live tools, player recovery, slower/coherent macro packets, and fixed-step frame independence.
+- State: exact-source Windows and Linux Release builds each pass 28/28 tests; fresh installed packages pass all nine focused Vulkan checks on Windows/NVIDIA and Linux/Mesa llvmpipe, and archive contents/checksums are audited. Stable GitHub publication remains pending. No affected visual/runtime mission is marked COMPLETE.
 - Public prerelease tags and `-test` release names are forbidden.
+
+## v2.5.19 candidate record
+
+- Scope: restore scene-specific full-tile surfaces and authored empty interiors; add Designer Clear and bounded Fill uploads; recover supported breathable players; halve macro movement rate, double cohesion allowance, and drive gameplay from fixed simulation ticks.
+- Required publication evidence: exact-source Windows and Linux Release builds/tests, fresh package audits/checksums, packaged Vulkan state readback, successful GitHub main/tag workflows, and a normal latest non-prerelease release with exactly two packages and two checksum assets.
+- Local gate evidence: both native Release builds pass 28/28 tests; each fresh package contains 12 shaders, 20 headers, the development package, and 14 canonical documents. Windows/NVIDIA and Linux/Mesa llvmpipe packages pass identical nine-check Vulkan readback, including 64-cell exact packets, 56+8 blocked fallback, conserved Half Water, and both exact hives.
+- Status: candidate only. GitHub workflow/publication evidence will be recorded after the tag succeeds. No broader mission is closed by focused package checks.
 
 ## v2.5.18 publication record
 

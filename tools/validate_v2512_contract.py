@@ -78,9 +78,9 @@ for token in (
     require("src/vulkan_renderer.cpp", token)
 
 # Continuous ground through the authored footprint.
-require("include/sandhybrid/world_layout.hpp", "The shared surface crosses the authored footprint")
-require("shaders/reset.comp", "bool useSubstrate = substrateCell && (!authored || material == MAT_EMPTY)")
-require("src/vulkan_renderer.cpp", "inside_authored && existing != Material::empty")
+require("include/sandhybrid/world_layout.hpp", "Continue each authored scene's own surface height")
+require("shaders/reset.comp", "bool useSubstrate = substrateCell && (!authored || scene == SCENE_BLANK)")
+require("src/vulkan_renderer.cpp", "inside_authored && scene != Scene::blank")
 require("tests/world_layout_contract.cpp", "1500u, 1068u")
 
 # Simulation-time lighting and hard pause/reset.

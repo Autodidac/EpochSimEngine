@@ -114,6 +114,11 @@ struct DesignerView final {
     };
 }
 
+void clear_designer_grid(SharedState& state) noexcept {
+    for (auto& cell : state.designer_cells)
+        cell.store(static_cast<std::uint32_t>(Material::empty), std::memory_order_relaxed);
+    state.designer_dirty.store(true, std::memory_order_release);
+}
 void paint_designer_grid(SharedState& state, const ui::SimulationViewport& viewport,
                          const std::int32_t mouse_x, const std::int32_t mouse_y) noexcept {
     if (state.designer_mode.load(std::memory_order_relaxed) != 0u) return;
@@ -757,6 +762,8 @@ int run_application(const ApplicationOptions& options) {
                 // World Fill remains click-confirmed: the sidebar control arms
                 // one operation, and the next world left-click supplies its target.
                 shared_state.fill_armed.store(true, std::memory_order_release);
+            } else if (designer_workspace && epochengine::gui_lib::contains(layout.fill, pointer)) {
+                clear_designer_grid(shared_state);
             } else if (material_workspace && epochengine::gui_lib::contains(layout.eraser, pointer)) {
                 active_selected_material.store(static_cast<std::uint32_t>(Material::empty),
                                                std::memory_order_relaxed);

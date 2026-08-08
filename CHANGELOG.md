@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 2.5.19
+
+- Rebuilt every scene's resident surface and initial structural/liquid geometry on complete aligned 8x8 tiles while preserving authored empty interiors and scenic silhouettes.
+- Added Designer Clear and replaced Fill's full-world resident upload with bounded changed ranges.
+- Recovered supported, body-clear, breathable player spawns with deterministic nearby fallback.
+- Halved macro packet movement cadence, doubled exposed-packet cohesion allowance, and preserved same-attempt fine fallback.
+- Made materials, actors, clocks, effects, packet cadence, and breakup aging advance from bounded fixed 60 Hz ticks instead of presented frames.
+- Retained the exact Fix36 hard-coded hive, Half Water rules, sidebar workspaces, paused editing, Blueprint validation, and stable visible release policy.
+
 ## 2.5.18
 
 - Replaced the noisy low resident-surface strip with a flat grass-over-dirt plateau aligned to the authored scene height in every generated scene.

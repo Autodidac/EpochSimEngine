@@ -2,6 +2,7 @@
 
 #include "sandhybrid/camera_policy.hpp"
 #include "sandhybrid/material.hpp"
+#include "sandhybrid/scene.hpp"
 #include "sandhybrid/terrain_generation.hpp"
 
 #include <algorithm>
@@ -158,9 +159,24 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
                               blend, x, y, zone * 31u + 19u);
 }
 
+[[nodiscard]] constexpr std::uint32_t scene_surface_tile_row(const Scene scene) noexcept {
+    switch (scene) {
+    case Scene::sandbox:
+    case Scene::blank: return 40u;
+    case Scene::volcano:
+    case Scene::waterworks:
+    case Scene::gold_mine: return 43u;
+    case Scene::ecosystem: return 37u;
+    case Scene::engineering_lab: return 42u;
+    case Scene::demolition: return 41u;
+    case Scene::frontier_base: return 17u;
+    default: return 40u;
+    }
+}
 [[nodiscard]] constexpr terrain::Sample resident_substrate_sample(
     const std::uint32_t world_width,
     const std::uint32_t world_height,
+    const Scene scene,
     const std::uint32_t x,
     const std::uint32_t y) noexcept {
     if (x >= world_width || y >= world_height || world_width == 0u || world_height == 0u)
@@ -179,21 +195,17 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
     const auto foundation_start = scene_bottom - foundation;
     if (y < scene_bottom) {
         if (y >= foundation_start) return {Material::stone, true, false, false};
-        // The shared surface crosses the authored footprint instead of stopping
-        // at its left/right edges. Authored non-empty cells are composited over
-        // this substrate by reset/load code, preserving structures and basins
-        // while every scene receives continuous ground like the map overview.
-        // Continue the authored Sandbox plateau cleanly across every scene.
-        // Four dirt rows sit between the grass top and the shared foundation.
-        const auto surface_y = static_cast<std::int32_t>(scene_bottom) -
-                               static_cast<std::int32_t>(foundation * 5u);
+        // Continue each authored scene's own surface height into the resident
+        // expanse. Every layer boundary is a complete aligned 8x8 tile row.
+        const auto surface_y = static_cast<std::int32_t>(scene_top) +
+            static_cast<std::int32_t>(scene_surface_tile_row(scene) * foundation);
         if (static_cast<std::int32_t>(y) < surface_y)
-          return {Material::empty, false, false, false};
-        if (static_cast<std::int32_t>(y) == surface_y)
-          return {Material::grass, true, false, false};
+            return {Material::empty, false, false, false};
         if (static_cast<std::int32_t>(y) < surface_y +
-                static_cast<std::int32_t>(foundation * 4u))
-          return {Material::dirt, true, false, false};
+                static_cast<std::int32_t>(foundation))
+            return {Material::grass, true, false, false};
+        if (static_cast<std::int32_t>(y) < static_cast<std::int32_t>(foundation_start))
+            return {Material::dirt, true, false, false};
         const auto biome = resident_surface_biome(world_width, x, y);
         return {biome, true, false, false};
     }
@@ -233,12 +245,31 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
     return resident_ground_sample(geology, x, y, depth);
 }
 
+[[nodiscard]] constexpr terrain::Sample resident_substrate_sample(
+    const std::uint32_t world_width,
+    const std::uint32_t world_height,
+    const std::uint32_t x,
+    const std::uint32_t y) noexcept {
+    return resident_substrate_sample(
+        world_width, world_height, Scene::sandbox, x, y);
+}
+
+[[nodiscard]] constexpr Material resident_substrate_material(
+    const std::uint32_t world_width,
+    const std::uint32_t world_height,
+    const Scene scene,
+    const std::uint32_t x,
+    const std::uint32_t y) noexcept {
+    return resident_substrate_sample(world_width, world_height, scene, x, y).material;
+}
+
 [[nodiscard]] constexpr Material resident_substrate_material(
     const std::uint32_t world_width,
     const std::uint32_t world_height,
     const std::uint32_t x,
     const std::uint32_t y) noexcept {
-    return resident_substrate_sample(world_width, world_height, x, y).material;
+    return resident_substrate_material(
+        world_width, world_height, Scene::sandbox, x, y);
 }
 
 

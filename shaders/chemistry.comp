@@ -48,7 +48,7 @@ void commitResult(uint index, Cell before, Cell after) {
     }
     if (after.material != MAT_WATER || before.material != MAT_WATER)
         after.aux &= ~AUX_WATER_HALF;
-    if (pc.reserved != 0u && (after.material != before.material || after.temperature != before.temperature))
+    if ((pc.reserved & 1u) != 0u && (after.material != before.material || after.temperature != before.temperature))
         atomicAdd(debugStats[STAT_CHEMISTRY_CHANGES], 1u);
     recordConservation(before, after);
     nextCells[index] = after;
@@ -1009,13 +1009,13 @@ void main() {
                 setStateValue(result, 255u);
                 result.temperature = 1250;
             }
-            if (pc.reserved != 0u) atomicAdd(debugStats[STAT_VOLCANO_LAVA_OUTPUTS], 1u);
+            if ((pc.reserved & 1u) != 0u) atomicAdd(debugStats[STAT_VOLCANO_LAVA_OUTPUTS], 1u);
         } else if (emission == 1u) {
             uint roll = hash32(indexOf(ventPosition) ^ pc.step ^ 0x9a551u);
             uint ejecta = roll % 3u;
             result = makeCell(ejecta == 0u ? MAT_ASH : (ejecta == 1u ? MAT_SMOKE : MAT_STEAM));
             result.temperature = ejecta == 0u ? 180 : 240;
-            if (pc.reserved != 0u) atomicAdd(debugStats[STAT_VOLCANO_GAS_OUTPUTS], 1u);
+            if ((pc.reserved & 1u) != 0u) atomicAdd(debugStats[STAT_VOLCANO_GAS_OUTPUTS], 1u);
         }
     } else if (source.material == MAT_EMPTY) {
         // Source materials create effects into empty space without racing a
@@ -1043,7 +1043,7 @@ void main() {
                         machineReady(machine.material, machineInventory(machine)) &&
                         (machine.age % 24u) == 0u) {
                         result = makeCell(machineOutput(machine.material, machineInventory(machine)));
-                        if (pc.reserved != 0u) atomicAdd(debugStats[STAT_MACHINE_OUTPUTS], 1u);
+                        if ((pc.reserved & 1u) != 0u) atomicAdd(debugStats[STAT_MACHINE_OUTPUTS], 1u);
                         if (result.material == MAT_BEETLE) result.aux &= ~AUX_CHARGED;
                         produced = true;
                     }
@@ -1191,7 +1191,7 @@ void main() {
             machineAcceptsResource(p, acceptingMachine, source)) {
             result = makeCell(MAT_EMPTY);
             storedInMachine = true;
-            if (pc.reserved != 0u) atomicAdd(debugStats[STAT_MACHINE_INPUTS], 1u);
+            if ((pc.reserved & 1u) != 0u) atomicAdd(debugStats[STAT_MACHINE_INPUTS], 1u);
         }
     }
 

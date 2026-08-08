@@ -18,7 +18,9 @@ static_assert(resident_substrate_material(resident_world_width, resident_world_h
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 100u) == Material::empty);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 1039u) == Material::empty);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 1040u) == Material::grass);
-static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 1041u) == Material::dirt);
+static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 1041u) == Material::grass);
+static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 1047u) == Material::grass);
+static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 1048u) == Material::dirt);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 1071u) == Material::dirt);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 1079u) == Material::stone);
 static_assert(resident_substrate_material(resident_world_width, resident_world_height, 5000u, 1068u) != Material::empty);
@@ -34,6 +36,16 @@ static_assert(resident_substrate_is_structural(Material::copper));
 static_assert(resident_substrate_is_structural(Material::aluminum));
 static_assert(resident_substrate_is_structural(Material::uranium));
 
+static_assert(scene_surface_tile_row(Scene::sandbox) == 40u);
+static_assert(scene_surface_tile_row(Scene::blank) == 40u);
+static_assert(scene_surface_tile_row(Scene::volcano) == 43u);
+static_assert(scene_surface_tile_row(Scene::waterworks) == 43u);
+static_assert(scene_surface_tile_row(Scene::ecosystem) == 37u);
+static_assert(scene_surface_tile_row(Scene::engineering_lab) == 42u);
+static_assert(scene_surface_tile_row(Scene::gold_mine) == 43u);
+static_assert(scene_surface_tile_row(Scene::demolition) == 41u);
+static_assert(scene_surface_tile_row(Scene::frontier_base) == 17u);
+
 
 static_assert(world_dimensions(WorldSizePreset::compact).footprint_columns == 4u);
 static_assert(world_dimensions(WorldSizePreset::standard).footprint_columns == 8u);
@@ -41,6 +53,30 @@ static_assert(world_dimensions(WorldSizePreset::large).footprint_columns == 16u)
 static_assert(world_dimensions(WorldSizePreset::compact).height == resident_world_height);
 
 int main() {
+    constexpr std::array scenes{
+        Scene::sandbox, Scene::blank, Scene::volcano, Scene::waterworks,
+        Scene::ecosystem, Scene::engineering_lab, Scene::gold_mine,
+        Scene::demolition, Scene::frontier_base,
+    };
+    constexpr auto scene_top = authored_scene_origin_y(resident_world_height);
+    for (const auto scene : scenes) {
+        const auto surface = scene_top + scene_surface_tile_row(scene) * 8u;
+        if (resident_substrate_material(
+                resident_world_width, resident_world_height, scene, 5000u,
+                surface - 1u) != Material::empty) return 10;
+        for (std::uint32_t y = surface; y < surface + 8u; ++y) {
+            if (resident_substrate_material(
+                    resident_world_width, resident_world_height, scene, 5000u,
+                    y) != Material::grass) return 11;
+        }
+        if (resident_substrate_material(
+                resident_world_width, resident_world_height, scene, 5000u,
+                surface + 8u) != (scene_surface_tile_row(scene) == 43u ? Material::stone : Material::dirt)) return 12;
+        if (resident_substrate_material(
+                resident_world_width, resident_world_height, scene, 5000u,
+                1072u) != Material::stone) return 13;
+    }
+
     constexpr auto scene_bottom = 1080u;
     constexpr auto geology_end = 1408u;
     std::array<std::size_t, 4> deposits{};

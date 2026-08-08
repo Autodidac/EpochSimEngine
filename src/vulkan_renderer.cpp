@@ -1547,27 +1547,27 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         vkUnmapMemory(device, scene_staging_buffer.memory);
         return states;
     }
-    std::size_t flood_replace_connected(std::vector<SceneCell>& cells,
-                                        const std::uint32_t start,
-                                        const std::uint32_t target,
-                                        const std::uint32_t replacement) {
+    std::vector<std::uint32_t> flood_replace_connected(
+        std::vector<SceneCell>& cells,
+        const std::uint32_t start,
+        const std::uint32_t target,
+        const std::uint32_t replacement) {
+        std::vector<std::uint32_t> queue;
         if (static_cast<std::size_t>(start) >= cells.size() || target == replacement ||
             cells[start].material != target)
-            return 0u;
-        std::vector<std::uint8_t> visited(cells.size(), 0u);
-        std::vector<std::uint32_t> queue(cells.size());
-        std::size_t head = 0u;
-        std::size_t tail = 0u;
-        visited[start] = 1u;
-        queue[tail++] = start;
-        while (head < tail) {
-            const auto index = queue[head++];
+            return queue;
+
+        queue.reserve(4096u);
+        cells[start] = make_fill_cell(replacement, start);
+        queue.push_back(start);
+        for (std::size_t head = 0u; head < queue.size(); ++head) {
+            const auto index = queue[head];
             const auto x = index % config.grid_width;
             const auto y = index / config.grid_width;
             const auto enqueue = [&](const std::uint32_t candidate) {
-                if (visited[candidate] == 0u && cells[candidate].material == target) {
-                    visited[candidate] = 1u;
-                    queue[tail++] = candidate;
+                if (cells[candidate].material == target) {
+                    cells[candidate] = make_fill_cell(replacement, candidate);
+                    queue.push_back(candidate);
                 }
             };
             if (x > 0u) enqueue(index - 1u);
@@ -1575,11 +1575,84 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             if (y > 0u) enqueue(index - config.grid_width);
             if (y + 1u < config.grid_height) enqueue(index + config.grid_width);
         }
-        for (std::size_t index = 0u; index < visited.size(); ++index) {
-            if (visited[index] != 0u)
-                cells[index] = make_fill_cell(replacement, static_cast<std::uint32_t>(index));
+        return queue;
+    }
+
+    void upload_bounded_cells(const std::span<const SceneCell> cells,
+                              std::vector<std::uint32_t> indices,
+                              const std::string_view operation) {
+        if (indices.empty()) return;
+        std::ranges::sort(indices);
+        indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+
+        std::vector<SceneCell> payload;
+        std::vector<VkBufferCopy> regions;
+        payload.reserve(indices.size());
+        regions.reserve(indices.size());
+        for (std::size_t index = 0u; index < indices.size(); ++index) {
+            payload.push_back(cells[indices[index]]);
+            const auto source_offset =
+                static_cast<VkDeviceSize>(index * sizeof(SceneCell));
+            const auto destination_offset =
+                static_cast<VkDeviceSize>(indices[index]) * sizeof(SceneCell);
+            if (!regions.empty() && index > 0u &&
+                indices[index] == indices[index - 1u] + 1u) {
+                regions.back().size += sizeof(SceneCell);
+            } else {
+                regions.push_back({
+                    .srcOffset = source_offset,
+                    .dstOffset = destination_offset,
+                    .size = sizeof(SceneCell),
+                });
+            }
         }
-        return tail;
+
+        const auto payload_bytes =
+            static_cast<VkDeviceSize>(payload.size() * sizeof(SceneCell));
+        void* mapped = nullptr;
+        check_vk(vkMapMemory(device, scene_staging_buffer.memory, 0,
+                             payload_bytes, 0, &mapped),
+                 "vkMapMemory(bounded world edit)");
+        std::memcpy(mapped, payload.data(), static_cast<std::size_t>(payload_bytes));
+        vkUnmapMemory(device, scene_staging_buffer.memory);
+
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
+            for (const auto& destination : cell_buffers) {
+                buffer_barrier(command_buffer, destination,
+                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT |
+                                   VK_ACCESS_TRANSFER_READ_BIT,
+                               VK_ACCESS_TRANSFER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT);
+                vkCmdCopyBuffer(command_buffer, scene_staging_buffer.handle,
+                                destination.handle,
+                                static_cast<std::uint32_t>(regions.size()),
+                                regions.data());
+                buffer_barrier(command_buffer, destination,
+                               VK_ACCESS_TRANSFER_WRITE_BIT,
+                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            }
+            vkCmdFillBuffer(command_buffer, tile_buffer.handle, 0, tile_buffer.size, 0u);
+            vkCmdFillBuffer(command_buffer, chunk_buffer.handle, 0, chunk_buffer.size, 0u);
+            buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        });
+        startup_log(std::string{operation} + " used a bounded upload of " +
+                    std::to_string(indices.size()) + " cells in " +
+                    std::to_string(regions.size()) + " contiguous ranges.");
     }
 
     void fill_connected_region(SharedState& state) {
@@ -1593,13 +1666,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            static_cast<std::uint32_t>(cursor_x);
         const auto target = cells[start].material;
         const auto replacement = static_cast<std::uint32_t>(Material::atmosphere);
-        const auto changed = flood_replace_connected(cells, start, target, replacement);
-        if (changed == 0u) {
+        auto changed = flood_replace_connected(cells, start, target, replacement);
+        if (changed.empty()) {
             startup_log("Air fill found no different connected cells.");
             return;
         }
-        upload_scene_cells(cells);
-        startup_log("Filled connected region with Air: " + std::to_string(changed) + " cells.");
+        const auto changed_count = changed.size();
+        upload_bounded_cells(cells, std::move(changed), "Air fill");
+        startup_log("Filled connected region with Air: " + std::to_string(changed_count) + " cells.");
     }
 
     void ignite_air_region() {
@@ -1614,14 +1688,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             return;
         }
         const auto start = static_cast<std::uint32_t>(std::distance(cells.begin(), iterator));
-        const auto changed = flood_replace_connected(cells, start, air, fire);
-        if (changed == 0u) {
+        auto changed = flood_replace_connected(cells, start, air, fire);
+        if (changed.empty()) {
             startup_log("Ignite Air found no connected Air region.");
             return;
         }
-        upload_scene_cells(cells);
+        const auto changed_count = changed.size();
+        upload_bounded_cells(cells, std::move(changed), "Ignite Air");
         startup_log("Ignited upper-left connected Air region: " +
-                    std::to_string(changed) + " cells.");
+                    std::to_string(changed_count) + " cells.");
     }
 
     void place_selected_blueprint(SharedState& state) {
@@ -1945,15 +2020,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         for (std::uint32_t y = 0u; y < config.grid_height; ++y) {
             for (std::uint32_t x = 0u; x < config.grid_width; ++x) {
                 const auto material = resident_substrate_material(
-                    config.grid_width, config.grid_height, x, y);
+                    config.grid_width, config.grid_height, scene, x, y);
                 if (material == Material::empty) continue;
                 const auto index = static_cast<std::size_t>(y) * config.grid_width + x;
                 const bool inside_authored = x >= origin_x && x < origin_x + map_width &&
                                              y >= origin_y && y < origin_y + map_height;
-                const auto existing = static_cast<Material>(world_cells[index].material);
-                if (inside_authored && existing != Material::empty &&
-                    existing != Material::atmosphere)
-                    continue;
+                // Imported non-Blank artwork owns intentional empty rooms just
+                // like generated reset scenes. Blank alone inherits substrate.
+                if (inside_authored && scene != Scene::blank) continue;
                 world_cells[index] = make_resident_substrate_cell(
                     material, static_cast<std::uint32_t>(index));
             }
@@ -2275,6 +2349,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                 const bool collect_debug_stats) {
         const auto active_section_x = state.active_window_origin_x.load(std::memory_order_relaxed);
         const auto active_section_y = state.active_window_origin_y.load(std::memory_order_relaxed);
+        const bool macro_step_due = policy::macro_packet_step_due(simulation_step);
         SimulationPush simulation_push{
             .width = config.grid_width,
             .height = config.grid_height,
@@ -2283,6 +2358,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .active_section_x = active_section_x,
             .active_section_y = active_section_y,
             .active_mode = 1u,
+            .reserved = (collect_debug_stats ? 1u : 0u) | (macro_step_due ? 2u : 0u),
         };
 
         if ((simulation_step & 3u) == 0u) {
@@ -2339,44 +2415,46 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         // as cells, but transfer all 64 canonical cells in parallel. Mixed,
         // partial, structural, reacting, or half-water regions fall through to
         // the ordinary fine-grained movement passes below.
-        bind_compute(command_buffer, macro_movement_pipeline, current_set);
-        const std::array<std::int32_t, 6> macro_phases = (simulation_step & 1u) == 0u
-  ? std::array<std::int32_t, 6>{0, 5, 1, 2, 3, 4}
-  : std::array<std::int32_t, 6>{0, 5, 2, 1, 4, 3};
-        const auto tile_columns = divide_round_up(config.grid_width, 8u);
-        const auto tile_rows = divide_round_up(config.grid_height, 8u);
-        for (std::size_t phase_index = 0; phase_index < macro_phases.size(); ++phase_index) {
-  const auto phase = macro_phases[phase_index];
-  const MovementPush macro_push{
-      .width = config.grid_width,
-      .height = config.grid_height,
-      .step = simulation_step,
-      .seed = random_seed,
-      .phase = phase,
-      .parity = static_cast<std::int32_t>(
-          (simulation_step + static_cast<std::uint32_t>(phase_index)) & 1u),
-      .reserved0 = collect_debug_stats ? 1u : 0u,
-      .active_section_x = active_section_x,
-      .active_section_y = active_section_y,
-      .active_mode = 1u,
-      .worker_count = state.section_worker_count.load(std::memory_order_relaxed),
-  };
-  vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
-                     0, sizeof(macro_push), &macro_push);
-  if (phase <= 2 || phase == 5) {
-      vkCmdDispatch(command_buffer, tile_columns, divide_round_up(tile_rows, 2u), 1);
-  } else {
-      vkCmdDispatch(command_buffer, divide_round_up(tile_columns, 2u), tile_rows, 1);
-  }
-  buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
-                 VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-  buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
-                 VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-  buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
-                 VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        if (macro_step_due) {
+            bind_compute(command_buffer, macro_movement_pipeline, current_set);
+            const std::array<std::int32_t, 6> macro_phases = (simulation_step & 1u) == 0u
+      ? std::array<std::int32_t, 6>{0, 5, 1, 2, 3, 4}
+      : std::array<std::int32_t, 6>{0, 5, 2, 1, 4, 3};
+            const auto tile_columns = divide_round_up(config.grid_width, 8u);
+            const auto tile_rows = divide_round_up(config.grid_height, 8u);
+            for (std::size_t phase_index = 0; phase_index < macro_phases.size(); ++phase_index) {
+      const auto phase = macro_phases[phase_index];
+      const MovementPush macro_push{
+          .width = config.grid_width,
+          .height = config.grid_height,
+          .step = simulation_step,
+          .seed = random_seed,
+          .phase = phase,
+          .parity = static_cast<std::int32_t>(
+              (simulation_step + static_cast<std::uint32_t>(phase_index)) & 1u),
+          .reserved0 = collect_debug_stats ? 1u : 0u,
+          .active_section_x = active_section_x,
+          .active_section_y = active_section_y,
+          .active_mode = 1u,
+          .worker_count = state.section_worker_count.load(std::memory_order_relaxed),
+      };
+      vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
+                         0, sizeof(macro_push), &macro_push);
+      if (phase <= 2 || phase == 5) {
+          vkCmdDispatch(command_buffer, tile_columns, divide_round_up(tile_rows, 2u), 1);
+      } else {
+          vkCmdDispatch(command_buffer, divide_round_up(tile_columns, 2u), tile_rows, 1);
+      }
+      buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
+                     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+      buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+      buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            }
         }
 
         // Freeze the post-chemistry and macro-movement state for all neighborhood decisions in
@@ -2446,12 +2524,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     }
 
     void record_actor(const VkCommandBuffer command_buffer, SharedState& state,
-                      const bool reset_actor, const bool simulate_actor) {
+                      const bool reset_actor, const bool simulate_actor,
+                      const bool consume_one_shots) {
         const auto [aim_x, aim_y] = grid_cursor(state);
-        const bool fire = state.fire_tool.load(std::memory_order_relaxed) ||
-                          state.fire_tool_pressed.exchange(false, std::memory_order_acq_rel);
-        const bool deposit = state.deposit_resource.load(std::memory_order_relaxed) ||
-                             state.deposit_resource_pressed.exchange(false, std::memory_order_acq_rel);
+        const bool fire_pressed = consume_one_shots &&
+            state.fire_tool_pressed.exchange(false, std::memory_order_acq_rel);
+        const bool deposit_pressed = consume_one_shots &&
+            state.deposit_resource_pressed.exchange(false, std::memory_order_acq_rel);
+        const bool fire = state.fire_tool.load(std::memory_order_relaxed) || fire_pressed;
+        const bool deposit = state.deposit_resource.load(std::memory_order_relaxed) || deposit_pressed;
         const ActorPush push{
             .width = config.grid_width,
             .height = config.grid_height,
@@ -2751,7 +2832,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         vkCmdEndRenderPass(command_buffer);
     }
 
-    bool draw_frame(SharedState& state, const bool simulation_tick) {
+    bool draw_frame(SharedState& state, const std::uint32_t scheduled_simulation_ticks) {
         auto& frame = frames[frame_index];
         constexpr std::uint64_t gpu_timeout_ns = 5'000'000'000ull;
         const auto fence_result = vkWaitForFences(device, 1, &frame.fence, VK_TRUE, gpu_timeout_ns);
@@ -2852,8 +2933,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
         const bool debug_visible = state.debug_visualization.load(std::memory_order_relaxed);
         const bool step_once = state.single_step.exchange(false, std::memory_order_acq_rel);
-        const bool run_simulation = !reset_this_frame && (step_once ||
-            (simulation_tick && !paused));
+        const auto simulation_ticks = reset_this_frame ? 0u :
+            (paused ? (step_once ? 1u : 0u)
+                    : (std::max)(scheduled_simulation_ticks, step_once ? 1u : 0u));
+        const bool run_simulation = simulation_ticks != 0u;
         bool collect_debug_stats = false;
         if (debug_visible && run_simulation) {
             collect_debug_stats = !debug_was_visible || (debug_sample_frame % 16u) == 0u;
@@ -2863,7 +2946,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         }
         debug_was_visible = debug_visible;
         if (collect_debug_stats) reset_debug_stats(frame.command_buffer);
-        if (run_simulation) record_simulation_step(frame.command_buffer, state, collect_debug_stats);
+        if (run_simulation) {
+            for (std::uint32_t tick = 0u; tick < simulation_ticks; ++tick) {
+                const bool final_tick = tick + 1u == simulation_ticks;
+                record_simulation_step(
+                    frame.command_buffer, state, collect_debug_stats && final_tick);
+                record_actor(frame.command_buffer, state, false, true, tick == 0u);
+            }
+        }
         if (reset_this_frame) {
             // Reset is a hard epoch boundary: no held/queued edit or actor action
             // may leak into the freshly rebuilt scene on the next frame.
@@ -2889,8 +2979,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
              state.move_y.load(std::memory_order_relaxed) != 0 ||
              state.jump.load(std::memory_order_relaxed));
         const bool actor_simulation = run_simulation || actor_motion;
-        if (run_simulation || reset_actor || actor_action || actor_motion)
-            record_actor(frame.command_buffer, state, reset_actor, actor_simulation);
+        if (!run_simulation && (reset_actor || actor_action || actor_motion))
+            record_actor(frame.command_buffer, state, reset_actor, actor_simulation, true);
 
         if (collect_debug_stats) {
             const auto active_area_count = std::max(
@@ -3029,6 +3119,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 .step = simulation_step,
                 .seed = random_seed,
                 .active_mode = 0u,
+                .reserved = 2u, // Focused acceptance classifies a macro movement-due tick.
             };
             bind_compute(command_buffer, tile_pipeline, current_set);
             vkCmdPushConstants(command_buffer, compute_pipeline_layout,
@@ -3612,13 +3703,19 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             }
 
             const auto before_draw = Clock::now();
-            const bool simulation_tick = before_draw >= next_simulation;
-            if (simulation_tick) {
+            constexpr std::uint32_t max_catch_up_ticks = 4u;
+            constexpr std::uint32_t max_time_debt_ticks = 8u;
+            if (before_draw > next_simulation + simulation_interval * max_time_debt_ticks)
+                next_simulation =
+                    before_draw - simulation_interval * max_time_debt_ticks;
+            std::uint32_t simulation_ticks = 0u;
+            while (before_draw >= next_simulation &&
+                   simulation_ticks < max_catch_up_ticks) {
+                ++simulation_ticks;
                 next_simulation += simulation_interval;
-                if (before_draw - next_simulation > simulation_interval * 2) next_simulation = before_draw;
             }
 
-            if (!draw_frame(state, simulation_tick)) {
+            if (!draw_frame(state, simulation_ticks)) {
                 recreate_swapchain(width, height);
             } else {
                 ++rendered_frames;
