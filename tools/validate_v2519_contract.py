@@ -123,5 +123,7 @@ for path in (
         raise SystemExit(f"missing complete EpochGui dependency file: {path}")
 for token in ("EPOCHGUI_BUILD_MODULES", "add_library(EpochGui STATIC", "add_library(EpochGui INTERFACE"):
     require("third_party/EpochGui/CMakeLists.txt", token)
+require("CMakeLists.txt", "add_subdirectory(third_party/EpochGui)")
+reject("CMakeLists.txt", "add_subdirectory(third_party/EpochGui EXCLUDE_FROM_ALL)")
 require("AGENTS.md", "Never silently retain an older EpochGui pin")
 print("v2.5.20 scenic full-tile, live-tool, player, macro cadence, and fixed-step contracts valid.")

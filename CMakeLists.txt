@@ -67,7 +67,7 @@ target_compile_features(SandHybrid PUBLIC cxx_std_23)
 sandhybrid_configure_warnings(SandHybrid)
 
 if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
-    add_subdirectory(third_party/EpochGui EXCLUDE_FROM_ALL)
+    add_subdirectory(third_party/EpochGui)
     find_package(Vulkan REQUIRED)
     find_package(Threads REQUIRED)
 
