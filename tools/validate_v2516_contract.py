@@ -21,21 +21,21 @@ def reject(path: str, token: str) -> None:
 
 
 # Normal visible release and exact package names.
-require("CMakeLists.txt", "VERSION 2.5.17")
+require("CMakeLists.txt", "VERSION 2.5.18")
 require("CHANGELOG.md", "## 2.5.16")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.17")
+require("RELEASE_NOTES.md", "# SandHybrid v2.5.18")
 for token in (
-    "SandHybrid-Windows-x64-v2.5.17",
-    "SandHybrid-Linux-x64-v2.5.17",
-    "refs/tags/v2.5.17",
+    "SandHybrid-Windows-x64-v2.5.18",
+    "SandHybrid-Linux-x64-v2.5.18",
+    "refs/tags/v2.5.18",
     "Generate Windows SHA-256",
     "Generate Linux SHA-256",
     "Expected two packages and two checksums",
-    "gh release create v2.5.17",
+    "gh release create v2.5.18",
     "--verify-tag",
 ):
     require(".github/workflows/ci-release.yml", token)
-reject(".github/workflows/ci-release.yml", "v2.5.17-test")
+reject(".github/workflows/ci-release.yml", "v2.5.18-test")
 reject(".github/workflows/ci-release.yml", "--prerelease")
 
 # Exact bounded payload and transactional transformation core.
@@ -76,7 +76,9 @@ for token in (
     require("src/app.cpp", token)
 for token in (
     "void place_selected_blueprint",
-    "place_blueprint_transactional",
+    "blueprint_payload_valid",
+    "VkBufferCopy",
+    "bounded transactional upload",
     "BlueprintKind::static_model",
     "BlueprintKind::map_chunk",
     "blueprint_place_requested.exchange",

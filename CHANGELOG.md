@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 2.5.18
+
+- Replaced the noisy low resident-surface strip with a flat grass-over-dirt plateau aligned to the authored scene height in every generated scene.
+- Made Half Water an early fine-only movement state and isolated it from full-cell chemistry until two halves consolidate, preserving fall-first, merge, bounded clear-gap attraction, and conservation behavior.
+- Replaced full-world Blueprint download/upload with one validated bounded transformed upload to both resident buffers and wired Inventory Blueprint selection directly to world placement.
+- Reasserted the exact Fix36 pre-PR19 hard-coded Sandbox/Ecosystem hive geometry and scene-local contents across reset, tool painting, and loaded-map normalization.
+- Synchronized the selected EpochGui font contract to upstream 130f33fe31d73564a35a622f3bb5ddcc2b5105d5 with deterministic logical-height/DPI coverage.
+- Retained stable visible release policy and the focused nine-check packaged Vulkan gate without closing broader active missions.
+
 ## 2.5.17
 
 - Added opt-in packaged Vulkan seed/step/readback acceptance with nonzero failure status and JSON evidence for exact Water/gas macro packets, blocked fine fallback, Half Water fall/attraction/merge/ledge creation, and the hard-coded Ecosystem hive.

@@ -6,14 +6,14 @@ on:
   push:
     branches: [main]
     tags:
-      - v2.5.17
+      - v2.5.18
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: sandhybrid-v2517-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: sandhybrid-v2518-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -24,10 +24,10 @@ jobs:
         include:
           - os: windows-2022
             triplet: x64-windows
-            artifact: SandHybrid-Windows-x64-v2.5.17
+            artifact: SandHybrid-Windows-x64-v2.5.18
           - os: ubuntu-24.04
             triplet: x64-linux
-            artifact: SandHybrid-Linux-x64-v2.5.17
+            artifact: SandHybrid-Linux-x64-v2.5.18
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
 
@@ -55,10 +55,10 @@ jobs:
       - name: Validate v2.5.15 historical recovery
         run: python tools/validate_v2515_contract.py
 
-      - name: Validate v2.5.17 Blueprint and pause recovery
+      - name: Validate v2.5.18 Blueprint and pause recovery
         run: python tools/validate_v2516_contract.py
 
-      - name: Validate v2.5.17 packaged state-readback recovery
+      - name: Validate v2.5.18 packaged state-readback recovery
         run: python tools/validate_v2517_contract.py
 
       - name: Audit ecology and hive motion
@@ -199,7 +199,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: github.event_name == 'push' && github.ref == 'refs/tags/v2.5.17'
+    if: github.event_name == 'push' && github.ref == 'refs/tags/v2.5.18'
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -212,7 +212,7 @@ jobs:
         with:
           path: dist
 
-      - name: Publish stable v2.5.17 release
+      - name: Publish stable v2.5.18 release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -224,14 +224,14 @@ jobs:
             printf '%s\n' "${assets[@]}" >&2
             exit 1
           fi
-          if gh release view v2.5.17 >/dev/null 2>&1; then
-            gh release upload v2.5.17 "${assets[@]}" --clobber
-            gh release edit v2.5.17 \
-              --title 'SandHybrid v2.5.17' \
+          if gh release view v2.5.18 >/dev/null 2>&1; then
+            gh release upload v2.5.18 "${assets[@]}" --clobber
+            gh release edit v2.5.18 \
+              --title 'SandHybrid v2.5.18' \
               --notes-file RELEASE_NOTES.md
           else
-            gh release create v2.5.17 "${assets[@]}" \
+            gh release create v2.5.18 "${assets[@]}" \
               --verify-tag \
-              --title 'SandHybrid v2.5.17' \
+              --title 'SandHybrid v2.5.18' \
               --notes-file RELEASE_NOTES.md
           fi

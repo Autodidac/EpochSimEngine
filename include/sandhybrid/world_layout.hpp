@@ -183,15 +183,18 @@ static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells)
         // at its left/right edges. Authored non-empty cells are composited over
         // this substrate by reset/load code, preserving structures and basins
         // while every scene receives continuous ground like the map overview.
-        const auto nominal_surface = static_cast<std::int32_t>(scene_bottom) -
-  static_cast<std::int32_t>(foundation * 2u);
-        const auto surface_y = nominal_surface +
-  resident_ground_boundary_offset(x, 0x63u, 5);
+        // Continue the authored Sandbox plateau cleanly across every scene.
+        // Four dirt rows sit between the grass top and the shared foundation.
+        const auto surface_y = static_cast<std::int32_t>(scene_bottom) -
+                               static_cast<std::int32_t>(foundation * 5u);
         if (static_cast<std::int32_t>(y) < surface_y)
-  return {Material::empty, false, false, false};
+          return {Material::empty, false, false, false};
+        if (static_cast<std::int32_t>(y) == surface_y)
+          return {Material::grass, true, false, false};
+        if (static_cast<std::int32_t>(y) < surface_y +
+                static_cast<std::int32_t>(foundation * 4u))
+          return {Material::dirt, true, false, false};
         const auto biome = resident_surface_biome(world_width, x, y);
-        if (static_cast<std::int32_t>(y) == surface_y && biome == Material::dirt)
-  return {Material::grass, true, false, false};
         return {biome, true, false, false};
     }
 

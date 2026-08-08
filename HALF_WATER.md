@@ -11,7 +11,7 @@ Fresh water uses conserved half-units without changing the canonical 16-byte cel
 - extra half-water passes are merge-only; they may not create edge hopping
 - half-water never enters an 8x8 macro transfer; it stays in the fine simulation
 - a half may make a bounded two-to-four-cell attraction move toward another visible half, restoring the early curved consolidation behavior without random wandering
-- chemistry clears the half flag across material conversions
+- chemistry treats Half Water as reserved fractional state: temperature and age may advance, but full-cell reactions and material conversion wait until two halves consolidate
 
 All other material behavior remains unchanged.
 

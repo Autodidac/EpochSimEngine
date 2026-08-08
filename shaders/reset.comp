@@ -158,12 +158,15 @@ uvec2 residentWorldSubstrateSample(ivec2 worldPosition) {
   return uvec2(MAT_STONE, TERRAIN_FLAG_STRUCTURAL);
         // Continue the common surface through the authored footprint. Scene
         // objects and scene-authored terrain remain authoritative when nonempty.
-        int nominalSurface = sceneBottom - foundation * 2;
-        int surfaceY = nominalSurface + residentGroundBoundaryOffset(worldPosition.x, 0x63u, 5);
+        // Continue the authored Sandbox plateau cleanly across every scene.
+        // Four dirt rows sit between the grass top and the shared foundation.
+        int surfaceY = sceneBottom - foundation * 5;
         if (worldPosition.y < surfaceY) return uvec2(MAT_EMPTY, 0u);
+        if (worldPosition.y == surfaceY)
+          return uvec2(MAT_GRASS, TERRAIN_FLAG_STRUCTURAL);
+        if (worldPosition.y < surfaceY + foundation * 4)
+          return uvec2(MAT_DIRT, TERRAIN_FLAG_STRUCTURAL);
         uint biome = residentSurfaceBiome(worldPosition);
-        if (worldPosition.y == surfaceY && biome == MAT_DIRT)
-  return uvec2(MAT_GRASS, TERRAIN_FLAG_STRUCTURAL);
         return uvec2(biome, TERRAIN_FLAG_STRUCTURAL);
     }
 
@@ -229,7 +232,7 @@ ivec2 sandboxQueen() { return ivec2(AUTHORED_WORLD_CELLS.x * 4 / 5, AUTHORED_WOR
 // Canonical Fix36 pre-PR19 Ecosystem suspended hive shared by both maps and the tool.
 void applyBeehive(ivec2 p, ivec2 queen, inout uint material, bool includeFormation) {
     ivec2 offset = p - queen;
-    uint prefab = beehivePrefabMaterial(offset, beehivePrefabEntropy(offset));
+    uint prefab = beehivePrefabMaterial(offset, beehivePrefabEntropy(queen, offset));
     if (prefab != MATERIAL_COUNT) material = prefab;
     if (includeFormation) {
         int slot = beeFormationSlotFromOffset(offset);

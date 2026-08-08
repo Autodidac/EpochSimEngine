@@ -91,67 +91,93 @@ bool legacy_hive_material(const Material material) noexcept {
  material == Material::pollen || material == Material::queen_bee;
 }
 
-void normalize_pre_pr19_hives(std::vector<std::uint32_t>& materials,
-                 const std::uint32_t width,
-                 const std::uint32_t height) {
-    std::vector<std::size_t> queens;
-    for (std::size_t index = 0; index < materials.size(); ++index) {
-        if (materials[index] == static_cast<std::uint32_t>(Material::queen_bee))
-  queens.push_back(index);
+void normalize_pre_pr19_hives_impl(std::vector<std::uint32_t>& materials,
+                             const std::uint32_t width,
+                             const std::uint32_t height,
+                             const std::uint32_t scene_origin_x,
+                             const std::uint32_t scene_origin_y,
+                             const Scene scene) {
+    constexpr std::int32_t beehive_scene_queen_x = 512;
+    std::int32_t beehive_scene_queen_y = -1;
+    if (scene == Scene::sandbox) beehive_scene_queen_y = 234;
+    else if (scene == Scene::ecosystem) beehive_scene_queen_y = 232;
+    if (beehive_scene_queen_y < 0) return;
+
+    const auto scene_origin_x_i32 = static_cast<std::int32_t>(scene_origin_x);
+    const auto scene_origin_y_i32 = static_cast<std::int32_t>(scene_origin_y);
+    const auto beehive_queen_x = scene_origin_x_i32 + beehive_scene_queen_x;
+    const auto beehive_queen_y = scene_origin_y_i32 + beehive_scene_queen_y;
+    if (beehive_queen_x < 0 || beehive_queen_y < 0 ||
+        beehive_queen_x >= static_cast<std::int32_t>(width) ||
+        beehive_queen_y >= static_cast<std::int32_t>(height)) return;
+
+    auto hive_entropy = [&](const std::int32_t offset_x,
+                           const std::int32_t offset_y) noexcept {
+        const auto x = static_cast<std::uint32_t>(beehive_scene_queen_x + offset_x);
+        const auto y = static_cast<std::uint32_t>(beehive_scene_queen_y + offset_y);
+        return pre_pr19_hive_hash((y * pre_pr19_hive_canonical_width + x) ^ pre_pr19_hive_canonical_seed);
+    };
+
+    for (std::size_t index = 0u; index < materials.size(); ++index) {
+        const auto material = static_cast<Material>(materials[index]);
+        if (legacy_hive_material(material)) materials[index] = static_cast<std::uint32_t>(Material::empty);
     }
-    for (const auto queen_index : queens) {
-        const auto queen_x = static_cast<std::int32_t>(queen_index % width);
-        const auto queen_y = static_cast<std::int32_t>(queen_index / width);
-        for (std::int32_t offset_y = -16; offset_y <= 16; ++offset_y) {
-  for (std::int32_t offset_x = -16; offset_x <= 16; ++offset_x) {
-      const auto x = queen_x + offset_x;
-      const auto y = queen_y + offset_y;
-      if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
-          y >= static_cast<std::int32_t>(height))
-          continue;
-      const auto index = static_cast<std::size_t>(y) * width +
-                         static_cast<std::size_t>(x);
-      const auto existing = static_cast<Material>(materials[index]);
-      if (legacy_hive_material(existing))
-          materials[index] = static_cast<std::uint32_t>(Material::empty);
-  }
-        }
-        for (std::int32_t offset_y = beehive_support_min_y; offset_y <= beehive_support_max_y; ++offset_y) {
-            for (std::int32_t offset_x = beehive_support_min_x; offset_x <= beehive_support_max_x; ++offset_x) {
-                const auto x = queen_x + offset_x;
-                const auto y = queen_y + offset_y;
-                if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
-                    y >= static_cast<std::int32_t>(height)) continue;
-                const auto index = static_cast<std::size_t>(y) * width +
-                                   static_cast<std::size_t>(x);
-                const auto existing = static_cast<Material>(materials[index]);
-                if (existing == Material::empty || legacy_hive_material(existing))
-                    materials[index] = static_cast<std::uint32_t>(Material::wood);
+
+    for (std::int32_t offset_y = -16; offset_y <= 16; ++offset_y) {
+        for (std::int32_t offset_x = -16; offset_x <= 16; ++offset_x) {
+            const auto x = beehive_queen_x + offset_x;
+            const auto y = beehive_queen_y + offset_y;
+            if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
+                y >= static_cast<std::int32_t>(height))
+                continue;
+            const auto index = static_cast<std::size_t>(y) * width +
+                               static_cast<std::size_t>(x);
+            const auto existing = static_cast<Material>(materials[index]);
+            if (legacy_hive_material(existing)) {
+                materials[index] = static_cast<std::uint32_t>(Material::empty);
             }
         }
-        for (std::int32_t offset_y = -11; offset_y <= 11; ++offset_y) {
-  for (std::int32_t offset_x = -11; offset_x <= 12; ++offset_x) {
-      const auto x = queen_x + offset_x;
-      const auto y = queen_y + offset_y;
-      if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
-          y >= static_cast<std::int32_t>(height))
-          continue;
-      const auto index = static_cast<std::size_t>(y) * width +
-                         static_cast<std::size_t>(x);
-      const auto material = pre_pr19_beehive_material(
-          offset_x, offset_y, canonical_pre_pr19_hive_entropy(offset_x, offset_y));
-      if (material == Material::count) continue;
-      const auto existing = static_cast<Material>(materials[index]);
-      if (existing == Material::bee || existing == Material::ant ||
-          existing == Material::beetle)
-          continue;
-      if (material == Material::empty) {
-          if (legacy_hive_material(existing))
-              materials[index] = static_cast<std::uint32_t>(Material::empty);
-      } else if (existing == Material::empty || legacy_hive_material(existing)) {
-          materials[index] = static_cast<std::uint32_t>(material);
-      }
-  }
+    }
+
+    for (std::int32_t offset_y = beehive_support_min_y; offset_y <= beehive_support_max_y; ++offset_y) {
+        for (std::int32_t offset_x = beehive_support_min_x; offset_x <= beehive_support_max_x; ++offset_x) {
+            const auto x = beehive_queen_x + offset_x;
+            const auto y = beehive_queen_y + offset_y;
+            if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
+                y >= static_cast<std::int32_t>(height))
+                continue;
+            const auto index = static_cast<std::size_t>(y) * width +
+                               static_cast<std::size_t>(x);
+            const auto existing = static_cast<Material>(materials[index]);
+            if (existing == Material::empty || legacy_hive_material(existing)) {
+                materials[index] = static_cast<std::uint32_t>(Material::wood);
+            }
+        }
+    }
+
+    for (std::int32_t offset_y = -11; offset_y <= 11; ++offset_y) {
+        for (std::int32_t offset_x = -11; offset_x <= 12; ++offset_x) {
+            const auto x = beehive_queen_x + offset_x;
+            const auto y = beehive_queen_y + offset_y;
+            if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
+                y >= static_cast<std::int32_t>(height))
+                continue;
+            const auto index = static_cast<std::size_t>(y) * width +
+                               static_cast<std::size_t>(x);
+            const auto material = pre_pr19_beehive_material(
+                offset_x, offset_y, hive_entropy(offset_x, offset_y));
+            if (material == Material::count) continue;
+            const auto existing = static_cast<Material>(materials[index]);
+            if (existing == Material::bee || existing == Material::ant ||
+                existing == Material::beetle)
+                continue;
+            if (material == Material::empty) {
+                if (legacy_hive_material(existing)) {
+                    materials[index] = static_cast<std::uint32_t>(Material::empty);
+                }
+            } else if (existing == Material::empty || legacy_hive_material(existing)) {
+                materials[index] = static_cast<std::uint32_t>(material);
+            }
         }
     }
 }
@@ -305,8 +331,16 @@ std::uint32_t material_from_color(const Rgb8 color) noexcept {
     return material_from_editor_color(color);
 }
 
-} // namespace
 
+} // namespace
+void normalize_pre_pr19_hives(std::vector<std::uint32_t>& materials,
+                             const std::uint32_t width,
+                             const std::uint32_t height,
+                             const std::uint32_t scene_origin_x,
+                             const std::uint32_t scene_origin_y,
+                             const Scene scene) {
+    normalize_pre_pr19_hives_impl(materials, width, height, scene_origin_x, scene_origin_y, scene);
+}
 std::filesystem::path scene_image_path(const std::filesystem::path& directory, const Scene scene) {
     return directory / (scene_file_stem(scene) + ".ppm");
 }
@@ -317,6 +351,7 @@ bool scene_image_exists(const std::filesystem::path& directory, const Scene scen
 }
 
 bool load_scene_ppm(const std::filesystem::path& path,
+                    const Scene scene,
                     const std::uint32_t width,
                     const std::uint32_t height,
                     const std::span<SceneCell> cells,
@@ -385,7 +420,7 @@ bool load_scene_ppm(const std::filesystem::path& path,
         }
     }
 
-    normalize_pre_pr19_hives(materials, width, height);
+    normalize_pre_pr19_hives(materials, width, height, 0u, 0u, scene);
     normalize_legacy_open_air(materials, width, height);
     std::fill(counts.begin(), counts.end(), std::uint16_t{0});
     for (std::uint32_t y = 0u; y < height; ++y) {

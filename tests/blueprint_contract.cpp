@@ -90,6 +90,7 @@ int main() {
     // An invalid material must reject the full transaction.
     auto invalid = *captured;
     invalid.cells[0].material = static_cast<std::uint32_t>(Material::count);
+    if (sandhybrid::blueprint_payload_valid(invalid)) return 7;
     if (sandhybrid::place_blueprint_transactional(
             invalid, destination, width, height, 0u, 0u) ||
         !same_cells(before_rejected, destination))

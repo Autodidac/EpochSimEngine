@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace sandhybrid {
 
@@ -22,6 +23,7 @@ static_assert(sizeof(SceneCell) == 16u);
 [[nodiscard]] bool scene_image_exists(const std::filesystem::path& directory, Scene scene);
 
 bool load_scene_ppm(const std::filesystem::path& path,
+                    const Scene scene,
                     std::uint32_t width,
                     std::uint32_t height,
                     std::span<SceneCell> cells,
@@ -32,6 +34,13 @@ bool save_scene_ppm(const std::filesystem::path& path,
                     std::uint32_t height,
                     std::span<const SceneCell> cells,
                     std::string& error);
+
+void normalize_pre_pr19_hives(std::vector<std::uint32_t>& materials,
+                             std::uint32_t width,
+                             std::uint32_t height,
+                             std::uint32_t scene_origin_x,
+                             std::uint32_t scene_origin_y,
+                             Scene scene);
 
 bool write_scene_material_key(const std::filesystem::path& directory, std::string& error);
 

@@ -25,7 +25,27 @@ Cell at(ivec2 p) {
     return inside(p) ? cells[indexOf(p)] : makeCell(MAT_STONE);
 }
 
+bool isFullFreshWater(Cell cell) {
+    return cell.material == MAT_WATER && !isHalfWater(cell);
+}
+
+bool hasFullFreshWaterNeighbor(ivec2 p) {
+    for (uint i = 0u; i < 8u; ++i)
+        if (isFullFreshWater(at(p + neighborOffsets[i]))) return true;
+    return false;
+}
+
 void commitResult(uint index, Cell before, Cell after) {
+    // Half Water represents one unit, so no full-cell chemistry may consume or
+    // transform it. It first merges into a full Water cell in move.comp.
+    if (isHalfWater(before) && after.material != MAT_WATER) {
+        int temperature = after.temperature;
+        uint age = after.age;
+        after = before;
+        after.temperature = temperature;
+        after.age = age;
+        after.aux &= ~AUX_MOVED;
+    }
     if (after.material != MAT_WATER || before.material != MAT_WATER)
         after.aux &= ~AUX_WATER_HALF;
     if (pc.reserved != 0u && (after.material != before.material || after.temperature != before.temperature))
@@ -53,22 +73,23 @@ bool hasHeat(ivec2 p) {
 }
 
 bool hasFreshMoisture(ivec2 p) {
-    return hasNeighbor(p, MAT_WATER) || hasNeighbor(p, MAT_MUD) ||
+    return hasFullFreshWaterNeighbor(p) || hasNeighbor(p, MAT_MUD) ||
            hasNeighbor(p, MAT_DIRTY_WATER);
 }
 
 bool hasFreshMoistureRadius(ivec2 p, int radius) {
     for (int y = -radius; y <= radius; ++y) {
         for (int x = -radius; x <= radius; ++x) {
-            uint material = at(p + ivec2(x, y)).material;
-            if (material == MAT_WATER || material == MAT_DIRTY_WATER || material == MAT_MUD) return true;
+            Cell moistureCell = at(p + ivec2(x, y));
+            if (isFullFreshWater(moistureCell) || moistureCell.material == MAT_DIRTY_WATER ||
+                moistureCell.material == MAT_MUD) return true;
         }
     }
     return false;
 }
 
 bool hasAnyWater(ivec2 p) {
-    return hasNeighbor(p, MAT_WATER) || hasNeighbor(p, MAT_SALTWATER) ||
+    return hasFullFreshWaterNeighbor(p) || hasNeighbor(p, MAT_SALTWATER) ||
            hasNeighbor(p, MAT_DIRTY_WATER);
 }
 
@@ -594,7 +615,7 @@ bool machineWaterFlowNear(ivec2 p) {
         for (int x = -8; x <= 8; ++x) {
             ivec2 waterPosition = p + ivec2(x, y);
             Cell water = at(waterPosition);
-            if (water.material != MAT_WATER && water.material != MAT_DIRTY_WATER) continue;
+            if (!isFullFreshWater(water) && water.material != MAT_DIRTY_WATER) continue;
             Cell above = at(waterPosition + ivec2(0, -1));
             Cell below = at(waterPosition + ivec2(0, 1));
             bool verticalSupply = above.material == water.material;
@@ -758,7 +779,7 @@ ivec2 harvestWaterTarget(ivec2 fertilizerPosition) {
     ivec2 best = fertilizerPosition;
     for (uint i = 0u; i < 4u; ++i) {
         ivec2 candidate = fertilizerPosition + cardinalOffsets[i];
-        if (!inside(candidate) || at(candidate).material != MAT_WATER) continue;
+        if (!inside(candidate) || !isFullFreshWater(at(candidate))) continue;
         uint candidateIndex = indexOf(candidate);
         if (candidateIndex < bestIndex) {
             bestIndex = candidateIndex;
@@ -795,7 +816,7 @@ bool fertilizerHarvestReady(ivec2 fertilizerPosition, Cell fertilizer) {
 }
 
 bool harvestConsumesWater(ivec2 waterPosition) {
-    if (at(waterPosition).material != MAT_WATER) return false;
+    if (!isFullFreshWater(at(waterPosition))) return false;
     ivec2 fertilizerPosition = harvestFertilizerTarget(waterPosition);
     return any(notEqual(fertilizerPosition, waterPosition)) &&
            all(equal(harvestWaterTarget(fertilizerPosition), waterPosition));
@@ -899,6 +920,12 @@ void main() {
 
     // Tile analysis already consumed the previous movement marker.
     result.aux &= ~AUX_MOVED;
+    // Fractional Water is movement-owned. Thermal state and age still advance,
+    // but chemistry waits until two halves conservatively merge to one full cell.
+    if (isHalfWater(source)) {
+        commitResult(index, source, result);
+        return;
+    }
     TileState tile = tiles[tileIndex(p, pc.width)];
     bool minorityStructural = isStructural(source) && tile.material != source.material;
     bool durableStructural = isStructural(source) && isBlockCapable(source.material);
@@ -942,7 +969,7 @@ void main() {
     }
     uint randomValue = cellHash(p, source.age ^ source.aux);
     uint randomByte = (randomValue >> 8u) & 255u;
-    bool nearWater = hasNeighbor(p, MAT_WATER) || hasNeighbor(p, MAT_DIRTY_WATER);
+    bool nearWater = hasFullFreshWaterNeighbor(p) || hasNeighbor(p, MAT_DIRTY_WATER);
     bool nearSaltwater = hasNeighbor(p, MAT_SALTWATER);
     bool nearLava = hasNeighbor(p, MAT_LAVA) || hasNeighbor(p, MAT_MAGMA_VENT);
     bool nearFire = hasNeighbor(p, MAT_FIRE) || hasNeighbor(p, MAT_EMBER) || hasNeighbor(p, MAT_LIGHTNING);
@@ -1096,7 +1123,7 @@ void main() {
 
     // Fresh water visibly wets soil before mud forms; moisture remains on the
     // dirt cell so drainage never silently deletes a water cell.
-    bool freshContact = hasNeighbor(p, MAT_WATER) || hasNeighbor(p, MAT_DIRTY_WATER);
+    bool freshContact = hasFullFreshWaterNeighbor(p) || hasNeighbor(p, MAT_DIRTY_WATER);
     bool shallowSandContact = freshContact &&
         (isGas(at(p + ivec2(0, -1)).material) ||
          isGas(at(p + ivec2(0, -2)).material) ||
@@ -1228,7 +1255,7 @@ void main() {
         if (stateValue(result) == 0u) setStateValue(result, 255u);
         ivec2 target = saltDissolutionTarget(p, source);
         Cell targetCell = at(target);
-        if ((targetCell.material == MAT_WATER || targetCell.material == MAT_SALTWATER) &&
+        if ((isFullFreshWater(targetCell) || targetCell.material == MAT_SALTWATER) &&
             (cellHash(p, source.age ^ 0x5a17u) & 31u) == 0u) {
             uint remaining = stateValue(result);
             if (remaining <= 1u) result = makeCell(MAT_EMPTY);

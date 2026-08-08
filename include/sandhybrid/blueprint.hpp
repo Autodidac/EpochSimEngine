@@ -245,6 +245,22 @@ blueprint_destination_coordinate(
            width <= world_width - origin_x && height <= world_height - origin_y;
 }
 
+[[nodiscard]] constexpr bool blueprint_payload_valid(
+    const Blueprint& blueprint) noexcept {
+    if (!blueprint.occupied || blueprint.width == 0u || blueprint.height == 0u ||
+        blueprint.width > blueprint_max_columns || blueprint.height > blueprint_max_rows ||
+        blueprint.cell_count() > blueprint.cells.size())
+        return false;
+    for (std::uint32_t y = 0u; y < blueprint.height; ++y) {
+        for (std::uint32_t x = 0u; x < blueprint.width; ++x) {
+            if (blueprint.at(x, y).material >=
+                static_cast<std::uint32_t>(Material::count))
+                return false;
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] constexpr std::optional<std::pair<std::uint32_t, std::uint32_t>>
 blueprint_centered_origin(
     const Blueprint& blueprint,
@@ -278,13 +294,7 @@ blueprint_centered_origin(
             blueprint, world_width, world_height, origin_x, origin_y, transform))
         return false;
 
-    for (std::uint32_t y = 0u; y < blueprint.height; ++y) {
-        for (std::uint32_t x = 0u; x < blueprint.width; ++x) {
-            if (blueprint.at(x, y).material >=
-                static_cast<std::uint32_t>(Material::count))
-                return false;
-        }
-    }
+    if (!blueprint_payload_valid(blueprint)) return false;
 
     const auto empty = static_cast<std::uint32_t>(Material::empty);
     for (std::uint32_t y = 0u; y < blueprint.height; ++y) {

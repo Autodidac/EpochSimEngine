@@ -1,7 +1,5 @@
 #pragma once
 
-#include "floating_window.hpp"
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -9,15 +7,68 @@
 
 namespace epochengine::gui_lib::font
 {
-    inline constexpr std::uint32_t glyph_width = 5;
-    inline constexpr std::uint32_t glyph_height = 7;
-    inline constexpr std::uint32_t glyph_advance = 6;
-    inline constexpr std::uint32_t line_advance = 9;
+    inline constexpr std::uint32_t glyph_width = 5U;
+    inline constexpr std::uint32_t glyph_height = 7U;
+    inline constexpr std::uint32_t glyph_advance = 6U;
+    inline constexpr std::uint32_t line_advance = 9U;
+    inline constexpr float default_logical_height = 16.0F;
+    inline constexpr float minimum_readable_logical_height = 12.0F;
 
-    struct BitmapGlyph
+    struct FontSize final
+    {
+        // Logical UI pixels. dpi_scale converts these to framebuffer pixels.
+        float logical_height{ default_logical_height };
+        float dpi_scale{ 1.0F };
+    };
+
+    struct BitmapFontMetrics final
+    {
+        float pixel_height{};
+        float cell_size{};
+        float glyph_width{};
+        float glyph_height{};
+        float advance{};
+        float line_advance{};
+    };
+
+    struct TextExtent final
+    {
+        float width{};
+        float height{};
+    };
+
+    struct BitmapGlyph final
     {
         std::array<std::uint8_t, glyph_height> rows{};
     };
+
+    [[nodiscard]] constexpr float resolved_pixel_height(FontSize size) noexcept
+    {
+        const float logical_height = size.logical_height > 0.0F
+            ? size.logical_height
+            : default_logical_height;
+        const float dpi_scale = size.dpi_scale > 0.0F ? size.dpi_scale : 1.0F;
+        return logical_height * dpi_scale;
+    }
+
+    [[nodiscard]] constexpr BitmapFontMetrics make_bitmap_font_metrics(
+        FontSize size = {},
+        float letter_spacing = 0.0F,
+        float line_spacing = 0.0F) noexcept
+    {
+        const float pixel_height = resolved_pixel_height(size);
+        const float cell_size = pixel_height / static_cast<float>(glyph_height);
+        const float safe_letter_spacing = letter_spacing > 0.0F ? letter_spacing : 0.0F;
+        const float safe_line_spacing = line_spacing > 0.0F ? line_spacing : 0.0F;
+        return {
+            .pixel_height = pixel_height,
+            .cell_size = cell_size,
+            .glyph_width = cell_size * static_cast<float>(glyph_width),
+            .glyph_height = pixel_height,
+            .advance = cell_size * static_cast<float>(glyph_advance) + safe_letter_spacing,
+            .line_advance = cell_size * static_cast<float>(line_advance) + safe_line_spacing
+        };
+    }
 
     [[nodiscard]] constexpr BitmapGlyph default_glyph(char character) noexcept
     {
@@ -67,6 +118,7 @@ namespace epochengine::gui_lib::font
         case '.': return { { 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x06 } };
         case ':': return { { 0x00, 0x06, 0x06, 0x00, 0x06, 0x06, 0x00 } };
         case '/': return { { 0x01, 0x02, 0x02, 0x04, 0x08, 0x08, 0x10 } };
+        case '\\': return { { 0x10, 0x08, 0x08, 0x04, 0x02, 0x02, 0x01 } };
         case '_': return { { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1f } };
         case '+': return { { 0x00, 0x04, 0x04, 0x1f, 0x04, 0x04, 0x00 } };
         case '!': return { { 0x04, 0x04, 0x04, 0x04, 0x04, 0x00, 0x04 } };
@@ -90,37 +142,67 @@ namespace epochengine::gui_lib::font
     {
         if (column >= glyph_width || row >= glyph_height)
             return false;
-        const std::uint8_t mask = static_cast<std::uint8_t>(1U << (glyph_width - 1U - column));
-        return (glyph.rows[row] & mask) != 0;
+        const std::uint8_t mask = static_cast<std::uint8_t>(
+            1U << (glyph_width - 1U - column));
+        return (glyph.rows[row] & mask) != 0U;
     }
 
-    [[nodiscard]] constexpr Vec2 measure_text(std::string_view text, float scale = 1.0f) noexcept
+    [[nodiscard]] constexpr TextExtent measure_text(
+        std::string_view text,
+        FontSize size = {},
+        float letter_spacing = 0.0F,
+        float line_spacing = 0.0F) noexcept
     {
-        if (scale <= 0.0f)
+        if (text.empty())
             return {};
 
-        std::size_t column{};
-        std::size_t maximum_column{};
-        std::size_t line_count{ 1 };
+        const BitmapFontMetrics metrics = make_bitmap_font_metrics(
+            size,
+            letter_spacing,
+            line_spacing);
+        std::size_t line_length{};
+        std::size_t maximum_line_length{};
+        std::size_t line_count{ 1U };
         for (const char character : text)
         {
             if (character == '\n')
             {
-                maximum_column = maximum_column < column ? column : maximum_column;
-                column = 0;
+                maximum_line_length = maximum_line_length < line_length
+                    ? line_length
+                    : maximum_line_length;
+                line_length = 0U;
                 ++line_count;
             }
             else
             {
-                ++column;
+                ++line_length;
             }
         }
-        maximum_column = maximum_column < column ? column : maximum_column;
+        maximum_line_length = maximum_line_length < line_length
+            ? line_length
+            : maximum_line_length;
 
-        const float width = maximum_column == 0
-            ? 0.0f
-            : static_cast<float>((maximum_column - 1U) * glyph_advance + glyph_width) * scale;
-        const float height = static_cast<float>((line_count - 1U) * line_advance + glyph_height) * scale;
+        const float width = maximum_line_length == 0U
+            ? 0.0F
+            : static_cast<float>(maximum_line_length - 1U) * metrics.advance
+                + metrics.glyph_width;
+        const float height = metrics.glyph_height
+            + static_cast<float>(line_count - 1U) * metrics.line_advance;
         return { width, height };
+    }
+
+    // Compatibility for existing callers that used one framebuffer pixel per
+    // bitmap cell. New code should pass FontSize so font size means pixels.
+    [[nodiscard]] constexpr TextExtent measure_text_legacy_scale(
+        std::string_view text,
+        float cell_scale = 1.0F) noexcept
+    {
+        return measure_text(
+            text,
+            FontSize{
+                .logical_height = static_cast<float>(glyph_height)
+                    * (cell_scale > 0.0F ? cell_scale : 1.0F),
+                .dpi_scale = 1.0F
+            });
     }
 }

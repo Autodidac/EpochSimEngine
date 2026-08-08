@@ -775,11 +775,15 @@ int run_application(const ApplicationOptions& options) {
         const bool inspecting = input.inspect_material;
         const bool blueprint_placement_active =
             shared_state.blueprint_placement_active.load(std::memory_order_acquire);
-        const bool blueprint_place_click = editor_workspace && blueprint_placement_active &&
+        const bool blueprint_place_workspace =
+            editor_workspace || inventory_workspace;
+        const bool blueprint_place_click = blueprint_place_workspace && blueprint_placement_active &&
             primary_pressed && over_world && !inspecting && !input.fill_modifier &&
             !pan_button_down;
-        if (blueprint_place_click)
+        if (blueprint_place_click) {
             shared_state.blueprint_place_requested.store(true, std::memory_order_release);
+            shared_state.blueprint_placement_active.store(false, std::memory_order_release);
+        }
 
         const bool fill_click = editor_workspace && input.fill_modifier && primary_pressed &&
                                 over_world && !pan_button_down &&

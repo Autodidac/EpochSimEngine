@@ -647,6 +647,7 @@ bool solidLedgePrecedesDrop(ivec2 position, int direction) {
 
 bool fullWaterSplitSupplied(ivec2 sourcePosition, int direction) {
     if (!solidSupportsWaterAt(sourcePosition)) return false;
+    if (waterHalfUnits(moveAt(sourcePosition)) != 2u) return false;
     Cell trailing = sampleAt(sourcePosition - ivec2(direction, 0));
     Cell reserve = sampleAt(sourcePosition - ivec2(direction * 2, 0));
     return trailing.material == MAT_WATER && !isHalfWaterCell(trailing) &&
@@ -962,6 +963,26 @@ bool sleepSafe(ivec2 position, Cell cell) {
     return isCellImmovable(cell);
 }
 
+
+bool halfWaterNeedsPairWork(ivec2 firstPosition, ivec2 secondPosition, Cell first, Cell second) {
+    if (!isHalfWaterCell(first) && !isHalfWaterCell(second)) return false;
+    ivec2 offset = secondPosition - firstPosition;
+    if (offset.x != 0 && offset.y != 0) return false;
+    if (isHalfWaterCell(first) && isHalfWaterCell(second) &&
+        halfWaterMergeCompatible(first, second)) return true;
+    if (offset.x == 0) {
+        if (isHalfWaterCell(first) && canCellFallInto(first, second)) return true;
+        if (isHalfWaterCell(second) && canCellFallInto(second, first)) return true;
+    } else if (offset.y == 0) {
+        if (isHalfWaterCell(first) && isOpenGas(second) &&
+            !canCellFallInto(first, sampleAt(firstPosition + ivec2(0, 1))) &&
+            halfWaterAhead(firstPosition, 1)) return true;
+        if (isHalfWaterCell(second) && isOpenGas(first) &&
+            !canCellFallInto(second, sampleAt(secondPosition + ivec2(0, 1))) &&
+            halfWaterAhead(secondPosition, -1)) return true;
+    }
+    return false;
+}
 bool pairSleeping(ivec2 a, ivec2 b) {
     Cell firstCell = moveAt(a);
     Cell secondCell = moveAt(b);
@@ -969,6 +990,7 @@ bool pairSleeping(ivec2 a, ivec2 b) {
                            firstCell.material == MAT_QUEEN_BEE || secondCell.material == MAT_QUEEN_BEE ||
                            isInsect(firstCell.material) || isInsect(secondCell.material);
     if (activeAgentPair) return false;
+    if (halfWaterNeedsPairWork(a, b, firstCell, secondCell)) return false;
 
     TileState tileA = tiles[tileIndex(a, movePc.width)];
     TileState tileB = tiles[tileIndex(b, movePc.width)];
@@ -1005,8 +1027,16 @@ void processVertical(ivec2 top, ivec2 bottom) {
     Cell b = moveAt(bottom);
     uint randomValue = moveHash(top, uint(movePc.phase) + 1u);
 
+    // Half Water owns one dedicated fine-cell state machine. It falls on the
+    // first vertical opportunity, merges conservatively, and never reaches
+    // generic liquid, salinity, density, actor, or reaction movement.
     if (isHalfWaterCell(a) && isHalfWaterCell(b) &&
         mergeHalfWaterPair(bottom, top, b, a)) return;
+    if (isHalfWaterCell(a)) {
+        if (canCellFallInto(a, b)) swapCells(top, bottom);
+        return;
+    }
+    if (isHalfWaterCell(b)) return;
 
     if (repairDamagedTileFromLooseCell(top, bottom, a, b)) return;
     if (expandAirIntoVacuum(top, bottom, a, b) ||
@@ -1097,6 +1127,7 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
 
     if (isHalfWaterCell(source) && isHalfWaterCell(target) &&
         mergeHalfWaterPair(targetPosition, sourcePosition, target, source)) return;
+    if (isHalfWaterCell(source) || isHalfWaterCell(target)) return;
 
     if (expandAirIntoVacuum(sourcePosition, targetPosition, source, target)) return;
 
@@ -1192,6 +1223,31 @@ void processHorizontal(ivec2 left, ivec2 right) {
     Cell b = moveAt(right);
     uint randomValue = moveHash(left, uint(movePc.phase) * 31u + 5u);
 
+    // Half Water is resolved before conveyors, insects, pressure spreading, and
+    // all generic liquid logic. Attraction is horizontal, deterministic, and
+    // allowed only when gravity has no work for the moving half.
+    if (isHalfWaterCell(a) || isHalfWaterCell(b)) {
+        if (isHalfWaterCell(a) && isHalfWaterCell(b)) {
+            bool leftSupported = solidSupportsWaterAt(left);
+            bool rightSupported = solidSupportsWaterAt(right);
+            bool keepLeft = leftSupported != rightSupported
+                ? leftSupported : (randomValue & 1u) == 0u;
+            mergeHalfWaterPair(keepLeft ? left : right, keepLeft ? right : left,
+                               keepLeft ? a : b, keepLeft ? b : a);
+            return;
+        }
+        if (isHalfWaterCell(a) && isOpenGas(b) &&
+            !canCellFallInto(a, sampleAt(left + ivec2(0, 1))) &&
+            halfWaterAhead(left, 1)) {
+            swapCells(left, right);
+        } else if (isHalfWaterCell(b) && isOpenGas(a) &&
+                   !canCellFallInto(b, sampleAt(right + ivec2(0, 1))) &&
+                   halfWaterAhead(right, -1)) {
+            swapCells(left, right);
+        }
+        return;
+    }
+
     int leftBelt = conveyorDirectionBelow(left);
     int rightBelt = conveyorDirectionBelow(right);
     if (isConveyorCargo(a) && b.material == MAT_EMPTY && leftBelt > 0) {
@@ -1229,27 +1285,6 @@ void processHorizontal(ivec2 left, ivec2 right) {
         swapCells(left, right);
         return;
     }
-
-    if (isHalfWaterCell(a) && isHalfWaterCell(b)) {
-        bool leftSupported = solidSupportsWaterAt(left);
-        bool rightSupported = solidSupportsWaterAt(right);
-        bool keepLeft = leftSupported != rightSupported
-            ? leftSupported : (randomValue & 1u) == 0u;
-        if (mergeHalfWaterPair(keepLeft ? left : right, keepLeft ? right : left,
-                               keepLeft ? a : b, keepLeft ? b : a)) return;
-    }
-
-    // Restore the early conserved Half Water behavior. Halves remain fine-owned
-    // and can make a short deterministic move toward another visible half.
-    if (isHalfWaterCell(a) && isOpenGas(b) && halfWaterAhead(left, 1)) {
-        swapCells(left, right);
-        return;
-    }
-    if (isHalfWaterCell(b) && isOpenGas(a) && halfWaterAhead(right, -1)) {
-        swapCells(left, right);
-        return;
-    }
-    if (isHalfWaterCell(a) || isHalfWaterCell(b)) return;
 
     if ((movePc.reserved1 & 1u) != 0u) return;
 

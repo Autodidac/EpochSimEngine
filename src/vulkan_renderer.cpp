@@ -1641,15 +1641,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const BlueprintTransform transform{
             .rotation = static_cast<BlueprintRotation>(
                 state.blueprint_rotation.load(std::memory_order_relaxed) & 3u),
-            .mirror_x =
-                state.blueprint_mirror_x.load(std::memory_order_relaxed),
-            .mirror_y =
-                state.blueprint_mirror_y.load(std::memory_order_relaxed),
+            .mirror_x = state.blueprint_mirror_x.load(std::memory_order_relaxed),
+            .mirror_y = state.blueprint_mirror_y.load(std::memory_order_relaxed),
         };
-        const auto cursor_x =
-            state.last_world_cursor_x.load(std::memory_order_relaxed);
-        const auto cursor_y =
-            state.last_world_cursor_y.load(std::memory_order_relaxed);
+        const auto cursor_x = state.last_world_cursor_x.load(std::memory_order_relaxed);
+        const auto cursor_y = state.last_world_cursor_y.load(std::memory_order_relaxed);
         if (cursor_x < 0 || cursor_y < 0) {
             startup_log("Blueprint placement rejected outside the world.");
             return;
@@ -1663,39 +1659,145 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             return;
         }
 
-        auto placement = blueprint;
-        if (placement.kind == BlueprintKind::static_model) {
-            const auto empty = static_cast<std::uint32_t>(Material::empty);
-            for (std::uint32_t y = 0u; y < placement.height; ++y) {
-                for (std::uint32_t x = 0u; x < placement.width; ++x) {
-                    const auto source_index =
-                        static_cast<std::size_t>(y) * placement.width + x;
-                    const auto material = placement.cells[source_index].material;
-                    if (material == empty) continue;
-                    const auto [destination_x, destination_y] =
-                        blueprint_destination_coordinate(
-                            placement, transform, x, y);
-                    const auto world_index =
-                        (origin->second + destination_y) * config.grid_width +
-                        origin->first + destination_x;
-                    placement.cells[source_index] =
-                        make_fill_cell(material, world_index);
-                }
+        // Validate the complete payload before mapping staging memory or changing
+        // either resident buffer. This is the same all-or-nothing contract used
+        // by the platform-neutral placement path.
+        if (!blueprint_payload_valid(blueprint)) {
+            startup_log("Blueprint placement rejected: invalid cell payload.");
+            return;
+        }
+
+        struct BlueprintWrite final {
+            std::uint32_t destination_index{};
+            SceneCell cell{};
+        };
+        std::vector<BlueprintWrite> writes;
+        writes.reserve(blueprint.cell_count());
+        const auto empty = static_cast<std::uint32_t>(Material::empty);
+        const bool include_empty = blueprint.kind == BlueprintKind::map_chunk;
+        for (std::uint32_t y = 0u; y < blueprint.height; ++y) {
+            for (std::uint32_t x = 0u; x < blueprint.width; ++x) {
+                auto cell = blueprint.at(x, y);
+                if (!include_empty && cell.material == empty) continue;
+                const auto [destination_x, destination_y] =
+                    blueprint_destination_coordinate(blueprint, transform, x, y);
+                const auto world_index =
+                    (origin->second + destination_y) * config.grid_width +
+                    origin->first + destination_x;
+                if (blueprint.kind == BlueprintKind::static_model)
+                    cell = make_fill_cell(cell.material, world_index);
+                writes.push_back({world_index, cell});
+            }
+        }
+        if (writes.empty()) {
+            startup_log("Blueprint placement skipped: payload has no writable cells.");
+            return;
+        }
+
+        std::ranges::sort(writes, {}, &BlueprintWrite::destination_index);
+        std::vector<SceneCell> payload;
+        std::vector<VkBufferCopy> regions;
+        payload.reserve(writes.size());
+        regions.reserve(writes.size());
+        for (std::size_t index = 0u; index < writes.size(); ++index) {
+            payload.push_back(writes[index].cell);
+            const auto source_offset =
+                static_cast<VkDeviceSize>(index * sizeof(SceneCell));
+            const auto destination_offset = static_cast<VkDeviceSize>(
+                writes[index].destination_index) * sizeof(SceneCell);
+            if (!regions.empty() && index > 0u &&
+                writes[index].destination_index ==
+                    writes[index - 1u].destination_index + 1u) {
+                regions.back().size += sizeof(SceneCell);
+            } else {
+                regions.push_back({
+                    .srcOffset = source_offset,
+                    .dstOffset = destination_offset,
+                    .size = sizeof(SceneCell),
+                });
             }
         }
 
-        auto cells = download_scene_cells();
-        const bool include_empty =
-            placement.kind == BlueprintKind::map_chunk;
-        if (!place_blueprint_transactional(
-                placement, cells, config.grid_width, config.grid_height,
-                origin->first, origin->second, transform, include_empty)) {
-            startup_log("Blueprint placement rejected without changing the world.");
-            return;
-        }
-        upload_scene_cells(cells);
+        const auto payload_bytes =
+            static_cast<VkDeviceSize>(payload.size() * sizeof(SceneCell));
+        void* mapped = nullptr;
+        check_vk(vkMapMemory(device, scene_staging_buffer.memory, 0,
+                             payload_bytes, 0, &mapped),
+                 "vkMapMemory(blueprint upload)");
+        std::memcpy(mapped, payload.data(), static_cast<std::size_t>(payload_bytes));
+        vkUnmapMemory(device, scene_staging_buffer.memory);
+
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
+            for (const auto& destination : cell_buffers) {
+                buffer_barrier(command_buffer, destination,
+                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT |
+                                   VK_ACCESS_TRANSFER_READ_BIT,
+                               VK_ACCESS_TRANSFER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT);
+                vkCmdCopyBuffer(command_buffer, scene_staging_buffer.handle,
+                                destination.handle,
+                                static_cast<std::uint32_t>(regions.size()),
+                                regions.data());
+                buffer_barrier(command_buffer, destination,
+                               VK_ACCESS_TRANSFER_WRITE_BIT,
+                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            }
+
+            // Conservative metadata invalidation is GPU-only and cheap compared
+            // with the former 236 MiB world readback/re-upload.
+            vkCmdFillBuffer(command_buffer, tile_buffer.handle, 0, tile_buffer.size, 0u);
+            vkCmdFillBuffer(command_buffer, chunk_buffer.handle, 0, chunk_buffer.size, 0u);
+            buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+            vkCmdFillBuffer(command_buffer, sunlight_buffer.handle, 0,
+                            sunlight_buffer.size, 0u);
+            buffer_barrier(command_buffer, sunlight_buffer,
+                           VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            if (config.runtime_acceptance_report.empty()) {
+                const SimulationPush sunlight_push{
+                    .width = config.grid_width,
+                    .height = config.grid_height,
+                    .step = simulation_step,
+                    .seed = random_seed,
+                    .active_mode = 0u,
+                };
+                bind_compute(command_buffer, sunlight_pipeline, 0u);
+                vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                                   VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                   sizeof(sunlight_push), &sunlight_push);
+                vkCmdDispatch(command_buffer,
+                              divide_round_up(config.grid_width,
+                                              sunlight_local_size),
+                              1, 1);
+                buffer_barrier(command_buffer, sunlight_buffer,
+                               VK_ACCESS_SHADER_WRITE_BIT,
+                               VK_ACCESS_SHADER_READ_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            }
+        });
         startup_log("Placed blueprint slot " + std::to_string(slot + 1u) +
-                    " transactionally.");
+                    " with a bounded transactional upload of " +
+                    std::to_string(writes.size()) + " cells.");
     }
 
     void upload_scene_cells(const std::span<const SceneCell> cells) {
@@ -1815,7 +1917,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const auto map_height = (std::min)(config.grid_height, pre_expansion_world_height);
         std::vector<SceneCell> map_cells(static_cast<std::size_t>(map_width) * map_height);
         std::string error;
-        if (!load_scene_ppm(path, map_width, map_height, map_cells, error)) {
+        if (!load_scene_ppm(path, scene, map_width, map_height, map_cells, error)) {
             startup_log("Scene image load skipped: " + error);
             return false;
         }
@@ -1900,6 +2002,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
               save_slot, cells, metadata, error)) {
   startup_log("World load skipped: " + error);
   return false;
+        }
+        if (scene == Scene::ecosystem || scene == Scene::sandbox) {
+            std::vector<std::uint32_t> materials(static_cast<std::size_t>(cells.size()));
+            for (std::size_t index = 0u; index < cells.size(); ++index)
+                materials[index] = cells[index].material;
+            normalize_pre_pr19_hives(materials, config.grid_width, config.grid_height, authored_map_origin_x(), authored_map_origin_y(), scene);
+            for (std::size_t index = 0u; index < cells.size(); ++index) {
+                cells[index].material = materials[index];
+            }
         }
         upload_scene_cells(cells);
         if (!error.empty()) startup_log("World load recovery: " + error);
@@ -3242,6 +3353,82 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 return std::pair{units, halves};
             };
 
+            const auto pre_pr19_hive_entropy = [&](const Scene scene,
+                                                   const std::int32_t dx,
+                                                   const std::int32_t dy) {
+                const auto queen_y = scene == Scene::sandbox ? 234u : 232u;
+                const auto x = static_cast<std::uint32_t>(static_cast<std::int32_t>(512) + dx);
+                const auto y = static_cast<std::uint32_t>(static_cast<std::int32_t>(queen_y) + dy);
+                return pre_pr19_hive_hash((y * pre_pr19_hive_canonical_width + x) ^
+                                          pre_pr19_hive_canonical_seed);
+            };
+            const auto check_pre_pr19_hive = [&](const std::string_view name,
+                                                 const Scene scene) {
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    record_reset(command_buffer, static_cast<std::uint32_t>(scene));
+                });
+                const auto cells = download_scene_cells();
+                const std::uint32_t queen_x = 512u;
+                const std::uint32_t queen_y = scene == Scene::sandbox ? 234u : 232u;
+                std::uint32_t mismatches = 0u;
+                std::uint32_t shell = 0u;
+                std::uint32_t support = 0u;
+                std::uint32_t honey = 0u;
+                std::uint32_t pollen = 0u;
+                std::uint32_t empty_chamber = 0u;
+                for (std::int32_t dy = -16; dy <= 11; ++dy) {
+                    for (std::int32_t dx = -37; dx <= 29; ++dx) {
+                        const auto part = classify_pre_pr19_hive_cell(
+                            dx, dy, pre_pr19_hive_entropy(scene, dx, dy));
+                        const auto x = static_cast<std::uint32_t>(
+                            static_cast<std::int32_t>(queen_x) + dx);
+                        const auto y = static_cast<std::uint32_t>(
+                            static_cast<std::int32_t>(queen_y) + dy);
+                        const auto actual = static_cast<Material>(cells[index_of(x, y)].material);
+                        bool matches = true;
+                        switch (part) {
+                        case HivePart::support:
+                            matches = actual == Material::wood;
+                            ++support;
+                            break;
+                        case HivePart::shell:
+                            matches = actual == Material::beehive;
+                            ++shell;
+                            break;
+                        case HivePart::queen:
+                            matches = actual == Material::queen_bee;
+                            break;
+                        case HivePart::honey:
+                            matches = actual == Material::honey;
+                            ++honey;
+                            break;
+                        case HivePart::pollen:
+                            matches = actual == Material::pollen;
+                            ++pollen;
+                            break;
+                        case HivePart::chamber:
+                            matches = actual == Material::atmosphere || actual == Material::bee;
+                            ++empty_chamber;
+                            break;
+                        case HivePart::exit:
+                        case HivePart::empty:
+                            matches = actual == Material::atmosphere || actual == Material::bee;
+                            break;
+                        }
+                        if (!matches) ++mismatches;
+                    }
+                }
+                append(std::string{name},
+                       mismatches == 0u && shell > 0u && support == 268u &&
+                           honey > 0u && pollen > 0u && empty_chamber > 0u,
+                       "mismatches=" + std::to_string(mismatches) +
+                           " support=" + std::to_string(support) +
+                           " shell=" + std::to_string(shell) +
+                           " honey=" + std::to_string(honey) +
+                           " pollen=" + std::to_string(pollen) +
+                           " chamber_empty=" + std::to_string(empty_chamber));
+            };
+
             {
                 auto cells = acceptance_atmosphere_world();
                 seed_rect(cells, Material::stone, 80u, 101u, 41u, 1u);
@@ -3294,6 +3481,43 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
             {
                 auto cells = acceptance_atmosphere_world();
+                cells[index_of(100u, 64u)] = SceneCell{
+                    .material = material_id(Material::water),
+                    .age = 0u,
+                    .temperature = 20,
+                    .aux = water_half_bit,
+                };
+                upload_scene_cells(cells);
+                for (std::int32_t step = 0; step < 8; ++step) {
+                    run_acceptance_fine_pass(0, 0);
+                    run_acceptance_fine_pass(0, 1);
+                }
+                const auto result = download_scene_cells();
+                std::uint32_t final_y = 0u;
+                std::uint32_t units = 0u;
+                std::uint32_t halves = 0u;
+                bool moved = false;
+                for (std::uint32_t y = 0u; y < 255u; ++y) {
+                    const auto cell = result[index_of(100u, y)];
+                    if (cell.material != material_id(Material::water) ||
+                        (cell.aux & water_half_bit) == 0u) {
+                        continue;
+                    }
+                    if (units == 0u) final_y = y;
+                    ++units;
+                    ++halves;
+                    if (y > 64u) moved = true;
+                }
+                append("half_water_keeps_dripping",
+                       units == 1u && halves == 1u && moved && final_y > 70u,
+                       "half_units=" + std::to_string(units) +
+                           " halves=" + std::to_string(halves) +
+                           " final_y=" + std::to_string(final_y) +
+                           " moved=" + std::string{moved ? "true" : "false"});
+            }
+
+            {
+                auto cells = acceptance_atmosphere_world();
                 seed_rect(cells, Material::stone, 104u, 161u, 8u, 1u);
                 seed_rect(cells, Material::water, 108u, 160u, 3u, 1u);
                 upload_scene_cells(cells);
@@ -3309,72 +3533,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            std::to_string(count_material(result, Material::water)));
             }
 
-            {
-                immediate_submit([&](const VkCommandBuffer command_buffer) {
-                    record_reset(command_buffer,
-                                 static_cast<std::uint32_t>(Scene::ecosystem));
-                });
-                const auto cells = download_scene_cells();
-                const auto queen_x = authored_map_origin_x() + 512u;
-                const auto queen_y = authored_map_origin_y() + 232u;
-                std::uint32_t mismatches = 0u;
-                std::uint32_t shell = 0u;
-                std::uint32_t support = 0u;
-                std::uint32_t honey = 0u;
-                std::uint32_t pollen = 0u;
-                std::uint32_t empty_chamber = 0u;
-                for (std::int32_t dy = -16; dy <= 11; ++dy) {
-                    for (std::int32_t dx = -37; dx <= 29; ++dx) {
-                        const auto part = classify_pre_pr19_hive_cell(
-                            dx, dy, canonical_pre_pr19_hive_entropy(dx, dy));
-                        const auto x = static_cast<std::uint32_t>(
-                            static_cast<std::int32_t>(queen_x) + dx);
-                        const auto y = static_cast<std::uint32_t>(
-                            static_cast<std::int32_t>(queen_y) + dy);
-                        const auto actual = static_cast<Material>(cells[index_of(x, y)].material);
-                        bool matches = true;
-                        switch (part) {
-                        case HivePart::support:
-                            matches = actual == Material::wood;
-                            ++support;
-                            break;
-                        case HivePart::shell:
-                            matches = actual == Material::beehive;
-                            ++shell;
-                            break;
-                        case HivePart::queen:
-                            matches = actual == Material::queen_bee;
-                            break;
-                        case HivePart::honey:
-                            matches = actual == Material::honey;
-                            ++honey;
-                            break;
-                        case HivePart::pollen:
-                            matches = actual == Material::pollen;
-                            ++pollen;
-                            break;
-                        case HivePart::chamber:
-                            matches = actual == Material::atmosphere || actual == Material::bee;
-                            ++empty_chamber;
-                            break;
-                        case HivePart::exit:
-                        case HivePart::empty:
-                            matches = actual == Material::atmosphere || actual == Material::bee;
-                            break;
-                        }
-                        if (!matches) ++mismatches;
-                    }
-                }
-                append("ecosystem_hard_coded_hive",
-                       mismatches == 0u && shell > 0u && support == 268u &&
-                           honey > 0u && pollen > 0u && empty_chamber > 0u,
-                       "mismatches=" + std::to_string(mismatches) +
-                           " support=" + std::to_string(support) +
-                           " shell=" + std::to_string(shell) +
-                           " honey=" + std::to_string(honey) +
-                           " pollen=" + std::to_string(pollen) +
-                           " chamber_empty=" + std::to_string(empty_chamber));
-            }
+            check_pre_pr19_hive("sandbox_hard_coded_hive", Scene::sandbox);
+            check_pre_pr19_hive("ecosystem_hard_coded_hive", Scene::ecosystem);
         }
 
         const bool passed = std::all_of(checks.begin(), checks.end(),

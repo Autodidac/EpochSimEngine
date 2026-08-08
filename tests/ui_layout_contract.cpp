@@ -8,6 +8,13 @@ int main() {
     using sandhybrid::Material;
     using sandhybrid::MaterialGroup;
 
+    constexpr auto font_metrics =
+        epochengine::gui_lib::font::make_bitmap_font_metrics({16.0F, 1.5F});
+    static_assert(font_metrics.pixel_height == 24.0F);
+    static_assert(font_metrics.glyph_height == 24.0F);
+    static_assert(epochengine::gui_lib::font::resolved_pixel_height({12.0F, 2.0F}) ==
+                  24.0F);
+
     const auto layout = sandhybrid::ui::make_layout(1280u, 720u);
     const auto industry_tab = sandhybrid::ui::group_tab_rect(
         layout, static_cast<std::uint32_t>(MaterialGroup::industry));
