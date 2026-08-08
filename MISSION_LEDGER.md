@@ -4,15 +4,18 @@
 
 ## Current release
 
-- Current release: `v2.5.17`, published as the latest normal public GitHub release for macro/Half Water, hard-coded hive contents, and high-DPI cursor recovery.
-- State: v2.5.17 is published from commit `791bf7160ce95ec27c5a31717e845cb6ba95e381`. Main workflow `31069315698` and tag workflow `31069325459` passed native Windows/Linux Release builds, 27/27 tests per platform, packaging, checksums, uploads, and stable publication. GitHub reports it as latest, non-draft, and non-prerelease with exactly two packages and two checksums. The 129 unaccepted missions and all criteria outside the focused evidence remain active.
+- Current release: `v2.5.18`, published as the latest normal public GitHub release for terrain, Half Water, bounded Blueprints, the hard-coded hive, and EpochGui recovery.
+- State: v2.5.18 is published from commit `351a5393afffead716262e45bf7670e888f7d32b`. Main workflow `31259694107`, tag workflow `31260334364`, and tagged hygiene workflow `31260334357` passed. GitHub reports it as latest, non-draft, and non-prerelease with exactly two packages and two checksums. The 129 unaccepted missions and all criteria outside the focused evidence remain active.
 - Public prerelease tags and `-test` release names are forbidden.
 
-## v2.5.18 release candidate
+## v2.5.18 publication record
 
+- Release: https://github.com/Autodidac/EpochSimEngine/releases/tag/v2.5.18; ordinary stable tag and visible latest release, with no prerelease marker or `-test` suffix.
 - Scope: align every generated resident surface to the authored grass-over-dirt plateau, restore Half Water to an early fine-only conserved state with a chemistry firewall, replace Blueprint full-world round trips with bounded validated uploads, retain the exact pictured Fix36/pre-PR19 hard-coded hive, and synchronize the selected EpochGui font contract.
-- Native candidate gate: Windows and Linux Release builds each pass all 27/27 tests. Fresh installed packages contain the executable, 12 shaders, 20 headers, development files, and 14 canonical documents; Windows/NVIDIA RTX 5080 and Linux/Mesa llvmpipe packages both pass all nine focused Vulkan checks with identical conserved counts. Both local archives and checksum verification pass; stable publication remains required before this section becomes a publication record.
+- Native/package gate: Windows and Linux Release builds each pass all 27/27 tests. Fresh installed packages contain the executable, 12 shaders, 20 headers, development files, and 14 canonical documents; Windows/NVIDIA RTX 5080 and Linux/Mesa llvmpipe packages both pass all nine focused Vulkan checks with identical conserved counts. Main and tag workflows rebuilt, tested, archived, checksummed, uploaded, and published the exact source successfully.
+- Published package SHA-256: Windows `d075e79e9e6020b5832cd70afe2485652e64645466981f7fbbbe9569e99dd2c7`; Linux `8fc4d6db26191c9f92ba89470599680c509a732c2a6f3e3519cdafd8e83b40e1`. Both public checksum files match GitHub asset digests.
 - No affected mission is marked COMPLETE from these focused results. Broader per-row visual/runtime acceptance remains active in missioncache.md.
+
 ## v2.5.17 publication record
 
 - Release: https://github.com/Autodidac/EpochSimEngine/releases/tag/v2.5.17; ordinary stable tag and visible release, with no prerelease marker or `-test` suffix.

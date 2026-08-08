@@ -334,7 +334,7 @@ Fresh water supports conserved faint half-cells, a three-half-unit ledge release
 
 ## v2.5.18 packaged state acceptance
 
-SandHybrid v2.5.18 is the normal stable release candidate, with native Windows/Linux packages and SHA-256 files and no prerelease marker.
+SandHybrid v2.5.18 is the latest normal public release, with native Windows/Linux packages and SHA-256 files and no prerelease marker.
 
 The shipped executable can run a deterministic Vulkan seed/step/readback gate against its real compiled compute pipelines and resident cell buffers:
 
