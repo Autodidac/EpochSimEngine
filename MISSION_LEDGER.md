@@ -4,11 +4,11 @@
 
 ## Current release
 
-- Current release target: `v2.5.21`; last published stable release is `v2.5.20` at commit `cdd5a1474104bd8165f0f9e199dfde4712a73a5f`.
-- State: v2.5.21 local pre-publication validation passes. EpochGui was fetched and remains current at `d8decc9ee2e73e0009f1e8c49d86a52db6748b28` / v0.88.75. Commit, workflow, and stable-publication evidence remain pending below; no visual/runtime mission is marked COMPLETE from source inspection or focused readback.
+- Current published stable release: `v2.5.21` at commit `30343c7822b9d6b3d4d49276e3d9f74a8fd89522`; it is an ordinary visible release with no prerelease marker or `-test` suffix.
+- State: v2.5.21 publication is complete. EpochGui remains current at `d8decc9ee2e73e0009f1e8c49d86a52db6748b28` / v0.88.75. Native, package, runtime, checksum, tag, workflow, and public-release evidence is recorded below; no broader visual/runtime mission is marked COMPLETE from focused readback.
 - Public prerelease tags and `-test` release names are forbidden.
 
-## v2.5.21 release target
+## v2.5.21 publication record
 
 - Scope: recover the supplied Volcano silhouette and smoother geology; Water/Half Water hang and rest rules; active Engineering/Industry/Gold Mine machinery and Sluice; sidebar Actions; static non-metal presentation and state-driven gases; pressure-conserving atmosphere/Vacuum mixing; reduced combustion yields; player recovery in every scene; the photographed historical compact hive and colony metadata; bounded debug telemetry; and 30/60/120/unlimited presentation caps over fixed 60 Hz simulation.
 - Dependency: fetched `Autodidac/EpochGui` before release; upstream `main`, vendored snapshot, and `third_party/EpochGui/SNAPSHOT.md` all resolve to `d8decc9ee2e73e0009f1e8c49d86a52db6748b28` / v0.88.75.
@@ -16,6 +16,7 @@
 - Local native/package evidence: exact-source Windows Release passes 32/32 CTests, including EpochGui's three default suites; Linux Release passes 29/29 CTests. Fresh installed Windows/NVIDIA RTX 5080 and Linux/Mesa llvmpipe packages each pass the same 19 production Vulkan checks: exact macro liquid/gas packets, blocked-packet fine fallback, four Half Water/Water cases, all nine scene foundations, and both compact hard-coded hives with zero mismatches. The Volcano foundation is exactly 4,928 structural Stone plus the intended 192-cell Lava throat.
 - Local package evidence: the Windows ZIP audits 58 entries and the Linux tarball audits 65 entries; both local SHA-256 files verify. Both packages carry the native executable, 12 compiled shaders, installed headers/library/CMake package, launchers, and 14 canonical documents. Final public asset digests are recorded only after the immutable published assets exist.
 - Remaining runtime status: broad scene visual review, sustained Water leveling, complete machinery/player/bee lifecycle cycles, debug overhead below 3%, and frame-cap persistence remain active in `missioncache.md`; focused packaged readback does not close them.
+- Publication evidence: [v2.5.21](https://github.com/Autodidac/EpochSimEngine/releases/tag/v2.5.21) is `isDraft=false` and `isPrerelease=false`; annotated tag `v2.5.21` resolves to commit `30343c7822b9d6b3d4d49276e3d9f74a8fd89522`. Release workflow `31277476517` and core hygiene workflow `31277476542` passed. Published Windows SHA-256 is `527dde74f0040c390bc6c43b5768f2fcaf09e34f92a92df85c25df3a0568f36f`; published Linux SHA-256 is `f5b052cace01136538faf5aee2a49b08e2b661df119c87acddd7b7b34ccfcc66`. Both downloaded public checksum files match the package asset digests.
 
 ## v2.5.20 publication record
 
