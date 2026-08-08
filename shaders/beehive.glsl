@@ -1,11 +1,11 @@
 #ifndef SANDHYBRID_BEEHIVE_GLSL
 #define SANDHYBRID_BEEHIVE_GLSL
 
-const int BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 28;
-const int BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 108;
-const int BEEHIVE_CHAMBER_RADIUS_SQUARED = 28;
+const int BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 24;
+const int BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 88;
+const int BEEHIVE_CHAMBER_RADIUS_SQUARED = 24;
 const int BEEHIVE_EXIT_MIN_X = 1;
-const int BEEHIVE_EXIT_MAX_X = 12;
+const int BEEHIVE_EXIT_MAX_X = 10;
 const int BEEHIVE_EXIT_HALF_HEIGHT = 1;
 const int BEEHIVE_SUPPORT_TILE_SIZE = 8;
 const int BEEHIVE_SUPPORT_WIDTH = 72;
@@ -15,11 +15,11 @@ const int BEEHIVE_SUPPORT_TOP_BIAS = 16;
 const uint BEEHIVE_CANONICAL_WIDTH = 640u;
 const ivec2 BEEHIVE_CANONICAL_SANDBOX_QUEEN = ivec2(512, 234);
 const ivec2 BEEHIVE_CANONICAL_ECOSYSTEM_QUEEN = ivec2(512, 232);
-// Fix29 used pc.seed ^ 0xB33 for its Ecosystem-map chamber contents.
-const uint BEEHIVE_CANONICAL_SEED = 0xD17A55DEu;
+// Canonical photographed-map chamber entropy shared by reset, tool, and load.
+const uint BEEHIVE_CANONICAL_SEED = 0xD17A5EEDu;
 
-// Exact compact hive body and chamber rule from the SimpleSandSim Fix29
-// Ecosystem map. SandHybrid owns the surrounding bee population and behavior.
+// Exact compact hive body and chamber rule from the photographed historical
+// SimpleSandSim Sandbox map. SandHybrid owns the surrounding bee population and behavior.
 ivec2 beehiveSupportOrigin(ivec2 queen) {
     return ((queen - ivec2(BEEHIVE_SUPPORT_LEFT_BIAS,
                            BEEHIVE_SUPPORT_TOP_BIAS)) /

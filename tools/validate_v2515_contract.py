@@ -21,7 +21,7 @@ def reject(path: str, token: str) -> None:
 
 
 # Canonical history remains while the newest contract owns current publication.
-require("CMakeLists.txt", "VERSION 2.5.20")
+require("CMakeLists.txt", "VERSION 2.5.21")
 require("CHANGELOG.md", "## 2.5.15")
 
 # v2.5.3 macro ownership: moving complete media get a packet attempt.
@@ -37,10 +37,10 @@ for token in ("gas_tile_eligible(true, true, false)",
 
 # Exact Fix29 Ecosystem hive body, tiled perch, positions, and deterministic contents without foreign actor behavior.
 for token in (
-    "BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 28",
-    "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 108",
-    "BEEHIVE_CHAMBER_RADIUS_SQUARED = 28",
-    "BEEHIVE_EXIT_MAX_X = 12",
+    "BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 24",
+    "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 88",
+    "BEEHIVE_CHAMBER_RADIUS_SQUARED = 24",
+    "BEEHIVE_EXIT_MAX_X = 10",
     "BEEHIVE_SUPPORT_WIDTH = 72",
     "BEEHIVE_SUPPORT_HEIGHT = 8",
     "BEEHIVE_SUPPORT_TILE_SIZE = 8",
@@ -48,10 +48,10 @@ for token in (
 ):
     require("shaders/beehive.glsl", token)
 for token in (
-    "beehive_shell_min_radius_squared = 28",
-    "beehive_shell_max_radius_squared = 108",
-    "beehive_chamber_radius_squared = 28",
-    "beehive_exit_max_x = 12",
+    "beehive_shell_min_radius_squared = 24",
+    "beehive_shell_max_radius_squared = 88",
+    "beehive_chamber_radius_squared = 24",
+    "beehive_exit_max_x = 10",
 ):
     require("src/scene_image.cpp", token)
 

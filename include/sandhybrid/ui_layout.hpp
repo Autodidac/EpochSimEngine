@@ -15,7 +15,9 @@ inline constexpr std::uint32_t workspace_tab_count = 4u;
 inline constexpr std::uint32_t group_tabs_height = 96u;
 inline constexpr std::uint32_t palette_items_height = 124u;
 inline constexpr std::uint32_t eraser_height = 34u;
+inline constexpr std::uint32_t actions_height = 54u;
 inline constexpr std::uint32_t keymap_height = 124u;
+inline constexpr std::uint32_t settings_fps_height = 58u;
 inline constexpr std::uint32_t cursor_editor_height = 112u;
 inline constexpr std::uint32_t palette_height = 0u;
 inline constexpr float margin = 5.0f;
@@ -27,7 +29,8 @@ struct Layout final {
     epochengine::gui_lib::Rect inventory_inventory{}, inventory_blueprints{};
     epochengine::gui_lib::Rect previous_scene{}, next_scene{}, reset_scene{}, save_scene{}, load_scene{};
     epochengine::gui_lib::Rect mode_toggle{}, pause_toggle{}, camera_controls_toggle{}, map_toggle{}, debug_toggle{};
-    epochengine::gui_lib::Rect atmosphere{}, fill{}, eraser{}, keymap{}, cursor_editor{}, material_card{};
+    epochengine::gui_lib::Rect atmosphere{}, fill{}, eraser{}, actions{}, ignite_air{}, keymap{}, cursor_editor{}, material_card{};
+    epochengine::gui_lib::Rect settings_lighting{}, settings_fps{}, fps_30{}, fps_60{}, fps_120{}, fps_unlimited{};
     epochengine::gui_lib::Rect placement_cells{}, placement_tiles{};
     epochengine::gui_lib::Rect designer_static_model{}, designer_map_chunk{};
     epochengine::gui_lib::Rect designer_inventory{}, designer_blueprints{};
@@ -220,8 +223,25 @@ framebuffer_to_logical_pointer(
                    {row_width - utility_width * 2.0f - row_gap * 2.0f,
                     float(eraser_height)}};
 
-    const float keymap_top = layout.palette.position.y + layout.palette.size.y + gap;
+    const float actions_top = layout.palette.position.y + layout.palette.size.y + gap;
+    layout.actions = {{content_left, actions_top}, {content_width, float(actions_height)}};
+    layout.ignite_air = {{content_left + 8.0f, actions_top + 22.0f},
+                         {content_width - 16.0f, 27.0f}};
+    const float keymap_top = actions_top + float(actions_height) + gap;
     layout.keymap = {{content_left, keymap_top}, {content_width, float(keymap_height)}};
+
+    const float settings_top = float(status_height) + margin;
+    layout.settings_lighting = {{content_left, settings_top}, {content_width, 78.0f}};
+    const float settings_fps_top = settings_top + 78.0f + gap;
+    layout.settings_fps = {{content_left, settings_fps_top},
+                           {content_width, float(settings_fps_height)}};
+    const float fps_button_top = settings_fps_top + 25.0f;
+    const float fps_button_width = content_width / 4.0f;
+    layout.fps_30 = {{content_left, fps_button_top}, {fps_button_width, 28.0f}};
+    layout.fps_60 = {{content_left + fps_button_width, fps_button_top}, {fps_button_width, 28.0f}};
+    layout.fps_120 = {{content_left + fps_button_width * 2.0f, fps_button_top}, {fps_button_width, 28.0f}};
+    layout.fps_unlimited = {{content_left + fps_button_width * 3.0f, fps_button_top},
+                            {content_width - fps_button_width * 3.0f, 28.0f}};
     const float designer_button_width = content_width / 2.0f;
     layout.designer_static_model = {{content_left, keymap_top + 25.0f},
                                     {designer_button_width, 28.0f}};
@@ -303,11 +323,9 @@ framebuffer_to_logical_pointer(
             {(std::max)(1.0f, cell_width - gap), (std::max)(1.0f, cell_height - gap)}};
 }
 
-inline constexpr MaterialGroup ignite_air_group = MaterialGroup::fire_chemistry;
-
 [[nodiscard]] inline constexpr std::uint32_t palette_item_count(
     const MaterialGroup group) noexcept {
-    return material_group_size(group) + (group == ignite_air_group ? 1u : 0u);
+    return material_group_size(group);
 }
 
 [[nodiscard]] inline epochengine::gui_lib::Rect palette_item_rect(
@@ -345,10 +363,8 @@ inline constexpr MaterialGroup ignite_air_group = MaterialGroup::fire_chemistry;
 }
 
 [[nodiscard]] inline bool ignite_air_action_at(
-    const Layout& layout, const MaterialGroup group,
-    const epochengine::gui_lib::Vec2 point) noexcept {
-    return group == ignite_air_group &&
-           palette_slot_at(layout, group, point) == material_group_size(group);
+    const Layout& layout, const epochengine::gui_lib::Vec2 point) noexcept {
+    return epochengine::gui_lib::contains(layout.ignite_air, point);
 }
 
 [[nodiscard]] inline epochengine::gui_lib::Rect inventory_slot_rect(

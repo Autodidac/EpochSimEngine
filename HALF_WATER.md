@@ -1,25 +1,18 @@
 # Half-volume fresh water
 
-Fresh water uses conserved half-units without changing the canonical 16-byte cell layout.
+Fresh Water uses conserved half-units without changing the canonical 16-byte cell layout.
 
-- faint fresh-water cell: one half-unit
-- full-color fresh-water cell: two half-units
-- two adjacent halves merge into one full cell and oxygen
-- a full cell creates a half-cell only on the last solid-supported position before an open drop
-- ledge release requires one full edge cell plus at least one trailing half-unit
-- half-water never hops along an exposed water edge and never crawls sideways after falling
-- extra half-water passes are merge-only; they may not create edge hopping
-- half-water never enters an 8x8 macro transfer; it stays in the fine simulation
-- a half may make a bounded two-to-four-cell attraction move toward another visible half, restoring the early curved consolidation behavior without random wandering
-- chemistry treats Half Water as reserved fractional state: temperature and age may advance, but full-cell reactions and material conversion wait until two halves consolidate
+- Half Water is one unit and full Water is two units.
+- Half Water has a darker static Water color; color never changes represented volume.
+- A half falls before any lateral work and two adjacent halves merge deterministically into one full Water cell while restoring displaced ambient Air.
+- A half may attract only toward another visible half across a clear two-to-four-cell gap. It never inherits generic full-Water diagonal wandering.
+- At a supplied ledge, one dark half-volume meniscus may hang at the lip while its paired half falls. Both remain conserved and continue fall, merge, settle, reaction, and wake processing.
+- Half Water never enters an 8x8 macro transfer; it remains fine-simulated.
+- A half may sleep only when no fall, merge, attraction, reaction, heat, pressure, actor, tool, or other productive motion is pending.
+- Chemistry treats the Half flag as reserved fractional state: temperature and age may advance, but full-cell reactions and conversion wait until two halves consolidate.
 
-All other material behavior remains unchanged.
+Full Water falls and then levels through valid fine or exact macro movement, including the restored unsupported-ledge/diagonal route shared with Saltwater and Oil. A solitary surface pixel is valid only when it still represents conserved volume and no productive move exists; it must then sleep. Unsupported or equalizable residual Water remains active until it moves or merges.
 
-
-## v2.4.0 settling
-
-Equal-level random water hopping is removed. Half cells retain conserved displaced gas, merge when adjacent, and use stronger presentation coverage without changing represented volume. The v2.5.9 regression recovery restores the early deterministic short-range attraction toward another visible half while keeping Half Water fine-owned and forbidding random edge wandering. Full uniform liquid regions are decided by the 8x8 macro hierarchy; mixed edges are repaired periodically by the fine pass.
 ## Ambient Air isolation
 
 When Water splits into two Half Water ledge cells against balanced Air, the Air is represented only by a zero-pressure marker. It does not occupy Half Water pressure/state bits, cannot displace the Half Water, and restores as canonical Air when the halves consolidate. Non-Air excess gases retain their represented volume.
-

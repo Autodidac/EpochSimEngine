@@ -62,15 +62,35 @@ int main() {
     if (feed.count(sandhybrid::Material::sand) != 1u ||
         water.count(sandhybrid::Material::water) != 1u) return 10;
 
+    if (!solid_output.add(sandhybrid::Material::stone, 4u)) return 11;
+    const auto blocked_feed_before = feed;
+    const auto blocked_water_before = water;
+    const auto blocked_sluice = sandhybrid::transact_sluice(
+        feed, water, solid_output, water_output,
+        sandhybrid::Material::sand, true, 7u, 1u,
+        sandhybrid::PortDirection::left,
+        sandhybrid::PortDirection::right);
+    if (blocked_sluice.committed() ||
+        blocked_sluice.status != sandhybrid::SluiceTransactionStatus::blocked_solid_output)
+        return 12;
+    if (feed.amounts != blocked_feed_before.amounts ||
+        water.amounts != blocked_water_before.amounts) return 13;
+    solid_output = {};
+    solid_output.capacity = 4u;
+
     const auto sluiced = sandhybrid::transact_sluice(
         feed, water, solid_output, water_output,
         sandhybrid::Material::sand, true, 7u, 1u,
         sandhybrid::PortDirection::left,
         sandhybrid::PortDirection::right);
-    if (!sluiced.committed()) return 11;
+    if (!sluiced.committed()) return 14;
     if (solid_output.total() != 1u ||
-        water_output.count(sandhybrid::Material::water) != 1u) return 12;
-    if (sluiced.solid_direction == sluiced.water_direction) return 13;
+        water_output.count(sandhybrid::Material::water) != 1u) return 15;
+    if (sluiced.solid_direction == sluiced.water_direction) return 16;
+    const auto expected_solid = sandhybrid::sluice_gold_roll(7u, 1u) ?
+        sandhybrid::Material::gold : sandhybrid::Material::sand;
+    if (sluiced.solid_output != expected_solid ||
+        solid_output.count(expected_solid) != 1u) return 18;
 
     constexpr sandhybrid::InsectHabitatPolicy ant_habitat{};
     static_assert(ant_habitat.valid());
@@ -81,7 +101,7 @@ int main() {
 
     if (sandhybrid::opposite_direction(
             sandhybrid::PortDirection::left) !=
-        sandhybrid::PortDirection::right) return 14;
+        sandhybrid::PortDirection::right) return 17;
 
     return 0;
 }

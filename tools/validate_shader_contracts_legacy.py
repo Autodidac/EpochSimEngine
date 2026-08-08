@@ -173,9 +173,9 @@ def main() -> int:
                     errors.append(f"legacy alias/token remains in {source_path.relative_to(ROOT)}: {token}")
 
     beehive_glsl = (SHADERS / "beehive.glsl").read_text(encoding="utf-8")
-    for token in ("BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 28", "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 108", "BEEHIVE_EXIT_MAX_X = 12", "BEEHIVE_SUPPORT_WIDTH = 72", "beehivePrefabMaterial"):
+    for token in ("BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 24", "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 88", "BEEHIVE_CHAMBER_RADIUS_SQUARED = 24", "BEEHIVE_EXIT_MAX_X = 10", "BEEHIVE_CANONICAL_SEED = 0xD17A5EEDu", "BEEHIVE_SUPPORT_WIDTH = 72", "beehivePrefabMaterial"):
         if token not in beehive_glsl:
-            errors.append(f"Fix29 Ecosystem Beehive contract missing {token!r}")
+            errors.append(f"photographed historical Beehive contract missing {token!r}")
 
     scene_image_cpp = (ROOT / "src/scene_image.cpp").read_text(encoding="utf-8")
     move = (SHADERS / "move.comp").read_text(encoding="utf-8")
@@ -197,12 +197,12 @@ def main() -> int:
         "bee_authored_home_slot_bit",
         "normalize_pre_pr19_hives",
         "pre_pr19_beehive_material",
-        "beehive_shell_min_radius_squared = 28",
-        "beehive_shell_max_radius_squared = 108",
-        "beehive_exit_max_x = 12",
+        "beehive_shell_min_radius_squared = 24",
+        "beehive_shell_max_radius_squared = 88",
+        "beehive_exit_max_x = 10",
     ):
         if token not in scene_image_cpp:
-            errors.append(f"loaded Fix29 Ecosystem Beehive contract missing {token!r}")
+            errors.append(f"loaded photographed historical Beehive contract missing {token!r}")
     for token in (
         "wetGranularSinkMove",
         "fullWaterSplitSupplied",
@@ -252,7 +252,7 @@ def main() -> int:
         "640 * 2",
         "normalize_legacy_open_air",
         "ventOutletMedium",
-        "MAT_ASH : (ejecta == 1u ? MAT_SMOKE : MAT_STEAM)",
+        "ejecta == 0u ? MAT_ASH : (ejecta <= 3u ? MAT_SMOKE : MAT_STEAM)",
         "pressure = min(255u, pressure + recharge)",
         "if (cell.material == MAT_ASH) return (randomValue % 5u) != 0u;",
         "chunkPairSleeping(a, b) && sleepSafe(a, firstCell) && sleepSafe(b, secondCell)",
@@ -646,7 +646,7 @@ def main() -> int:
     for token in ("TILE_MACRO_MOVABLE", "TILE_FINE_ACTIVE", "TILE_SETTLED_MEDIUM"):
         if token not in macro_move + tiles_comp:
             errors.append(f"macro hierarchy contract missing {token!r}")
-    for token in ("MAT_SLUICE_BOX", "inventory.x -= 8u", "inventory.y += 7u", "inventory.z += 1u", "return inventory.z > 0u ? MAT_GOLD : MAT_WATER"):
+    for token in ("MAT_SLUICE_BOX", "currentInventory.z == 0u && currentInventory.w == 0u", "inventory.w = processSand ? 1u : 2u", "return inventory.z > 0u ? MAT_GOLD : (inventory.w == 1u ? MAT_SAND : MAT_SILT)"):
         if token not in chemistry:
             errors.append(f"sluice conservation contract missing {token!r}")
     cmake_text = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
@@ -780,7 +780,7 @@ def main() -> int:
             ["grid_width", "grid_height", "window_width", "window_height", "selected_material",
              "material_count", "cursor_x", "cursor_y", "brush_radius", "status_height",
              "palette_height", "group_tabs_height", "material_slots", "frames_per_second", "paused",
-             "steps_per_frame", "selected_group", "hovered_group", "hovered_material", "selected_scene",
+             "presentation_limit", "selected_group", "hovered_group", "hovered_material", "selected_scene",
              "group_count", "scene_count", "mining_mode", "inspect_mode", "debug_mode", "tile_columns",
              "tile_rows", "viewport_left", "viewport_top", "viewport_width", "viewport_height",
              "view_origin_x", "view_origin_y", "view_width", "view_height", "brush_shape",
@@ -793,7 +793,7 @@ def main() -> int:
              "day_cycle_steps", "designer_flags", "blueprint_flags", "framebuffer_width", "framebuffer_height"],
             ["gridWidth", "gridHeight", "windowWidth", "windowHeight", "selectedMaterial",
              "materialCount", "cursorX", "cursorY", "brushRadius", "statusHeight", "paletteHeight",
-             "groupTabsHeight", "materialSlots", "framesPerSecond", "paused", "stepsPerFrame",
+             "groupTabsHeight", "materialSlots", "framesPerSecond", "paused", "presentationLimit",
              "selectedGroup", "hoveredGroup", "hoveredMaterial", "selectedScene", "groupCount",
              "sceneCount", "miningMode", "inspectMode", "debugMode", "tileColumns", "tileRows", "viewportLeft", "viewportTop", "viewportWidth", "viewportHeight",
              "viewOriginX", "viewOriginY", "viewWidth", "viewHeight", "brushShape",

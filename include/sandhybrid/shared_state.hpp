@@ -91,6 +91,8 @@ struct SharedState final {
     std::atomic_int active_window_origin_x{0};
     std::atomic_int active_window_origin_y{0};
     std::atomic_uint32_t active_scope_mode{1}; // 1 = contiguous 4x4 map-footprint window
+    // 0=30, 1=60, 2=120, 3=unlimited presentation FPS; simulation remains fixed at 60 Hz.
+    std::atomic_uint32_t presentation_limit{2};
     std::atomic_uint32_t steps_per_frame{1};
     std::atomic_uint32_t frames_per_second{0};
 

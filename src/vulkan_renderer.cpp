@@ -286,7 +286,7 @@ struct RenderPush final {
     std::uint32_t material_slots{};
     std::uint32_t frames_per_second{};
     std::uint32_t paused{};
-    std::uint32_t steps_per_frame{};
+    std::uint32_t presentation_limit{};
     std::uint32_t selected_group{};
     std::uint32_t hovered_group{};
     std::uint32_t hovered_material{};
@@ -2349,13 +2349,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .active_section_x = state.active_window_origin_x.load(std::memory_order_relaxed),
             .active_section_y = state.active_window_origin_y.load(std::memory_order_relaxed),
             .active_mode = 1u,
-            .reserved = 1u,
+            .reserved = (debug_sample_frame / 60u) & 15u,
         };
         bind_compute(command_buffer, debug_stats_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
                            0, sizeof(push), &push);
-        const auto cell_count = config.grid_width * config.grid_height;
-        vkCmdDispatch(command_buffer, divide_round_up(cell_count, debug_stats_local_size), 1, 1);
+        constexpr auto sampled_cell_count =
+            static_cast<std::uint32_t>(active_region_width_cells * active_region_height_cells);
+        vkCmdDispatch(command_buffer, divide_round_up(sampled_cell_count, debug_stats_local_size), 1, 1);
         buffer_barrier(command_buffer, conservation_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
@@ -2784,7 +2785,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .material_slots = material_slots_per_group,
             .frames_per_second = state.frames_per_second.load(std::memory_order_relaxed),
             .paused = state.paused.load(std::memory_order_relaxed) ? 1u : 0u,
-            .steps_per_frame = state.steps_per_frame.load(std::memory_order_relaxed),
+            .presentation_limit = state.presentation_limit.load(std::memory_order_relaxed) & 3u,
             .selected_group = active_selected_group % material_group_count,
             .hovered_group = active_hovered_group,
             .hovered_material = active_hovered_material,
@@ -2849,7 +2850,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         vkCmdEndRenderPass(command_buffer);
     }
 
-    bool draw_frame(SharedState& state, const std::uint32_t scheduled_simulation_ticks) {
+    bool draw_frame(SharedState& state, const std::uint32_t scheduled_simulation_ticks,
+                    const bool present_frame) {
         auto& frame = frames[frame_index];
         constexpr std::uint64_t gpu_timeout_ns = 5'000'000'000ull;
         const auto fence_result = vkWaitForFences(device, 1, &frame.fence, VK_TRUE, gpu_timeout_ns);
@@ -2899,27 +2901,30 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         }
 
         std::uint32_t image_index{};
-        const auto acquire_result = vkAcquireNextImageKHR(device, swapchain, gpu_timeout_ns,
-                                                           frame.image_available, VK_NULL_HANDLE,
-                                                           &image_index);
-        if (acquire_result == VK_TIMEOUT || acquire_result == VK_NOT_READY) {
-            throw std::runtime_error("Timed out acquiring a swapchain image after 5 seconds.");
-        }
-        if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) return false;
-        if (acquire_result != VK_SUCCESS && acquire_result != VK_SUBOPTIMAL_KHR) {
-            throw_vk("vkAcquireNextImageKHR", acquire_result);
-        }
-
-        if (image_fences[image_index] != VK_NULL_HANDLE) {
-            const auto image_fence_result = vkWaitForFences(
-                device, 1, &image_fences[image_index], VK_TRUE, gpu_timeout_ns);
-            if (image_fence_result == VK_TIMEOUT) {
-                gpu_stalled = true;
-                throw std::runtime_error("Swapchain image fence timed out after 5 seconds.");
+        VkResult acquire_result = VK_SUCCESS;
+        if (present_frame) {
+            acquire_result = vkAcquireNextImageKHR(device, swapchain, gpu_timeout_ns,
+                                                   frame.image_available, VK_NULL_HANDLE,
+                                                   &image_index);
+            if (acquire_result == VK_TIMEOUT || acquire_result == VK_NOT_READY) {
+                throw std::runtime_error("Timed out acquiring a swapchain image after 5 seconds.");
             }
-            check_vk(image_fence_result, "vkWaitForFences(swapchain image)");
+            if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) return false;
+            if (acquire_result != VK_SUCCESS && acquire_result != VK_SUBOPTIMAL_KHR) {
+                throw_vk("vkAcquireNextImageKHR", acquire_result);
+            }
+
+            if (image_fences[image_index] != VK_NULL_HANDLE) {
+                const auto image_fence_result = vkWaitForFences(
+                    device, 1, &image_fences[image_index], VK_TRUE, gpu_timeout_ns);
+                if (image_fence_result == VK_TIMEOUT) {
+                    gpu_stalled = true;
+                    throw std::runtime_error("Swapchain image fence timed out after 5 seconds.");
+                }
+                check_vk(image_fence_result, "vkWaitForFences(swapchain image)");
+            }
+            image_fences[image_index] = frame.fence;
         }
-        image_fences[image_index] = frame.fence;
 
         check_vk(vkResetFences(device, 1, &frame.fence), "vkResetFences");
         check_vk(vkResetCommandBuffer(frame.command_buffer, 0), "vkResetCommandBuffer");
@@ -2956,7 +2961,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const bool run_simulation = simulation_ticks != 0u;
         bool collect_debug_stats = false;
         if (debug_visible && run_simulation) {
-            collect_debug_stats = !debug_was_visible || (debug_sample_frame % 16u) == 0u;
+            collect_debug_stats = !debug_was_visible || (debug_sample_frame % 60u) == 0u;
             ++debug_sample_frame;
         } else if (!debug_visible) {
             debug_sample_frame = 0u;
@@ -3021,20 +3026,22 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             (!map_was_visible || simulation_step - map_snapshot_step >= map_refresh_steps))
             record_map_snapshot(frame.command_buffer);
         map_was_visible = map_visible;
-        record_designer_snapshot(frame.command_buffer, state);
-        record_render(frame.command_buffer, image_index, state);
+        if (present_frame) {
+            record_designer_snapshot(frame.command_buffer, state);
+            record_render(frame.command_buffer, image_index, state);
+        }
         check_vk(vkEndCommandBuffer(frame.command_buffer), "vkEndCommandBuffer");
 
         constexpr VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         const VkSubmitInfo submit_info{
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &frame.image_available,
+            .waitSemaphoreCount = present_frame ? 1u : 0u,
+            .pWaitSemaphores = present_frame ? &frame.image_available : nullptr,
             .pWaitDstStageMask = &wait_stage,
             .commandBufferCount = 1,
             .pCommandBuffers = &frame.command_buffer,
-            .signalSemaphoreCount = 1,
-            .pSignalSemaphores = &frame.render_finished,
+            .signalSemaphoreCount = present_frame ? 1u : 0u,
+            .pSignalSemaphores = present_frame ? &frame.render_finished : nullptr,
         };
         check_vk(vkQueueSubmit(graphics_queue, 1, &submit_info, frame.fence), "vkQueueSubmit");
         if (!first_submission_logged) {
@@ -3042,22 +3049,25 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             first_submission_logged = true;
         }
 
-        const VkPresentInfoKHR present_info{
-            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &frame.render_finished,
-            .swapchainCount = 1,
-            .pSwapchains = &swapchain,
-            .pImageIndices = &image_index,
-        };
-        const auto present_result = vkQueuePresentKHR(present_queue, &present_info);
-        if (present_result != VK_SUCCESS && present_result != VK_SUBOPTIMAL_KHR &&
-            present_result != VK_ERROR_OUT_OF_DATE_KHR) {
-            throw_vk("vkQueuePresentKHR", present_result);
-        }
-        if (!first_present_logged) {
-            startup_log("First frame presented.");
-            first_present_logged = true;
+        VkResult present_result = VK_SUCCESS;
+        if (present_frame) {
+            const VkPresentInfoKHR present_info{
+                .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+                .waitSemaphoreCount = 1,
+                .pWaitSemaphores = &frame.render_finished,
+                .swapchainCount = 1,
+                .pSwapchains = &swapchain,
+                .pImageIndices = &image_index,
+            };
+            present_result = vkQueuePresentKHR(present_queue, &present_info);
+            if (present_result != VK_SUCCESS && present_result != VK_SUBOPTIMAL_KHR &&
+                present_result != VK_ERROR_OUT_OF_DATE_KHR) {
+                throw_vk("vkQueuePresentKHR", present_result);
+            }
+            if (!first_present_logged) {
+                startup_log("First frame presented.");
+                first_present_logged = true;
+            }
         }
         if (pending_scene_export.has_value()) {
             const auto scene_to_export = *pending_scene_export;
@@ -3066,8 +3076,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         }
 
         frame_index = (frame_index + 1u) % static_cast<std::uint32_t>(frames.size());
-        return acquire_result != VK_SUBOPTIMAL_KHR && present_result != VK_SUBOPTIMAL_KHR &&
-               present_result != VK_ERROR_OUT_OF_DATE_KHR;
+        return !present_frame || (acquire_result != VK_SUBOPTIMAL_KHR &&
+               present_result != VK_SUBOPTIMAL_KHR &&
+               present_result != VK_ERROR_OUT_OF_DATE_KHR);
     }
 
 
@@ -3523,10 +3534,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         if (!matches) ++mismatches;
                     }
                 }
-                const auto expected_support = scene == Scene::sandbox ? 576u : 560u;
+                const auto expected_support = scene == Scene::sandbox ? 576u : 571u;
                 append(std::string{name},
-                       mismatches == 0u && shell == 237u && support == expected_support &&
-                           honey == 27u && pollen == 30u && empty_chamber == 16u,
+                       mismatches == 0u && shell == 193u && support == expected_support &&
+                           honey == 18u && pollen == 22u && empty_chamber == 16u,
                        "mismatches=" + std::to_string(mismatches) +
                            " support=" + std::to_string(support) +
                            " shell=" + std::to_string(shell) +
@@ -3670,21 +3681,32 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 const auto origin_y = authored_map_origin_y();
                 const auto first_foundation_y = origin_y + map_height - authored_scene_foundation_cells;
                 std::uint32_t stone = 0u;
-                std::uint32_t structural = 0u;
+                std::uint32_t lava = 0u;
+                std::uint32_t supported_stone = 0u;
                 for (std::uint32_t y = first_foundation_y; y < origin_y + map_height; ++y) {
                     for (std::uint32_t x = origin_x; x < origin_x + map_width; ++x) {
                         const auto& cell = cells[index_of(x, y)];
-                        stone += cell.material == material_id(Material::stone) ? 1u : 0u;
-                        structural += (cell.aux & (fill_aux_structural | fill_aux_supported)) ==
-                            (fill_aux_structural | fill_aux_supported) ? 1u : 0u;
+                        const bool is_stone = cell.material == material_id(Material::stone);
+                        stone += is_stone ? 1u : 0u;
+                        lava += cell.material == material_id(Material::lava) ? 1u : 0u;
+                        supported_stone += is_stone &&
+                            (cell.aux & (fill_aux_structural | fill_aux_supported)) ==
+                                (fill_aux_structural | fill_aux_supported) ? 1u : 0u;
                     }
                 }
                 const auto expected = map_width * authored_scene_foundation_cells;
+                const auto expected_lava = scene == Scene::volcano
+                    ? 3u * policy::tile_size * authored_scene_foundation_cells
+                    : 0u;
+                const auto expected_stone = expected - expected_lava;
                 append("stone_foundation_" + std::string{scene_name(scene)},
-                       stone == expected && structural == expected,
+                       stone == expected_stone && lava == expected_lava &&
+                           supported_stone == expected_stone && stone + lava == expected,
                        "stone=" + std::to_string(stone) +
-                           " structural=" + std::to_string(structural) +
-                           " expected=" + std::to_string(expected));
+                            " lava=" + std::to_string(lava) +
+                            " supported_stone=" + std::to_string(supported_stone) +
+                            " expected_stone=" + std::to_string(expected_stone) +
+                            " expected_lava=" + std::to_string(expected_lava));
             }
             check_pre_pr19_hive("sandbox_hard_coded_hive", Scene::sandbox);
             check_pre_pr19_hive("ecosystem_hard_coded_hive", Scene::ecosystem);
@@ -3739,14 +3761,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             return;
         }
         using Clock = std::chrono::steady_clock;
-        const auto frame_interval = std::chrono::duration_cast<Clock::duration>(
-            std::chrono::duration<double>{1.0 / static_cast<double>(config.max_frames_per_second)});
-        auto next_frame = Clock::now();
         constexpr auto simulation_interval = std::chrono::duration_cast<Clock::duration>(
             std::chrono::duration<double>{1.0 / 60.0});
+        auto next_frame = Clock::now();
         auto next_simulation = next_frame;
         auto fps_window_start = next_frame;
         std::uint32_t rendered_frames = 0;
+        std::uint32_t thirty_fps_divider = 0;
+        std::uint32_t active_limit = state.presentation_limit.load(std::memory_order_relaxed) & 3u;
 
         while (!stop_requested.load(std::memory_order_acquire) &&
                !state.quit.load(std::memory_order_acquire)) {
@@ -3765,6 +3787,21 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 recreate_swapchain(width, height);
             }
 
+            const auto selected_limit =
+                state.presentation_limit.load(std::memory_order_relaxed) & 3u;
+            if (selected_limit != active_limit) {
+                active_limit = selected_limit;
+                next_frame = Clock::now();
+                thirty_fps_divider = 0u;
+            }
+            const std::uint32_t internal_hz =
+                active_limit <= 1u ? 60u : (active_limit == 2u ? 120u : 0u);
+            const auto frame_interval = internal_hz == 0u
+                ? Clock::duration::zero()
+                : std::chrono::duration_cast<Clock::duration>(
+                    std::chrono::duration<double>{
+                        1.0 / static_cast<double>(internal_hz)});
+
             const auto before_draw = Clock::now();
             const bool simulation_due = before_draw >= next_simulation;
             const std::uint32_t simulation_ticks = simulation_due ? 1u : 0u;
@@ -3775,9 +3812,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     next_simulation = before_draw + simulation_interval;
             }
 
-            if (!draw_frame(state, simulation_ticks)) {
+            // The 30 FPS mode still submits every fixed 60 Hz simulation tick,
+            // but only every second submission acquires and presents an image.
+            const bool present_frame = active_limit != 0u ||
+                ((thirty_fps_divider++ & 1u) == 0u);
+            if (!draw_frame(state, simulation_ticks, present_frame)) {
                 recreate_swapchain(width, height);
-            } else {
+            } else if (present_frame) {
                 ++rendered_frames;
             }
 #if SANDHYBRID_ENABLE_VALIDATION
@@ -3789,19 +3830,25 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             if (elapsed >= std::chrono::milliseconds{500}) {
                 const auto seconds = std::chrono::duration<double>(elapsed).count();
                 const auto fps = seconds > 0.0
-                    ? static_cast<std::uint32_t>(static_cast<double>(rendered_frames) / seconds + 0.5)
+                    ? static_cast<std::uint32_t>(
+                        static_cast<double>(rendered_frames) / seconds + 0.5)
                     : 0u;
                 state.frames_per_second.store(fps, std::memory_order_relaxed);
                 fps_window_start = now;
                 rendered_frames = 0;
             }
 
-            next_frame += frame_interval;
-            const auto frame_end = Clock::now();
-            if (frame_end < next_frame) {
-                std::this_thread::sleep_until(next_frame);
-            } else if (frame_end - next_frame > frame_interval * 4) {
-                next_frame = frame_end;
+            if (internal_hz != 0u) {
+                next_frame += frame_interval;
+                const auto frame_end = Clock::now();
+                if (frame_end < next_frame) {
+                    std::this_thread::sleep_until(next_frame);
+                } else if (frame_end - next_frame > frame_interval * 4) {
+                    next_frame = frame_end;
+                }
+            } else {
+                next_frame = Clock::now();
+                std::this_thread::yield();
             }
         }
         startup_log("Render loop stopped.");

@@ -162,16 +162,26 @@ int main() {
         compact.material_card.position.x < compact.simulation.size.x) return 12;
 
     if (sandhybrid::ui::palette_item_count(MaterialGroup::fire_chemistry) !=
-            sandhybrid::material_group_size(MaterialGroup::fire_chemistry) + 1u ||
+            sandhybrid::material_group_size(MaterialGroup::fire_chemistry) ||
         sandhybrid::ui::palette_item_count(MaterialGroup::ground) !=
             sandhybrid::material_group_size(MaterialGroup::ground)) return 16;
-    const auto ignite_slot = sandhybrid::ui::palette_item_rect(
-        layout, MaterialGroup::fire_chemistry,
-        sandhybrid::material_group_size(MaterialGroup::fire_chemistry));
+    const auto ignite_slot = layout.ignite_air;
     if (!sandhybrid::ui::ignite_air_action_at(
-            layout, MaterialGroup::fire_chemistry,
+            layout,
             {ignite_slot.position.x + ignite_slot.size.x * 0.5f,
-             ignite_slot.position.y + ignite_slot.size.y * 0.5f})) return 17;
+             ignite_slot.position.y + ignite_slot.size.y * 0.5f}) ||
+        layout.actions.position.y + layout.actions.size.y > layout.keymap.position.y)
+        return 17;
+
+    if (!designer_contains(layout.settings_fps, layout.fps_30) ||
+        !designer_contains(layout.settings_fps, layout.fps_60) ||
+        !designer_contains(layout.settings_fps, layout.fps_120) ||
+        !designer_contains(layout.settings_fps, layout.fps_unlimited) ||
+        !designer_nonoverlap(layout.fps_30, layout.fps_60) ||
+        !designer_nonoverlap(layout.fps_60, layout.fps_120) ||
+        !designer_nonoverlap(layout.fps_120, layout.fps_unlimited) ||
+        layout.settings_fps.position.y + layout.settings_fps.size.y > layout.keymap.position.y)
+        return 27;
 
     for (std::uint32_t slot = 0u; slot < 4u; ++slot) {
         const auto rect = sandhybrid::ui::inventory_slot_rect(layout, 720u, slot);

@@ -21,21 +21,21 @@ def reject(path: str, token: str) -> None:
 
 
 # Normal visible release and exact package names.
-require("CMakeLists.txt", "VERSION 2.5.20")
+require("CMakeLists.txt", "VERSION 2.5.21")
 require("CHANGELOG.md", "## 2.5.16")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.20")
+require("RELEASE_NOTES.md", "# SandHybrid v2.5.21")
 for token in (
-    "SandHybrid-Windows-x64-v2.5.20",
-    "SandHybrid-Linux-x64-v2.5.20",
-    "refs/tags/v2.5.20",
+    "SandHybrid-Windows-x64-v2.5.21",
+    "SandHybrid-Linux-x64-v2.5.21",
+    "refs/tags/v2.5.21",
     "Generate Windows SHA-256",
     "Generate Linux SHA-256",
     "Expected two packages and two checksums",
-    "gh release create v2.5.20",
+    "gh release create v2.5.21",
     "--verify-tag",
 ):
     require(".github/workflows/ci-release.yml", token)
-reject(".github/workflows/ci-release.yml", "v2.5.20-test")
+reject(".github/workflows/ci-release.yml", "v2.5.21-test")
 reject(".github/workflows/ci-release.yml", "--prerelease")
 
 # Exact bounded payload and transactional transformation core.
@@ -117,7 +117,7 @@ require("tests/ui_layout_contract.cpp", "blueprint_slot_count")
 for token in (
     "Blueprint slots are shared",
     "Player presence or mining mode may suppress",
-    "photographed compact Fix29 Ecosystem hive",
+    "photographed historical SimpleSandSim Fix29-era Sandbox hive",
 ):
     require("AGENTS.md", token)
 for token in (

@@ -82,7 +82,7 @@ uint terrainNeighboringVeinMaterial(uvec2 tile, uint depth) {
 }
 
 bool terrainRubblePocketSelected(uvec2 tile) {
-    return terrainHash(tile, 0xb04du) % 4u == 0u;
+    return terrainHash(tile, 0xb04du) % 16u == 0u;
 }
 
 uint terrainRubbleDistance(ivec2 position, uvec2 tile) {

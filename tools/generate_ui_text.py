@@ -45,10 +45,11 @@ FIXED = [
     "TILE WIDTH", "TILE HEIGHT", "TILE TOTAL", "NONE",
     "BLUEPRINTS", "EMPTY SLOT", "BLUEPRINT DESIGNER", "STATIC MODEL",
     "MAP CHUNK", "DESIGNER INVENTORY", "DAY NIGHT CYCLE", "SUNLIGHT", "CLEAR",
+    "ACTIONS", "PRESENT LIMIT", "30", "60", "120", "UNLIMITED", "SAMPLED REGION",
 ]
 SCENES = [
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",
-    "Platformer", "Demolition", "Frontier base",
+    "Gold Mine", "Demolition", "Frontier base",
 ]
 PHASES = ["EMPTY", "SOLID", "POWDER", "LIQUID", "GAS", "PLASMA", "SOFT", "MOLTEN", "VAPOR"]
 

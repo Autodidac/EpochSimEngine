@@ -34,6 +34,12 @@ layout(push_constant) uniform ActorPush {
     uint inventorySlot;
 } actorPc;
 
+const uint SCENE_SANDBOX = 0u;
+const uint SCENE_BLANK = 1u;
+const uint SCENE_VOLCANO = 2u;
+const uint SCENE_WATERWORKS = 3u;
+const uint SCENE_ECOSYSTEM = 4u;
+const uint SCENE_ENGINEERING = 5u;
 const uint SCENE_GOLD_MINE = 6u;
 const uint SCENE_DEMOLITION = 7u;
 const uint SCENE_FRONTIER_BASE = 8u;
@@ -419,7 +425,32 @@ void resetActor(inout ActorState state) {
     int authoredOriginX = int(actorPc.width) >= 640 * 3 ? 640 * 2 :
         max((int(actorPc.width) - 640) / 2, 0);
     int authoredOriginY = int(actorPc.height) >= 1080 ? 720 : 0;
-    if (actorPc.scene == SCENE_GOLD_MINE) {
+    if (actorPc.scene == SCENE_SANDBOX || actorPc.scene == SCENE_BLANK) {
+        state.x = authoredOriginX + 80;
+        state.y = authoredOriginY + 319;
+        state.ammo = 12u;
+        state.enabled = 1u;
+    } else if (actorPc.scene == SCENE_VOLCANO) {
+        state.x = authoredOriginX + 80;
+        state.y = authoredOriginY + 343;
+        state.ammo = 12u;
+        state.enabled = 1u;
+    } else if (actorPc.scene == SCENE_WATERWORKS) {
+        state.x = authoredOriginX + 40;
+        state.y = authoredOriginY + 311;
+        state.ammo = 12u;
+        state.enabled = 1u;
+    } else if (actorPc.scene == SCENE_ECOSYSTEM) {
+        state.x = authoredOriginX + 80;
+        state.y = authoredOriginY + 295;
+        state.ammo = 12u;
+        state.enabled = 1u;
+    } else if (actorPc.scene == SCENE_ENGINEERING) {
+        state.x = authoredOriginX + 200;
+        state.y = authoredOriginY + 335;
+        state.ammo = 18u;
+        state.enabled = 1u;
+    } else if (actorPc.scene == SCENE_GOLD_MINE) {
         state.x = authoredOriginX + 78;
         state.y = authoredOriginY + 127;
         state.ammo = 18u;

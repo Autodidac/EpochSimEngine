@@ -34,7 +34,7 @@ static_assert(sandhybrid::material_group_size(MaterialGroup::engineering) == 8u)
 static_assert(sandhybrid::scene_count == 9u);
 static_assert(sandhybrid::next_scene(Scene::frontier_base) == Scene::sandbox);
 static_assert(sandhybrid::scene_has_character(Scene::frontier_base));
-static_assert(sandhybrid::scene_name(Scene::gold_mine) == "Platformer");
+static_assert(sandhybrid::scene_name(Scene::gold_mine) == "Gold Mine");
 static_assert(sandhybrid::grouped_material(MaterialGroup::ground, 0u) == Material::sand);
 static_assert(sandhybrid::grouped_material(MaterialGroup::industry, 3u) == Material::factory_core);
 static_assert(sandhybrid::grouped_material(MaterialGroup::engineering, 6u) == Material::hydrogen);

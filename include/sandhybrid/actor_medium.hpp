@@ -311,7 +311,7 @@ struct HabitatTransaction final {
 inline constexpr std::uint32_t pre_pr19_hive_canonical_width = 640u;
 inline constexpr std::int32_t pre_pr19_hive_canonical_queen_x = 512;
 inline constexpr std::int32_t pre_pr19_hive_canonical_queen_y = 232;
-inline constexpr std::uint32_t pre_pr19_hive_canonical_seed = 0xD17A55DEu;
+inline constexpr std::uint32_t pre_pr19_hive_canonical_seed = 0xD17A5EEDu;
 inline constexpr std::int32_t fix29_hive_support_tile_size = 8;
 inline constexpr std::int32_t fix29_hive_support_width = 72;
 inline constexpr std::int32_t fix29_hive_support_height = 8;
@@ -366,10 +366,10 @@ enum class HivePart : std::uint8_t {
     const std::int32_t queen_x = pre_pr19_hive_canonical_queen_x,
     const std::int32_t queen_y = pre_pr19_hive_canonical_queen_y) noexcept {
     if (dx == 0 && dy == 0) return HivePart::queen;
-    if (dx >= 1 && dx <= 12 && dy >= -1 && dy <= 1) return HivePart::exit;
+    if (dx >= 1 && dx <= 10 && dy >= -1 && dy <= 1) return HivePart::exit;
     const auto radius_squared = dx * dx + dy * dy;
-    if (radius_squared >= 28 && radius_squared < 108) return HivePart::shell;
-    if (radius_squared < 28) {
+    if (radius_squared >= 24 && radius_squared < 88) return HivePart::shell;
+    if (radius_squared < 24) {
         if ((entropy & 3u) == 0u) return HivePart::chamber;
         return (entropy & 4u) == 0u ? HivePart::honey : HivePart::pollen;
     }

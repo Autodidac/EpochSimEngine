@@ -13,88 +13,99 @@ layout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };
 
 void main() {
     uint linearIndex = gl_GlobalInvocationID.x;
-    uint cellCount = pc.width * pc.height;
+    uint sampleRegion = pc.reserved & 15u;
+    ivec2 sampleSection = ivec2(pc.activeSectionX, pc.activeSectionY) +
+                          ivec2(int(sampleRegion & 3u), int(sampleRegion >> 2u));
+    ivec2 sampleOrigin = sampleSection *
+                         ivec2(ACTIVE_REGION_WIDTH_CELLS, ACTIVE_REGION_HEIGHT_CELLS);
+    ivec2 sampleSize = max(ivec2(0), min(
+        ivec2(ACTIVE_REGION_WIDTH_CELLS, ACTIVE_REGION_HEIGHT_CELLS),
+        ivec2(int(pc.width), int(pc.height)) - sampleOrigin));
+    uint sampleWidth = uint(sampleSize.x);
+    uint sampleHeight = uint(sampleSize.y);
+    uint sampleCellCount = sampleWidth * sampleHeight;
 
     if (linearIndex == 0u) {
         debugStats[STAT_SIMULATION_STEP] = pc.step;
         debugStats[STAT_MOVE_PAIR_TESTS] = pc.radius;
     }
 
-    if (linearIndex < cellCount) {
-        ivec2 cellPosition = ivec2(int(linearIndex % pc.width), int(linearIndex / pc.width));
-        if (sectionActiveAt(cellPosition, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) {
-            atomicAdd(debugStats[STAT_SCOPE_CELLS], 1u);
-            Cell cell = cells[linearIndex];
-            if (cell.material < MATERIAL_COUNT)
-                atomicAdd(debugStats[STAT_MATERIAL_BASE + cell.material], 1u);
-            if (cell.material != MAT_EMPTY) atomicAdd(debugStats[STAT_ACTIVE_CELLS], 1u);
-            if (isStructural(cell)) atomicAdd(debugStats[STAT_STRUCTURAL_CELLS], 1u);
-            if (isCellLiquid(cell)) atomicAdd(debugStats[STAT_LIQUID_CELLS], 1u);
-            if (isCellGas(cell)) atomicAdd(debugStats[STAT_GAS_CELLS], 1u);
-            if ((cell.aux & AUX_MOVED) != 0u) atomicAdd(debugStats[STAT_MOVED_CELLS], 1u);
+    if (linearIndex < sampleCellCount && sampleWidth > 0u) {
+        ivec2 local = ivec2(int(linearIndex % sampleWidth),
+                            int(linearIndex / sampleWidth));
+        ivec2 cellPosition = sampleOrigin + local;
+        uint residentIndex = indexOf(cellPosition);
+        atomicAdd(debugStats[STAT_SCOPE_CELLS], 1u);
+        Cell cell = cells[residentIndex];
+        if (cell.material < MATERIAL_COUNT)
+            atomicAdd(debugStats[STAT_MATERIAL_BASE + cell.material], 1u);
+        if (cell.material != MAT_EMPTY) atomicAdd(debugStats[STAT_ACTIVE_CELLS], 1u);
+        if (isStructural(cell)) atomicAdd(debugStats[STAT_STRUCTURAL_CELLS], 1u);
+        if (isCellLiquid(cell)) atomicAdd(debugStats[STAT_LIQUID_CELLS], 1u);
+        if (isCellGas(cell)) atomicAdd(debugStats[STAT_GAS_CELLS], 1u);
+        if ((cell.aux & AUX_MOVED) != 0u) atomicAdd(debugStats[STAT_MOVED_CELLS], 1u);
 
-            if (cell.material == MAT_BEE) atomicAdd(debugStats[STAT_BEE_COUNT], 1u);
-            else if (cell.material == MAT_QUEEN_BEE) atomicAdd(debugStats[STAT_QUEEN_COUNT], 1u);
-            else if (cell.material == MAT_BEEHIVE) atomicAdd(debugStats[STAT_NEST_COUNT], 1u);
-            else if (cell.material == MAT_FLOWER) atomicAdd(debugStats[STAT_FLOWER_COUNT], 1u);
-            else if (cell.material == MAT_POLLEN) atomicAdd(debugStats[STAT_POLLEN_COUNT], 1u);
-            else if (cell.material == MAT_HONEY) atomicAdd(debugStats[STAT_HONEY_COUNT], 1u);
-            else if (cell.material == MAT_ANT) atomicAdd(debugStats[STAT_ANT_COUNT], 1u);
-            else if (cell.material == MAT_BEETLE) atomicAdd(debugStats[STAT_BEETLE_COUNT], 1u);
-            else if (cell.material == MAT_INSECT_HABITAT)
-                atomicAdd(debugStats[STAT_HABITAT_COUNT], 1u);
-        }
+        if (cell.material == MAT_BEE) atomicAdd(debugStats[STAT_BEE_COUNT], 1u);
+        else if (cell.material == MAT_QUEEN_BEE) atomicAdd(debugStats[STAT_QUEEN_COUNT], 1u);
+        else if (cell.material == MAT_BEEHIVE) atomicAdd(debugStats[STAT_NEST_COUNT], 1u);
+        else if (cell.material == MAT_FLOWER) atomicAdd(debugStats[STAT_FLOWER_COUNT], 1u);
+        else if (cell.material == MAT_POLLEN) atomicAdd(debugStats[STAT_POLLEN_COUNT], 1u);
+        else if (cell.material == MAT_HONEY) atomicAdd(debugStats[STAT_HONEY_COUNT], 1u);
+        else if (cell.material == MAT_ANT) atomicAdd(debugStats[STAT_ANT_COUNT], 1u);
+        else if (cell.material == MAT_BEETLE) atomicAdd(debugStats[STAT_BEETLE_COUNT], 1u);
+        else if (cell.material == MAT_INSECT_HABITAT)
+            atomicAdd(debugStats[STAT_HABITAT_COUNT], 1u);
     }
 
-    uint columns = tileColumns(pc.width);
-    uint rows = (pc.height + TILE_SIZE - 1u) / TILE_SIZE;
-    uint tileCount = columns * rows;
-    if (linearIndex < tileCount) {
-        ivec2 tilePosition = ivec2(int(linearIndex % columns), int(linearIndex / columns));
-        ivec2 tileCellPosition = tilePosition * int(TILE_SIZE);
-        if (sectionActiveAt(tileCellPosition, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) {
-            TileState tile = tiles[linearIndex];
-            atomicAdd(debugStats[STAT_TOTAL_TILES], 1u);
-            bool sleeping = tileHas(tile, TILE_SLEEPING);
-            bool tileActive = tileHas(tile, TILE_ACTIVE);
-            if (sleeping) atomicAdd(debugStats[STAT_SLEEPING_TILES], 1u);
-            if (tileActive) atomicAdd(debugStats[STAT_ACTIVE_TILES], 1u);
-            if (!sleeping && !tileActive) atomicAdd(debugStats[STAT_UNCLASSIFIED_TILES], 1u);
-            if (tileHas(tile, TILE_FINE_ACTIVE)) atomicAdd(debugStats[STAT_FINE_TILES], 1u);
-            if (tileHas(tile, TILE_MACRO_MOVABLE)) atomicAdd(debugStats[STAT_MACRO_TILES], 1u);
-            if (tileHas(tile, TILE_SETTLED_MEDIUM)) atomicAdd(debugStats[STAT_SETTLED_TILES], 1u);
-            if (tileHas(tile, TILE_MACRO_GAS)) atomicAdd(debugStats[STAT_MACRO_GAS_TILES], 1u);
-            if (tileHas(tile, TILE_MACRO_LIQUID))
-                atomicAdd(debugStats[STAT_MACRO_LIQUID_TILES], 1u);
-            if (tileHas(tile, TILE_MEDIUM_ENCLOSED))
-                atomicAdd(debugStats[STAT_MEDIUM_ENCLOSED_TILES], 1u);
-            if (tileHas(tile, TILE_MEDIUM_BREAKUP))
-                atomicAdd(debugStats[STAT_MEDIUM_BREAKUP_TILES], 1u);
-        }
+    uvec2 tileBegin = uvec2(max(sampleOrigin, ivec2(0))) / TILE_SIZE;
+    uvec2 tileEnd = uvec2(max(sampleOrigin + sampleSize + ivec2(int(TILE_SIZE) - 1),
+                                  ivec2(0))) / TILE_SIZE;
+    uvec2 tileSpan = tileEnd - tileBegin;
+    uint sampleTileCount = tileSpan.x * tileSpan.y;
+    if (linearIndex < sampleTileCount && tileSpan.x > 0u) {
+        uvec2 tilePosition = tileBegin +
+            uvec2(linearIndex % tileSpan.x, linearIndex / tileSpan.x);
+        uint tileIndex = tilePosition.y * tileColumns(pc.width) + tilePosition.x;
+        TileState tile = tiles[tileIndex];
+        atomicAdd(debugStats[STAT_TOTAL_TILES], 1u);
+        bool sleeping = tileHas(tile, TILE_SLEEPING);
+        bool tileActive = tileHas(tile, TILE_ACTIVE);
+        if (sleeping) atomicAdd(debugStats[STAT_SLEEPING_TILES], 1u);
+        if (tileActive) atomicAdd(debugStats[STAT_ACTIVE_TILES], 1u);
+        if (!sleeping && !tileActive) atomicAdd(debugStats[STAT_UNCLASSIFIED_TILES], 1u);
+        if (tileHas(tile, TILE_FINE_ACTIVE)) atomicAdd(debugStats[STAT_FINE_TILES], 1u);
+        if (tileHas(tile, TILE_MACRO_MOVABLE)) atomicAdd(debugStats[STAT_MACRO_TILES], 1u);
+        if (tileHas(tile, TILE_SETTLED_MEDIUM)) atomicAdd(debugStats[STAT_SETTLED_TILES], 1u);
+        if (tileHas(tile, TILE_MACRO_GAS)) atomicAdd(debugStats[STAT_MACRO_GAS_TILES], 1u);
+        if (tileHas(tile, TILE_MACRO_LIQUID))
+            atomicAdd(debugStats[STAT_MACRO_LIQUID_TILES], 1u);
+        if (tileHas(tile, TILE_MEDIUM_ENCLOSED))
+            atomicAdd(debugStats[STAT_MEDIUM_ENCLOSED_TILES], 1u);
+        if (tileHas(tile, TILE_MEDIUM_BREAKUP))
+            atomicAdd(debugStats[STAT_MEDIUM_BREAKUP_TILES], 1u);
     }
 
-    uint chunksAcross = chunkColumns(pc.width);
-    uint chunksDown = chunkRows(pc.height);
-    uint chunkCount = chunksAcross * chunksDown;
-    if (linearIndex < chunkCount) {
-        uint chunkX = linearIndex % chunksAcross;
-        uint chunkY = linearIndex / chunksAcross;
-        ivec2 chunkOrigin = ivec2(int(chunkX * CHUNK_CELL_SIZE),
-                                  int(chunkY * CHUNK_CELL_SIZE));
-        if (sectionActiveAt(chunkOrigin, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) {
-            atomicAdd(debugStats[STAT_TOTAL_CHUNKS], 1u);
-            ChunkState chunk = chunks[linearIndex];
-            if (chunkHas(chunk, CHUNK_SLEEPING)) {
-                atomicAdd(debugStats[STAT_SLEEPING_CHUNKS], 1u);
-                uint originX = chunkX * CHUNK_CELL_SIZE;
-                uint originY = chunkY * CHUNK_CELL_SIZE;
-                uint width = min(CHUNK_CELL_SIZE, pc.width - originX);
-                uint height = min(CHUNK_CELL_SIZE, pc.height - originY);
-                atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], width * height);
-            } else {
-                atomicAdd(debugStats[STAT_ACTIVE_CHUNKS], 1u);
-            }
-            if (chunkHas(chunk, CHUNK_DIRTY)) atomicAdd(debugStats[STAT_DIRTY_CHUNKS], 1u);
+    uvec2 chunkBegin = uvec2(max(sampleOrigin, ivec2(0))) / CHUNK_CELL_SIZE;
+    uvec2 chunkEnd = uvec2(max(sampleOrigin + sampleSize + ivec2(int(CHUNK_CELL_SIZE) - 1),
+                                   ivec2(0))) / CHUNK_CELL_SIZE;
+    uvec2 chunkSpan = chunkEnd - chunkBegin;
+    uint sampleChunkCount = chunkSpan.x * chunkSpan.y;
+    if (linearIndex < sampleChunkCount && chunkSpan.x > 0u) {
+        uvec2 chunkPosition = chunkBegin +
+            uvec2(linearIndex % chunkSpan.x, linearIndex / chunkSpan.x);
+        uint residentIndex = chunkPosition.y * chunkColumns(pc.width) + chunkPosition.x;
+        ChunkState chunk = chunks[residentIndex];
+        atomicAdd(debugStats[STAT_TOTAL_CHUNKS], 1u);
+        if (chunkHas(chunk, CHUNK_SLEEPING)) {
+            atomicAdd(debugStats[STAT_SLEEPING_CHUNKS], 1u);
+            uint originX = chunkPosition.x * CHUNK_CELL_SIZE;
+            uint originY = chunkPosition.y * CHUNK_CELL_SIZE;
+            uint width = min(CHUNK_CELL_SIZE, pc.width - originX);
+            uint height = min(CHUNK_CELL_SIZE, pc.height - originY);
+            atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], width * height);
+        } else {
+            atomicAdd(debugStats[STAT_ACTIVE_CHUNKS], 1u);
         }
+        if (chunkHas(chunk, CHUNK_DIRTY)) atomicAdd(debugStats[STAT_DIRTY_CHUNKS], 1u);
     }
 }

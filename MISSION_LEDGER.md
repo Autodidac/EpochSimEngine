@@ -4,9 +4,18 @@
 
 ## Current release
 
-- Current release: `v2.5.20`, published as GitHub's latest normal public release from commit `cdd5a1474104bd8165f0f9e199dfde4712a73a5f`.
-- State: replacement tag workflow `31270727984` passed both native Release matrices, tests, packages, checksums, and stable publication; tagged hygiene workflow `31270727990` also passed. The downloaded public checksum files match the package digests. Many-bee performance telemetry, broad visual scene review, generated/tool/loaded hive observation, Water leveling, and the complete cross-system scene cycle remain active; no affected visual/runtime mission is marked COMPLETE.
+- Current release target: `v2.5.21`; last published stable release is `v2.5.20` at commit `cdd5a1474104bd8165f0f9e199dfde4712a73a5f`.
+- State: v2.5.21 local pre-publication validation passes. EpochGui was fetched and remains current at `d8decc9ee2e73e0009f1e8c49d86a52db6748b28` / v0.88.75. Commit, workflow, and stable-publication evidence remain pending below; no visual/runtime mission is marked COMPLETE from source inspection or focused readback.
 - Public prerelease tags and `-test` release names are forbidden.
+
+## v2.5.21 release target
+
+- Scope: recover the supplied Volcano silhouette and smoother geology; Water/Half Water hang and rest rules; active Engineering/Industry/Gold Mine machinery and Sluice; sidebar Actions; static non-metal presentation and state-driven gases; pressure-conserving atmosphere/Vacuum mixing; reduced combustion yields; player recovery in every scene; the photographed historical compact hive and colony metadata; bounded debug telemetry; and 30/60/120/unlimited presentation caps over fixed 60 Hz simulation.
+- Dependency: fetched `Autodidac/EpochGui` before release; upstream `main`, vendored snapshot, and `third_party/EpochGui/SNAPSHOT.md` all resolve to `d8decc9ee2e73e0009f1e8c49d86a52db6748b28` / v0.88.75.
+- Pre-publication gate: deterministic/source/shader contracts, native Windows and Linux Release tests, fresh installed packages, production Vulkan readback, package audits, and SHA-256 verification are mandatory. Runtime/visual missions stay active unless separately observed.
+- Local native/package evidence: exact-source Windows Release passes 32/32 CTests, including EpochGui's three default suites; Linux Release passes 29/29 CTests. Fresh installed Windows/NVIDIA RTX 5080 and Linux/Mesa llvmpipe packages each pass the same 19 production Vulkan checks: exact macro liquid/gas packets, blocked-packet fine fallback, four Half Water/Water cases, all nine scene foundations, and both compact hard-coded hives with zero mismatches. The Volcano foundation is exactly 4,928 structural Stone plus the intended 192-cell Lava throat.
+- Local package evidence: the Windows ZIP audits 58 entries and the Linux tarball audits 65 entries; both local SHA-256 files verify. Both packages carry the native executable, 12 compiled shaders, installed headers/library/CMake package, launchers, and 14 canonical documents. Final public asset digests are recorded only after the immutable published assets exist.
+- Remaining runtime status: broad scene visual review, sustained Water leveling, complete machinery/player/bee lifecycle cycles, debug overhead below 3%, and frame-cap persistence remain active in `missioncache.md`; focused packaged readback does not close them.
 
 ## v2.5.20 publication record
 
@@ -62,7 +71,7 @@
 
 - Macro tiles: v2.5.3 moving full-liquid/full-gas eligibility, exact displacement into full uniform compatible targets even when their scheduling metadata is fine-active, intact-packet exclusion from non-fallback fine passes, and same-tick fine fallback when a packet cannot commit.
 - Half Water: v2.4.1 fine-owned conserved fall, merge, dedicated passes, and bounded two-to-four-cell attraction. A half cannot sleep with fall/merge/attraction work pending and cannot wander through generic diagonal Water flow.
-- Beehive: photographed Fix29 Ecosystem body/content with queen centers `(512,234)`/`(512,232)`, shell `28 <= radius^2 < 108`, chamber `radius^2 < 28`, right exit `x=1..12` and `|y|<=1`, canonical entropy seed `0xD17A55DE`, and nine complete structural Wood tiles at local `x=472..543`, `y=216..223`. Reset/tool/load share one cell-for-cell model; SandHybrid actor/ecology behavior remains SandHybrid-owned.
+- Beehive: photographed historical SimpleSandSim Sandbox body/content with queen centers `(512,234)`/`(512,232)`, shell `24 <= radius^2 < 88`, chamber `radius^2 < 24`, right exit `x=1..10` and `|y|<=1`, canonical entropy seed `0xD17A5EED`, and nine complete structural Wood tiles at local `x=472..543`, `y=216..223`. Reset/tool/load share one cell-for-cell model; SandHybrid actor/ecology behavior remains SandHybrid-owned.
 - Pause: simulation and presentation clocks freeze while direct editor mutations remain live, including in character scenes, and do not advance or replay the simulation.
 - Inventory: sidebar-only with exactly `INVENTORY` and `BLUEPRINTS` subtabs. Blueprint slots report real occupied/empty state and activate world placement only when occupied.
 - Designer: sidebar-only authoring grid with exactly `INVENTORY` and `BLUEPRINTS` subtabs; the main viewport continues to show the world. Editor and Designer cursor controls are isolated. Designer publication copies exact authored material layout into a shared named slot without mutating the world.

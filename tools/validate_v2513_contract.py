@@ -17,14 +17,14 @@ def require(path: str, token: str) -> None:
 # Canonical v2.5.13 history remains present while current release policy is
 # owned by the newest release contract.
 require("CHANGELOG.md", "## 2.5.13")
-require("CMakeLists.txt", "VERSION 2.5.20")
+require("CMakeLists.txt", "VERSION 2.5.21")
 if list(ROOT.glob("RELEASE_NOTES_v*.md")):
     raise SystemExit("versioned release-note files remain; CHANGELOG.md must own history")
 
 # The first 28 P0 IDs are cached and each resolves to an active row.
 cache = text("missioncache.md")
 priority = next(line for line in cache.splitlines()
-                if line.startswith("- **P0 / primary release gate:**"))
+                if line.startswith("This pass attempts the first 28 P0 IDs"))
 first_28 = re.findall(r"MC-\d{3}", priority)[:28]
 expected = [
     "MC-012", "MC-013", "MC-017", "MC-018", "MC-026", "MC-031", "MC-032",

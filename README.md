@@ -182,7 +182,7 @@ Cycle with `[` and `]` or the on-screen controls.
 4. Waterworks
 5. Ecosystem
 6. Engineering Lab — contained thermal vessel, sediment/metal sifter, and sealed gas cell
-7. Platformer — multi-level playable structure based on the supplied reference
+7. Gold Mine — multi-level playable structure based on the supplied reference
 8. Demolition
 9. Frontier Base
 
@@ -332,22 +332,25 @@ Uniform 8x8 material regions can move as 64-cell macro-cells using the same fall
 Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and solid-supported pre-fall droplets that cannot hop along water edges or crawl after falling. See `HALF_WATER.md`.
 
 
-## v2.5.20 corrective performance, hive, terrain, and Water recovery
+## v2.5.21 systems, scene, machinery, and presentation recovery
 
-SandHybrid v2.5.20 is the current stable release target, with native Windows/Linux packages and SHA-256 files and no prerelease marker.
+SandHybrid v2.5.21 is the current stable release target, with native Windows/Linux packages, SHA-256 files, and no prerelease marker.
 
-The renderer submits no more than one complete fixed simulation tick per presented frame and drops stale debt instead of stacking four GPU-heavy catch-up passes. Macro packets still move every two fixed ticks and retain their doubled breakup allowance.
+The supplied 2026-08-04 Volcano silhouette now anchors the scene: a broad left lake, smoother layered underground, far-right Stone cone, central Lava throat and chamber, and bottom Lava return. Engineering, Industry, and Gold Mine recover active experiment layouts and a visible water-fed ten-percent Sluice path.
 
-All nine authored scenes own a full structural Stone foundation. The Sandbox, Ecosystem, Beehive tool, and loaded-map path share the photographed Fix29 Ecosystem hive body/content and its nine-tile structural Wood perch. Full Water again follows the working diagonal and unsupported-ledge paths used by Saltwater and Oil, while Half Water remains conserved, fall-first, mergeable, and bounded to clear-gap attraction.
+Half Water is the darker conserved one-unit state again, including the supplied ledge hang/drip; full Water continues the corrected ledge/diagonal route. Normal materials render statically except for the retained metal/ore glint. State-driven gases conserve pressure while Atmosphere expands into Vacuum and raw atmospheric gases mix locally.
 
-The shipped executable can run the 19-check Vulkan seed/step/readback gate against its compiled production pipelines:
+`IGNITE AIR` is in `ACTIONS` above `KEYMAP`. Settings provides 30/60/120/UNLIMITED presentation caps while simulation remains fixed at 60 Hz. Debug now uses bounded rotating-region samples, and every scene has a recoverable supported breathable player spawn.
+
+The generated, placeable, and loaded hive uses the photographed historical compact model (`24..87` shell, `<24` chamber, exit through `x=10`, seed `0xD17A5EED`) over nine complete Wood support tiles. EpochGui is fetched before release and remains current at v0.88.75 / `d8decc9`.
+
+The shipped executable can run the production Vulkan state/readback gate:
 
 ```text
 sandhybrid --world-size compact --runtime-acceptance-report runtime-acceptance.json
 ```
 
-Broader visual and cross-system acceptance remains active in `missioncache.md`.
-
+Broader visual, long-running performance/leveling, full bee-cycle, and complete cross-system acceptance remains active in `missioncache.md`.
 ## v2.5.16 sidebar Blueprints and paused editing
 
 Inventory and Designer remain normal sidebar workspaces with exactly `INVENTORY` and `BLUEPRINTS` subtabs. Four shared slots now report real occupied/empty state. Designer publishes authored Static Models or Map Chunks directly to those slots without replacing the world viewport. An occupied slot produces a camera-correct world footprint and a confirmed world left-click performs one all-or-nothing placement.

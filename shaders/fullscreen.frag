@@ -36,7 +36,7 @@ layout(push_constant) uniform RenderPush {
     uint materialSlots;
     uint framesPerSecond;
     uint paused;
-    uint stepsPerFrame;
+    uint presentationLimit;
     uint selectedGroup;
     uint hoveredGroup;
     uint hoveredMaterial;
@@ -232,7 +232,7 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
     }
     uint scopeLabelX = panelRight > panelLeft + 122u ? panelRight - 112u : panelLeft + 10u;
     if (fixedPixel(pixel, ivec2(int(scopeLabelX), int(panelTop + 8u)), 1,
-                   renderPc.activeScopeMode == 2u ? 139u : 138u)) {
+                   196u)) {
         textHit = true;
         textColor = vec3(0.52, 0.94, 0.58);
     }
@@ -512,8 +512,9 @@ vec4 worldColor(Cell cell, ivec2 grid) {
         waterNeighbors += cellAt(grid + ivec2(1, 0)).material == MAT_WATER ? 1u : 0u;
         waterNeighbors += cellAt(grid + ivec2(0, -1)).material == MAT_WATER ? 1u : 0u;
         waterNeighbors += cellAt(grid + ivec2(0, 1)).material == MAT_WATER ? 1u : 0u;
-        float coverage = 0.62 + float(waterNeighbors) * 0.045;
-        base.rgb = mix(backgroundColor(grid), base.rgb, min(coverage, 0.80));
+        float edgeSupport = float(waterNeighbors) * 0.018;
+        base.rgb = clamp(base.rgb * (0.68 + edgeSupport) + vec3(0.0, 0.015, 0.035), 0.0, 1.0);
+        base.a = 1.0;
     }
     if (cell.material == MAT_PLANT_STEM) {
         uint stemHash = hash32(uint(grid.x) * 2654435761u ^ uint(grid.y) ^ cell.aux);
@@ -756,8 +757,7 @@ void main() {
         const uint igniteAirGroup = 4u;
         const uint igniteAirTextId = 165u;
         uint materialSlotCount = groupMaterialCount(renderPc.selectedGroup);
-        uint slotCount = max(materialSlotCount +
-            (renderPc.selectedGroup == igniteAirGroup ? 1u : 0u), 1u);
+        uint slotCount = max(materialSlotCount, 1u);
         uint slotRows = max((slotCount + 1u) / 2u, 1u);
         uint cellWidth = max(contentWidth / 2u, 1u);
         uint cellHeight = max(palettePanelHeight / slotRows, 1u);
@@ -768,8 +768,7 @@ void main() {
             uint row = min((y - paletteTop) / cellHeight, slotRows - 1u);
             uint slot = row * 2u + column;
             if (slot < slotCount) {
-                bool igniteAirAction = renderPc.selectedGroup == igniteAirGroup &&
-                                       slot == materialSlotCount;
+                bool igniteAirAction = false;
                 uint left = contentLeft + column * cellWidth;
                 uint right = column == 1u ? contentLeft + contentWidth : left + cellWidth;
                 uint top = paletteTop + row * cellHeight;
@@ -797,6 +796,37 @@ void main() {
                         color = dot(color, vec3(0.299, 0.587, 0.114)) > 0.55 ? vec3(0.02) : vec3(0.97);
                 }
             }
+            outColor = vec4(color, 1.0);
+            return;
+        }
+
+        uint actionsTop = paletteTop + palettePanelHeight + 3u;
+        uint actionsBottom = actionsTop + 54u;
+        if (renderPc.selectedWorkspace == 1u &&
+            y >= actionsTop && y < actionsBottom &&
+            x >= contentLeft && x < contentLeft + contentWidth) {
+            color = vec3(0.035, 0.047, 0.064);
+            if (borderPixel(x, y, contentLeft, actionsTop,
+                            contentLeft + contentWidth, actionsBottom))
+                color = vec3(0.12, 0.20, 0.28);
+            bool actionText = fixedPixel(
+                pixel, ivec2(int(contentLeft + 8u), int(actionsTop + 6u)), 2, 190u);
+            uint buttonLeft = contentLeft + 8u;
+            uint buttonRight = contentLeft + contentWidth - 8u;
+            uint buttonTop = actionsTop + 22u;
+            uint buttonBottom = actionsBottom - 5u;
+            if (x >= buttonLeft && x < buttonRight &&
+                y >= buttonTop && y < buttonBottom) {
+                color = vec3(0.48, 0.16, 0.035);
+                if (borderPixel(x, y, buttonLeft, buttonTop, buttonRight, buttonBottom))
+                    color *= 0.5;
+            }
+            uint length = fixedTextLength(165u);
+            int width = int(length) * 12 - 2;
+            actionText = actionText || fixedPixel(
+                pixel, ivec2(int(buttonLeft + buttonRight) / 2 - width / 2,
+                             int(buttonTop + 7u)), 2, 165u);
+            if (actionText) color = vec3(1.0, 0.92, 0.72);
             outColor = vec4(color, 1.0);
             return;
         }
@@ -839,9 +869,42 @@ void main() {
             return;
         }
 
+        uint settingsFpsTop = settingsLightBottom + 3u;
+        uint settingsFpsBottom = settingsFpsTop + 58u;
+        if (renderPc.selectedWorkspace == 2u &&
+            y >= settingsFpsTop && y < settingsFpsBottom &&
+            x >= contentLeft && x < contentLeft + contentWidth) {
+            color = vec3(0.035, 0.047, 0.064);
+            if (borderPixel(x, y, contentLeft, settingsFpsTop,
+                            contentLeft + contentWidth, settingsFpsBottom))
+                color = vec3(0.12, 0.20, 0.28);
+            bool fpsText = fixedPixel(
+                pixel, ivec2(int(contentLeft + 8u), int(settingsFpsTop + 6u)), 2, 191u);
+            uint fpsTop = settingsFpsTop + 25u;
+            uint fpsWidth = max(contentWidth / 4u, 1u);
+            uint fpsIds[4] = uint[4](192u, 193u, 194u, 195u);
+            for (uint option = 0u; option < 4u; ++option) {
+                uint left = contentLeft + option * fpsWidth;
+                uint right = option == 3u ? contentLeft + contentWidth : left + fpsWidth;
+                if (x >= left && x < right && y >= fpsTop && y < fpsTop + 28u) {
+                    color = option == renderPc.presentationLimit
+                        ? vec3(0.14, 0.30, 0.45) : vec3(0.055, 0.07, 0.09);
+                    if (borderPixel(x, y, left, fpsTop, right, fpsTop + 28u)) color *= 0.55;
+                }
+                uint length = fixedTextLength(fpsIds[option]);
+                int width = int(length) * 6 - 1;
+                fpsText = fpsText || fixedPixel(
+                    pixel, ivec2(int(left + right) / 2 - width / 2,
+                                 int(fpsTop + 10u)), 1, fpsIds[option]);
+            }
+            if (fpsText) color = vec3(0.93, 0.96, 0.99);
+            outColor = vec4(color, 1.0);
+            return;
+        }
+
         uint keymapTop = (renderPc.selectedWorkspace == 1u || renderPc.selectedWorkspace == 3u)
-            ? paletteTop + palettePanelHeight + 3u
-            : (renderPc.selectedWorkspace == 2u ? settingsLightBottom + 3u : groupTop);
+            ? actionsBottom + 3u
+            : (renderPc.selectedWorkspace == 2u ? settingsFpsBottom + 3u : groupTop);
         uint keymapBottom = keymapTop + 124u;
         if (renderPc.selectedWorkspace == 3u &&
             y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {

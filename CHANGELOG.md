@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 2.5.21
+
+- Rebuilt Volcano around the supplied broad-lake/far-right-cone reference and smoothed underground transition bands while reducing decorative fractured tiles.
+- Restored darker conserved Half Water hang/drip behavior and documented the exact rest/active rules for residual Water.
+- Recovered active Engineering, Industry, and Gold Mine layouts, including deterministic water-fed Sluice processing with blocked-output rollback.
+- Moved Ignite Air into a dedicated Actions section and added 30/60/120/unlimited presentation caps over independent fixed 60 Hz simulation.
+- Made non-metal/non-ore material presentation static, retained metal/ore glint, and made gas appearance authoritative-state driven.
+- Added pressure-conserving Atmosphere expansion into Vacuum and raw-gas mixing, while throttling excessive Fire/Ember/Ash routes.
+- Enabled recoverable supported breathable players in every scene and bounded debug telemetry to rotating authored-region samples.
+- Replaced the rejected reconstructed hive with the photographed historical compact model across reset, tool, load normalization, CPU contracts, and Vulkan readback.
+- Fetched and verified the complete current EpochGui v0.88.75 snapshot at `d8decc9`.
+
 ## 2.5.20
 
 - Removed the four-tick-per-frame GPU catch-up spiral while retaining fixed-step ownership and once-only input edges.

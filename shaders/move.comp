@@ -842,6 +842,38 @@ uint representedGasPressure(Cell cell) {
     return 1u;
 }
 
+bool isAtmosphereIngredient(uint material) {
+    return material == MAT_ATMOSPHERE || material == MAT_OXYGEN ||
+           material == MAT_CARBON_DIOXIDE || material == MAT_HYDROGEN;
+}
+
+bool mixAtmospherePair(ivec2 firstPosition, ivec2 secondPosition,
+                       Cell first, Cell second) {
+    if (!isAtmosphereIngredient(first.material) ||
+        !isAtmosphereIngredient(second.material) ||
+        first.material == second.material) return false;
+
+    uint firstPressure = representedGasPressure(first);
+    uint secondPressure = representedGasPressure(second);
+    uint totalPressure = min(firstPressure + secondPressure, 510u);
+    int mixedTemperature = (first.temperature + second.temperature) / 2;
+    first.material = MAT_ATMOSPHERE;
+    second.material = MAT_ATMOSPHERE;
+    first.temperature = mixedTemperature;
+    second.temperature = mixedTemperature;
+    first.age = 0u;
+    second.age = 0u;
+    first.aux |= AUX_MOVED;
+    second.aux |= AUX_MOVED;
+    setStateValue(first, (totalPressure + 1u) / 2u);
+    setStateValue(second, totalPressure / 2u);
+    cells[moveIndex(firstPosition)] = first;
+    cells[moveIndex(secondPosition)] = second;
+    markChunkDirty(firstPosition);
+    markChunkDirty(secondPosition);
+    return true;
+}
+
 bool expandAirIntoVacuum(ivec2 sourcePosition, ivec2 targetPosition, Cell source, Cell target) {
     if (source.material != MAT_ATMOSPHERE || target.material != MAT_EMPTY) return false;
     uint pressure = representedGasPressure(source);
@@ -1036,6 +1068,7 @@ void processVertical(ivec2 top, ivec2 bottom) {
     }
     if (isHalfWaterCell(b)) return;
 
+    if (mixAtmospherePair(top, bottom, a, b)) return;
     if (repairDamagedTileFromLooseCell(top, bottom, a, b)) return;
     if (expandAirIntoVacuum(top, bottom, a, b) ||
         expandAirIntoVacuum(bottom, top, b, a)) return;
@@ -1127,6 +1160,7 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
         mergeHalfWaterPair(targetPosition, sourcePosition, target, source)) return;
     if (isHalfWaterCell(source) || isHalfWaterCell(target)) return;
 
+    if (mixAtmospherePair(sourcePosition, targetPosition, source, target)) return;
     if (expandAirIntoVacuum(sourcePosition, targetPosition, source, target)) return;
 
     if (isInsect(source.material) && isPassableLifeMedium(target) &&
@@ -1289,6 +1323,7 @@ void processHorizontal(ivec2 left, ivec2 right) {
         return;
     }
 
+    if (mixAtmospherePair(left, right, a, b)) return;
     if (expandAirIntoVacuum(left, right, a, b) ||
         expandAirIntoVacuum(right, left, b, a)) return;
 

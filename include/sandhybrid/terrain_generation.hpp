@@ -128,7 +128,7 @@ struct Sample final {
 [[nodiscard]] constexpr bool rubble_pocket_selected(
     const std::uint32_t tile_x,
     const std::uint32_t tile_y) noexcept {
-    return (hash(tile_x, tile_y, 0xb04du) % 4u) == 0u;
+    return (hash(tile_x, tile_y, 0xb04du) % 16u) == 0u;
 }
 
 [[nodiscard]] constexpr std::uint32_t rubble_distance(

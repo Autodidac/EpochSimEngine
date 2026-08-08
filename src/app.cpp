@@ -436,6 +436,7 @@ int run_application(const ApplicationOptions& options) {
             std::memory_order_relaxed) % ui::workspace_tab_count;
         const bool inventory_workspace = selected_workspace == 0u;
         const bool editor_workspace = selected_workspace == 1u;
+        const bool settings_workspace = selected_workspace == 2u;
         const bool designer_workspace = selected_workspace == 3u;
         const bool material_workspace = editor_workspace || designer_workspace;
         const bool over_simulation = epochengine::gui_lib::contains(
@@ -618,7 +619,7 @@ int run_application(const ApplicationOptions& options) {
         if (designer_workspace) shared_state.hovered_material.store(material_count, std::memory_order_relaxed);
         else shared_state.designer_hovered_material.store(material_count, std::memory_order_relaxed);
         const bool hovered_ignite_air = editor_workspace &&
-            ui::ignite_air_action_at(layout, selected_group, pointer);
+            ui::ignite_air_action_at(layout, pointer);
 
         const bool editor_tool_click = editor_workspace && (
             epochengine::gui_lib::contains(layout.atmosphere, pointer) ||
@@ -679,6 +680,14 @@ int run_application(const ApplicationOptions& options) {
             } else if (epochengine::gui_lib::contains(layout.debug_toggle, pointer)) {
                 const bool debug = shared_state.debug_visualization.load(std::memory_order_relaxed);
                 shared_state.debug_visualization.store(!debug, std::memory_order_release);
+            } else if (settings_workspace && epochengine::gui_lib::contains(layout.fps_30, pointer)) {
+                shared_state.presentation_limit.store(0u, std::memory_order_release);
+            } else if (settings_workspace && epochengine::gui_lib::contains(layout.fps_60, pointer)) {
+                shared_state.presentation_limit.store(1u, std::memory_order_release);
+            } else if (settings_workspace && epochengine::gui_lib::contains(layout.fps_120, pointer)) {
+                shared_state.presentation_limit.store(2u, std::memory_order_release);
+            } else if (settings_workspace && epochengine::gui_lib::contains(layout.fps_unlimited, pointer)) {
+                shared_state.presentation_limit.store(3u, std::memory_order_release);
             } else if (inventory_workspace && epochengine::gui_lib::contains(layout.inventory_inventory, pointer)) {
                 shared_state.inventory_pane.store(0u, std::memory_order_relaxed);
             } else if (inventory_workspace && epochengine::gui_lib::contains(layout.inventory_blueprints, pointer)) {

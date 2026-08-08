@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v2.5.20 scenic full-tile, live-tool, player, and fixed-step recovery."""
+"""Validate the v2.5.21 scenic full-tile, live-tool, player, and fixed-step recovery."""
 
 from pathlib import Path
 
@@ -21,17 +21,17 @@ def reject(path: str, token: str) -> None:
 
 
 # Stable, visible native release contract.
-require("CMakeLists.txt", "VERSION 2.5.20")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.20")
+require("CMakeLists.txt", "VERSION 2.5.21")
+require("RELEASE_NOTES.md", "# SandHybrid v2.5.21")
 for token in (
-    "SandHybrid-Windows-x64-v2.5.20",
-    "SandHybrid-Linux-x64-v2.5.20",
-    "refs/tags/v2.5.20",
-    "gh release create v2.5.20",
+    "SandHybrid-Windows-x64-v2.5.21",
+    "SandHybrid-Linux-x64-v2.5.21",
+    "refs/tags/v2.5.21",
+    "gh release create v2.5.21",
     "--verify-tag",
 ):
     require(".github/workflows/ci-release.yml", token)
-reject(".github/workflows/ci-release.yml", "v2.5.20-test")
+reject(".github/workflows/ci-release.yml", "v2.5.21-test")
 reject(".github/workflows/ci-release.yml", "--prerelease")
 
 # Every authored scene owns a full 8x8 surface row and intentional interior air.
@@ -126,4 +126,4 @@ for token in ("EPOCHGUI_BUILD_MODULES", "add_library(EpochGui STATIC", "add_libr
 require("CMakeLists.txt", "add_subdirectory(third_party/EpochGui)")
 reject("CMakeLists.txt", "add_subdirectory(third_party/EpochGui EXCLUDE_FROM_ALL)")
 require("AGENTS.md", "Never silently retain an older EpochGui pin")
-print("v2.5.20 scenic full-tile, live-tool, player, macro cadence, and fixed-step contracts valid.")
+print("v2.5.21 scenic full-tile, live-tool, player, macro cadence, and fixed-step contracts valid.")

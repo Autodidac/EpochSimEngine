@@ -470,7 +470,7 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
     case MAT_ACID_RESISTANT_PLASTIC: color = vec4(0.22, 0.75, 0.78 + variation, 1.0); break;
     case MAT_HONEY: color = vec4(0.94, 0.54 + variation, 0.06, 0.96); break;
     case MAT_BEE: {
-        uint wing = (age / 2u + uint(position.x + position.y)) & 1u;
+        uint wing = (textureHash >> 7u) & 1u;
         uint stripe = (textureHash >> 4u) & 3u;
         color = stripe == 0u ? vec4(0.08, 0.055, 0.025, 1.0)
                              : vec4(0.96, 0.62 + float(wing) * 0.08, 0.08, 1.0);
@@ -503,9 +503,8 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
         color = vec4(0.07 + saltTone * 0.05, 0.42 + variation, 0.72 + saltTone * 0.12, 0.9); break;
     }
     case MAT_BEEHIVE: {
-        float pulse = 0.025 * sin(float(age) * 0.055 + float(position.x + position.y) * 0.45);
         bool comb = ((position.x + (position.y & 1)) % 4) == 0;
-        color = vec4(0.62 + pulse, (comb ? 0.37 : 0.42) + pulse, 0.08, 1.0); break;
+        color = vec4(0.62, comb ? 0.37 : 0.42, 0.08, 1.0); break;
     }
     case MAT_DIRTY_STEAM: color = vec4(0.43, 0.47 + variation, 0.48, 0.68); break;
     case MAT_DIRTY_WATER: color = vec4(0.16, 0.30 + variation, 0.31, 0.94); break;

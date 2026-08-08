@@ -23,7 +23,7 @@ inline constexpr auto scene_count = static_cast<std::uint32_t>(Scene::count);
 
 inline constexpr std::array<std::string_view, scene_count> scene_names{
     "Sandbox", "Blank", "Volcano", "Waterworks", "Ecosystem", "Engineering lab",
-    "Platformer", "Demolition", "Frontier base"
+    "Gold Mine", "Demolition", "Frontier base"
 };
 
 [[nodiscard]] constexpr std::string_view scene_name(const Scene scene) noexcept {
@@ -40,7 +40,7 @@ inline constexpr std::array<std::string_view, scene_count> scene_names{
 }
 
 [[nodiscard]] constexpr bool scene_has_character(const Scene scene) noexcept {
-    return scene == Scene::gold_mine || scene == Scene::demolition || scene == Scene::frontier_base;
+    return scene != Scene::count;
 }
 
 } // namespace sandhybrid
