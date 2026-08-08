@@ -4,17 +4,17 @@
 
 ## Current release
 
-- Current release: `v2.5.19`, still published as GitHub's latest normal public release, but contradicted by packaged runtime observation.
-- State: v2.5.19 is published from commit `9d81c71c54925ad8952f5b8d9697f7dbbd206102`. Main workflow `31264625452`, tag workflow `31265329068`, and tagged hygiene workflow `31265329063` passed, but frame-rate/GPU load, the pictured hive, authored Stone foundations, structural hive Wood, and visible Water/Half Water behavior are reopened for a v2.5.20 corrective candidate. No affected visual/runtime mission is marked COMPLETE.
+- Current release: `v2.5.20`, published as GitHub's latest normal public release from commit `cdd5a1474104bd8165f0f9e199dfde4712a73a5f`.
+- State: replacement tag workflow `31270727984` passed both native Release matrices, tests, packages, checksums, and stable publication; tagged hygiene workflow `31270727990` also passed. The downloaded public checksum files match the package digests. Many-bee performance telemetry, broad visual scene review, generated/tool/loaded hive observation, Water leveling, and the complete cross-system scene cycle remain active; no affected visual/runtime mission is marked COMPLETE.
 - Public prerelease tags and `-test` release names are forbidden.
 
-## v2.5.20 corrective candidate
+## v2.5.20 publication record
 
 - Scope: cap rendering at one complete fixed simulation submit per presented frame with stale-debt shedding; restore the pictured Fix29 hive body, contents, and nine structural Wood tiles; force complete structural Stone foundations in every scene; restore full Water ledge flow plus supplied Half Water splitting; and update the complete EpochGui dependency to `d8decc9` / v0.88.75.
 - Native/package gate: exact-source Windows Release passes 31/31 tests, including EpochGui's three default suites; Linux Release passes all 28 SandHybrid tests against the same current compatibility headers because its GCC toolchain cannot scan C++ module dependencies. Fresh installed packages contain the executable, 12 shaders, 20 headers, development files, and 14 canonical documents. Windows/NVIDIA RTX 5080 and Linux/Mesa llvmpipe packages each pass the same 19 production Vulkan checks, including all nine foundations and cell-for-cell Sandbox/Ecosystem Fix29 hives with zero mismatches.
 - Visual/runtime status: the packaged Windows build launched visibly and produced a release capture without a startup/runtime failure. Many-bee timing telemetry, broad visual scene review, generated/tool/loaded hive observation, Water leveling, and the complete cross-system scene cycle remain active; no affected mission is marked COMPLETE from the focused checks.
-- Publication gate: publish only an ordinary stable `v2.5.20` release after exact-source archive/checksum verification and successful tag workflows. Record the public commit, workflow runs, and asset SHA-256 values in a later publication-evidence commit without moving the release tag.
-- Initial tag run `31269830501` was not published: Linux passed completely and all 28 Windows SandHybrid tests passed, but three registered EpochGui tests were not built because the dependency remained `EXCLUDE_FROM_ALL`. EpochGui is now part of the default supported Windows build and a full replacement tag run is required.
+- Publication evidence: https://github.com/Autodidac/EpochSimEngine/releases/tag/v2.5.20 is an ordinary stable release with `isDraft=false` and `isPrerelease=false`. The tag resolves to commit `cdd5a1474104bd8165f0f9e199dfde4712a73a5f`; replacement release workflow `31270727984` and tagged hygiene workflow `31270727990` passed. Published Windows SHA-256 is `7fb9d980b6ee943bab3ce5da8c7a10d32cbcb729801b9c7282053412cfe841ea`; Linux SHA-256 is `9884c9642b48374fdbc2a15cf9330984ccc3515b65bba9784def56a297571fc6`. Both downloaded public checksum files match the package digests.
+- Initial tag run `31269830501` was not published: Linux passed completely and all 28 Windows SandHybrid tests passed, but three registered EpochGui tests were not built because the dependency remained `EXCLUDE_FROM_ALL`. EpochGui is now part of the default supported Windows build; the complete replacement tag run passed.
 
 ## v2.5.19 publication record
 
