@@ -4,16 +4,17 @@
 
 ## Current release
 
-- Current candidate: `v2.5.19`, pending exact-source Windows/Linux package gates and stable publication for scenic full-tile scenes, live tools, player recovery, slower/coherent macro packets, and fixed-step frame independence.
-- State: exact-source Windows and Linux Release builds each pass 28/28 tests; fresh installed packages pass all nine focused Vulkan checks on Windows/NVIDIA and Linux/Mesa llvmpipe, and archive contents/checksums are audited. Stable GitHub publication remains pending. No affected visual/runtime mission is marked COMPLETE.
+- Current release: `v2.5.19`, published as GitHub's latest normal public release for scenic full-tile scenes, live tools, player recovery, slower/coherent macro packets, and fixed-step frame independence.
+- State: v2.5.19 is published from commit `9d81c71c54925ad8952f5b8d9697f7dbbd206102`. Main workflow `31264625452`, tag workflow `31265329068`, and tagged hygiene workflow `31265329063` passed. GitHub reports it as latest, non-draft, and non-prerelease with exactly two packages and two checksums. No affected visual/runtime mission is marked COMPLETE.
 - Public prerelease tags and `-test` release names are forbidden.
 
-## v2.5.19 candidate record
+## v2.5.19 publication record
 
+- Release: https://github.com/Autodidac/EpochSimEngine/releases/tag/v2.5.19; ordinary stable tag and visible latest release, with no prerelease marker or `-test` suffix.
 - Scope: restore scene-specific full-tile surfaces and authored empty interiors; add Designer Clear and bounded Fill uploads; recover supported breathable players; halve macro movement rate, double cohesion allowance, and drive gameplay from fixed simulation ticks.
-- Required publication evidence: exact-source Windows and Linux Release builds/tests, fresh package audits/checksums, packaged Vulkan state readback, successful GitHub main/tag workflows, and a normal latest non-prerelease release with exactly two packages and two checksum assets.
-- Local gate evidence: both native Release builds pass 28/28 tests; each fresh package contains 12 shaders, 20 headers, the development package, and 14 canonical documents. Windows/NVIDIA and Linux/Mesa llvmpipe packages pass identical nine-check Vulkan readback, including 64-cell exact packets, 56+8 blocked fallback, conserved Half Water, and both exact hives.
-- Status: candidate only. GitHub workflow/publication evidence will be recorded after the tag succeeds. No broader mission is closed by focused package checks.
+- Native/package gate: Windows and Linux Release builds each pass 28/28 tests locally and in GitHub Actions. Fresh installed packages contain the executable, 12 shaders, 20 headers, development files, and 14 canonical documents; Windows/NVIDIA and Linux/Mesa llvmpipe packages pass identical nine-check Vulkan readback, including exact 64-cell packets, conserved 56+8 blocked fallback, Half Water, and both exact hives.
+- Published package SHA-256: Windows `d264d63244dcece287cc1b266159ea436f90c911dfb595d1b8497ad818a141d5`; Linux `966487220c0a28304aa524c8103c2740efc39592e87fb43d6edf24fee1755737`. Both public checksum files name the same package digests.
+- No affected mission is marked COMPLETE from these focused results. Broader scenic visual review, leveling, wet granular, machinery, save/load, bee-lifecycle, and complete scene-cycle acceptance remain active in `missioncache.md`.
 
 ## v2.5.18 publication record
 

@@ -334,7 +334,7 @@ Fresh water supports conserved faint half-cells, a three-half-unit ledge release
 
 ## v2.5.19 scenic full-tile and fixed-step recovery
 
-SandHybrid v2.5.19 is the current stable release candidate, with native Windows/Linux packages and SHA-256 files and no prerelease marker.
+SandHybrid v2.5.19 is the latest normal public release, with native Windows/Linux packages and SHA-256 files and no prerelease marker.
 
 Every scene now starts on complete aligned `8x8` terrain, structural, and liquid tiles. Scene-specific resident surfaces follow the authored top terrain while authored non-Blank interiors retain intentional air. Designer exposes `CLEAR`; Editor `FILL` performs a bounded connected Air replacement; and player scenes recover to supported, body-clear, breathable spawns.
 
