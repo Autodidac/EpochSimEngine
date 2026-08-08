@@ -4,9 +4,16 @@
 
 ## Current release
 
-- Current release: `v2.5.19`, published as GitHub's latest normal public release for scenic full-tile scenes, live tools, player recovery, slower/coherent macro packets, and fixed-step frame independence.
-- State: v2.5.19 is published from commit `9d81c71c54925ad8952f5b8d9697f7dbbd206102`. Main workflow `31264625452`, tag workflow `31265329068`, and tagged hygiene workflow `31265329063` passed. GitHub reports it as latest, non-draft, and non-prerelease with exactly two packages and two checksums. No affected visual/runtime mission is marked COMPLETE.
+- Current release: `v2.5.19`, still published as GitHub's latest normal public release, but contradicted by packaged runtime observation.
+- State: v2.5.19 is published from commit `9d81c71c54925ad8952f5b8d9697f7dbbd206102`. Main workflow `31264625452`, tag workflow `31265329068`, and tagged hygiene workflow `31265329063` passed, but frame-rate/GPU load, the pictured hive, authored Stone foundations, structural hive Wood, and visible Water/Half Water behavior are reopened for a v2.5.20 corrective candidate. No affected visual/runtime mission is marked COMPLETE.
 - Public prerelease tags and `-test` release names are forbidden.
+
+## v2.5.20 corrective candidate
+
+- Scope: cap rendering at one complete fixed simulation submit per presented frame with stale-debt shedding; restore the pictured Fix29 hive body, contents, and nine structural Wood tiles; force complete structural Stone foundations in every scene; restore full Water ledge flow plus supplied Half Water splitting; and update the complete EpochGui dependency to `d8decc9` / v0.88.75.
+- Native/package gate: exact-source Windows Release passes 31/31 tests, including EpochGui's three default suites; Linux Release passes all 28 SandHybrid tests against the same current compatibility headers because its GCC toolchain cannot scan C++ module dependencies. Fresh installed packages contain the executable, 12 shaders, 20 headers, development files, and 14 canonical documents. Windows/NVIDIA RTX 5080 and Linux/Mesa llvmpipe packages each pass the same 19 production Vulkan checks, including all nine foundations and cell-for-cell Sandbox/Ecosystem Fix29 hives with zero mismatches.
+- Visual/runtime status: the packaged Windows build launched visibly and produced a release capture without a startup/runtime failure. Many-bee timing telemetry, broad visual scene review, generated/tool/loaded hive observation, Water leveling, and the complete cross-system scene cycle remain active; no affected mission is marked COMPLETE from the focused checks.
+- Publication gate: publish only an ordinary stable `v2.5.20` release after exact-source archive/checksum verification and successful tag workflows. Record the public commit, workflow runs, and asset SHA-256 values in a later publication-evidence commit without moving the release tag.
 
 ## v2.5.19 publication record
 
@@ -54,7 +61,7 @@
 
 - Macro tiles: v2.5.3 moving full-liquid/full-gas eligibility, exact displacement into full uniform compatible targets even when their scheduling metadata is fine-active, intact-packet exclusion from non-fallback fine passes, and same-tick fine fallback when a packet cannot commit.
 - Half Water: v2.4.1 fine-owned conserved fall, merge, dedicated passes, and bounded two-to-four-cell attraction. A half cannot sleep with fall/merge/attraction work pending and cannot wander through generic diagonal Water flow.
-- Beehive: exact hard-coded pre-PR19 Ecosystem model restored by SimpleSandSim Fix36: queen centers (512,234)/(512,232), loose Wood perch x=-37..29 and y=-16..-13, shell 25 <= radius² < 92, chamber radius² < 25, queen center, exit x=1..10 with |y|<=1, and deterministic Empty/Honey/Pollen chamber contents. SandHybrid actor/ecology behavior remains SandHybrid-owned.
+- Beehive: photographed Fix29 Ecosystem body/content with queen centers `(512,234)`/`(512,232)`, shell `28 <= radius^2 < 108`, chamber `radius^2 < 28`, right exit `x=1..12` and `|y|<=1`, canonical entropy seed `0xD17A55DE`, and nine complete structural Wood tiles at local `x=472..543`, `y=216..223`. Reset/tool/load share one cell-for-cell model; SandHybrid actor/ecology behavior remains SandHybrid-owned.
 - Pause: simulation and presentation clocks freeze while direct editor mutations remain live, including in character scenes, and do not advance or replay the simulation.
 - Inventory: sidebar-only with exactly `INVENTORY` and `BLUEPRINTS` subtabs. Blueprint slots report real occupied/empty state and activate world placement only when occupied.
 - Designer: sidebar-only authoring grid with exactly `INVENTORY` and `BLUEPRINTS` subtabs; the main viewport continues to show the world. Editor and Designer cursor controls are isolated. Designer publication copies exact authored material layout into a shared named slot without mutating the world.

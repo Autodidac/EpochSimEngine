@@ -151,9 +151,9 @@ void main() {
     Cell cell;
     int colonySlot = -1;
     if (material == MAT_BEEHIVE) {
-        uint prefab = beehivePrefabMaterial(delta, beehivePrefabEntropy(center, delta));
+        uint prefab = beehivePrefabMaterial(center, delta, beehivePrefabEntropy(delta));
         if (prefab != MATERIAL_COUNT) {
-            cell = makeCell(prefab);
+            cell = prefab == MAT_WOOD ? makeStructuralCell(prefab, true) : makeCell(prefab);
         } else {
             colonySlot = beeFormationSlotFromOffset(delta);
             if (colonySlot < 0) return;

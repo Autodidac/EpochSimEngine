@@ -79,7 +79,7 @@ for token in (
 
 # Continuous ground through the authored footprint.
 require("include/sandhybrid/world_layout.hpp", "Continue each authored scene's own surface height")
-require("shaders/reset.comp", "bool useSubstrate = substrateCell && (!authored || scene == SCENE_BLANK)")
+require("shaders/reset.comp", "scene == SCENE_BLANK && !authoredFoundation")
 require("src/vulkan_renderer.cpp", "inside_authored && scene != Scene::blank")
 require("tests/world_layout_contract.cpp", "1500u, 1068u")
 

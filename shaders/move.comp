@@ -649,9 +649,7 @@ bool fullWaterSplitSupplied(ivec2 sourcePosition, int direction) {
     if (!solidSupportsWaterAt(sourcePosition)) return false;
     if (waterHalfUnits(moveAt(sourcePosition)) != 2u) return false;
     Cell trailing = sampleAt(sourcePosition - ivec2(direction, 0));
-    Cell reserve = sampleAt(sourcePosition - ivec2(direction * 2, 0));
-    return trailing.material == MAT_WATER && !isHalfWaterCell(trailing) &&
-           reserve.material == MAT_WATER && !isHalfWaterCell(reserve);
+    return waterHalfUnits(trailing) >= 1u;
 }
 
 bool halfWaterAhead(ivec2 position, int direction) {
@@ -1157,12 +1155,6 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
 
     bool cohesiveMud = source.material == MAT_MUD &&
         (below.material == MAT_DIRT || below.material == MAT_STONE || below.material == MAT_MUD);
-    if (!upward && source.material == MAT_WATER && supportedAt(sourcePosition, source) &&
-        isOpenGas(target)) {
-        int direction = targetPosition.x > sourcePosition.x ? 1 : -1;
-        Cell trailing = sampleAt(sourcePosition - ivec2(direction, 0));
-        if (waterHalfUnits(source) != 2u || waterHalfUnits(trailing) < 1u) return;
-    }
     if (!upward && !cohesiveMud &&
         (isCellPowder(source) || isCellLiquid(source) || isLooseSolid(source)) &&
         supportedAt(sourcePosition, source) && canCellFallInto(source, target) &&
@@ -1304,6 +1296,7 @@ void processHorizontal(ivec2 left, ivec2 right) {
         if (a.material == MAT_WATER && !isHalfWaterCell(a) &&
             solidLedgePrecedesDrop(right, 1)) {
             if (fullWaterSplitSupplied(left, 1)) splitFullWaterPair(left, right, a, b);
+            else swapCells(left, right);
         } else {
             swapCells(left, right);
         }
@@ -1312,6 +1305,7 @@ void processHorizontal(ivec2 left, ivec2 right) {
         if (b.material == MAT_WATER && !isHalfWaterCell(b) &&
             solidLedgePrecedesDrop(left, -1)) {
             if (fullWaterSplitSupplied(right, -1)) splitFullWaterPair(right, left, b, a);
+            else swapCells(left, right);
         } else {
             swapCells(left, right);
         }

@@ -191,18 +191,4 @@ namespace epochengine::gui_lib::font
         return { width, height };
     }
 
-    // Compatibility for existing callers that used one framebuffer pixel per
-    // bitmap cell. New code should pass FontSize so font size means pixels.
-    [[nodiscard]] constexpr TextExtent measure_text_legacy_scale(
-        std::string_view text,
-        float cell_scale = 1.0F) noexcept
-    {
-        return measure_text(
-            text,
-            FontSize{
-                .logical_height = static_cast<float>(glyph_height)
-                    * (cell_scale > 0.0F ? cell_scale : 1.0F),
-                .dpi_scale = 1.0F
-            });
-    }
 }

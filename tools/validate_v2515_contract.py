@@ -21,7 +21,7 @@ def reject(path: str, token: str) -> None:
 
 
 # Canonical history remains while the newest contract owns current publication.
-require("CMakeLists.txt", "VERSION 2.5.19")
+require("CMakeLists.txt", "VERSION 2.5.20")
 require("CHANGELOG.md", "## 2.5.15")
 
 # v2.5.3 macro ownership: moving complete media get a packet attempt.
@@ -35,23 +35,23 @@ for token in ("gas_tile_eligible(true, true, false)",
               "liquid_tile_eligible(true, true, false)"):
     require("tests/behavior_contract.cpp", token)
 
-# Exact Fix36 pre-PR19 Ecosystem hive body, perch, positions, and deterministic contents without foreign actor behavior.
+# Exact Fix29 Ecosystem hive body, tiled perch, positions, and deterministic contents without foreign actor behavior.
 for token in (
-    "BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 25",
-    "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 92",
-    "BEEHIVE_CHAMBER_RADIUS_SQUARED = 25",
-    "BEEHIVE_EXIT_MAX_X = 10",
-    "BEEHIVE_SUPPORT_MIN_X = -37",
-    "BEEHIVE_SUPPORT_MAX_X = 29",
-    "BEEHIVE_SUPPORT_MIN_Y = -16",
-    "BEEHIVE_SUPPORT_MAX_Y = -13",
+    "BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 28",
+    "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 108",
+    "BEEHIVE_CHAMBER_RADIUS_SQUARED = 28",
+    "BEEHIVE_EXIT_MAX_X = 12",
+    "BEEHIVE_SUPPORT_WIDTH = 72",
+    "BEEHIVE_SUPPORT_HEIGHT = 8",
+    "BEEHIVE_SUPPORT_TILE_SIZE = 8",
+    "BEEHIVE_SUPPORT_LEFT_BIAS = 40",
 ):
     require("shaders/beehive.glsl", token)
 for token in (
-    "beehive_shell_min_radius_squared = 25",
-    "beehive_shell_max_radius_squared = 92",
-    "beehive_chamber_radius_squared = 25",
-    "beehive_exit_max_x = 10",
+    "beehive_shell_min_radius_squared = 28",
+    "beehive_shell_max_radius_squared = 108",
+    "beehive_chamber_radius_squared = 28",
+    "beehive_exit_max_x = 12",
 ):
     require("src/scene_image.cpp", token)
 
@@ -78,7 +78,7 @@ for token in (
 ):
     require("shaders/reset.comp", token)
 for token in ("normalize_pre_pr19_hives", "pre_pr19_beehive_material",
-              "beehive_support_min_x = -37"):
+              "beehive_support_width = 72"):
     require("src/scene_image.cpp", token)
 for token in ("effective_world_brush_radius", "effective_world_brush_shape"):
     require("include/sandhybrid/simulation_policy.hpp", token)
@@ -134,7 +134,7 @@ reject("shaders/fullscreen.frag", "if (!mapSample && renderPc.selectedWorkspace 
 require("tests/ui_layout_contract.cpp", "layout.designer_grid.position.x < sidebar_left")
 
 # Repository memory and mission status retain the release invariants.
-for token in ("v2.5.3", "Fix36", "Half Water falls first", "World cursor controls belong to Editor", "sidebar-only", "no prerelease marker"):
+for token in ("v2.5.3", "Fix29", "Half Water falls first", "World cursor controls belong to Editor", "sidebar-only", "no prerelease marker"):
     require("AGENTS.md", token)
 require("MISSION_LEDGER.md", "/releases/tag/v2.5.15")
 require("missioncache.md", "MC-153")

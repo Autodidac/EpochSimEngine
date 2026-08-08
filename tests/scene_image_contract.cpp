@@ -123,18 +123,18 @@ int main() {
     std::uint32_t honey_count = 0u;
     std::uint32_t pollen_count = 0u;
     std::uint32_t chamber_empty_count = 0u;
-    for (std::int32_t dy = -16; dy <= 11; ++dy) {
-        for (std::int32_t dx = -37; dx <= 29; ++dx) {
+    for (std::int32_t dy = -18; dy <= 11; ++dy) {
+        for (std::int32_t dx = -40; dx <= 31; ++dx) {
             const auto material = static_cast<sandhybrid::Material>(canonical_hive[
                 static_cast<std::size_t>(canonical_queen_y + dy) * canonical_width +
                 static_cast<std::size_t>(canonical_queen_x + dx)]);
             const auto radius_squared = dx * dx + dy * dy;
-            if (dy >= -16 && dy <= -13) support_count +=
+            if (dy >= -18 && dy <= -11) support_count +=
                 material == sandhybrid::Material::wood ? 1u : 0u;
-            if (radius_squared >= 25 && radius_squared < 92) shell_count +=
+            if (radius_squared >= 28 && radius_squared < 108) shell_count +=
                 material == sandhybrid::Material::beehive ? 1u : 0u;
-            if (radius_squared < 25 && !(dx == 0 && dy == 0) &&
-                !(dx >= 1 && dx <= 10 && std::abs(dy) <= 1)) {
+            if (radius_squared < 28 && !(dx == 0 && dy == 0) &&
+                !(dx >= 1 && dx <= 12 && std::abs(dy) <= 1)) {
                 honey_count += material == sandhybrid::Material::honey ? 1u : 0u;
                 pollen_count += material == sandhybrid::Material::pollen ? 1u : 0u;
                 chamber_empty_count += material == sandhybrid::Material::empty ? 1u : 0u;
@@ -143,8 +143,8 @@ int main() {
     }
     if (canonical_hive[canonical_queen_y * canonical_width + canonical_queen_x] !=
             static_cast<std::uint32_t>(sandhybrid::Material::queen_bee) ||
-        support_count != 268u || shell_count != 209u || honey_count != 28u ||
-        pollen_count != 20u || chamber_empty_count != 8u)
+        support_count != 576u || shell_count != 237u || honey_count != 27u ||
+        pollen_count != 30u || chamber_empty_count != 16u)
         return 15;
 
     std::filesystem::remove_all(root, cleanup_error);

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 2.5.20
+
+- Removed the four-tick-per-frame GPU catch-up spiral while retaining fixed-step ownership and once-only input edges.
+- Restored the photographed Fix29 Ecosystem hive body and canonical contents across reset, tool painting, and load normalization, with a nine-tile structural Wood perch.
+- Enforced a complete structural Stone foundation across every generated authored scene and imported scene image.
+- Restored full Water's diagonal and unsupported-ledge flow, reduced supplied Half Water release to the intended trailing half-unit, and retained conserved Half Water fall/merge/attraction behavior.
+- Expanded production Vulkan readback from nine to 19 checks covering isolated/supplied Water ledges, all scene foundations, and exact Fix29 hive cells.
+- Replaced the reduced EpochGui snapshot with the complete current v0.88.75 dependency at `d8decc9`, including its controls, modules, compatibility headers, sources, and default tests.
+
 ## 2.5.19
 
 - Rebuilt every scene's resident surface and initial structural/liquid geometry on complete aligned 8x8 tiles while preserving authored empty interiors and scenic silhouettes.

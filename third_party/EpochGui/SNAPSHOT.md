@@ -1,2 +1,3 @@
-EpochGui subset pinned from Autodidac/EpochGui commit 130f33fe31d73564a35a622f3bb5ddcc2b5105d5.
-This project uses the backend-neutral Rect/Vec2 hit-testing types and the embedded 5x7 fallback font.
+The complete vendored EpochGui dependency is synchronized from Autodidac/EpochGui commit d8decc9ee2e73e0009f1e8c49d86a52db6748b28 (v0.88.75).
+SandHybrid builds the upstream core library and its default tests directly; optional rounded-rectangle and fallback-input modules remain governed by EpochGui's upstream CMake options.
+The integration layer restores the prior upstream CMake 3.28 floor. Windows/MSVC builds the complete static library, module file sets, controls, and default tests. GCC toolchains without module dependency scanning expose the same current compatibility headers as an interface target; SandHybrid consumes only that backend-neutral inline geometry surface on Linux.

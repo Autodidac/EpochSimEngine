@@ -319,7 +319,7 @@ Each cell is 16 bytes: material ID, age, signed temperature, and packed material
 
 ## EpochGui snapshot
 
-The vendored backend-neutral subset is documented in `third_party/EpochGui/SNAPSHOT.md`.
+The complete vendored EpochGui dependency, exact upstream commit, and cross-platform module compatibility policy are documented in `third_party/EpochGui/SNAPSHOT.md`. SandHybrid releases must update this full dependency to the current upstream version rather than retaining a selected-header snapshot.
 
 
 ## Hierarchical simulation
@@ -332,21 +332,22 @@ Uniform 8x8 material regions can move as 64-cell macro-cells using the same fall
 Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and solid-supported pre-fall droplets that cannot hop along water edges or crawl after falling. See `HALF_WATER.md`.
 
 
-## v2.5.19 scenic full-tile and fixed-step recovery
+## v2.5.20 corrective performance, hive, terrain, and Water recovery
 
-SandHybrid v2.5.19 is the latest normal public release, with native Windows/Linux packages and SHA-256 files and no prerelease marker.
+SandHybrid v2.5.20 is the current stable release target, with native Windows/Linux packages and SHA-256 files and no prerelease marker.
 
-Every scene now starts on complete aligned `8x8` terrain, structural, and liquid tiles. Scene-specific resident surfaces follow the authored top terrain while authored non-Blank interiors retain intentional air. Designer exposes `CLEAR`; Editor `FILL` performs a bounded connected Air replacement; and player scenes recover to supported, body-clear, breathable spawns.
+The renderer submits no more than one complete fixed simulation tick per presented frame and drops stale debt instead of stacking four GPU-heavy catch-up passes. Macro packets still move every two fixed ticks and retain their doubled breakup allowance.
 
-Macro liquid and gas packets attempt movement every two fixed 60 Hz ticks and remain coherent across two classifier ticks before breakup. Materials, actors, clocks, effects, cadence, and breakup age are driven by fixed simulation ticks with bounded catch-up, so presentation frame rate does not change simulation speed.
+All nine authored scenes own a full structural Stone foundation. The Sandbox, Ecosystem, Beehive tool, and loaded-map path share the photographed Fix29 Ecosystem hive body/content and its nine-tile structural Wood perch. Full Water again follows the working diagonal and unsupported-ledge paths used by Saltwater and Oil, while Half Water remains conserved, fall-first, mergeable, and bounded to clear-gap attraction.
 
-The shipped executable can run the focused Vulkan seed/step/readback gate against its compiled compute pipelines and resident buffers:
+The shipped executable can run the 19-check Vulkan seed/step/readback gate against its compiled production pipelines:
 
 ```text
 sandhybrid --world-size compact --runtime-acceptance-report runtime-acceptance.json
 ```
 
-The exact Fix36 hard-coded hive, Half Water rules, Blueprint transactions, paused live editing, sidebar-only workspaces, and logical high-DPI cursor mapping remain enforced. Broader visual and cross-system acceptance remains active in `missioncache.md`.
+Broader visual and cross-system acceptance remains active in `missioncache.md`.
+
 ## v2.5.16 sidebar Blueprints and paused editing
 
 Inventory and Designer remain normal sidebar workspaces with exactly `INVENTORY` and `BLUEPRINTS` subtabs. Four shared slots now report real occupied/empty state. Designer publishes authored Static Models or Map Chunks directly to those slots without replacing the world viewport. An occupied slot produces a camera-correct world footprint and a confirmed world left-click performs one all-or-nothing placement.

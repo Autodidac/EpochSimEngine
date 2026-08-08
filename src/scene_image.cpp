@@ -34,16 +34,16 @@ constexpr std::uint32_t bee_target_none = 0xffffu;
 constexpr std::uint32_t bee_formation_count = 100u;
 constexpr std::uint32_t bee_metadata_mask = 0x00ffffffu;
 constexpr std::uint32_t bee_authored_home_slot_bit = 0x80u;
-constexpr std::int32_t beehive_shell_min_radius_squared = 25;
-constexpr std::int32_t beehive_shell_max_radius_squared = 92;
-constexpr std::int32_t beehive_chamber_radius_squared = 25;
+constexpr std::int32_t beehive_shell_min_radius_squared = 28;
+constexpr std::int32_t beehive_shell_max_radius_squared = 108;
+constexpr std::int32_t beehive_chamber_radius_squared = 28;
 constexpr std::int32_t beehive_exit_min_x = 1;
-constexpr std::int32_t beehive_exit_max_x = 10;
+constexpr std::int32_t beehive_exit_max_x = 12;
 constexpr std::int32_t beehive_exit_half_height = 1;
-constexpr std::int32_t beehive_support_min_x = -37;
-constexpr std::int32_t beehive_support_max_x = 29;
-constexpr std::int32_t beehive_support_min_y = -16;
-constexpr std::int32_t beehive_support_max_y = -13;
+constexpr std::int32_t beehive_support_width = 72;
+constexpr std::int32_t beehive_support_height = 8;
+constexpr std::int32_t beehive_support_left_bias = 40;
+constexpr std::int32_t beehive_support_top_bias = 16;
 
 
 constexpr std::uint32_t hash32(std::uint32_t value) noexcept {
@@ -113,8 +113,8 @@ void normalize_pre_pr19_hives_impl(std::vector<std::uint32_t>& materials,
 
     auto hive_entropy = [&](const std::int32_t offset_x,
                            const std::int32_t offset_y) noexcept {
-        const auto x = static_cast<std::uint32_t>(beehive_scene_queen_x + offset_x);
-        const auto y = static_cast<std::uint32_t>(beehive_scene_queen_y + offset_y);
+        const auto x = static_cast<std::uint32_t>(pre_pr19_hive_canonical_queen_x + offset_x);
+        const auto y = static_cast<std::uint32_t>(pre_pr19_hive_canonical_queen_y + offset_y);
         return pre_pr19_hive_hash((y * pre_pr19_hive_canonical_width + x) ^ pre_pr19_hive_canonical_seed);
     };
 
@@ -139,10 +139,16 @@ void normalize_pre_pr19_hives_impl(std::vector<std::uint32_t>& materials,
         }
     }
 
-    for (std::int32_t offset_y = beehive_support_min_y; offset_y <= beehive_support_max_y; ++offset_y) {
-        for (std::int32_t offset_x = beehive_support_min_x; offset_x <= beehive_support_max_x; ++offset_x) {
-            const auto x = beehive_queen_x + offset_x;
-            const auto y = beehive_queen_y + offset_y;
+    const auto support_origin_x = scene_origin_x_i32 +
+        ((beehive_scene_queen_x - beehive_support_left_bias) / static_cast<std::int32_t>(tile_size)) *
+            static_cast<std::int32_t>(tile_size);
+    const auto support_origin_y = scene_origin_y_i32 +
+        ((beehive_scene_queen_y - beehive_support_top_bias) / static_cast<std::int32_t>(tile_size)) *
+            static_cast<std::int32_t>(tile_size);
+    for (std::int32_t local_y = 0; local_y < beehive_support_height; ++local_y) {
+        for (std::int32_t local_x = 0; local_x < beehive_support_width; ++local_x) {
+            const auto x = support_origin_x + local_x;
+            const auto y = support_origin_y + local_y;
             if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
                 y >= static_cast<std::int32_t>(height))
                 continue;
@@ -154,7 +160,6 @@ void normalize_pre_pr19_hives_impl(std::vector<std::uint32_t>& materials,
             }
         }
     }
-
     for (std::int32_t offset_y = -11; offset_y <= 11; ++offset_y) {
         for (std::int32_t offset_x = -11; offset_x <= 12; ++offset_x) {
             const auto x = beehive_queen_x + offset_x;

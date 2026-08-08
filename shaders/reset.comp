@@ -237,10 +237,10 @@ bool brickStair(ivec2 p, ivec2 startBrick, int count, bool risingRight) {
 
 ivec2 sandboxQueen() { return ivec2(AUTHORED_WORLD_CELLS.x * 4 / 5, AUTHORED_WORLD_CELLS.y - 126); }
 
-// Canonical Fix36 pre-PR19 Ecosystem suspended hive shared by both maps and the tool.
+// Canonical Fix29 Ecosystem-map hive body/content shared by both maps and the tool.
 void applyBeehive(ivec2 p, ivec2 queen, inout uint material, bool includeFormation) {
     ivec2 offset = p - queen;
-    uint prefab = beehivePrefabMaterial(offset, beehivePrefabEntropy(queen, offset));
+    uint prefab = beehivePrefabMaterial(queen, offset, beehivePrefabEntropy(offset));
     if (prefab != MATERIAL_COUNT) material = prefab;
     if (includeFormation) {
         int slot = beeFormationSlotFromOffset(offset);
@@ -424,7 +424,7 @@ uint ecosystemMaterial(ivec2 p) {
         p.x > (farmMin.x + 2) * BRICK_SIZE && p.x < (farmMax.x - 2) * BRICK_SIZE && (p.x % 13) == 0)
         material = ((p.x / 13) & 1) == 0 ? MAT_ANT : MAT_BEETLE;
 
-    // Canonical Fix36 pre-PR19 Ecosystem suspended hive, shared with Sandbox and the tool.
+    // Canonical Fix29 Ecosystem-map hive body/content, shared with Sandbox and the tool.
     applyBeehive(p, ecosystemQueen(), material, true);
 
     for (int flower = 0; flower < 6; ++flower) {
@@ -660,6 +660,7 @@ uint frontierBaseMaterial(ivec2 p) {
 
 uint materialForScene(uint scene, ivec2 p) {
     if (!insideAuthoredLocal(p)) return MAT_EMPTY;
+    if (p.y >= AUTHORED_WORLD_CELLS.y - BRICK_SIZE) return MAT_STONE;
     if (scene == SCENE_SANDBOX) return sandboxMaterial(p);
     if (scene == SCENE_BLANK) return MAT_EMPTY;
     if (scene == SCENE_VOLCANO) return volcanoMaterial(p);
@@ -693,7 +694,7 @@ bool looseAuthoredTerrain(uint scene, ivec2 p, uint material) {
 bool beehiveSupportForScene(uint scene, ivec2 p) {
     if (scene != SCENE_SANDBOX && scene != SCENE_ECOSYSTEM) return false;
     ivec2 queen = scene == SCENE_SANDBOX ? sandboxQueen() : ecosystemQueen();
-    return beehiveSupportOffset(p - queen);
+    return beehiveSupportCell(queen, p - queen);
 }
 
 bool authoredStructuralCell(uint scene, ivec2 p, uint material) {
@@ -704,8 +705,8 @@ bool authoredStructuralCell(uint scene, ivec2 p, uint material) {
                            material == MAT_SALT || material == MAT_ICE;
     return (isBlockCapable(material) || authoredTerrain) &&
            !looseAuthoredCargo(scene, p, material) &&
-           !looseAuthoredTerrain(scene, p, material) &&
-           !beehiveSupportForScene(scene, p);
+           !looseAuthoredTerrain(scene, p, material);
+
 }
 
 void main() {
@@ -722,7 +723,9 @@ void main() {
                          (substrateSample.y & TERRAIN_FLAG_SAND_TRAP) != 0u;
     // A non-Blank authored scene owns its entire 640x360 envelope, including
     // intentional Air rooms and basins. Only Blank inherits substrate inside it.
-    bool useSubstrate = substrateCell && (!authored || scene == SCENE_BLANK);
+    bool authoredFoundation = authored && local.y >= AUTHORED_WORLD_CELLS.y - BRICK_SIZE;
+    bool useSubstrate = substrateCell &&
+        (!authored || (scene == SCENE_BLANK && !authoredFoundation));
     if (useSubstrate) material = substrateMaterial;
     if (material == MAT_EMPTY) material = MAT_ATMOSPHERE;
     bool structural = useSubstrate

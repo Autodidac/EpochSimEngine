@@ -2027,7 +2027,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                              y >= origin_y && y < origin_y + map_height;
                 // Imported non-Blank artwork owns intentional empty rooms just
                 // like generated reset scenes. Blank alone inherits substrate.
-                if (inside_authored && scene != Scene::blank) continue;
+                const bool authored_foundation = inside_authored &&
+                    y >= origin_y + map_height - authored_scene_foundation_cells;
+                if (inside_authored && scene != Scene::blank && !authored_foundation) continue;
                 world_cells[index] = make_resident_substrate_cell(
                     material, static_cast<std::uint32_t>(index));
             }
@@ -2082,8 +2084,23 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             for (std::size_t index = 0u; index < cells.size(); ++index)
                 materials[index] = cells[index].material;
             normalize_pre_pr19_hives(materials, config.grid_width, config.grid_height, authored_map_origin_x(), authored_map_origin_y(), scene);
+            const auto queen_x = static_cast<std::int32_t>(authored_map_origin_x()) + 512;
+            const auto queen_y = static_cast<std::int32_t>(authored_map_origin_y()) +
+                (scene == Scene::sandbox ? 234 : 232);
             for (std::size_t index = 0u; index < cells.size(); ++index) {
-                cells[index].material = materials[index];
+                const auto normalized = materials[index];
+                if (cells[index].material != normalized) {
+                    cells[index] = make_fill_cell(normalized, static_cast<std::uint32_t>(index));
+                } else {
+                    cells[index].material = normalized;
+                }
+                const auto x = static_cast<std::int32_t>(index % config.grid_width);
+                const auto y = static_cast<std::int32_t>(index / config.grid_width);
+                if (normalized == static_cast<std::uint32_t>(Material::wood) &&
+                    fix29_hive_support_cell(queen_x, queen_y, x, y)) {
+                    cells[index].aux |= fill_aux_structural | fill_aux_supported;
+                    cells[index].aux = (cells[index].aux & ~fill_aux_state_mask) | 255u;
+                }
             }
         }
         upload_scene_cells(cells);
@@ -3444,15 +3461,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 return std::pair{units, halves};
             };
 
-            const auto pre_pr19_hive_entropy = [&](const Scene scene,
-                                                   const std::int32_t dx,
-                                                   const std::int32_t dy) {
-                const auto queen_y = scene == Scene::sandbox ? 234u : 232u;
-                const auto x = static_cast<std::uint32_t>(static_cast<std::int32_t>(512) + dx);
-                const auto y = static_cast<std::uint32_t>(static_cast<std::int32_t>(queen_y) + dy);
-                return pre_pr19_hive_hash((y * pre_pr19_hive_canonical_width + x) ^
-                                          pre_pr19_hive_canonical_seed);
-            };
+
             const auto check_pre_pr19_hive = [&](const std::string_view name,
                                                  const Scene scene) {
                 immediate_submit([&](const VkCommandBuffer command_buffer) {
@@ -3467,19 +3476,24 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 std::uint32_t honey = 0u;
                 std::uint32_t pollen = 0u;
                 std::uint32_t empty_chamber = 0u;
-                for (std::int32_t dy = -16; dy <= 11; ++dy) {
-                    for (std::int32_t dx = -37; dx <= 29; ++dx) {
+                for (std::int32_t dy = -18; dy <= 11; ++dy) {
+                    for (std::int32_t dx = -40; dx <= 31; ++dx) {
                         const auto part = classify_pre_pr19_hive_cell(
-                            dx, dy, pre_pr19_hive_entropy(scene, dx, dy));
+                            dx, dy, canonical_pre_pr19_hive_entropy(dx, dy),
+                            static_cast<std::int32_t>(queen_x),
+                            static_cast<std::int32_t>(queen_y));
                         const auto x = static_cast<std::uint32_t>(
                             static_cast<std::int32_t>(queen_x) + dx);
                         const auto y = static_cast<std::uint32_t>(
                             static_cast<std::int32_t>(queen_y) + dy);
-                        const auto actual = static_cast<Material>(cells[index_of(x, y)].material);
+                        const auto& actual_cell = cells[index_of(x, y)];
+                        const auto actual = static_cast<Material>(actual_cell.material);
                         bool matches = true;
                         switch (part) {
                         case HivePart::support:
-                            matches = actual == Material::wood;
+                            matches = actual == Material::wood &&
+                                (actual_cell.aux & (fill_aux_structural | fill_aux_supported)) ==
+                                    (fill_aux_structural | fill_aux_supported);
                             ++support;
                             break;
                         case HivePart::shell:
@@ -3509,9 +3523,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         if (!matches) ++mismatches;
                     }
                 }
+                const auto expected_support = scene == Scene::sandbox ? 576u : 560u;
                 append(std::string{name},
-                       mismatches == 0u && shell > 0u && support == 268u &&
-                           honey > 0u && pollen > 0u && empty_chamber > 0u,
+                       mismatches == 0u && shell == 237u && support == expected_support &&
+                           honey == 27u && pollen == 30u && empty_chamber == 16u,
                        "mismatches=" + std::to_string(mismatches) +
                            " support=" + std::to_string(support) +
                            " shell=" + std::to_string(shell) +
@@ -3610,20 +3625,67 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             {
                 auto cells = acceptance_atmosphere_world();
                 seed_rect(cells, Material::stone, 104u, 161u, 8u, 1u);
-                seed_rect(cells, Material::water, 108u, 160u, 3u, 1u);
+                seed_rect(cells, Material::water, 109u, 160u, 2u, 1u);
                 upload_scene_cells(cells);
                 run_acceptance_horizontal_pass(state, 0);
                 const auto result = download_scene_cells();
                 const auto [units, halves] = water_half_units(result);
                 append("supplied_ledge_creates_half_water",
-                       units == 6u && halves == 2u &&
-                           count_material(result, Material::water) == 4u,
+                       units == 4u && halves == 2u &&
+                           count_material(result, Material::water) == 3u,
                        "half_units=" + std::to_string(units) +
                            " halves=" + std::to_string(halves) +
                            " water_cells=" +
                            std::to_string(count_material(result, Material::water)));
             }
 
+            {
+                auto cells = acceptance_atmosphere_world();
+                seed_rect(cells, Material::stone, 104u, 161u, 8u, 1u);
+                cells[index_of(110u, 160u)] = make_fill_cell(
+                    material_id(Material::water), static_cast<std::uint32_t>(index_of(110u, 160u)));
+                upload_scene_cells(cells);
+                for (std::int32_t pass = 0; pass < 4; ++pass)
+                    run_acceptance_horizontal_pass(state, pass & 1);
+                const auto result = download_scene_cells();
+                bool crossed_ledge = false;
+                for (std::uint32_t x = 112u; x < 120u; ++x)
+                    crossed_ledge = crossed_ledge ||
+                        result[index_of(x, 160u)].material == material_id(Material::water);
+                append("full_water_crosses_unsupported_ledge",
+                       count_material(result, Material::water) == 1u && crossed_ledge,
+                       "water_cells=" + std::to_string(count_material(result, Material::water)) +
+                           " crossed=" + std::string{crossed_ledge ? "true" : "false"});
+            }
+
+            for (std::uint32_t scene_index = 0u; scene_index < scene_count; ++scene_index) {
+                const auto scene = static_cast<Scene>(scene_index);
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    record_reset(command_buffer, scene_index);
+                });
+                const auto cells = download_scene_cells();
+                const auto map_width = (std::min)(config.grid_width, pre_expansion_world_width);
+                const auto map_height = (std::min)(config.grid_height, pre_expansion_world_height);
+                const auto origin_x = authored_map_origin_x();
+                const auto origin_y = authored_map_origin_y();
+                const auto first_foundation_y = origin_y + map_height - authored_scene_foundation_cells;
+                std::uint32_t stone = 0u;
+                std::uint32_t structural = 0u;
+                for (std::uint32_t y = first_foundation_y; y < origin_y + map_height; ++y) {
+                    for (std::uint32_t x = origin_x; x < origin_x + map_width; ++x) {
+                        const auto& cell = cells[index_of(x, y)];
+                        stone += cell.material == material_id(Material::stone) ? 1u : 0u;
+                        structural += (cell.aux & (fill_aux_structural | fill_aux_supported)) ==
+                            (fill_aux_structural | fill_aux_supported) ? 1u : 0u;
+                    }
+                }
+                const auto expected = map_width * authored_scene_foundation_cells;
+                append("stone_foundation_" + std::string{scene_name(scene)},
+                       stone == expected && structural == expected,
+                       "stone=" + std::to_string(stone) +
+                           " structural=" + std::to_string(structural) +
+                           " expected=" + std::to_string(expected));
+            }
             check_pre_pr19_hive("sandbox_hard_coded_hive", Scene::sandbox);
             check_pre_pr19_hive("ecosystem_hard_coded_hive", Scene::ecosystem);
         }
@@ -3693,6 +3755,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             if (width == 0 || height == 0) {
                 std::this_thread::sleep_for(std::chrono::milliseconds{16});
                 next_frame = Clock::now();
+                next_simulation = next_frame;
                 fps_window_start = next_frame;
                 rendered_frames = 0;
                 continue;
@@ -3703,16 +3766,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             }
 
             const auto before_draw = Clock::now();
-            constexpr std::uint32_t max_catch_up_ticks = 4u;
-            constexpr std::uint32_t max_time_debt_ticks = 8u;
-            if (before_draw > next_simulation + simulation_interval * max_time_debt_ticks)
-                next_simulation =
-                    before_draw - simulation_interval * max_time_debt_ticks;
-            std::uint32_t simulation_ticks = 0u;
-            while (before_draw >= next_simulation &&
-                   simulation_ticks < max_catch_up_ticks) {
-                ++simulation_ticks;
+            const bool simulation_due = before_draw >= next_simulation;
+            const std::uint32_t simulation_ticks = simulation_due ? 1u : 0u;
+            if (simulation_due) {
                 next_simulation += simulation_interval;
+                constexpr std::uint32_t max_time_debt_ticks = 2u;
+                if (before_draw > next_simulation + simulation_interval * max_time_debt_ticks)
+                    next_simulation = before_draw + simulation_interval;
             }
 
             if (!draw_frame(state, simulation_ticks)) {

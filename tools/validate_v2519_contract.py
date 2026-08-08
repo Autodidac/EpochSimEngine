@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v2.5.19 scenic full-tile, live-tool, player, and fixed-step recovery."""
+"""Validate the v2.5.20 scenic full-tile, live-tool, player, and fixed-step recovery."""
 
 from pathlib import Path
 
@@ -21,17 +21,17 @@ def reject(path: str, token: str) -> None:
 
 
 # Stable, visible native release contract.
-require("CMakeLists.txt", "VERSION 2.5.19")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.19")
+require("CMakeLists.txt", "VERSION 2.5.20")
+require("RELEASE_NOTES.md", "# SandHybrid v2.5.20")
 for token in (
-    "SandHybrid-Windows-x64-v2.5.19",
-    "SandHybrid-Linux-x64-v2.5.19",
-    "refs/tags/v2.5.19",
-    "gh release create v2.5.19",
+    "SandHybrid-Windows-x64-v2.5.20",
+    "SandHybrid-Linux-x64-v2.5.20",
+    "refs/tags/v2.5.20",
+    "gh release create v2.5.20",
     "--verify-tag",
 ):
     require(".github/workflows/ci-release.yml", token)
-reject(".github/workflows/ci-release.yml", "v2.5.19-test")
+reject(".github/workflows/ci-release.yml", "v2.5.20-test")
 reject(".github/workflows/ci-release.yml", "--prerelease")
 
 # Every authored scene owns a full 8x8 surface row and intentional interior air.
@@ -44,7 +44,7 @@ for token in (
 for token in (
     "sceneSurfaceTileRow",
     "scene == SCENE_FRONTIER_BASE) return 17",
-    "(!authored || scene == SCENE_BLANK)",
+    "scene == SCENE_BLANK && !authoredFoundation",
 ):
     require("shaders/reset.comp", token)
 require("src/vulkan_renderer.cpp", "inside_authored && scene != Scene::blank")
@@ -86,11 +86,12 @@ for token in (
 ):
     require("shaders/macro_move.comp", token)
 
-# Fixed 60 Hz ticks, bounded catch-up, and once-only input edges make simulation frame independent.
+# Fixed 60 Hz ticks, one-submit debt shedding, and once-only input edges make simulation frame independent.
 for token in (
-    "scheduled_simulation_ticks",
-    "max_catch_up_ticks = 4u",
-    "max_time_debt_ticks = 8u",
+    "const bool simulation_due = before_draw >= next_simulation",
+    "const std::uint32_t simulation_ticks = simulation_due ? 1u : 0u",
+    "max_time_debt_ticks = 2u",
+    "next_simulation = before_draw + simulation_interval",
     "consume_one_shots",
     "const bool deposit_pressed = consume_one_shots",
 ):
@@ -101,7 +102,26 @@ for token in (
     "fixed simulation ticks",
 ):
     require("missioncache.md", token)
-for token in ("aligned `8x8`", "Designer exposes an explicit sidebar `CLEAR`", "Fixed 60 Hz simulation ticks"):
+for token in ("aligned `8x8`", "Designer exposes an explicit sidebar `CLEAR`", "A presented frame submits at most one complete tick"):
     require("AGENTS.md", token)
 
-print("v2.5.19 scenic full-tile, live-tool, player, macro cadence, and fixed-step contracts valid.")
+# Every release carries the complete current EpochGui dependency and an exact upstream pin.
+for token in (
+    "d8decc9ee2e73e0009f1e8c49d86a52db6748b28",
+    "v0.88.75",
+    "complete vendored EpochGui dependency",
+):
+    require("third_party/EpochGui/SNAPSHOT.md", token)
+for path in (
+    "third_party/EpochGui/include/gui/panel_host.hpp",
+    "third_party/EpochGui/include/gui/text_control.hpp",
+    "third_party/EpochGui/modules/epoch.gui.ixx",
+    "third_party/EpochGui/src/epochgui/panel_host.cpp",
+    "third_party/EpochGui/tests/text_control_tests.cpp",
+):
+    if not (ROOT / path).is_file():
+        raise SystemExit(f"missing complete EpochGui dependency file: {path}")
+for token in ("EPOCHGUI_BUILD_MODULES", "add_library(EpochGui STATIC", "add_library(EpochGui INTERFACE"):
+    require("third_party/EpochGui/CMakeLists.txt", token)
+require("AGENTS.md", "Never silently retain an older EpochGui pin")
+print("v2.5.20 scenic full-tile, live-tool, player, macro cadence, and fixed-step contracts valid.")

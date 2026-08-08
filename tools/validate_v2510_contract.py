@@ -9,7 +9,7 @@ def require(path: str, needle: str) -> None:
 
 
 require("include/sandhybrid/world_layout.hpp", "Continue each authored scene's own surface height")
-require("shaders/reset.comp", "substrateCell && (!authored || scene == SCENE_BLANK)")
+require("shaders/reset.comp", "scene == SCENE_BLANK && !authoredFoundation")
 require("include/sandhybrid/world_layout.hpp", "resident_transition_material")
 require("include/sandhybrid/terrain_generation.hpp", "neighboring_vein_material")
 require("include/sandhybrid/terrain_generation.hpp", "rubble_pocket_selected")

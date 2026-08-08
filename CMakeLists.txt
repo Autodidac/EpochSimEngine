@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SandHybrid VERSION 2.5.19 LANGUAGES CXX)
+project(SandHybrid VERSION 2.5.20 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)

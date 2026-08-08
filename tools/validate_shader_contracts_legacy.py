@@ -173,9 +173,9 @@ def main() -> int:
                     errors.append(f"legacy alias/token remains in {source_path.relative_to(ROOT)}: {token}")
 
     beehive_glsl = (SHADERS / "beehive.glsl").read_text(encoding="utf-8")
-    for token in ("BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 25", "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 92", "BEEHIVE_EXIT_MAX_X = 10", "BEEHIVE_SUPPORT_MIN_X = -37", "beehivePrefabMaterial"):
+    for token in ("BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 28", "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 108", "BEEHIVE_EXIT_MAX_X = 12", "BEEHIVE_SUPPORT_WIDTH = 72", "beehivePrefabMaterial"):
         if token not in beehive_glsl:
-            errors.append(f"pre-PR19 Fix36 Beehive contract missing {token!r}")
+            errors.append(f"Fix29 Ecosystem Beehive contract missing {token!r}")
 
     scene_image_cpp = (ROOT / "src/scene_image.cpp").read_text(encoding="utf-8")
     move = (SHADERS / "move.comp").read_text(encoding="utf-8")
@@ -197,12 +197,12 @@ def main() -> int:
         "bee_authored_home_slot_bit",
         "normalize_pre_pr19_hives",
         "pre_pr19_beehive_material",
-        "beehive_shell_min_radius_squared = 25",
-        "beehive_shell_max_radius_squared = 92",
-        "beehive_exit_max_x = 10",
+        "beehive_shell_min_radius_squared = 28",
+        "beehive_shell_max_radius_squared = 108",
+        "beehive_exit_max_x = 12",
     ):
         if token not in scene_image_cpp:
-            errors.append(f"loaded pre-PR19 Fix36 Beehive contract missing {token!r}")
+            errors.append(f"loaded Fix29 Ecosystem Beehive contract missing {token!r}")
     for token in (
         "wetGranularSinkMove",
         "fullWaterSplitSupplied",
@@ -224,7 +224,7 @@ def main() -> int:
 
     fullscreen_medium = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
     for token in ("halfWaterAhead", "isHalfWaterCell(a) && isOpenGas(b)",
-                  "Cell reserve = sampleAt(sourcePosition - ivec2(direction * 2, 0));"):
+                  "return waterHalfUnits(trailing) >= 1u;"):
         if token not in move:
             errors.append(f"half-water fine-attraction/supply contract missing {token!r}")
     for token in ("bool settledHalfWater = halfWater && !moving",
