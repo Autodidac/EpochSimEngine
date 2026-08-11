@@ -310,7 +310,10 @@ struct HabitatTransaction final {
 
 inline constexpr std::uint32_t pre_pr19_hive_canonical_width = 640u;
 inline constexpr std::int32_t pre_pr19_hive_canonical_queen_x = 512;
-inline constexpr std::int32_t pre_pr19_hive_canonical_queen_y = 232;
+inline constexpr std::int32_t fix29_hive_sandbox_queen_y = 234;
+inline constexpr std::int32_t fix29_hive_ecosystem_queen_y = 232;
+inline constexpr std::int32_t pre_pr19_hive_canonical_queen_y =
+    fix29_hive_ecosystem_queen_y;
 inline constexpr std::uint32_t pre_pr19_hive_canonical_seed = 0xD17A5EEDu;
 inline constexpr std::int32_t fix29_hive_support_tile_size = 8;
 inline constexpr std::int32_t fix29_hive_support_width = 72;
@@ -326,13 +329,22 @@ inline constexpr std::int32_t fix29_hive_support_height = 8;
     return value;
 }
 
+[[nodiscard]] constexpr std::uint32_t fix29_hive_entropy(
+    const std::int32_t queen_x,
+    const std::int32_t queen_y,
+    const std::int32_t dx,
+    const std::int32_t dy) noexcept {
+    const auto x = static_cast<std::uint32_t>(queen_x + dx);
+    const auto y = static_cast<std::uint32_t>(queen_y + dy);
+    return pre_pr19_hive_hash(
+        (y * pre_pr19_hive_canonical_width + x) ^ pre_pr19_hive_canonical_seed);
+}
+
 [[nodiscard]] constexpr std::uint32_t canonical_pre_pr19_hive_entropy(
     const std::int32_t dx,
     const std::int32_t dy) noexcept {
-    const auto x = static_cast<std::uint32_t>(pre_pr19_hive_canonical_queen_x + dx);
-    const auto y = static_cast<std::uint32_t>(pre_pr19_hive_canonical_queen_y + dy);
-    return pre_pr19_hive_hash(
-        (y * pre_pr19_hive_canonical_width + x) ^ pre_pr19_hive_canonical_seed);
+    return fix29_hive_entropy(
+        pre_pr19_hive_canonical_queen_x, pre_pr19_hive_canonical_queen_y, dx, dy);
 }
 
 enum class HivePart : std::uint8_t {

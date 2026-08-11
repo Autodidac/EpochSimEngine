@@ -1,3 +1,4 @@
+#include "sandhybrid/actor_medium.hpp"
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/scene.hpp"
 #include "sandhybrid/scene_image.hpp"
@@ -106,45 +107,73 @@ int main() {
     if (migrated[0u].material != static_cast<std::uint32_t>(sandhybrid::Material::atmosphere)) return 12;
     if (migrated[7u * legacy_width + 7u].material != static_cast<std::uint32_t>(sandhybrid::Material::empty)) return 13;
 
-    // Loaded-map normalization owns the one hard-coded scene-local hive rather
-    // than treating every arbitrary queen in a user image as a prefab anchor.
+    // Loaded-map normalization owns the hard-coded scene-local hives. Validate
+    // every expected cell, because Fix29 Sandbox and Ecosystem use different
+    // actual map-row entropy even when aggregate body geometry is identical.
     constexpr std::uint32_t canonical_width = 640u;
     constexpr std::uint32_t canonical_height = 360u;
-    std::vector<std::uint32_t> canonical_hive(
-        canonical_width * canonical_height,
-        static_cast<std::uint32_t>(sandhybrid::Material::empty));
-    sandhybrid::normalize_pre_pr19_hives(
-        canonical_hive, canonical_width, canonical_height, 0u, 0u,
-        sandhybrid::Scene::sandbox);
-    constexpr std::int32_t canonical_queen_x = 512;
-    constexpr std::int32_t canonical_queen_y = 234;
-    std::uint32_t support_count = 0u;
-    std::uint32_t shell_count = 0u;
-    std::uint32_t honey_count = 0u;
-    std::uint32_t pollen_count = 0u;
-    std::uint32_t chamber_empty_count = 0u;
-    for (std::int32_t dy = -18; dy <= 11; ++dy) {
-        for (std::int32_t dx = -40; dx <= 31; ++dx) {
-            const auto material = static_cast<sandhybrid::Material>(canonical_hive[
-                static_cast<std::size_t>(canonical_queen_y + dy) * canonical_width +
-                static_cast<std::size_t>(canonical_queen_x + dx)]);
-            const auto radius_squared = dx * dx + dy * dy;
-            if (dy >= -18 && dy <= -11) support_count +=
-                material == sandhybrid::Material::wood ? 1u : 0u;
-            if (radius_squared >= 24 && radius_squared < 88) shell_count +=
-                material == sandhybrid::Material::beehive ? 1u : 0u;
-            if (radius_squared < 24 && !(dx == 0 && dy == 0) &&
-                !(dx >= 1 && dx <= 10 && std::abs(dy) <= 1)) {
-                honey_count += material == sandhybrid::Material::honey ? 1u : 0u;
-                pollen_count += material == sandhybrid::Material::pollen ? 1u : 0u;
-                chamber_empty_count += material == sandhybrid::Material::empty ? 1u : 0u;
+    const auto exact_hive = [&](const sandhybrid::Scene scene,
+                                const std::int32_t hive_queen_y,
+                                const std::uint32_t expected_support,
+                                const std::uint32_t expected_honey,
+                                const std::uint32_t expected_pollen,
+                                const std::uint32_t expected_empty) {
+        std::vector<std::uint32_t> cells(
+            canonical_width * canonical_height,
+            static_cast<std::uint32_t>(sandhybrid::Material::empty));
+        sandhybrid::normalize_pre_pr19_hives(
+            cells, canonical_width, canonical_height, 0u, 0u, scene);
+
+        std::uint32_t support = 0u;
+        std::uint32_t shell = 0u;
+        std::uint32_t honey = 0u;
+        std::uint32_t pollen = 0u;
+        std::uint32_t chamber_empty = 0u;
+        for (std::int32_t dy = -18; dy <= 11; ++dy) {
+            for (std::int32_t dx = -40; dx <= 31; ++dx) {
+                const auto part = sandhybrid::classify_pre_pr19_hive_cell(
+                    dx, dy, sandhybrid::fix29_hive_entropy(512, hive_queen_y, dx, dy),
+                    512, hive_queen_y);
+                auto expected = sandhybrid::Material::empty;
+                switch (part) {
+                case sandhybrid::HivePart::support:
+                    expected = sandhybrid::Material::wood;
+                    ++support;
+                    break;
+                case sandhybrid::HivePart::shell:
+                    expected = sandhybrid::Material::beehive;
+                    ++shell;
+                    break;
+                case sandhybrid::HivePart::queen:
+                    expected = sandhybrid::Material::queen_bee;
+                    break;
+                case sandhybrid::HivePart::honey:
+                    expected = sandhybrid::Material::honey;
+                    ++honey;
+                    break;
+                case sandhybrid::HivePart::pollen:
+                    expected = sandhybrid::Material::pollen;
+                    ++pollen;
+                    break;
+                case sandhybrid::HivePart::chamber:
+                    ++chamber_empty;
+                    break;
+                case sandhybrid::HivePart::exit:
+                case sandhybrid::HivePart::empty:
+                    break;
+                }
+                const auto actual = static_cast<sandhybrid::Material>(cells[
+                    static_cast<std::size_t>(hive_queen_y + dy) * canonical_width +
+                    static_cast<std::size_t>(512 + dx)]);
+                if (actual != expected) return false;
             }
         }
-    }
-    if (canonical_hive[canonical_queen_y * canonical_width + canonical_queen_x] !=
-            static_cast<std::uint32_t>(sandhybrid::Material::queen_bee) ||
-        support_count != 576u || shell_count != 193u || honey_count != 18u ||
-        pollen_count != 22u || chamber_empty_count != 16u)
+        return support == expected_support && shell == 193u &&
+               honey == expected_honey && pollen == expected_pollen &&
+               chamber_empty == expected_empty;
+    };
+    if (!exact_hive(sandhybrid::Scene::sandbox, 234, 576u, 28u, 20u, 8u) ||
+        !exact_hive(sandhybrid::Scene::ecosystem, 232, 571u, 18u, 22u, 16u))
         return 15;
 
     std::filesystem::remove_all(root, cleanup_error);

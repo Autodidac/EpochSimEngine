@@ -33,14 +33,12 @@ bool beehiveSupportCell(ivec2 queen, ivec2 offset) {
            p.y >= origin.y && p.y < origin.y + BEEHIVE_SUPPORT_HEIGHT;
 }
 
-uint beehivePrefabEntropy(ivec2 offset) {
-    ivec2 canonical = BEEHIVE_CANONICAL_ECOSYSTEM_QUEEN + offset;
-    uint canonicalIndex = uint(canonical.y) * BEEHIVE_CANONICAL_WIDTH + uint(canonical.x);
-    return hash32(canonicalIndex ^ BEEHIVE_CANONICAL_SEED);
-}
-
 uint beehivePrefabEntropy(ivec2 queen, ivec2 offset) {
-    return beehivePrefabEntropy(offset);
+    // Fix29 hashes the actual 640-wide map cell. The Sandbox and Ecosystem
+    // queens differ by two rows, so sharing an offset-only pattern is incorrect.
+    ivec2 cell = queen + offset;
+    uint cellIndex = uint(cell.y) * BEEHIVE_CANONICAL_WIDTH + uint(cell.x);
+    return hash32(cellIndex ^ BEEHIVE_CANONICAL_SEED);
 }
 
 // MATERIAL_COUNT means the position belongs to the surrounding SandHybrid swarm.

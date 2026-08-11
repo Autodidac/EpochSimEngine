@@ -228,7 +228,7 @@ def main() -> int:
         if token not in move:
             errors.append(f"half-water fine-attraction/supply contract missing {token!r}")
     for token in ("bool settledHalfWater = halfWater && !moving",
-                  "(!macroMovable || fineFallbackMedium) && !settledHalfWater",
+                  "!settledFineMedium && !settledHalfWater",
                   "settledMedium || settledFineMedium || settledHalfWater",
                   "!mediumBreakup && !productiveMediumMove"):
         if token not in tiles:

@@ -332,9 +332,11 @@ Uniform 8x8 material regions can move as 64-cell macro-cells using the same fall
 Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and solid-supported pre-fall droplets that cannot hop along water edges or crawl after falling. See `HALF_WATER.md`.
 
 
-## v2.5.21 systems, scene, machinery, and presentation recovery
+## v2.5.22 systems, scene, machinery, and presentation recovery
 
-SandHybrid v2.5.21 is the current stable release target, with native Windows/Linux packages, SHA-256 files, and no prerelease marker.
+SandHybrid v2.5.22 is the current stable release target, with native Windows/Linux packages, SHA-256 files, and no prerelease marker.
+
+This recovery uses the actual scene-local Fix29 hive hash in Sandbox, Ecosystem, tool placement, and load normalization. Liquid work is single-spend per fixed tick; Half Water keeps its conserved fall/merge/clear-gap/supplied-drip rules, while settled full-Water surfaces choose deterministic nearest outlets and sleep without residual fine scheduling.
 
 The supplied 2026-08-04 Volcano silhouette now anchors the scene: a broad left lake, smoother layered underground, far-right Stone cone, central Lava throat and chamber, and bottom Lava return. Engineering, Industry, and Gold Mine recover active experiment layouts and a visible water-fed ten-percent Sluice path.
 

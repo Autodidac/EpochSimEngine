@@ -247,10 +247,10 @@ bool brickStair(ivec2 p, ivec2 startBrick, int count, bool risingRight) {
 
 ivec2 sandboxQueen() { return ivec2(AUTHORED_WORLD_CELLS.x * 4 / 5, AUTHORED_WORLD_CELLS.y - 126); }
 
-// Canonical Fix29 Ecosystem-map hive body/content shared by both maps and the tool.
+// Exact Fix29 body/content; entropy is owned by each actual scene-local cell.
 void applyBeehive(ivec2 p, ivec2 queen, inout uint material, bool includeFormation) {
     ivec2 offset = p - queen;
-    uint prefab = beehivePrefabMaterial(queen, offset, beehivePrefabEntropy(offset));
+    uint prefab = beehivePrefabMaterial(queen, offset, beehivePrefabEntropy(queen, offset));
     if (prefab != MATERIAL_COUNT) material = prefab;
     if (includeFormation) {
         int slot = beeFormationSlotFromOffset(offset);

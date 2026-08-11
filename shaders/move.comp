@@ -458,6 +458,7 @@ bool movementAllows(Cell cell, uint randomValue) {
     if (macroExclusiveCell(cell) && (movePc.reserved1 & 2u) == 0u) return false;
     if (isLooseSolid(cell)) return (randomValue & 1u) == 0u;
     if (isCellLiquid(cell)) {
+        if ((cell.aux & AUX_MOVED) != 0u) return false;
         uint interval = flowInterval(cell);
         return interval <= 1u || (randomValue % interval) == 0u;
     }
@@ -591,15 +592,15 @@ int liquidSpreadReach(uint material) {
     return 7;
 }
 
-bool liquidPathLeadsToDrop(ivec2 targetPosition, int direction, Cell source) {
+int liquidDropDistance(ivec2 sourcePosition, int direction, Cell source) {
     int reach = liquidSpreadReach(source.material);
     for (int offset = 1; offset <= 7; ++offset) {
         if (offset > reach) break;
-        ivec2 candidate = targetPosition + ivec2(direction * offset, 0);
-        if (!moveInside(candidate) || !isOpenGas(moveAt(candidate))) return false;
-        if (canCellFallInto(source, moveAt(candidate + ivec2(0, 1)))) return true;
+        ivec2 candidate = sourcePosition + ivec2(direction * offset, 0);
+        if (!moveInside(candidate) || !isOpenGas(moveAt(candidate))) return 0;
+        if (canCellFallInto(source, moveAt(candidate + ivec2(0, 1)))) return offset;
     }
-    return false;
+    return 0;
 }
 
 bool liquidCanSpread(ivec2 sourcePosition, ivec2 targetPosition,
@@ -618,7 +619,15 @@ bool liquidCanSpread(ivec2 sourcePosition, ivec2 targetPosition,
     if (sourcePressure != targetPressure) return sourcePressure > targetPressure;
 
     int direction = targetPosition.x > sourcePosition.x ? 1 : -1;
-    if (liquidPathLeadsToDrop(targetPosition, direction, source)) return true;
+    int forwardDrop = liquidDropDistance(sourcePosition, direction, source);
+    int oppositeDrop = liquidDropDistance(sourcePosition, -direction, source);
+    if (forwardDrop > 0) {
+        // Prefer the nearest outlet. A rightward tie is deterministic and keeps
+        // pair dispatch order from flipping a surface cell back and forth.
+        return oppositeDrop == 0 || forwardDrop < oppositeDrop ||
+               (forwardDrop == oppositeDrop && direction > 0);
+    }
+    if (oppositeDrop > 0) return false;
 
     Cell behind = moveAt(sourcePosition - ivec2(direction, 0));
     Cell above = moveAt(sourcePosition + ivec2(0, -1));
@@ -1061,9 +1070,11 @@ void processVertical(ivec2 top, ivec2 bottom) {
     // first vertical opportunity, merges conservatively, and never reaches
     // generic liquid, salinity, density, actor, or reaction movement.
     if (isHalfWaterCell(a) && isHalfWaterCell(b) &&
+        ((a.aux | b.aux) & AUX_MOVED) == 0u &&
         mergeHalfWaterPair(bottom, top, b, a)) return;
     if (isHalfWaterCell(a)) {
-        if (canCellFallInto(a, b)) swapCells(top, bottom);
+        if ((a.aux & AUX_MOVED) == 0u && canCellFallInto(a, b))
+            swapCells(top, bottom);
         return;
     }
     if (isHalfWaterCell(b)) return;
@@ -1157,6 +1168,7 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
     uint randomValue = moveHash(sourcePosition, uint(movePc.phase) * 17u + 3u);
 
     if (isHalfWaterCell(source) && isHalfWaterCell(target) &&
+        ((source.aux | target.aux) & AUX_MOVED) == 0u &&
         mergeHalfWaterPair(targetPosition, sourcePosition, target, source)) return;
     if (isHalfWaterCell(source) || isHalfWaterCell(target)) return;
 
@@ -1254,19 +1266,22 @@ void processHorizontal(ivec2 left, ivec2 right) {
     // allowed only when gravity has no work for the moving half.
     if (isHalfWaterCell(a) || isHalfWaterCell(b)) {
         if (isHalfWaterCell(a) && isHalfWaterCell(b)) {
+            if (((a.aux | b.aux) & AUX_MOVED) != 0u) return;
             bool leftSupported = solidSupportsWaterAt(left);
             bool rightSupported = solidSupportsWaterAt(right);
             bool keepLeft = leftSupported != rightSupported
-                ? leftSupported : (randomValue & 1u) == 0u;
+                ? leftSupported : true;
             mergeHalfWaterPair(keepLeft ? left : right, keepLeft ? right : left,
                                keepLeft ? a : b, keepLeft ? b : a);
             return;
         }
         if (isHalfWaterCell(a) && isOpenGas(b) &&
+            (a.aux & AUX_MOVED) == 0u &&
             !canCellFallInto(a, sampleAt(left + ivec2(0, 1))) &&
             halfWaterAhead(left, 1)) {
             swapCells(left, right);
         } else if (isHalfWaterCell(b) && isOpenGas(a) &&
+                   (b.aux & AUX_MOVED) == 0u &&
                    !canCellFallInto(b, sampleAt(right + ivec2(0, 1))) &&
                    halfWaterAhead(right, -1)) {
             swapCells(left, right);

@@ -27,7 +27,7 @@ require("src/app.cpp", "material_workspace && epochengine::gui_lib::contains(lay
 require("src/app.cpp", "const bool over_map = map_view_enabled")
 require("src/vulkan_renderer.cpp", "make_map_overlay_viewport")
 require("shaders/fullscreen.frag", "bool mapSample = mapOverlayPixel()")
-require("src/vulkan_renderer.cpp", "std::array<std::int32_t, 15> phases")
+require("src/vulkan_renderer.cpp", "std::array<std::int32_t, 7> phases")
 if "source.age < 18u" in (ROOT / "shaders/move.comp").read_text(encoding="utf-8"):
     raise SystemExit("legacy liquid age friction remains")
 if "int(pc.width) * 2 / 3" in (ROOT / "shaders/reset.comp").read_text(encoding="utf-8"):

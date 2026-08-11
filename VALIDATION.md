@@ -85,14 +85,15 @@ The executable runs focused dispatches of the production tile, macro-movement, a
 
 This focused gate does not close broader leveling, perimeter ownership, wet granular, save/load, machinery, bee-lifecycle, or complete scene-cycle acceptance.
 
-## v2.5.21 stable release gates
+## v2.5.22 stable release gates
 
 - `tools/validate_v2513_contract.py` preserves the first-28 P0 recovery contracts.
 - `tools/validate_v2515_contract.py` retains the macro, Half Water, hive, cursor, Fill, paused-editing, and sidebar recovery baselines.
 - `tools/validate_v2516_contract.py` retains real Blueprint slots, exact transactional placement, paused character-scene editing, and honest sidebar rendering.
 - `tools/validate_v2517_contract.py` requires reserved Half Water state, one canonical Fix29 prefab entropy, the packaged Vulkan readback harness, high-DPI logical rendering, and a normal stable publication path.
 - `tools/validate_v2519_contract.py` requires scene-specific full-tile surfaces and authored-air ownership, Designer Clear, bounded Fill writes, supported breathable player recovery, two-tick macro cadence/cohesion, and one-submit fixed-step debt shedding.
-- 	ools/validate_v2521_contract.py requires the photographed compact hive across CPU/GPU/load contracts, all-scene player policy, Volcano/geology recovery, Actions and presentation-limit layout, fixed simulation pacing, static normal presentation, state-driven gas mixing, bounded debug sampling, conservative Sluice output, and the stable v2.5.21 publication path.
+- `tools/validate_v2521_contract.py` requires the photographed compact hive across CPU/GPU/load contracts, all-scene player policy, Volcano/geology recovery, Actions and presentation-limit layout, fixed simulation pacing, static normal presentation, state-driven gas mixing, bounded debug sampling, conservative Sluice output, and the stable v2.5.22 publication path.
+- `tools/validate_v2522_contract.py` requires exact scene-local Fix29 hive payloads, single-spend liquid movement, conserved Half Water behavior, zero-jitter settled surfaces, and result-based packaged Vulkan evidence.
 - `tools/validate_release_tree.py` rejects tracked packages, executables, compiled shaders, payload chunks, one-shot workflows, and versioned release-note fragments.
 - Windows and Linux full Release builds compile every shader, build with warnings as errors, run all CTests, install the package, archive it, audit its contents, and generate SHA-256 files.
 - Before publication, both fresh native packages must execute the Vulkan state-readback command successfully. Windows high-DPI capture must also show a paused committed edit beneath its cursor and no world ghost in the sidebar.

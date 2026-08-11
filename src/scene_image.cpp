@@ -112,10 +112,9 @@ void normalize_pre_pr19_hives_impl(std::vector<std::uint32_t>& materials,
         beehive_queen_y >= static_cast<std::int32_t>(height)) return;
 
     auto hive_entropy = [&](const std::int32_t offset_x,
-                           const std::int32_t offset_y) noexcept {
-        const auto x = static_cast<std::uint32_t>(pre_pr19_hive_canonical_queen_x + offset_x);
-        const auto y = static_cast<std::uint32_t>(pre_pr19_hive_canonical_queen_y + offset_y);
-        return pre_pr19_hive_hash((y * pre_pr19_hive_canonical_width + x) ^ pre_pr19_hive_canonical_seed);
+                            const std::int32_t offset_y) noexcept {
+        return fix29_hive_entropy(
+            beehive_scene_queen_x, beehive_scene_queen_y, offset_x, offset_y);
     };
 
     for (std::size_t index = 0u; index < materials.size(); ++index) {
@@ -173,16 +172,10 @@ void normalize_pre_pr19_hives_impl(std::vector<std::uint32_t>& materials,
                 offset_x, offset_y, hive_entropy(offset_x, offset_y));
             if (material == Material::count) continue;
             const auto existing = static_cast<Material>(materials[index]);
-            if (existing == Material::bee || existing == Material::ant ||
-                existing == Material::beetle)
-                continue;
-            if (material == Material::empty) {
-                if (legacy_hive_material(existing)) {
-                    materials[index] = static_cast<std::uint32_t>(Material::empty);
-                }
-            } else if (existing == Material::empty || legacy_hive_material(existing)) {
-                materials[index] = static_cast<std::uint32_t>(material);
-            }
+            // The body is authoritative over its aligned Wood perch. Preserve
+            // only a SandHybrid formation bee in an expected open cell.
+            if (material == Material::empty && existing == Material::bee) continue;
+            materials[index] = static_cast<std::uint32_t>(material);
         }
     }
 }

@@ -74,7 +74,7 @@ def main() -> int:
     errors: list[str] = []
     for token in (
         "int liquidSpreadReach(uint material)",
-        "bool liquidPathLeadsToDrop",
+        "int liquidDropDistance",
         "for (int offset = 1; offset <= 8; ++offset)",
         "Interior cells therefore settle",
         "releaseCollapsingStructural",
@@ -117,7 +117,7 @@ def main() -> int:
     ):
         require(tiles, token, errors, "fracture-armed tile contract")
 
-    require(renderer, "std::array<std::int32_t, 15> phases", errors,
+    require(renderer, "std::array<std::int32_t, 7> phases", errors,
             "six-pass liquid equalization contract")
 
     if errors:

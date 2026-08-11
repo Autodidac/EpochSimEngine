@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 2.5.22
+
+- Recovered the photographed Fix29 hive cell-for-cell using actual scene-local 640-wide entropy in Sandbox, Ecosystem, translated tool placement, and load normalization.
+- Replaced aggregate-only hive acceptance with exact CPU and packaged Vulkan comparisons, retaining the nine-tile structural Wood perch and SandHybrid bee behavior.
+- Reduced fine movement to one seven-phase fixed-tick transaction schedule and made liquid movement single-spend per tick.
+- Preserved conserved Half Water fall, adjacent merge, clear-gap attraction, supplied ledge split, and continuing drip behavior without generic Water wandering.
+- Removed surface hyper-jitter by choosing the nearest deterministic outlet and allowing motionless partial liquid to sleep without contradictory fine-active work.
+- Preserved complete v2.5.3 macro liquid/gas movement, blocked-packet fine fallback, all nine foundations, and the existing fixed-tick/UI/scene invariants.
+
 ## 2.5.21
 
 - Rebuilt Volcano around the supplied broad-lake/far-right-cone reference and smoothed underground transition bands while reducing decorative fractured tiles.

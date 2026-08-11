@@ -77,23 +77,28 @@ int main() {
         sandhybrid::HivePart::pollen) return 26;
     if (sandhybrid::classify_pre_pr19_hive_cell(0, 1, 0u) !=
         sandhybrid::HivePart::chamber) return 27;
-    if (sandhybrid::canonical_pre_pr19_hive_entropy(0, -3) != 0x1c707b05u)
+    if (sandhybrid::fix29_hive_entropy(512, 232, 0, -3) != 0x1c707b05u)
         return 28;
+    if (sandhybrid::fix29_hive_entropy(512, 234, 0, -3) != 0x04572a8au)
+        return 29;
     if (sandhybrid::classify_pre_pr19_hive_cell(
-            -1, -3, sandhybrid::canonical_pre_pr19_hive_entropy(-1, -3)) !=
-        sandhybrid::HivePart::chamber) return 29;
+            -1, -3, sandhybrid::fix29_hive_entropy(512, 232, -1, -3)) !=
+        sandhybrid::HivePart::chamber) return 30;
     if (sandhybrid::classify_pre_pr19_hive_cell(
-            -1, -1, sandhybrid::canonical_pre_pr19_hive_entropy(-1, -1)) !=
-        sandhybrid::HivePart::honey) return 30;
+            -1, -3, sandhybrid::fix29_hive_entropy(512, 234, -1, -3)) !=
+        sandhybrid::HivePart::honey) return 31;
     if (sandhybrid::classify_pre_pr19_hive_cell(
-            -2, -1, sandhybrid::canonical_pre_pr19_hive_entropy(-2, -1)) !=
-        sandhybrid::HivePart::pollen) return 31;
+            -1, -1, sandhybrid::fix29_hive_entropy(512, 232, -1, -1)) !=
+        sandhybrid::HivePart::honey) return 32;
+    if (sandhybrid::classify_pre_pr19_hive_cell(
+            -1, -1, sandhybrid::fix29_hive_entropy(512, 234, -1, -1)) !=
+        sandhybrid::HivePart::pollen) return 33;
     if (sandhybrid::hive_home_from_scene_origin({1280, 720}, {100, 50}) !=
-        sandhybrid::GridPosition{1380, 770}) return 32;
+        sandhybrid::GridPosition{1380, 770}) return 34;
 
     sandhybrid::LifeDebugCounters counters{};
     sandhybrid::account_actor(counters, bee);
     if (counters.species_counts[
-            sandhybrid::species_index(sandhybrid::ActorSpecies::bee)] != 1u) return 33;
+            sandhybrid::species_index(sandhybrid::ActorSpecies::bee)] != 1u) return 35;
     return 0;
 }

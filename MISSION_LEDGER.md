@@ -8,6 +8,19 @@
 - State: v2.5.21 publication is complete. EpochGui remains current at `d8decc9ee2e73e0009f1e8c49d86a52db6748b28` / v0.88.75. Native, package, runtime, checksum, tag, workflow, and public-release evidence is recorded below; no broader visual/runtime mission is marked COMPLETE from focused readback.
 - Public prerelease tags and `-test` release names are forbidden.
 
+## Active local post-v2.5.21 recovery
+
+- Authorization: local runnable release/package only. Do not push, tag, publish, or edit the existing GitHub release unless the user explicitly changes this instruction.
+- Scope: replace the false fixed-Ecosystem hive entropy with exact Fix29 scene-local chamber payloads in Sandbox `(512,234)`, Ecosystem `(512,232)`, placement, and normalization; then correct the systemic Water/Half Water movement, carrier, settling, and wake/sleep design that still produces surface hyper-jitter.
+- Gate: exact coordinate-by-coordinate hive contracts, deterministic conserved liquid equilibrium with a zero-motion observation window, all existing regression suites, and fresh serial native Windows and Linux Release install/package/runtime evidence. Count-only hive checks and static shader-token checks cannot close the affected missions.
+- Preservation: v2.5.3 macro eligibility/fallback, fixed ticks, pause/sidebar/cursor/Blueprint behavior, every non-COMPLETE mission, and unrelated user temporary files remain unchanged unless direct result-based evidence requires a scoped correction.
+- Implemented result: Fix29 entropy is actual scene-local in reset, placement, and normalization; liquid movement is one seven-phase, once-per-tick transaction with deterministic nearest-outlet selection and non-contradictory settled scheduling.
+- Runtime result: installed Windows RTX 5080 and Linux llvmpipe packages pass the same 21 production Vulkan readbacks, including three exact hive comparisons, conserved Half Water cases, zero-jitter Water equilibrium, macro/fallback, ledge flow, and all foundations.
+- Native result: Windows Release passes 33/33 CTests including all three supported EpochGui upstream tests; Linux Release passes 30/30 CTests and compiles all 12 shaders serially. The one-process llvmpipe first warmup completed before runtime acceptance.
+- Dependency audit: configured EpochGui fetch is externally blocked by GitHub account-suspension HTTP 403 and anonymous lookup returns 404. The available local `origin/main` (`d279747`) is older than the complete vendored v0.88.75 snapshot (`d8decc9ee2e73e0009f1e8c49d86a52db6748b28`), so the release retains the newer full snapshot and records that remote-current verification could not be completed.
+- Mission result: focused evidence is appended without changing any active mission to COMPLETE. Broader visual, save/load, colony, player, machinery, long-duration, performance, and cross-system criteria remain active.
+- Local stable artifacts: `SandHybrid-Windows-x64-v2.5.22.zip` audits 57 files and SHA-256 `d3ea0375efad8364f685e87ced30eacb07c66332cc765e5a3b2719babbf98bda`; `SandHybrid-Linux-x64-v2.5.22.tar.gz` audits 56 files and SHA-256 `59a74dd2f59486ad8f572f3ddcefafdcf5f17327f77cff54126f74a75063988d`. Both checksum files verify. No push, tag, or public release action occurred.
+
 ## v2.5.21 publication record
 
 - Scope: recover the supplied Volcano silhouette and smoother geology; Water/Half Water hang and rest rules; active Engineering/Industry/Gold Mine machinery and Sluice; sidebar Actions; static non-metal presentation and state-driven gases; pressure-conserving atmosphere/Vacuum mixing; reduced combustion yields; player recovery in every scene; the photographed historical compact hive and colony metadata; bounded debug telemetry; and 30/60/120/unlimited presentation caps over fixed 60 Hz simulation.

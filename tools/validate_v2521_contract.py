@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v2.5.21 systems, scene, atmosphere, UI, and release contracts."""
+"""Validate the v2.5.22 systems, scene, atmosphere, UI, and release contracts."""
 
 from pathlib import Path
 
@@ -14,26 +14,26 @@ def require(relative: str, *tokens: str) -> None:
     text = source(relative)
     missing = [token for token in tokens if token not in text]
     if missing:
-        raise SystemExit(f"{relative} missing v2.5.21 contract tokens: {missing}")
+        raise SystemExit(f"{relative} missing v2.5.22 contract tokens: {missing}")
 
 
 def reject(relative: str, *tokens: str) -> None:
     text = source(relative)
     found = [token for token in tokens if token in text]
     if found:
-        raise SystemExit(f"{relative} retains rejected v2.5.21 tokens: {found}")
+        raise SystemExit(f"{relative} retains rejected v2.5.22 tokens: {found}")
 
 
-require("CMakeLists.txt", "VERSION 2.5.21", "validate_v2521_contract.py")
+require("CMakeLists.txt", "VERSION 2.5.22", "validate_v2521_contract.py")
 require(
     ".github/workflows/ci-release.yml",
-    "refs/tags/v2.5.21",
-    "SandHybrid-Windows-x64-v2.5.21",
-    "SandHybrid-Linux-x64-v2.5.21",
-    "gh release create v2.5.21",
-    "group: sandhybrid-v2521-",
+    "refs/tags/v2.5.22",
+    "SandHybrid-Windows-x64-v2.5.22",
+    "SandHybrid-Linux-x64-v2.5.22",
+    "gh release create v2.5.22",
+    "group: sandhybrid-v2522-",
 )
-reject(".github/workflows/ci-release.yml", "v2.5.21-test", "prerelease: true")
+reject(".github/workflows/ci-release.yml", "v2.5.22-test", "prerelease: true")
 require(
     "missioncache.md",
     "## v2.5.21 systems, presentation, atmosphere, scene, and machinery recovery",
@@ -71,9 +71,9 @@ require(
 )
 require(
     "tests/scene_image_contract.cpp",
-    "shell_count != 193u",
-    "honey_count != 18u",
-    "pollen_count != 22u",
+    "exact_hive",
+    "Scene::sandbox, 234, 576u, 28u, 20u, 8u",
+    "Scene::ecosystem, 232, 571u, 18u, 22u, 16u",
 )
 reject("include/sandhybrid/actor_medium.hpp", "0xD17A55DEu", "dx <= 12", "radius_squared >= 28")
 
@@ -175,4 +175,4 @@ for token in (
     require("include/sandhybrid/scene_spawn.hpp", token)
 require("tests/scene_spawn_contract.cpp", "for (std::uint32_t index = 0u; index < scene_count; ++index)")
 
-print("v2.5.21 systems, scene, atmosphere, hive, UI, machinery, and release contracts valid.")
+print("v2.5.22 systems, scene, atmosphere, hive, UI, machinery, and release contracts valid.")

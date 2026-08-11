@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v2.5.21 packaged macro/Half Water/hive/cursor recovery gate."""
+"""Validate the v2.5.22 packaged macro/Half Water/hive/cursor recovery gate."""
 
 from pathlib import Path
 
@@ -21,19 +21,19 @@ def reject(path: str, token: str) -> None:
 
 
 # Stable visible publication and exact native package names.
-require("CMakeLists.txt", "VERSION 2.5.21")
+require("CMakeLists.txt", "VERSION 2.5.22")
 require("CHANGELOG.md", "## 2.5.17")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.21")
+require("RELEASE_NOTES.md", "# SandHybrid v2.5.22")
 for token in (
-    "SandHybrid-Windows-x64-v2.5.21",
-    "SandHybrid-Linux-x64-v2.5.21",
-    "refs/tags/v2.5.21",
-    "gh release create v2.5.21",
+    "SandHybrid-Windows-x64-v2.5.22",
+    "SandHybrid-Linux-x64-v2.5.22",
+    "refs/tags/v2.5.22",
+    "gh release create v2.5.22",
     "--verify-tag",
     "Expected two packages and two checksums",
 ):
     require(".github/workflows/ci-release.yml", token)
-reject(".github/workflows/ci-release.yml", "v2.5.21-test")
+reject(".github/workflows/ci-release.yml", "v2.5.22-test")
 reject(".github/workflows/ci-release.yml", "--prerelease")
 
 # The reserved Half Water bit cannot leak out of ordinary CPU full-Water constructors.
@@ -43,7 +43,7 @@ require("tests/scene_image_contract.cpp", "aux_water_half")
 require("tests/scene_image_contract.cpp", "Material::honey")
 require("tests/scene_image_contract.cpp", "Material::pollen")
 
-# One canonical Fix29 prefab entropy owns reset, paint, CPU classification, and load normalization.
+# Exact Fix29 cell-coordinate entropy owns reset, paint, CPU classification, and load normalization.
 for token in (
     "BEEHIVE_CANONICAL_WIDTH = 640u",
     "BEEHIVE_CANONICAL_ECOSYSTEM_QUEEN = ivec2(512, 232)",
@@ -52,16 +52,18 @@ for token in (
     "beehivePrefabEntropy",
 ):
     require("shaders/beehive.glsl", token)
-require("shaders/reset.comp", "beehivePrefabEntropy(offset)")
-require("shaders/paint.comp", "beehivePrefabEntropy(delta)")
+require("shaders/reset.comp", "beehivePrefabEntropy(queen, offset)")
+require("shaders/paint.comp", "beehivePrefabEntropy(center, delta)")
 for token in (
     "pre_pr19_hive_canonical_width = 640u",
     "pre_pr19_hive_canonical_seed = 0xD17A5EEDu",
     "canonical_pre_pr19_hive_entropy",
+    "fix29_hive_entropy",
 ):
     require("include/sandhybrid/actor_medium.hpp", token)
-require("src/scene_image.cpp", "pre_pr19_hive_hash((y * pre_pr19_hive_canonical_width + x) ^ pre_pr19_hive_canonical_seed)")
+require("src/scene_image.cpp", "fix29_hive_entropy(")
 require("tests/actor_medium_contract.cpp", "0x1c707b05u")
+require("tests/actor_medium_contract.cpp", "0x04572a8au")
 
 # Packaged executable runs real Vulkan seed/step/readback checks and reports failure.
 for token in (
@@ -90,6 +92,7 @@ for token in (
     "stone_foundation_",
     "ecosystem_hard_coded_hive",
     "sandbox_hard_coded_hive",
+    "placed_fix29_hive_exact",
     "return passed ? 0 : 3",
     "\\\"backend\\\": \\\"vulkan\\\"",
 ):
@@ -128,4 +131,4 @@ for token in (
 require("MISSION_LEDGER.md", "v2.5.17 publication record")
 require("VALIDATION.md", "--runtime-acceptance-report")
 
-print("v2.5.21 packaged macro, Half Water, hive, cursor, and stable release contracts valid.")
+print("v2.5.22 packaged macro, Half Water, hive, cursor, and stable release contracts valid.")

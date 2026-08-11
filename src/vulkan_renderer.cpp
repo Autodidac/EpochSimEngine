@@ -2498,9 +2498,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
         bind_compute(command_buffer, movement_pipeline, current_set);
-        const std::array<std::int32_t, 15> phases = (simulation_step & 1u) == 0u
-  ? std::array<std::int32_t, 15>{0, 1, 2, 3, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5}
-  : std::array<std::int32_t, 15>{0, 2, 1, 4, 3, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5};
+        // One complete fine pair schedule per fixed tick. AUX_MOVED now owns
+        // single-tick liquid transactions, so replaying horizontal pairs only
+        // re-spends stale frontier state and creates visible surface jitter.
+        const std::array<std::int32_t, 7> phases = (simulation_step & 1u) == 0u
+  ? std::array<std::int32_t, 7>{0, 1, 2, 3, 4, 5, 5}
+  : std::array<std::int32_t, 7>{0, 2, 1, 4, 3, 5, 5};
         for (std::size_t phase_index = 0; phase_index < phases.size(); ++phase_index) {
             const auto phase = phases[phase_index];
             const MovementPush movement_push{
@@ -2514,8 +2517,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         ? ((simulation_step + static_cast<std::uint32_t>(phase_index)) & 1u)
                         : ((simulation_step + static_cast<std::uint32_t>(phase)) & 1u)),
                 .reserved0 = collect_debug_stats ? 1u : 0u,
-                .reserved1 = (phase_index >= 11u ? 1u : 0u) |
-                             (((simulation_step & 3u) == 0u) ? 2u : 0u),
+                .reserved1 = ((simulation_step & 3u) == 0u) ? 2u : 0u,
                 .active_section_x = active_section_x,
                 .active_section_y = active_section_y,
                 .active_mode = 1u,
@@ -3323,6 +3325,164 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         });
     }
+    void run_acceptance_focused_tick() {
+        const auto acceptance_width = (std::min)(config.grid_width, 192u);
+        const auto acceptance_height = (std::min)(config.grid_height, 192u);
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
+            const SimulationPush simulation_push{
+                .width = config.grid_width,
+                .height = acceptance_height,
+                .step = simulation_step,
+                .seed = random_seed,
+                .active_mode = 0u,
+            };
+
+            bind_compute(command_buffer, tile_pipeline, current_set);
+            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                               VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                               sizeof(simulation_push), &simulation_push);
+            vkCmdDispatch(
+                command_buffer,
+                divide_round_up(divide_round_up(acceptance_width, 8u), 8u),
+                divide_round_up(divide_round_up(acceptance_height, 8u), 8u), 1);
+            buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+
+            const auto next_set = current_set ^ 1u;
+            buffer_barrier(command_buffer, cell_buffers[next_set],
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            bind_compute(command_buffer, chemistry_pipeline, current_set);
+            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                               VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                               sizeof(simulation_push), &simulation_push);
+            vkCmdDispatch(command_buffer,
+                          divide_round_up(acceptance_width, simulation_local_size),
+                          divide_round_up(acceptance_height, simulation_local_size), 1);
+            buffer_barrier(command_buffer, cell_buffers[next_set],
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            current_set = next_set;
+
+            const auto snapshot_set = current_set ^ 1u;
+            const VkDeviceSize snapshot_bytes =
+                static_cast<VkDeviceSize>(config.grid_width) *
+                acceptance_height * sizeof(SceneCell);
+            buffer_barrier(command_buffer, cell_buffers[current_set],
+                           VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT);
+            buffer_barrier(command_buffer, cell_buffers[snapshot_set],
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT);
+            const VkBufferCopy copy{.size = snapshot_bytes};
+            vkCmdCopyBuffer(command_buffer, cell_buffers[current_set].handle,
+                            cell_buffers[snapshot_set].handle, 1, &copy);
+            buffer_barrier(command_buffer, cell_buffers[current_set],
+                           VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            buffer_barrier(command_buffer, cell_buffers[snapshot_set],
+                           VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+
+            bind_compute(command_buffer, movement_pipeline, current_set);
+            const std::array<std::int32_t, 7> phases =
+                (simulation_step & 1u) == 0u
+                ? std::array<std::int32_t, 7>{0, 1, 2, 3, 4, 5, 5}
+                : std::array<std::int32_t, 7>{0, 2, 1, 4, 3, 5, 5};
+            for (std::size_t phase_index = 0u;
+                 phase_index < phases.size(); ++phase_index) {
+                const auto phase = phases[phase_index];
+                const MovementPush movement_push{
+                    .width = config.grid_width,
+                    .height = acceptance_height,
+                    .step = simulation_step,
+                    .seed = random_seed,
+                    .phase = phase,
+                    .parity = static_cast<std::int32_t>(
+                        phase == 5
+                            ? ((simulation_step +
+                                static_cast<std::uint32_t>(phase_index)) & 1u)
+                            : ((simulation_step +
+                                static_cast<std::uint32_t>(phase)) & 1u)),
+                    .reserved1 = ((simulation_step & 3u) == 0u) ? 2u : 0u,
+                    .active_mode = 0u,
+                };
+                vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                                   VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                   sizeof(movement_push), &movement_push);
+                if (phase >= 5) {
+                    vkCmdDispatch(
+                        command_buffer,
+                        divide_round_up(divide_round_up(acceptance_width, 2u),
+                                        simulation_local_size),
+                        divide_round_up(acceptance_height, simulation_local_size),
+                        1);
+                } else {
+                    vkCmdDispatch(
+                        command_buffer,
+                        divide_round_up(acceptance_width, simulation_local_size),
+                        divide_round_up(divide_round_up(acceptance_height, 2u),
+                                        simulation_local_size),
+                        1);
+                }
+                buffer_barrier(command_buffer, cell_buffers[current_set],
+                               VK_ACCESS_SHADER_WRITE_BIT,
+                               VK_ACCESS_SHADER_READ_BIT |
+                                   VK_ACCESS_SHADER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            }
+        });
+        ++simulation_step;
+    }
+
+    void run_acceptance_paint_pass(const std::int32_t center_x,
+                                   const std::int32_t center_y,
+                                   const Material material,
+                                   const std::uint32_t radius) {
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
+            const SimulationPush push{
+                .width = config.grid_width,
+                .height = config.grid_height,
+                .step = simulation_step,
+                .seed = random_seed,
+                .brush_x = center_x,
+                .brush_y = center_y,
+                .radius = radius,
+                .material = static_cast<std::uint32_t>(material),
+            };
+            bind_compute(command_buffer, paint_pipeline, current_set);
+            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                               VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+            const auto diameter = radius * 2u + 1u;
+            vkCmdDispatch(command_buffer,
+                          divide_round_up(diameter, simulation_local_size),
+                          divide_round_up(diameter, simulation_local_size), 1);
+            buffer_barrier(command_buffer, cell_buffers[current_set],
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            buffer_barrier(command_buffer, chunk_buffer,
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        });
+    }
+
     [[nodiscard]] int run_runtime_acceptance(SharedState& state) {
         startup_log("Running deterministic packaged Vulkan state acceptance...");
         std::vector<RuntimeAcceptanceCheck> checks;
@@ -3490,7 +3650,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 for (std::int32_t dy = -18; dy <= 11; ++dy) {
                     for (std::int32_t dx = -40; dx <= 31; ++dx) {
                         const auto part = classify_pre_pr19_hive_cell(
-                            dx, dy, canonical_pre_pr19_hive_entropy(dx, dy),
+                            dx, dy, fix29_hive_entropy(static_cast<std::int32_t>(queen_x),
+                                                       static_cast<std::int32_t>(queen_y), dx, dy),
                             static_cast<std::int32_t>(queen_x),
                             static_cast<std::int32_t>(queen_y));
                         const auto x = static_cast<std::uint32_t>(
@@ -3535,9 +3696,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     }
                 }
                 const auto expected_support = scene == Scene::sandbox ? 576u : 571u;
+                const auto expected_honey = scene == Scene::sandbox ? 28u : 18u;
+                const auto expected_pollen = scene == Scene::sandbox ? 20u : 22u;
+                const auto expected_empty = scene == Scene::sandbox ? 8u : 16u;
                 append(std::string{name},
                        mismatches == 0u && shell == 193u && support == expected_support &&
-                           honey == 18u && pollen == 22u && empty_chamber == 16u,
+                           honey == expected_honey && pollen == expected_pollen &&
+                           empty_chamber == expected_empty,
                        "mismatches=" + std::to_string(mismatches) +
                            " support=" + std::to_string(support) +
                            " shell=" + std::to_string(shell) +
@@ -3545,6 +3710,141 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            " pollen=" + std::to_string(pollen) +
                            " chamber_empty=" + std::to_string(empty_chamber));
             };
+
+            {
+                constexpr std::int32_t queen_x = 96;
+                constexpr std::int32_t queen_y = 96;
+                auto cells = acceptance_atmosphere_world();
+                upload_scene_cells(cells);
+                run_acceptance_paint_pass(
+                    queen_x, queen_y, Material::beehive, 64u);
+                const auto result = download_scene_cells();
+                std::uint32_t mismatches = 0u;
+                std::uint32_t support = 0u;
+                std::uint32_t shell = 0u;
+                std::uint32_t honey = 0u;
+                std::uint32_t pollen = 0u;
+                std::uint32_t chamber_empty = 0u;
+                for (std::int32_t dy = -18; dy <= 11; ++dy) {
+                    for (std::int32_t dx = -40; dx <= 31; ++dx) {
+                        const auto part = classify_pre_pr19_hive_cell(
+                            dx, dy, fix29_hive_entropy(
+                                queen_x, queen_y, dx, dy),
+                            queen_x, queen_y);
+                        const auto x = static_cast<std::uint32_t>(queen_x + dx);
+                        const auto y = static_cast<std::uint32_t>(queen_y + dy);
+                        const auto& actual_cell = result[index_of(x, y)];
+                        const auto actual = static_cast<Material>(actual_cell.material);
+                        bool matches = true;
+                        switch (part) {
+                        case HivePart::support:
+                            matches = actual == Material::wood &&
+                                (actual_cell.aux &
+                                 (fill_aux_structural | fill_aux_supported)) ==
+                                (fill_aux_structural | fill_aux_supported);
+                            ++support;
+                            break;
+                        case HivePart::shell:
+                            matches = actual == Material::beehive;
+                            ++shell;
+                            break;
+                        case HivePart::queen:
+                            matches = actual == Material::queen_bee;
+                            break;
+                        case HivePart::honey:
+                            matches = actual == Material::honey;
+                            ++honey;
+                            break;
+                        case HivePart::pollen:
+                            matches = actual == Material::pollen;
+                            ++pollen;
+                            break;
+                        case HivePart::chamber:
+                            matches = actual == Material::empty;
+                            ++chamber_empty;
+                            break;
+                        case HivePart::exit:
+                            matches = actual == Material::empty;
+                            break;
+                        case HivePart::empty:
+                            matches = actual == Material::atmosphere ||
+                                      actual == Material::bee;
+                            break;
+                        }
+                        if (!matches) ++mismatches;
+                    }
+                }
+                append("placed_fix29_hive_exact",
+                       mismatches == 0u && support == 571u && shell == 193u &&
+                           honey == 17u && pollen == 20u &&
+                           chamber_empty == 19u,
+                       "mismatches=" + std::to_string(mismatches) +
+                           " support=" + std::to_string(support) +
+                           " shell=" + std::to_string(shell) +
+                           " honey=" + std::to_string(honey) +
+                           " pollen=" + std::to_string(pollen) +
+                           " chamber_empty=" + std::to_string(chamber_empty));
+            }
+
+            {
+                constexpr std::uint32_t moved_bit = 0x01000000u;
+                constexpr std::uint32_t tile_sleeping = 0x00000004u;
+                constexpr std::uint32_t tile_active = 0x00000008u;
+                constexpr std::uint32_t tile_fine_active = 0x00020000u;
+                constexpr std::uint32_t tile_settled_medium = 0x00040000u;
+                auto cells = acceptance_atmosphere_world();
+                seed_rect(cells, Material::stone, 56u, 120u, 80u, 8u);
+                seed_rect(cells, Material::stone, 56u, 112u, 8u, 8u);
+                seed_rect(cells, Material::stone, 128u, 112u, 8u, 8u);
+                seed_rect(cells, Material::water, 64u, 114u, 64u, 6u);
+                upload_scene_cells(cells);
+                for (std::uint32_t tick = 0u; tick < 16u; ++tick)
+                    run_acceptance_focused_tick();
+                const auto settled = download_scene_cells();
+                for (std::uint32_t tick = 0u; tick < 16u; ++tick)
+                    run_acceptance_focused_tick();
+                const auto observed = download_scene_cells();
+                const auto tile_states = download_tile_states();
+
+                bool unchanged_mask = true;
+                std::uint32_t moved_water = 0u;
+                for (std::size_t index = 0u; index < observed.size(); ++index) {
+                    const bool was_water =
+                        settled[index].material == material_id(Material::water);
+                    const bool is_water =
+                        observed[index].material == material_id(Material::water);
+                    unchanged_mask = unchanged_mask && was_water == is_water;
+                    if (is_water && (observed[index].aux & moved_bit) != 0u)
+                        ++moved_water;
+                }
+                const auto [units, halves] = water_half_units(observed);
+                const auto tile_columns = divide_round_up(config.grid_width, 8u);
+                std::uint32_t settled_surface_tiles = 0u;
+                std::string surface_flags;
+                for (std::uint32_t tile_x = 8u; tile_x < 16u; ++tile_x) {
+                    const auto flags =
+                        tile_states[14u * tile_columns + tile_x].flags;
+                    surface_flags += (surface_flags.empty() ? "" : ",") +
+                        std::to_string(flags);
+                    const bool settled_surface =
+                        (flags & tile_sleeping) != 0u &&
+                        (flags & tile_settled_medium) != 0u &&
+                        (flags & (tile_active | tile_fine_active)) == 0u;
+                    settled_surface_tiles += settled_surface ? 1u : 0u;
+                }
+                append("water_surface_zero_jitter",
+                       units == 768u && halves == 0u && unchanged_mask &&
+                           moved_water == 0u && settled_surface_tiles == 8u,
+                       "units=" + std::to_string(units) +
+                           " halves=" + std::to_string(halves) +
+                           " unchanged=" + std::to_string(unchanged_mask ? 1u : 0u) +
+                           " moved=" + std::to_string(moved_water) +
+                           " sleeping_tiles=" +
+                           std::to_string(settled_surface_tiles) +
+                           " sample_age=" +
+                           std::to_string(observed[index_of(64u, 114u)].age) +
+                           " flags=" + surface_flags);
+            }
 
             {
                 auto cells = acceptance_atmosphere_world();
@@ -3558,8 +3858,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     };
                 }
                 upload_scene_cells(cells);
-                for (std::int32_t pass = 0; pass < 4; ++pass)
-                    run_acceptance_horizontal_pass(state, pass & 1);
+                for (std::uint32_t tick = 0u; tick < 4u; ++tick)
+                    run_acceptance_focused_tick();
                 const auto result = download_scene_cells();
                 const auto [units, halves] = water_half_units(result);
                 append("half_water_bounded_attraction_merge",
@@ -3605,10 +3905,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     .aux = water_half_bit,
                 };
                 upload_scene_cells(cells);
-                for (std::int32_t step = 0; step < 8; ++step) {
-                    run_acceptance_fine_pass(0, 0);
-                    run_acceptance_fine_pass(0, 1);
-                }
+                for (std::uint32_t tick = 0u; tick < 8u; ++tick)
+                    run_acceptance_focused_tick();
                 const auto result = download_scene_cells();
                 std::uint32_t final_y = 0u;
                 std::uint32_t units = 0u;
@@ -3656,17 +3954,31 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 cells[index_of(110u, 160u)] = make_fill_cell(
                     material_id(Material::water), static_cast<std::uint32_t>(index_of(110u, 160u)));
                 upload_scene_cells(cells);
-                for (std::int32_t pass = 0; pass < 4; ++pass)
-                    run_acceptance_horizontal_pass(state, pass & 1);
+                for (std::uint32_t tick = 0u; tick < 4u; ++tick)
+                    run_acceptance_focused_tick();
                 const auto result = download_scene_cells();
                 bool crossed_ledge = false;
-                for (std::uint32_t x = 112u; x < 120u; ++x)
-                    crossed_ledge = crossed_ledge ||
-                        result[index_of(x, 160u)].material == material_id(Material::water);
+                std::uint32_t water_x = 0u;
+                std::uint32_t water_y = 0u;
+                std::uint32_t water_aux = 0u;
+                for (std::uint32_t y = 0u; y < config.grid_height; ++y) {
+                    for (std::uint32_t x = 0u; x < config.grid_width; ++x) {
+                        const auto cell = result[index_of(x, y)];
+                        if (cell.material != material_id(Material::water)) continue;
+                        water_x = x;
+                        water_y = y;
+                        water_aux = cell.aux;
+                        crossed_ledge = crossed_ledge ||
+                            (x >= 112u && x < 120u && y >= 160u);
+                    }
+                }
                 append("full_water_crosses_unsupported_ledge",
                        count_material(result, Material::water) == 1u && crossed_ledge,
                        "water_cells=" + std::to_string(count_material(result, Material::water)) +
-                           " crossed=" + std::string{crossed_ledge ? "true" : "false"});
+                           " crossed=" + std::string{crossed_ledge ? "true" : "false"} +
+                           " final=" + std::to_string(water_x) + "," +
+                           std::to_string(water_y) +
+                           " aux=" + std::to_string(water_aux));
             }
 
             for (std::uint32_t scene_index = 0u; scene_index < scene_count; ++scene_index) {

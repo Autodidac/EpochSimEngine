@@ -72,6 +72,59 @@ bool halfWaterCanFall(Cell water, Cell below) {
            materialDensity(water.material) > materialDensity(below.material);
 }
 
+bool tileOpenGas(Cell cell) {
+    return cell.material == MAT_EMPTY || isCellGas(cell);
+}
+
+bool tileLiquidCanFallInto(Cell water, Cell target) {
+    if (tileOpenGas(target)) return true;
+    return isCellLiquid(target) &&
+           materialDensity(water.material) > materialDensity(target.material);
+}
+
+bool tileLiquidSupportedAt(ivec2 position, Cell water) {
+    if (!tileInside(position + ivec2(0, 1))) return true;
+    return !tileLiquidCanFallInto(
+        water, cells[indexOf(position + ivec2(0, 1))]);
+}
+
+bool tileLiquidCanSpread(ivec2 sourcePosition,
+                         int direction,
+                         Cell source) {
+    ivec2 targetPosition = sourcePosition + ivec2(direction, 0);
+    if (!tileInside(targetPosition) ||
+        !tileOpenGas(cells[indexOf(targetPosition)]) ||
+        !tileLiquidSupportedAt(sourcePosition, source)) return false;
+    if (!tileLiquidSupportedAt(targetPosition, source)) return true;
+
+    ivec2 sourceAbovePosition = sourcePosition + ivec2(0, -1);
+    ivec2 targetAbovePosition = targetPosition + ivec2(0, -1);
+    bool sourceCovered = tileInside(sourceAbovePosition) &&
+        isCellLiquid(cells[indexOf(sourceAbovePosition)]);
+    bool targetCovered = tileInside(targetAbovePosition) &&
+        isCellLiquid(cells[indexOf(targetAbovePosition)]);
+    if (sourceCovered != targetCovered) return sourceCovered;
+    // Covered overhangs remain conservatively awake for the authoritative
+    // movement shader's full pressure comparison.
+    if (sourceCovered) return true;
+
+    ivec2 forwardPosition = targetPosition + ivec2(direction, 0);
+    bool forwardOpen = tileInside(forwardPosition) &&
+        tileOpenGas(cells[indexOf(forwardPosition)]);
+    if (forwardOpen) {
+        ivec2 forwardBelow = forwardPosition + ivec2(0, 1);
+        if (tileInside(forwardBelow) &&
+            tileLiquidCanFallInto(
+                source, cells[indexOf(forwardBelow)])) return true;
+    }
+
+    ivec2 behindPosition = sourcePosition - ivec2(direction, 0);
+    bool supplied = (tileInside(behindPosition) &&
+                     cells[indexOf(behindPosition)].material == source.material) ||
+                    (tileInside(sourceAbovePosition) &&
+                     cells[indexOf(sourceAbovePosition)].material == source.material);
+    return supplied && forwardOpen;
+}
 void main() {
     uvec2 tile = gl_GlobalInvocationID.xy;
     uint columns = tileColumns(pc.width);
@@ -91,6 +144,7 @@ void main() {
     uint stable = 0u;
     uint healthSum = 0u;
     uint minimumAge = 0xffffffffu;
+    uint liquidMinimumAge = 0xffffffffu;
     bool hot = false;
     bool moving = false;
     bool reacting = false;
@@ -102,6 +156,8 @@ void main() {
     bool halfWaterMergePending = false;
     bool activeAgent = false;
     bool productiveMediumMove = false;
+    bool hasLiquidContent = false;
+    bool otherDynamicContent = false;
     bool hasQueen = false;
     bool hasHive = false;
     bool hasFlower = false;
@@ -153,15 +209,27 @@ void main() {
                 Cell left = tileInside(p + ivec2(-1, 0)) ? cells[indexOf(p + ivec2(-1, 0))] : Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
                 Cell right = tileInside(p + ivec2(1, 0)) ? cells[indexOf(p + ivec2(1, 0))] : Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
                 if (isCellLiquid(cell)) {
+                    hasLiquidContent = true;
+                    liquidMinimumAge = min(liquidMinimumAge, cell.age);
                     if (halfCell) {
                         halfWaterFallPending = halfWaterFallPending ||
                             halfWaterCanFall(cell, below);
                         halfWaterMergePending = halfWaterMergePending ||
                             halfWaterNeighborPending(p);
+                    } else {
+                        bool canFall = tileLiquidCanFallInto(cell, below);
+                        bool supported = !canFall;
+                        bool diagonalFall = supported &&
+                            ((tileInside(p + ivec2(-1, 1)) &&
+                              tileLiquidCanFallInto(
+                                  cell, cells[indexOf(p + ivec2(-1, 1))])) ||
+                             (tileInside(p + ivec2(1, 1)) &&
+                              tileLiquidCanFallInto(
+                                  cell, cells[indexOf(p + ivec2(1, 1))])));
+                        productiveMediumMove = productiveMediumMove || canFall ||
+                            diagonalFall || tileLiquidCanSpread(p, -1, cell) ||
+                            tileLiquidCanSpread(p, 1, cell);
                     }
-                    productiveMediumMove = productiveMediumMove || isCellGas(below) ||
-                        isCellGas(left) || isCellGas(right) ||
-                        (isCellLiquid(below) && materialDensity(cell.material) > materialDensity(below.material));
                 } else {
                     productiveMediumMove = productiveMediumMove ||
                         (isCellGas(above) && materialDensity(cell.material) < materialDensity(above.material)) ||
@@ -169,13 +237,16 @@ void main() {
                         (isCellGas(right) && materialDensity(cell.material) != materialDensity(right.material));
                 }
             }
-            bool activeLoose = !isStructural(cell) && !isReconstructableMaterial(cell.material) &&
+            bool activeLoose = !fluid && !isStructural(cell) &&
+                               !isReconstructableMaterial(cell.material) &&
                                !isCellImmovable(cell);
             bool activeStructure = cell.material == MAT_CONVEYOR || cell.material == MAT_SMELTER ||
                                    cell.material == MAT_ASSEMBLER || cell.material == MAT_SLUICE_BOX ||
                                    cell.material == MAT_INSECT_HABITAT || cell.material == MAT_FACTORY_CORE ||
                                    cell.material == MAT_MAGMA_VENT;
             activeContent = activeContent || agent || activeLoose || fluid || activeStructure;
+            otherDynamicContent = otherDynamicContent || agent || activeLoose ||
+                                  activeStructure;
             bool startupDynamic = cell.age < 8u &&
                                   cell.material != MAT_ATMOSPHERE &&
                                   cell.material != MAT_OXYGEN;
@@ -301,13 +372,18 @@ void main() {
                          balancedAtmosphereTile;
     // Exposed packets hand ownership to fine cells once, then sleep on the
     // next unchanged pass instead of cycling through breakup for 48 frames.
-    bool settledFineMedium = boundaryFineMedium && !moving && !reacting && !hot &&
-                             !mediumBreakup && !productiveMediumMove;
+    bool settledBoundaryMedium = boundaryFineMedium && !moving && !reacting && !hot &&
+                                 !mediumBreakup && !productiveMediumMove;
+    bool settledPartialLiquid = hasLiquidContent && !halfWater && !moving &&
+                                !reacting && !hot && liquidMinimumAge >= 12u &&
+                                !productiveMediumMove && !otherDynamicContent;
+    bool settledFineMedium = settledBoundaryMedium || settledPartialLiquid;
     bool settledHalfWater = halfWater && !moving && !reacting && !hot &&
                             minimumAge >= 12u && !halfWaterAttractionPending &&
                             !halfWaterFallPending && !halfWaterMergePending;
     bool fineFallbackMedium = boundaryFineMedium && !settledFineMedium;
-    bool fineActive = represented != 0u && (!macroMovable || fineFallbackMedium) && !settledHalfWater &&
+    bool fineActive = represented != 0u && (!macroMovable || fineFallbackMedium) &&
+            !settledFineMedium && !settledHalfWater &&
             (collapsing || activeAgent || moving || reacting || hot || mediumBreakup ||
                        !uniformMaterial || represented < TILE_CELL_COUNT);
 
@@ -329,7 +405,7 @@ void main() {
     if (macroMovable) flags |= TILE_MACRO_MOVABLE;
     if (macroCadenceCarry && !macroStepDue) flags |= TILE_MACRO_MOVED;
     if (fineActive) flags |= TILE_FINE_ACTIVE;
-    if (settledMedium) flags |= TILE_SETTLED_MEDIUM;
+    if (settledMedium || settledFineMedium) flags |= TILE_SETTLED_MEDIUM;
     if (wetContent) flags |= TILE_WET_CONTENT;
     if (bulkReadySolid) flags |= TILE_MACRO_SOLID | TILE_BULK_READY;
     if (fractureArmed) flags |= TILE_FRACTURE_ARMED;
