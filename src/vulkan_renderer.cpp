@@ -1,6 +1,7 @@
 #include "sandhybrid/vulkan_renderer.hpp"
 
 #include "sandhybrid/actor_medium.hpp"
+#include "sandhybrid/input_routing.hpp"
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/scene.hpp"
 #include "sandhybrid/section_scheduler.hpp"
@@ -2983,6 +2984,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             // may leak into the freshly rebuilt scene on the next frame.
             state.primary_down.store(false, std::memory_order_release);
             state.fill_region.store(false, std::memory_order_release);
+            state.fill_armed.store(false, std::memory_order_release);
             state.ignite_air.store(false, std::memory_order_release);
             state.fire_tool_pressed.store(false, std::memory_order_release);
             state.deposit_resource_pressed.store(false, std::memory_order_release);
@@ -3535,6 +3537,36 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         if (config.grid_width < 256u || config.grid_height < 256u) {
             append("world_dimensions", false, "acceptance requires at least 256x256 cells");
         } else {
+            {
+                const auto paint_once = [&](const bool paused) {
+                    auto cells = acceptance_atmosphere_world();
+                    upload_scene_cells(cells);
+                    const auto action = route_world_primary_action({
+                        .editor_workspace = true,
+                        .pointer_over_world = true,
+                        .primary_down = true,
+                        .primary_pressed = true,
+                        .player_present = true,
+                        .mining = true,
+                        .paused = paused,
+                    });
+                    state.primary_down.store(
+                        action == WorldPrimaryAction::editor_paint,
+                        std::memory_order_release);
+                    immediate_submit([&](const VkCommandBuffer command_buffer) {
+                        record_paint(command_buffer, state);
+                    });
+                    state.primary_down.store(false, std::memory_order_release);
+                    return count_material(download_scene_cells(), Material::sand);
+                };
+                const auto running_cells = paint_once(false);
+                const auto paused_cells = paint_once(true);
+                append("running_and_paused_editor_mutation",
+                       running_cells > 0u && paused_cells == running_cells,
+                       "running_sand=" + std::to_string(running_cells) +
+                           " paused_sand=" + std::to_string(paused_cells));
+            }
+
             {
                 auto cells = acceptance_atmosphere_world();
                 seed_rect(cells, Material::water, 64u, 64u, 8u, 8u);

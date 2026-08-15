@@ -212,7 +212,7 @@ static_assert(sandhybrid::policy::editor_mutation_allowed(false, false));
 static_assert(!sandhybrid::policy::editor_mutation_allowed(true, true));
 static_assert(sandhybrid::policy::world_editor_paint_allowed(
     true, true, false, false, false, true, true, true));
-static_assert(!sandhybrid::policy::world_editor_paint_allowed(
+static_assert(sandhybrid::policy::world_editor_paint_allowed(
     true, true, false, false, false, true, true, false));
 static_assert(sandhybrid::policy::map_snapshot_refresh_allowed(false, false, true));
 static_assert(sandhybrid::policy::vent_eruption_pressure > sandhybrid::policy::vent_gas_release_pressure);

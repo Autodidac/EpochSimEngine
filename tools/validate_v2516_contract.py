@@ -69,9 +69,9 @@ for token in (
 for token in (
     "publish_designer_blueprint",
     "blueprint_slot_occupied",
-    "const bool blueprint_place_click",
-    "!blueprint_placement_active",
-    "world_editor_paint_allowed",
+    "route_world_primary_action",
+    "WorldPrimaryAction::blueprint_place",
+    ".blueprint_placement_active = blueprint_placement_active",
 ):
     require("src/app.cpp", token)
 for token in (
@@ -116,7 +116,7 @@ require("tests/ui_layout_contract.cpp", "blueprint_slot_count")
 # Repository memory and mission evidence remain honest about incomplete work.
 for token in (
     "Blueprint slots are shared",
-    "Player presence or mining mode may suppress",
+    "Player presence or mining mode never suppresses",
     "photographed historical SimpleSandSim Fix29-era Sandbox hive",
 ):
     require("AGENTS.md", token)

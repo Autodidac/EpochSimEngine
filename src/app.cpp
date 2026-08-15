@@ -351,6 +351,7 @@ int run_application(const ApplicationOptions& options) {
     std::int64_t pan_remainder_y = 0;
     double camera_key_remainder_x = 0.0;
     double camera_key_remainder_y = 0.0;
+    bool primary_one_shot_latched = false;
     auto last_camera_update = std::chrono::steady_clock::now();
     bool ready_title_applied = false;
     while (!shared_state.quit.load(std::memory_order_acquire) && window.poll(input)) {
@@ -432,6 +433,7 @@ int run_application(const ApplicationOptions& options) {
             static_cast<float>(input.mouse_y),
         };
         const bool primary_pressed = input.primary_pressed;
+        if (!input.primary_down) primary_one_shot_latched = false;
         const auto selected_workspace = shared_state.selected_workspace.load(
             std::memory_order_relaxed) % ui::workspace_tab_count;
         const bool inventory_workspace = selected_workspace == 0u;
@@ -791,25 +793,32 @@ int run_application(const ApplicationOptions& options) {
         const bool inspecting = input.inspect_material;
         const bool blueprint_placement_active =
             shared_state.blueprint_placement_active.load(std::memory_order_acquire);
-        const bool blueprint_place_workspace =
-            editor_workspace || inventory_workspace;
-        const bool blueprint_place_click = blueprint_place_workspace && blueprint_placement_active &&
-            primary_pressed && over_world && !inspecting && !input.fill_modifier &&
-            !pan_button_down;
-        if (blueprint_place_click) {
+        if (primary_pressed && !over_world) primary_one_shot_latched = true;
+        const auto world_primary_action = route_world_primary_action({
+            .editor_workspace = editor_workspace,
+            .inventory_workspace = inventory_workspace,
+            .pointer_over_world = over_world,
+            .primary_down = input.primary_down && !primary_one_shot_latched,
+            .primary_pressed = primary_pressed && !primary_one_shot_latched,
+            .inspecting = inspecting,
+            .fill_modifier = input.fill_modifier,
+            .panning = pan_button_down,
+            .blueprint_placement_active = blueprint_placement_active,
+            .fill_armed = shared_state.fill_armed.load(std::memory_order_acquire),
+            .player_present = scene_player_present,
+            .mining = mining,
+            .paused = world_paused,
+        });
+        if (world_primary_action == WorldPrimaryAction::blueprint_place) {
             shared_state.blueprint_place_requested.store(true, std::memory_order_release);
             shared_state.blueprint_placement_active.store(false, std::memory_order_release);
+            primary_one_shot_latched = true;
         }
-
-        const bool fill_click = editor_workspace && input.fill_modifier && primary_pressed &&
-                                over_world && !pan_button_down &&
-                                !blueprint_placement_active;
-        const bool armed_fill_click = editor_workspace && primary_pressed && over_world &&
-            !blueprint_placement_active && !pan_button_down &&
-            shared_state.fill_armed.exchange(false, std::memory_order_acq_rel);
-        if (fill_click) shared_state.fill_region.store(true, std::memory_order_release);
-        else if (armed_fill_click)
+        if (world_primary_action == WorldPrimaryAction::editor_fill) {
+            shared_state.fill_armed.store(false, std::memory_order_release);
             shared_state.fill_region.store(true, std::memory_order_release);
+            primary_one_shot_latched = true;
+        }
 
         const bool designer_paint_active = designer_workspace && over_designer_grid &&
                                            input.primary_down && !inspecting &&
@@ -817,30 +826,20 @@ int run_application(const ApplicationOptions& options) {
         if (designer_paint_active)
             paint_designer_grid(shared_state, designer_grid_viewport, input.mouse_x, input.mouse_y);
 
-        const bool player_build = scene_player_present && !mining;
-        const bool paint_active = policy::world_editor_paint_allowed(
-            editor_workspace, over_world, inspecting, input.fill_modifier,
-            pan_button_down, scene_player_present, mining, world_paused) &&
-            !blueprint_placement_active;
-        shared_state.primary_down.store(input.primary_down && paint_active,
-                                         std::memory_order_relaxed);
+        shared_state.primary_down.store(
+            world_primary_action == WorldPrimaryAction::editor_paint,
+            std::memory_order_relaxed);
         // Right mouse is camera-only. Erasing is an explicit left-click Eraser
         // selection, never an implicit Oxygen write.
         shared_state.secondary_down.store(false, std::memory_order_relaxed);
 
-        const bool tool_active = editor_workspace && over_world && scene_player_present && mining &&
-                                 !inspecting && !input.fill_modifier && !pan_button_down &&
-                                 !world_paused && !blueprint_placement_active;
-        shared_state.fire_tool.store(input.primary_down && tool_active,
-                                     std::memory_order_relaxed);
+        const bool tool_active = world_primary_action == WorldPrimaryAction::player_mine;
+        shared_state.fire_tool.store(tool_active, std::memory_order_relaxed);
         if (primary_pressed && tool_active)
             shared_state.fire_tool_pressed.store(true, std::memory_order_release);
 
-        const bool build_active = editor_workspace && over_world && player_build && !inspecting &&
-                                  !input.fill_modifier && !pan_button_down && !world_paused &&
-                                  !blueprint_placement_active;
-        shared_state.deposit_resource.store(input.primary_down && build_active,
-                                             std::memory_order_relaxed);
+        const bool build_active = world_primary_action == WorldPrimaryAction::player_deposit;
+        shared_state.deposit_resource.store(build_active, std::memory_order_relaxed);
         if (primary_pressed && build_active)
             shared_state.deposit_resource_pressed.store(true, std::memory_order_release);
 

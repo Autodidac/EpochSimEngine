@@ -91,7 +91,7 @@ for token in (
 ):
     require("src/vulkan_renderer.cpp", token)
 for token in ("fill_armed", "World Fill remains click-confirmed",
-              "const bool armed_fill_click"):
+              "WorldPrimaryAction::editor_fill"):
     require("src/app.cpp", token)
 
 # Pause freezes simulation time but never authoring mutations.

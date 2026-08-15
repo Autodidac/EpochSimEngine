@@ -497,6 +497,27 @@ This pass attempts the first 28 P0 IDs in listed order: `MC-012`, `MC-013`, `MC-
 - These focused results add evidence to MC-012, MC-013, MC-017, MC-038, MC-053, MC-084, MC-123, MC-127, MC-133, MC-136, MC-139, and MC-144. Their broader visual, save/load, player, machinery, bee-cycle, long-duration, and cross-system acceptance remains active; no mission is marked COMPLETE from this focused gate.
 - Local stable package audit passes: the Windows ZIP contains `57` files and the Linux tarball contains `56`, each with the platform executable, 12 shaders, 20 public headers, library/CMake development package, launchers, and 14 canonical documents. SHA-256 verifies as Windows `d3ea0375efad8364f685e87ced30eacb07c66332cc765e5a3b2719babbf98bda` and Linux `59a74dd2f59486ad8f572f3ddcefafdcf5f17327f77cff54126f74a75063988d`. No push, tag, or GitHub release was created or modified.
 
+## Running Editor mutation recovery — 2026-08-15
+
+### Cached contradiction and impact
+
+- User runtime observation confirms that direct world editing currently works only while `PAUSED`. The earlier player/mining exception in the repository instructions therefore contradicts the intended interaction model and reopens MC-099, MC-119, MC-120, MC-123, MC-128, MC-150, and MC-152.
+- Player presence, mining mode, simulation cadence, and pause state may affect simulation and actor input, but may not disable an Editor mutation selected in the sidebar. The fix must retain one-click ownership so editing never also mines, deposits, paints twice, or replays on a later simulation tick.
+
+### Acceptance cached before implementation
+
+1. Editor paint, erase, connected Fill, Ignite Air, selection mutations, and occupied Blueprint placement commit once from a confirmed world left-click while either RUNNING or PAUSED in every scene, including player-enabled and mining scenes.
+2. A world left-click has exactly one mutation owner. Editor owns direct mutations; Inventory owns player mining/deposit when no Blueprint is active. Blueprint placement never also paints, fills, mines, or deposits.
+3. Sidebar and MAP-owned pointer input never leaks into the world. Right-click remains camera-only, logical cursor geometry stays identical to committed edit geometry, and reset/load discard queued one-shot mutations.
+4. Deterministic routing tests cover running and paused player scenes plus Blueprint and one-shot actions. Native runtime evidence must exercise the actual route before this regression is considered accepted; static source tokens alone are insufficient.
+
+### Implementation and focused runtime evidence
+
+- `route_world_primary_action` is now the single left-click arbiter. Editor paint ignores player/mining and pause state; Inventory retains player mine/build ownership when no Blueprint is active; Blueprint and Fill are one-shot actions that latch until button release, preventing the same click from painting or reaching the actor path. Sidebar/MAP/inspect/pan input returns no world action.
+- Reset/load now clears both queued Fill execution and the armed Fill state, preserving the one-shot epoch boundary. The runtime uses the same routing function covered by `sandhybrid_input_routing_contract`; running/paused player-mining, player build, Blueprint, modifier Fill, armed Fill, Inventory actor ownership, sidebar, inspect, and pan cases all pass.
+- The native production Vulkan acceptance seeds Atmosphere, routes the same Editor click with a present mining player, and dispatches the real paint pipeline. Windows RTX 5080 and Linux llvmpipe each report `running_sand=9 paused_sand=9`; the other 21 macro, liquid, Half Water, hive, and foundation readbacks remain passing.
+- Exact-source native Release gates pass 33/33 Windows CTests and 30/30 Linux CTests. This focused evidence updates MC-099, MC-119, MC-120, MC-123, MC-128, MC-150, and MC-152 without marking their broader visual/runtime acceptance COMPLETE.
+
 # Permanent invariants
 
 - Every repository change begins with a mission-cache impact entry and explicit acceptance/risk review; implementation and release evidence follow that cached intent, never precede it.
@@ -529,7 +550,7 @@ This pass attempts the first 28 P0 IDs in listed order: `MC-012`, `MC-013`, `MC-
 - Industrial machines are active simulation participants, and every consumed represented input has a matching inventory/output transition.
 - Project-owned branding is `SandHybrid`; Legacy branding remains only when it is part of a proper external dependency or integration name.
 - Failed, missed, deferred, and regressed missions remain active until accepted.
-- PAUSED freezes simulation and simulation-derived clocks, not editing. Authorized Editor mutations commit once against the frozen world and are immediately visible without advancing physics.
+- RUNNING and PAUSED both permit authorized Editor mutations in every scene. An Editor-owned click commits once and takes precedence over player mining/deposit; while PAUSED it remains immediately visible without advancing physics.
 - Inventory and Designer are sidebar-only workspaces; each exposes nested INVENTORY and BLUEPRINTS tabs and never opens a center, floating, or modal body. Editor owns world cursor controls; Designer owns isolated cursor controls. The visible world cursor must use the exact position, shape, and radius of the committed edit and must disappear rather than clamp to a viewport edge while the pointer is in the sidebar.
 - User-visible releases never use a prerelease marker or `-test` suffix.
 

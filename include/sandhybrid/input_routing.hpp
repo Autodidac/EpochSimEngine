@@ -23,6 +23,31 @@ struct EdgePanDirection final {
                                      const EdgePanDirection&) = default;
 };
 
+enum class WorldPrimaryAction : std::uint8_t {
+    none = 0,
+    editor_paint,
+    editor_fill,
+    blueprint_place,
+    player_mine,
+    player_deposit,
+};
+
+struct WorldPrimaryInput final {
+    bool editor_workspace{};
+    bool inventory_workspace{};
+    bool pointer_over_world{};
+    bool primary_down{};
+    bool primary_pressed{};
+    bool inspecting{};
+    bool fill_modifier{};
+    bool panning{};
+    bool blueprint_placement_active{};
+    bool fill_armed{};
+    bool player_present{};
+    bool mining{};
+    bool paused{};
+};
+
 [[nodiscard]] constexpr bool player_wasd_enabled(
     const bool player_present, const bool camera_controls) noexcept {
     return player_present && !camera_controls;
@@ -48,6 +73,37 @@ struct EdgePanDirection final {
         return {0, 0, horizontal, vertical};
     }
     return {horizontal, vertical, 0, 0};
+}
+
+[[nodiscard]] constexpr WorldPrimaryAction route_world_primary_action(
+    const WorldPrimaryInput& input) noexcept {
+    if (!input.pointer_over_world || input.inspecting || input.panning)
+        return WorldPrimaryAction::none;
+
+    const bool blueprint_workspace = input.editor_workspace || input.inventory_workspace;
+    if (blueprint_workspace && input.blueprint_placement_active) {
+        return input.primary_pressed && !input.fill_modifier
+            ? WorldPrimaryAction::blueprint_place
+            : WorldPrimaryAction::none;
+    }
+
+    if (input.editor_workspace) {
+        if (input.fill_modifier || input.fill_armed) {
+            return input.primary_pressed
+                ? WorldPrimaryAction::editor_fill
+                : WorldPrimaryAction::none;
+        }
+        return input.primary_down
+            ? WorldPrimaryAction::editor_paint
+            : WorldPrimaryAction::none;
+    }
+
+    if (input.inventory_workspace && input.player_present && !input.paused && input.primary_down) {
+        return input.mining
+            ? WorldPrimaryAction::player_mine
+            : WorldPrimaryAction::player_deposit;
+    }
+    return WorldPrimaryAction::none;
 }
 
 [[nodiscard]] constexpr EdgePanDirection edge_pan_direction(
