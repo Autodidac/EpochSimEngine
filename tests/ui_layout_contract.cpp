@@ -35,9 +35,9 @@ int main() {
         layout.reset_scene.size.y != layout.pause_toggle.size.y ||
         layout.reset_scene.position.x + layout.reset_scene.size.x >
             layout.pause_toggle.position.x) return 3;
-    if (layout.previous_scene.position.x + layout.previous_scene.size.x > layout.next_scene.position.x ||
-        layout.next_scene.position.x + layout.next_scene.size.x > layout.save_scene.position.x ||
-        layout.save_scene.position.x + layout.save_scene.size.x > layout.load_scene.position.x) return 4;
+    if (layout.previous_scene.size.x != 0.0f || layout.next_scene.size.x != 0.0f ||
+        layout.save_scene.position.x + layout.save_scene.size.x > layout.load_scene.position.x ||
+        layout.save_scene.size.x <= 0.0f || layout.load_scene.size.x <= 0.0f) return 4;
     if (layout.mode_toggle.position.x + layout.mode_toggle.size.x >
             layout.camera_controls_toggle.position.x ||
         layout.camera_controls_toggle.position.x + layout.camera_controls_toggle.size.x >

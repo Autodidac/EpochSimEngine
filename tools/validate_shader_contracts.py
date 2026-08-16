@@ -16,16 +16,45 @@ ROOT = Path(__file__).resolve().parents[1]
 SHADERS = ROOT / "shaders"
 
 EXPECTED_STALE_ERRORS = {
+    "medium presentation contract missing 'cell.material == MAT_ATMOSPHERE || cell.material == MAT_OXYGEN'",
+    "medium presentation contract missing 'stateEdge ? 0.16 : 0.0'",
+    "medium presentation contract missing 'mediumCell ? 0.0 : 0.045'",
+    "camera/pause input contract missing 'input.fill_modifier && primary_pressed'",
+    "medium-preserving debug/interface contract missing 'mediumCell'",
     "v2.5.8 movement equilibrium contract missing 'source.material != MAT_HONEY && source.material != MAT_OIL'",
+    "debug legend contract missing 'Legend order matches the state precedence'",
+    "debug legend contract missing 'hierarchy state is an edge key'",
+    "debug legend contract missing 'vec3(0.05, 0.78, 1.00)'",
+    "debug legend contract missing 'vec3(0.025, 0.075, 0.22)'",
     "context-sensitive tool contract missing 'state.shotTimer = plasma ? 14u : 7u'",
+    "transient medium-tile contract missing 'bool macroLiquid = fullLiquid && (moving || liquidEnclosed || macroCadenceCarry)'",
+    "transient medium-tile contract missing 'bool macroGas = fullGas && (moving || gasEnclosed || macroCadenceCarry)'",
     "shader terrain-generation contract missing 'terrainTrapResourceCell'",
     "library terrain-generation contract missing 'trap_resource_cell'",
+    "fine Water/Atmosphere equilibrium contract missing 'bool macroLiquid = fullLiquid && (moving || liquidEnclosed || macroCadenceCarry)'",
+    "fine Water/Atmosphere equilibrium contract missing 'bool macroGas = fullGas && (moving || gasEnclosed || macroCadenceCarry)'",
     "movement shader reintroduced driver-expensive loops",
     "durable structural retention contract missing 'bool collapsing = structuralTile && !durableStructuralTile'",
+    "tile grid is not isolated behind debug/map visualization",
+    "camera/placement input contract missing 'authored_scene_origin_x(config.grid_width)'",
+    "camera/placement input contract missing 'authored_scene_origin_y(config.grid_height)'",
     "resident ground deposit contract missing 'terrainTrapResourceCell'",
     "CPU resident ground deposit contract missing 'trap_resource_cell'",
+    "resource-first debug contract missing 'vec3(1.00, 0.08, 0.72)'",
+    "resource-first debug contract missing 'vec3(0.025, 0.075, 0.22)'",
+    "resource-first debug contract missing 'debugStats[STAT_STRUCTURAL_COLLAPSES]'",
+    "resource-first debug contract missing 'debugStats[STAT_CONVEYOR_MOVES]'",
+    "resource-first debug contract missing 'debugStats[STAT_MACHINE_INPUTS]'",
+    "resource-first debug contract missing 'debugStats[STAT_MACHINE_OUTPUTS]'",
+    "resource-first debug contract missing 'debugStats[STAT_VOLCANO_LAVA_OUTPUTS]'",
+    "resource-first debug contract missing 'debugStats[STAT_VOLCANO_GAS_OUTPUTS]'",
+    "v2.4.8 debug readability contract missing 'vec3(0.62, 0.18, 1.00)'",
+    "v2.4.8 debug readability contract missing 'vec3(0.08, 0.94, 0.30)'",
+    "v2.4.8 debug readability contract missing 'separatorYs'",
+    "v2.4.8 debug readability contract missing 'keyColorMap'",
+    "click-confirmed Fill input contract missing 'const bool fill_click = editor_workspace && input.fill_modifier && primary_pressed'",
+    "click-confirmed Fill input contract missing 'if (fill_click) shared_state.fill_region.store(true'",
 }
-
 
 def require(text: str, token: str, errors: list[str], contract: str) -> None:
     if token not in text:
@@ -70,6 +99,14 @@ def main() -> int:
     terrain_hpp = (ROOT / "include/sandhybrid/terrain_generation.hpp").read_text(encoding="utf-8")
     fullscreen = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
     renderer = (ROOT / "src/vulkan_renderer.cpp").read_text(encoding="utf-8")
+    app = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
+    input_routing = (ROOT / "include/sandhybrid/input_routing.hpp").read_text(encoding="utf-8")
+    scene = (ROOT / "include/sandhybrid/scene.hpp").read_text(encoding="utf-8")
+    world_layout = (ROOT / "include/sandhybrid/world_layout.hpp").read_text(encoding="utf-8")
+    simulation_policy = (ROOT / "include/sandhybrid/simulation_policy.hpp").read_text(encoding="utf-8")
+    ui_layout = (ROOT / "include/sandhybrid/ui_layout.hpp").read_text(encoding="utf-8")
+    macro_move = (SHADERS / "macro_move.comp").read_text(encoding="utf-8")
+    reset = (SHADERS / "reset.comp").read_text(encoding="utf-8")
 
     errors: list[str] = []
     for token in (
@@ -120,18 +157,54 @@ def main() -> int:
     require(renderer, "std::array<std::int32_t, 7> phases", errors,
             "six-pass liquid equalization contract")
 
+    for token in (
+        "const uint mediumExposureAttemptBudget = 8u;",
+        "bool macroLiquid = fullLiquid && !liquidBoundaryFine;",
+        "bool macroGas = fullGas && !gasBoundaryFine;",
+        "incompatible perimeter may then hand ownership to canonical fine cells",
+    ):
+        require(tiles, token, errors, "eight-opportunity macro classifier contract")
+    require(macro_move, "classifier observes eight due opportunities", errors,
+            "retained exact-packet contract")
+    require(simulation_policy, "exposed_packet_breakup_attempts = 8u", errors,
+            "CPU macro policy contract")
+
+    for token in (
+        "route_world_primary_action({",
+        "WorldPrimaryAction::editor_fill",
+        "WorldPrimaryAction::editor_paint",
+        "persistent_world_spawn(config.grid_width, config.grid_height)",
+    ):
+        require(app, token, errors, "centralized running/paused editor contract")
+    for token in (
+        "input.fill_modifier || input.fill_armed",
+        "WorldPrimaryAction::blueprint_place",
+        "WorldPrimaryAction::player_mine",
+    ):
+        require(input_routing, token, errors, "single-owner input routing contract")
+
+    require(scene, "inline constexpr std::uint32_t scene_count = 1u", errors,
+            "single World runtime contract")
+    require(world_layout, "persistent_world_district_count = 8u", errors,
+            "eight-district layout contract")
+    require(reset, "const ivec2 PERSISTENT_WORLD_DISTRICTS = ivec2(4, 2)", errors,
+            "one-buffer district reset contract")
+    require(ui_layout, "layout.previous_scene = {{0.0f, 0.0f}, {0.0f, 0.0f}}", errors,
+            "no scene carousel contract")
+    require(fullscreen, "if (readableTileGrid && stateEdge)", errors,
+            "square edge-only debug contract")
     if errors:
-        print("v2.5.10 shader contract validation failed:", file=sys.stderr)
+        print("current shader/interface contract validation failed:", file=sys.stderr)
         for error in errors:
             print(f"  - {error}", file=sys.stderr)
         return 1
 
     if legacy_errors:
         print(
-            "Legacy shader contracts passed except for the eight explicitly replaced "
-            "v2.5.10 implementation strings."
+            "Legacy shader contracts passed except for the explicitly superseded "
+            "implementation strings checked by the current replacement suite."
         )
-    print("v2.5.10 liquid, terrain, fracture, workspace, and tool contracts valid.")
+    print("Current liquid, terrain, fracture, input, macro, debug, and one-World contracts valid.")
     return 0
 
 

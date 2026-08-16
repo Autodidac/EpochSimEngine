@@ -51,6 +51,21 @@ static_assert(world_dimensions(WorldSizePreset::compact).footprint_columns == 4u
 static_assert(world_dimensions(WorldSizePreset::standard).footprint_columns == 8u);
 static_assert(world_dimensions(WorldSizePreset::large).footprint_columns == 16u);
 static_assert(world_dimensions(WorldSizePreset::compact).height == resident_world_height);
+static_assert(persistent_world_district_count == 8u);
+static_assert(persistent_world_width == 2560u);
+static_assert(persistent_world_height == 720u);
+static_assert(persistent_world_origin_x(world_dimensions(WorldSizePreset::compact).width) == 0u);
+static_assert(persistent_world_origin_y(world_dimensions(WorldSizePreset::compact).height) == 360u);
+static_assert(persistent_world_origin_x(world_dimensions(WorldSizePreset::large).width) == 3840u);
+static_assert(persistent_world_origin_y(world_dimensions(WorldSizePreset::large).height) == 360u);
+static_assert(persistent_world_district_scene(0u) == Scene::sandbox);
+static_assert(persistent_world_district_scene(1u) == Scene::ecosystem);
+static_assert(persistent_world_district_scene(2u) == Scene::engineering_lab);
+static_assert(persistent_world_district_scene(3u) == Scene::frontier_base);
+static_assert(persistent_world_district_scene(4u) == Scene::volcano);
+static_assert(persistent_world_district_scene(5u) == Scene::waterworks);
+static_assert(persistent_world_district_scene(6u) == Scene::gold_mine);
+static_assert(persistent_world_district_scene(7u) == Scene::demolition);
 
 int main() {
     constexpr std::array scenes{

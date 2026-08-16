@@ -20,6 +20,9 @@ const uint SCENE_FRONTIER_BASE = 8u;
 const uint SCENE_COUNT = 9u;
 const int BRICK_SIZE = 8;
 const ivec2 AUTHORED_WORLD_CELLS = ivec2(640, 360);
+const ivec2 PERSISTENT_WORLD_DISTRICTS = ivec2(4, 2);
+const ivec2 PERSISTENT_WORLD_CELLS = AUTHORED_WORLD_CELLS * PERSISTENT_WORLD_DISTRICTS;
+const uint PERSISTENT_WORLD_DISTRICT_COUNT = 8u;
 
 ivec2 authoredWorldOrigin() {
     int x = int(pc.width) >= AUTHORED_WORLD_CELLS.x * 3
@@ -43,6 +46,45 @@ bool insideAuthoredLocal(ivec2 local) {
 
 bool insideAuthoredWorld(ivec2 worldPosition) {
     return insideAuthoredLocal(authoredLocalCoordinate(worldPosition));
+}
+bool persistentWorldMode() {
+    return int(pc.width) >= PERSISTENT_WORLD_CELLS.x &&
+           int(pc.height) >= PERSISTENT_WORLD_CELLS.y;
+}
+
+ivec2 persistentWorldOrigin() {
+    return max((ivec2(int(pc.width), int(pc.height)) - PERSISTENT_WORLD_CELLS) / 2,
+               ivec2(0));
+}
+
+uint persistentDistrictScene(uint district) {
+    if (district == 0u) return SCENE_SANDBOX;
+    if (district == 1u) return SCENE_ECOSYSTEM;
+    if (district == 2u) return SCENE_ENGINEERING;
+    if (district == 3u) return SCENE_FRONTIER_BASE;
+    if (district == 4u) return SCENE_VOLCANO;
+    if (district == 5u) return SCENE_WATERWORKS;
+    if (district == 6u) return SCENE_GOLD_MINE;
+    return SCENE_DEMOLITION;
+}
+
+bool persistentWorldAddress(ivec2 worldPosition, out uint scene,
+                            out ivec2 local, out ivec2 districtOrigin) {
+    ivec2 worldLocal = worldPosition - persistentWorldOrigin();
+    if (worldLocal.x < 0 || worldLocal.y < 0 ||
+        worldLocal.x >= PERSISTENT_WORLD_CELLS.x ||
+        worldLocal.y >= PERSISTENT_WORLD_CELLS.y) {
+        scene = SCENE_SANDBOX;
+        local = worldLocal;
+        districtOrigin = persistentWorldOrigin();
+        return false;
+    }
+    ivec2 district = worldLocal / AUTHORED_WORLD_CELLS;
+    uint districtIndex = uint(district.y * PERSISTENT_WORLD_DISTRICTS.x + district.x);
+    scene = persistentDistrictScene(min(districtIndex, PERSISTENT_WORLD_DISTRICT_COUNT - 1u));
+    local = worldLocal - district * AUTHORED_WORLD_CELLS;
+    districtOrigin = persistentWorldOrigin() + district * AUTHORED_WORLD_CELLS;
+    return true;
 }
 
 ivec2 brickCoordinate(ivec2 p) { return p / BRICK_SIZE; }
@@ -282,10 +324,10 @@ uint sandboxMaterial(ivec2 p) {
     if (brickFrame(p, acidMin, acidMax, 1)) material = MAT_ACID_RESISTANT_PLASTIC;
     else if (brickRect(p, acidMin + ivec2(1), acidMax - ivec2(1))) material = MAT_ACID;
 
-    // Deliberately loose granular sample; it is not structural terrain.
-    ivec2 pileCenter = ivec2(world.x * BRICK_SIZE / 5, ground * BRICK_SIZE - 1);
-    ivec2 d = p - pileCenter;
-    if (d.y >= 0 && d.y < 48 && abs(d.x) < 52 - d.y) material = MAT_SAND;
+    // Deliberately loose granular sample, authored as complete aligned tiles.
+    ivec2 pileBrick = b - ivec2(world.x / 5, ground - 1);
+    if (pileBrick.y <= 0 && pileBrick.y > -6 &&
+        abs(pileBrick.x) < 7 + pileBrick.y) material = MAT_SAND;
 
     applyBeehive(p, sandboxQueen(), material, true);
     return material;
@@ -294,65 +336,60 @@ uint sandboxMaterial(ivec2 p) {
 uint volcanoMaterial(ivec2 p) {
     ivec2 world = worldBrickSize();
     ivec2 b = brickCoordinate(p);
-    int floorRow = world.y - 2;
-    int center = min(world.x - 4, world.x * 4 / 5);
-    int top = max(4, floorRow - 38);
+    int surfaceRow = max(16, world.y / 2);
+    int center = min(world.x - 3, world.x * 4 / 5);
+    int top = max(3, surfaceRow - 17);
     uint material = MAT_EMPTY;
 
-    // The reference silhouette keeps the broad lake on the left and the tall,
-    // tile-stepped stone cone at the far right.
-    int depth = b.y - top;
-    int halfWidth = max(0, depth * 2 / 5 + 2);
-    bool insideCone = b.y >= top && b.y < floorRow &&
-                      abs(b.x - center) <= halfWidth;
-    if (insideCone) material = MAT_STONE;
+    // August 4 reference geology: a flat scenic surface over broad, complete
+    // aligned Dirt, Sand, and Stone strata instead of an empty lower half.
+    if (b.y == surfaceRow) material = MAT_GRASS;
+    else if (b.y > surfaceRow && b.y <= surfaceRow + 5) material = MAT_DIRT;
+    else if (b.y > surfaceRow + 5 && b.y < world.y - 9) material = MAT_SAND;
+    else if (b.y >= world.y - 9) material = MAT_STONE;
 
-    ivec2 chamberCenter = ivec2(center, floorRow - 8);
-    ivec2 chamberDelta = b - chamberCenter;
-    bool chamberInterior = chamberDelta.x * chamberDelta.x * 2 +
-                           chamberDelta.y * chamberDelta.y * 4 <= 88;
-    if (chamberInterior) material = MAT_LAVA;
-    if (abs(b.x - center) <= 1 && b.y >= top + 1 &&
-        b.y <= chamberCenter.y)
-        material = MAT_LAVA;
-    if (b.y == chamberCenter.y + 3 && abs(b.x - center) <= 2)
-        material = MAT_MAGMA_VENT;
-
-    // Open, tile-stepped crater with a retained lava lake matching the supplied reference.
-    if (b.y >= top && b.y < top + 2 && abs(b.x - center) <= 2)
-        material = MAT_LAVA;
-    if (b.y < top && abs(b.x - center) <= 2)
-        material = MAT_EMPTY;
-
-    // Natural map-scale water lake built from complete global brick cells on the left.
-    // Every authored Water and terrain
-    // assignment occupies complete 8x8 tiles.
+    // Broad left lake cut into the surface with a stepped, tile-complete bowl.
     int lakeLeft = 3;
-    int lakeRight = max(lakeLeft + 8, center - 18);
+    int lakeRight = max(lakeLeft + 12, center - 20);
     int lakeCenter = (lakeLeft + lakeRight) / 2;
-    int lakeHalfSpan = max(4, (lakeRight - lakeLeft) / 2);
-    int lakeSurfaceRow = floorRow - 8;
+    int lakeHalfSpan = max(6, (lakeRight - lakeLeft) / 2);
     int lakeDx = abs(b.x - lakeCenter);
     if (lakeDx <= lakeHalfSpan) {
-        int bowlDepth = 1 + (lakeHalfSpan - lakeDx) * 7 / max(lakeHalfSpan, 1);
-        int bedRow = min(floorRow - 1, lakeSurfaceRow + bowlDepth);
-        if (b.y >= lakeSurfaceRow && b.y < bedRow) material = MAT_WATER;
+        int lakeSurface = surfaceRow - 2;
+        int bowlDepth = 1 + (lakeHalfSpan - lakeDx) * 8 / max(lakeHalfSpan, 1);
+        int bedRow = min(surfaceRow + 8, lakeSurface + bowlDepth);
+        if (b.y >= lakeSurface && b.y < bedRow) material = MAT_WATER;
         else if (b.y == bedRow) material = MAT_DIRT;
-        else if (b.y > bedRow && b.y < floorRow) material = MAT_STONE;
     }
+
+    // Compact far-right stepped cone from the supplied silhouette.
+    int depth = b.y - top;
+    int halfWidth = max(0, depth * 3 / 4 + 2);
+    if (b.y >= top && b.y <= surfaceRow && abs(b.x - center) <= halfWidth)
+        material = MAT_STONE;
+
+    // One continuous throat, a retained upper chamber, and the deep horizontal
+    // magma feed shown in the reference. All authored volumes are whole bricks.
+    ivec2 chamberDelta = b - ivec2(center, surfaceRow - 4);
+    if (chamberDelta.x * chamberDelta.x * 2 +
+        chamberDelta.y * chamberDelta.y * 5 <= 52)
+        material = MAT_LAVA;
+    if (abs(b.x - center) <= 1 && b.y >= top && b.y < world.y - 1)
+        material = MAT_LAVA;
+    if (b.y == surfaceRow - 1 && abs(b.x - center) <= 2)
+        material = MAT_MAGMA_VENT;
+    // The reference keeps one horizontal magma feed above the final Stone foundation.
+    if (b.y == world.y - 2) material = MAT_LAVA;
 
     int craterSurface = top * BRICK_SIZE;
     int craterDx = abs(p.x - (center * BRICK_SIZE + BRICK_SIZE / 2));
     if (material == MAT_EMPTY && p.y < craterSurface &&
-        p.y > max(8, craterSurface - 112) && craterDx < 96 &&
-        (hash32(indexOf(p) ^ pc.seed ^ 0x51a9u) % 47u) == 0u)
+        p.y > max(8, craterSurface - 88) && craterDx < 88 &&
+        (hash32(indexOf(p) ^ pc.seed ^ 0x51a9u) % 53u) == 0u)
         material = MAT_SMOKE;
-
-    // Continue the vertical throat through the authored foundation.
-    if (b.y >= floorRow)
-        return abs(b.x - center) <= 1 ? MAT_LAVA : MAT_STONE;
     return material;
 }
+
 uint waterworksMaterial(ivec2 p) {
     ivec2 world = worldBrickSize();
     ivec2 b = brickCoordinate(p);
@@ -461,11 +498,12 @@ uint engineeringMaterial(ivec2 p) {
     ivec2 hopperMax = ivec2(world.x / 3 + 21, 20);
     if (brickFrame(p, hopperMin, hopperMax, 1)) material = MAT_STEEL;
     else if (brickRect(p, hopperMin + ivec2(1), hopperMax - ivec2(1))) {
-        uint mix = hash32(indexOf(p) ^ pc.seed ^ 0x5f17u);
-        if ((mix % 71u) == 0u) material = MAT_ALUMINUM_SHAVINGS;
-        else if ((mix % 43u) == 0u) material = MAT_COPPER;
-        else if ((mix % 23u) == 0u) material = MAT_IRON_ORE;
-        else material = (mix & 3u) == 0u ? MAT_SILT : MAT_SAND;
+        uint brickIndex = uint(b.y) * uint(world.x) + uint(b.x);
+        uint mix = hash32(brickIndex ^ pc.seed ^ 0x5f17u) % 12u;
+        if (mix == 0u) material = MAT_ALUMINUM_SHAVINGS;
+        else if (mix == 1u) material = MAT_COPPER;
+        else if (mix == 2u) material = MAT_IRON_ORE;
+        else material = mix < 6u ? MAT_SILT : MAT_SAND;
     }
     int outlet = (hopperMin.x + hopperMax.x) / 2;
     if (b.y == hopperMax.y - 1 && abs(b.x - outlet) <= 1) material = MAT_EMPTY;
@@ -545,14 +583,14 @@ uint goldMineMaterial(ivec2 p) {
     if (brickStair(p, ivec2(16, middle - 1), 10, true)) material = MAT_STEEL;
     if (brickStair(p, ivec2(5, lower - 1), 10, true)) material = MAT_STEEL;
 
-    ivec2 pileCenter = ivec2(36 * BRICK_SIZE, middle * BRICK_SIZE - 1);
-    ivec2 pile = p - pileCenter;
-    if (pile.y <= 0 && pile.y > -56 && abs(pile.x) < 70 + pile.y) {
-        uint mix = hash32(indexOf(p) ^ pc.seed ^ 0x91f3u);
-        if ((mix % 97u) == 0u) material = MAT_ALUMINUM_SHAVINGS;
-        else if ((mix % 41u) == 0u) material = MAT_COPPER;
-        else if ((mix % 29u) == 0u) material = MAT_IRON_ORE;
-        else if ((mix % 23u) == 0u) material = MAT_GOLD;
+    ivec2 minePile = b - ivec2(36, middle - 1);
+    if (minePile.y <= 0 && minePile.y > -7 && abs(minePile.x) < 9 + minePile.y) {
+        uint brickIndex = uint(b.y) * uint(world.x) + uint(b.x);
+        uint mix = hash32(brickIndex ^ pc.seed ^ 0x91f3u) % 16u;
+        if (mix == 0u) material = MAT_ALUMINUM_SHAVINGS;
+        else if (mix == 1u) material = MAT_COPPER;
+        else if (mix == 2u) material = MAT_IRON_ORE;
+        else if (mix == 3u) material = MAT_GOLD;
         else material = MAT_SAND;
     }
 
@@ -593,9 +631,9 @@ uint demolitionMaterial(ivec2 p) {
 
     // Explosive cells remain canonical loose material inside brick-aligned rooms.
     if (brickRect(p, ivec2(towerMin.x + 3, towerMax.y - 8), ivec2(towerMin.x + 8, towerMax.y - 4)))
-        material = ((p.x + p.y) & 1) == 0 ? MAT_GUNPOWDER : MAT_OIL;
+        material = ((b.x + b.y) & 1) == 0 ? MAT_GUNPOWDER : MAT_OIL;
     if (brickRect(p, ivec2(towerMax.x - 8, towerMax.y - 14), ivec2(towerMax.x - 3, towerMax.y - 10)))
-        material = ((p.x + p.y) & 3) == 0 ? MAT_EMBER : MAT_GUNPOWDER;
+        material = ((b.x + b.y) & 3) == 0 ? MAT_EMBER : MAT_GUNPOWDER;
     if (brickRect(p, ivec2(towerMin.x - 9, floorRow - 6), ivec2(towerMin.x - 2, floorRow))) material = MAT_SAND;
     return material;
 }
@@ -718,19 +756,26 @@ void main() {
     ivec2 p = ivec2(gl_GlobalInvocationID.xy);
     if (!inside(p)) return;
 
+    bool composedWorld = persistentWorldMode();
     uint scene = pc.material % SCENE_COUNT;
-    bool authored = insideAuthoredWorld(p);
     ivec2 local = authoredLocalCoordinate(p);
+    ivec2 activeAuthoredOrigin = authoredWorldOrigin();
+    bool authored = insideAuthoredWorld(p);
+    if (composedWorld)
+        authored = persistentWorldAddress(p, scene, local, activeAuthoredOrigin);
+
     uint material = authored ? materialForScene(scene, local) : MAT_EMPTY;
-    uvec2 substrateSample = residentWorldSubstrateSample(p, scene);
+    uint substrateScene = composedWorld ? SCENE_SANDBOX : scene;
+    uvec2 substrateSample = residentWorldSubstrateSample(p, substrateScene);
     uint substrateMaterial = substrateSample.x;
     bool substrateCell = substrateMaterial != MAT_EMPTY ||
                          (substrateSample.y & TERRAIN_FLAG_SAND_TRAP) != 0u;
-    // A non-Blank authored scene owns its entire 640x360 envelope, including
-    // intentional Air rooms and basins. Only Blank inherits substrate inside it.
+    // The composed World owns every district envelope, including intentional
+    // atmosphere, rooms, reservoirs, and machinery voids. Legacy Blank remains
+    // import-only and may inherit generated substrate.
     bool authoredFoundation = authored && local.y >= AUTHORED_WORLD_CELLS.y - BRICK_SIZE;
     bool useSubstrate = substrateCell &&
-        (!authored || (scene == SCENE_BLANK && !authoredFoundation));
+        (!authored || (!composedWorld && scene == SCENE_BLANK && !authoredFoundation));
     if (useSubstrate) material = substrateMaterial;
     if (material == MAT_EMPTY) material = MAT_ATMOSPHERE;
     bool structural = useSubstrate
@@ -739,7 +784,8 @@ void main() {
     Cell cell = structural ? makeStructuralCell(material, true) : makeCell(material);
     bool machineController = authored &&
         (material == MAT_SMELTER || material == MAT_ASSEMBLER ||
-         material == MAT_INSECT_HABITAT || material == MAT_SLUICE_BOX) && (local.x & 7) == 3 && (local.y & 7) == 3;
+         material == MAT_INSECT_HABITAT || material == MAT_SLUICE_BOX) &&
+        (local.x & 7) == 3 && (local.y & 7) == 3;
 
     cell.aux = (cell.aux & ~AUX_RANDOM_MASK) | (hash32(indexOf(p) ^ pc.seed) & AUX_RANDOM_MASK) |
                (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |
@@ -750,7 +796,7 @@ void main() {
         ivec2 localQueen = scene == SCENE_SANDBOX ? sandboxQueen() : ecosystemQueen();
         int slot = beeFormationSlotFromOffset(local - localQueen);
         if (slot >= 0) {
-            ivec2 worldQueen = authoredWorldOrigin() + localQueen;
+            ivec2 worldQueen = activeAuthoredOrigin + localQueen;
             cell.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
             cell.aux = beePackMetadata(cell.aux, worldQueen, uint(slot), pc.width, pc.height);
             cell.age = beePackAge(uint((slot * 17) % 900), BEE_TARGET_NONE);
@@ -759,16 +805,20 @@ void main() {
 
     if (machineController) {
         setMachineInventory(cell, uvec4(0u));
-        if (scene == SCENE_FRONTIER_BASE && local.x > AUTHORED_WORLD_CELLS.x / 2) cell.aux &= ~AUX_CHARGED;
-        else cell.aux |= AUX_CHARGED;
+        if (scene == SCENE_FRONTIER_BASE && local.x > AUTHORED_WORLD_CELLS.x / 2)
+            cell.aux &= ~AUX_CHARGED;
+        else
+            cell.aux |= AUX_CHARGED;
     }
     if (authored && scene == SCENE_ENGINEERING && isConductive(material) && local.x < 70)
         cell.aux |= AUX_CHARGED;
     if (material == MAT_BEETLE) cell.aux &= ~AUX_CHARGED;
     if (material == MAT_ANT || material == MAT_CONVEYOR) cell.aux |= AUX_CHARGED;
     if (material == MAT_FACTORY_CORE) {
-        if (scene == SCENE_FRONTIER_BASE && local.x > AUTHORED_WORLD_CELLS.x / 2) cell.aux &= ~AUX_CHARGED;
-        else cell.aux |= AUX_CHARGED;
+        if (scene == SCENE_FRONTIER_BASE && local.x > AUTHORED_WORLD_CELLS.x / 2)
+            cell.aux &= ~AUX_CHARGED;
+        else
+            cell.aux |= AUX_CHARGED;
     }
     cells[indexOf(p)] = cell;
 }

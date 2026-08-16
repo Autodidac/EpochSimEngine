@@ -1,31 +1,37 @@
-# SandHybrid v2.5.22
+# SandHybrid v2.5.23
 
-Exact Fix29 hive and liquid-equilibrium recovery.
+One persistent World and eight-opportunity macro scheduling recovery.
 
 ## Corrected behavior
 
-- Sandbox `(512,234)`, Ecosystem `(512,232)`, Beehive tool placement, and loaded-map normalization now hash the actual 640-wide cell coordinate with seed `0xD17A5EED`. The photographed Fix29 shell, chamber, queen, right exit, and Honey/Pollen/empty payload are compared cell-for-cell instead of accepted from aggregate counts.
-- The nine aligned structural Wood perch tiles remain `x=472..543`, `y=216..223`; exact hive-body cells override the overlapping perch while SandHybrid keeps its own bee population and runtime behavior.
-- Full Water and Half Water may spend movement only once per fixed tick. Fine movement now runs one seven-phase schedule instead of replaying horizontal pairs ten times against a fixed snapshot.
-- Half Water remains a conserved darker one-unit state: fall first, deterministic adjacent merge, clear two-to-four-cell attraction, supplied-ledge split/hang/drip, no macro ownership, and no generic full-Water wandering.
-- Full Water selects the nearest reachable outlet with a deterministic tie, preventing dispatch-order surface oscillation. Motionless partial-liquid tiles use liquid age—not surrounding atmosphere age—and sleep without retaining contradictory fine-active scheduling.
-- The v2.5.3 complete liquid/gas macro-packet baseline, same-attempt fine fallback, two-tick packet cadence/exposure, fixed 60 Hz simulation, paused editing, cursor mapping, sidebar workspaces, Blueprint transactions, scenes, players, and machinery remain preserved.
+- The normal runtime now exposes one `WORLD`, not a scene carousel. Sandbox, Ecosystem, Engineering, Frontier Base, Volcano, Waterworks, Gold Mine, and Demolition reset together as connected districts in one resident cell field. Prev/Next controls are removed; Save and Load own the full control row.
+- The player is always enabled and recovers at the supported breathable Frontier district spawn. Reset and camera home use the same district-relative coordinates.
+- Normal saves use `saves/worlds/<size>/world/<slot>/` and preserve the complete combined resident buffers. Legacy scene IDs remain migration-only.
+- Complete aligned 8x8 liquid and gas packets remain macro-owned scheduling views over canonical cells and attempt movement every two fixed 60 Hz ticks. Exposed or misaligned packets receive eight due opportunities; only a fresh open/incompatible perimeter at that point permits fine fallback. Enclosed Air bordered by solids or compatible gas tiles stays tiled.
+- Fine cells continually requalify for exact complete-tile ownership. Macro movement never replaces, synthesizes, or deletes a canonical material cell.
+- Full Water keeps the Half Water flag masked, renders with stable full-Water color, and uses deterministic outlet selection. Half Water stays darker, falls first, merges deterministically, attracts only over a clear two-to-four-cell gap, and retains supplied ledge hang/drip behavior.
+- The Volcano district uses the broad left lake and far-right Stone cone layout with a complete Stone foundation. Debug presentation uses restrained square 8x8 edges and bounded sampling rather than filled oblong region tint.
+- Editor paint, erase, Fill, Ignite Air, selection, and Blueprint placement remain live in both RUNNING and PAUSED while fixed simulation, actors, clocks, effects, and MAP refresh freeze when paused.
 
-## Packaged Vulkan acceptance
+## Focused acceptance
 
-Run the installed executable with:
+The Windows Release suite passes all deterministic, source, save, layout, shader-interface, downstream-package, and supported EpochGui tests. The cached packaged Vulkan report covers exact macro Water/Hydrogen movement, eighth-opportunity blocked fallback, enclosed-Air retention, conserved Half Water fall/merge/drip cases, zero-jitter Water equilibrium, all eight in-place district foundations, and the live Frontier player at `(2088,567)` with full health and Oxygen.
+
+This focused gate does not close the active long-duration ecology/weather loop, cross-district traversal and machinery observation, debug overhead benchmark, broad visual review, or the user's photographed irregular earliest-repository hive. The current invariant hive is still checked consistently across generation/tool/load paths, but this release does not claim that unresolved photograph match is complete.
+
+Run the installed executable manually when a fresh driver shader cache is acceptable:
 
     sandhybrid --world-size compact --runtime-acceptance-report runtime-acceptance.json
 
-The 21-check production Vulkan gate covers exact macro Water/gas transactions and fallback; exact translated, Sandbox, and Ecosystem Fix29 hives; conserved Half Water fall/merge/attraction/split/drip; zero-jitter Water equilibrium; unsupported-ledge flow; and all nine scene foundations. Broader visual, long-duration, machinery, player, bee-cycle, and complete mission-cache scenarios remain active until their own acceptance evidence exists.
-
 ## Dependency snapshot
 
-The complete vendored EpochGui dependency remains v0.88.75 at `d8decc9ee2e73e0009f1e8c49d86a52db6748b28`. A release-time fetch was attempted, but GitHub account suspension returned HTTP 403 and anonymous lookup returned 404. The available local `origin/main` is older, so no downgrade or partial copy was made; all three supported upstream Windows tests pass.
+The complete vendored EpochGui dependency remains v0.88.75 at `d8decc9ee2e73e0009f1e8c49d86a52db6748b28`. The required release-time upstream query was attempted on 2026-08-16, but GitHub returned account-suspension HTTP 403 and no public repository result. The available snapshot was retained intact rather than downgraded or partially copied; all supported vendored tests pass.
 
 ## Stable local assets
 
-- SandHybrid-Windows-x64-v2.5.22.zip
-- SandHybrid-Windows-x64-v2.5.22.zip.sha256
-- SandHybrid-Linux-x64-v2.5.22.tar.gz
-- SandHybrid-Linux-x64-v2.5.22.tar.gz.sha256
+- SandHybrid-Windows-x64-v2.5.23.zip
+- SandHybrid-Windows-x64-v2.5.23.zip.sha256
+- SandHybrid-Linux-x64-v2.5.23.tar.gz
+- SandHybrid-Linux-x64-v2.5.23.tar.gz.sha256
+
+This pass is authorized for local packages only. It does not push, tag, publish, or modify a public GitHub release.

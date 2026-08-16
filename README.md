@@ -21,7 +21,7 @@ Material behavior is determined by the material ID, current temperature, phase, 
 
 The following creation paths produce the same canonical behavior:
 
-- pre-placed scene content
+- pre-placed World district content
 - stabilized Terraria-style terrain cells
 - mouse-painted cells
 - broken structural fragments
@@ -57,7 +57,7 @@ Magma vents participate in the same heat, pressure, gas, and magma rules as the 
 - eruption thresholds are pressure-driven rather than timer-driven
 - an open vent does not automatically trigger a major eruption
 
-The Volcano scene provides a working pressure reservoir, vent path, magma source, gas space, cone, and cooling water.
+The World's Volcano district provides a working pressure reservoir, vent path, magma source, gas space, cone, and cooling water.
 
 ## Water and fluids
 
@@ -104,7 +104,7 @@ Press `F3` to reveal the structural debug layer:
 
 The overlay reads simulation state only and does not alter it.
 
-Ground continues across the resident world outside the authored scene footprint. Biome seams are broad deterministic transitions, mineral deposits use coherent complete-tile cores, and broken resource cells appear only in localized rubble pockets or curved sand traps.
+Ground continues across the resident world outside the composed district envelope. Biome seams are broad deterministic transitions, mineral deposits use coherent complete-tile cores, and broken resource cells appear only in localized rubble pockets or curved sand traps.
 
 Liquids use pressure-aware falling and equalization without a fixed surface-age cutoff. Water-like liquids spread farthest, oil and acid use bounded intermediate reach, honey remains slower without becoming stuck, and lava retains its cohesive semi-solid path.
 
@@ -164,7 +164,7 @@ The interface was rebuilt as a pixel-aligned EpochGui layout. The native title b
 - bottom-anchored debug state cards with real swatches and thin section dividers
 - inspection card separated from ordinary controls
 - `F3` debug controls visually separated from normal gameplay UI
-- compact layouts hide nonessential scene buttons rather than overlapping them
+- the runtime exposes one `WORLD`; no scene-carousel buttons exist
 - Inventory remains in the sidebar and switches between `INVENTORY` resource slots and the separate `BLUEPRINTS` pane
 - Designer remains in the sidebar with its isolated 64x32 authoring grid and `INVENTORY` / `BLUEPRINTS` panes; the main viewport always remains the live world
 
@@ -172,21 +172,20 @@ The interface was rebuilt as a pixel-aligned EpochGui layout. The native title b
 
 Shared geology contains sparse deterministic loose pixels of Iron Ore, Copper, Aluminum, and deeper Uranium mixed through sand, soil, silt, mud, and stone. Gold remains authored/special and is not randomly distributed. The generated reset path and loaded-scene substrate use the same distribution. Gravity, filters, conveyors, sluices, and magnets separate those pixels without changing identity. The same materials become durable structural cells only when deliberately placed through `TILES`; walking nearby never collects structural construction.
 
-## Default scenes
+## Persistent World districts
 
-Cycle with `[` and `]` or the on-screen controls.
+One reset creates eight connected 640x360 districts in a centered 4x2 envelope inside the resident World:
 
-1. Sandbox
-2. Blank
-3. Volcano
-4. Waterworks
-5. Ecosystem
-6. Engineering Lab — contained thermal vessel, sediment/metal sifter, and sealed gas cell
-7. Gold Mine — multi-level playable structure based on the supplied reference
-8. Demolition
-9. Frontier Base
+1. North-west: Sandbox
+2. North: Ecosystem and suspended hive
+3. North-east: Engineering
+4. Far north-east: Frontier Base and player recovery spawn
+5. South-west: Volcano
+6. South: Waterworks
+7. South-east: Gold Mine and water-fed Sluice
+8. Far south-east: Demolition
 
-All scenes use the same canonical material and structural rules.
+They share canonical cells, actor state, atmosphere, weather, temperature, hierarchy scheduling, conservation, and one save. `Blank` and former scene IDs remain migration-only and are not selectable runtime worlds.
 
 ## Controls
 
@@ -197,30 +196,30 @@ All scenes use the same canonical material and structural rules.
 - `F FILL`: fill the active region with the currently selected material
 - `ERASER`: select vacuum/empty deletion
 - `OXYGEN`: selectable pure-gas material in the Engineering group
-- `[` / `]`: previous or next scene
-- `R`: reset scene
+- There are no previous/next scene controls; all districts coexist in `WORLD`
+- `R`: reset the complete persistent World
 - `P` or the `RUNNING`/`PAUSED` button: pause or resume simulation; direct paint, erase, fill, Ignite Air, selection, and blueprint placement remain live while paused without advancing time
 - `N`: one simulation step while paused
-- `M`: Mine/Build mode in sandbox scenes; character scenes always keep player tools active
+- `M`: switch the persistent player between Mine and Build ownership while Inventory is active
 - `F3`: structural/debug overlay
 - Hold `Alt`: inspect exact cell
 - Mouse wheel over world: brush radius
-- Middle-mouse drag: direct responsive camera pan in every scene
+- Middle-mouse drag: direct responsive camera pan across the World
 - Right-mouse drag: camera pan while `WASD PAN` mode is enabled
-- `0`: reset camera to the crystal-marker authored map in the third resident row, beneath two full sky rows
+- `0`: reset the camera and player view to the supported Frontier district spawn
 - Cell/Tile placement selector: place any selected material as fine cells or one aligned 8x8 tile
 - Escape: exit
 
 ### Camera navigation
 
-- `PLAYER WASD` / `WASD PAN` button: choose whether character-scene WASD controls the player or camera
-- `W` / `A` / `S` / `D`: pan the camera in non-player scenes and whenever `WASD PAN` is enabled
+- `PLAYER WASD` / `WASD PAN`: choose whether WASD controls the persistent player or camera
+- `W` / `A` / `S` / `D`: control the player unless `WASD PAN` is enabled
 - Middle-mouse drag always pans; right-mouse drag pans in `WASD PAN` mode
 - Mouse-edge camera movement is removed
 
-### Character scenes
+### Player tools
 
-- `W` / `A` / `S` / `D`: control the player exclusively; these keys do not pan the camera
+- `W` / `A` / `S` / `D`: control the player when `PLAYER WASD` is selected
 - Mine mode, left mouse: drill terrain; automatically fire plasma when the first hit is a hostile and ammo is available
 - Mine mode, right mouse: deposit carried resource
 - Build mode, left mouse: place selected material
@@ -245,7 +244,7 @@ The Windows package includes `run.bat` at its root. It locates `sandhybrid.exe` 
 - machine work restricted to valid controller/output locations
 - paused state performs no continuous simulation ticks, actor updates, MAP refresh, lighting/day-night, reactions, or effects; direct editor mutations still commit and dirty affected hierarchy state
 
-The resident world is 10240x1440 cells: 16 authored-map footprints wide by 4 high. It preserves the former 64-footprint total while extending only to the right. Authored 640x360 scene content remains at its original world origin (960,720), with the two complete rows above kept as sky. The active simulation gate is one contiguous clipped 4x4 window of complete 640x360 map-footprint regions around the camera; everything outside it is rejected by simulation shaders. Stable regions still exit before expensive chemistry, neighborhood, and movement work. Sparse far-region streaming remains an open mission in `missioncache.md`.
+Compact, Standard, and Large resident worlds are 2560x1440, 5120x1440, and 10240x1440 cells. The same 2560x720 eight-district envelope is centered at `(0,360)`, `(1280,360)`, or `(3840,360)` respectively. The active simulation gate remains one contiguous clipped 4x4 window of complete 640x360 regions around the camera; stable off-window regions reject expensive chemistry, neighborhood, and movement work without becoming another simulation instance. Sparse far-region streaming remains active in `missioncache.md`.
 
 ## Windows build
 
@@ -324,7 +323,7 @@ The complete vendored EpochGui dependency, exact upstream commit, and cross-plat
 
 ## Hierarchical simulation
 
-Uniform 8x8 material regions can move as 64-cell macro-cells using the same fall, diagonal, density, and liquid-spread rules as fine pixels. The v2.5.3 policy keeps complete moving Water and gas tiles macro-eligible; an uncommitted packet falls back to fine cells in the same tick. Mixed edges and Half Water remain pixel simulated. Above that, 64x64 chunks cache activity and sleep state for fast rejection and large-map lookup. See `HIERARCHICAL_SIMULATION.md`.
+Uniform aligned 8x8 material regions can move as exact 64-cell packets while their canonical cells remain authoritative. Complete Water and gas packets attempt movement every two fixed 60 Hz ticks. Exposed or misaligned packets receive eight due opportunities, then fall back to fine simulation only when a fresh perimeter check still finds open or incompatible neighbors; enclosed Air never untile merely because time passed. Fine cells continually requalify for full-tile ownership, and macro/fine work in one tick must use disjoint cells. Half Water remains fine simulated. Above that, 64x64 chunks cache activity and sleep state for fast rejection. See `HIERARCHICAL_SIMULATION.md`.
 
 
 ## Half-volume fresh water
@@ -332,9 +331,14 @@ Uniform 8x8 material regions can move as 64-cell macro-cells using the same fall
 Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and solid-supported pre-fall droplets that cannot hop along water edges or crawl after falling. See `HALF_WATER.md`.
 
 
+## v2.5.23 one-World and macro recovery
+
+The local v2.5.23 target removes the normal scene carousel and composes eight former authored areas as connected districts in one `WORLD`. The player, saves, resident buffers, atmosphere, heat, weather, and hierarchy state persist while travelling between them. Normal saves live under `saves/worlds/<size>/world/<slot>/`.
+
+Complete liquid/gas packets remain reversible scheduling metadata over canonical cells. They move every two fixed ticks and receive eight due opportunities before conditional fine fallback; a fresh boundary check protects sealed Air from needless breakup. Focused packaged Windows readback covers all eight foundations, the live Frontier player, exact Water/gas packets, eighth-opportunity fallback, enclosed Air retention, Half Water fall/merge/drip, and a zero-jitter Water basin. Broader cross-district traversal, machinery/ecology cycles, visual acceptance, debug overhead, and the photographed irregular early hive remain active in `missioncache.md`.
 ## v2.5.22 systems, scene, machinery, and presentation recovery
 
-SandHybrid v2.5.22 is the current stable release target, with native Windows/Linux packages, SHA-256 files, and no prerelease marker.
+SandHybrid v2.5.22 was the preceding local recovery target, with native Windows/Linux packages, SHA-256 files, and no prerelease marker.
 
 This recovery uses the actual scene-local Fix29 hive hash in Sandbox, Ecosystem, tool placement, and load normalization. Liquid work is single-spend per fixed tick; Half Water keeps its conserved fall/merge/clear-gap/supplied-drip rules, while settled full-Water surfaces choose deterministic nearest outlets and sleep without residual fine scheduling.
 
@@ -342,7 +346,7 @@ The supplied 2026-08-04 Volcano silhouette now anchors the scene: a broad left l
 
 Half Water is the darker conserved one-unit state again, including the supplied ledge hang/drip; full Water continues the corrected ledge/diagonal route. Normal materials render statically except for the retained metal/ore glint. State-driven gases conserve pressure while Atmosphere expands into Vacuum and raw atmospheric gases mix locally.
 
-`IGNITE AIR` is in `ACTIONS` above `KEYMAP`. Settings provides 30/60/120/UNLIMITED presentation caps while simulation remains fixed at 60 Hz. Debug now uses bounded rotating-region samples, and every scene has a recoverable supported breathable player spawn.
+`IGNITE AIR` is in `ACTIONS` above `KEYMAP`. Settings provides 30/60/120/UNLIMITED presentation caps while simulation remains fixed at 60 Hz. Debug now uses bounded rotating-region samples, and the persistent World has a recoverable supported breathable player spawn.
 
 The generated, placeable, and loaded hive uses the photographed historical compact model (`24..87` shell, `<24` chamber, exit through `x=10`, seed `0xD17A5EED`) over nine complete Wood support tiles. EpochGui is fetched before release and remains current at v0.88.75 / `d8decc9`.
 
@@ -357,7 +361,7 @@ Broader visual, long-running performance/leveling, full bee-cycle, and complete 
 
 Inventory and Designer remain normal sidebar workspaces with exactly `INVENTORY` and `BLUEPRINTS` subtabs. Four shared slots now report real occupied/empty state. Designer publishes authored Static Models or Map Chunks directly to those slots without replacing the world viewport. An occupied slot produces a camera-correct world footprint and a confirmed world left-click performs one all-or-nothing placement.
 
-Blueprint placement remains live while `PAUSED`, including in character scenes. It cannot share a click with paint, Fill, mining, or deposit and cannot leak through load/reset. The exact bounded selection/copy, thumbnails, and persistence portions remain active in `missioncache.md`.
+Blueprint placement remains live while `PAUSED`, including with the persistent player enabled. It cannot share a click with paint, Fill, mining, or deposit and cannot leak through load/reset. The exact bounded selection/copy, thumbnails, and persistence portions remain active in `missioncache.md`.
 ## v2.5.15 recovery baselines
 
 The Sandbox, Ecosystem, build-tool, and loaded-map hive use the hard-coded Ecosystem model that SimpleSandSim Fix36 explicitly restored from immediately before PR #19: queen centers (512,234)/(512,232), loose Wood perch offsets x=-37..29 and y=-16..-13, squared shell radii 25 through 91, a chamber below 25, deterministic Honey/Pollen/Empty contents, and a right exit through x=10. Only the model and contents are shared; SandHybrid retains its own bee actors, forage, return, deposit, feed, migration, hazard, and 100-bee colony rules.
@@ -365,11 +369,11 @@ The Sandbox, Ecosystem, build-tool, and loaded-map hive use the hard-coded Ecosy
 Moving macro media match the packaged v2.5.3 reference. Runtime acceptance for both recovered baselines remains tracked in `missioncache.md`.
 
 
-## Resident-width scene envelopes
+## Resident World envelope
 
-Every scene keeps its original authored objects at the same local coordinates inside the crystal-row 640x360 footprint at world Y=720. The two complete camera rows above remain empty sky. A sparse one-brick floor extends to both resident horizontal edges at the authored-row bottom, with one-brick side walls beginning only at the authored row. The expanded space is not tiled, repeated, or densely filled.
+All eight authored districts retain local 640x360 coordinates inside the centered 4x2 World envelope. Their boundaries are ordinary shared cell boundaries, not scene walls or load transitions. Intentional authored air stays empty/atmospheric, complete tile-authored floors and foundations remain aligned, and only the outer resident world supplies hard containment.
 
-Engineering now presents controlled thermal, single-aperture gas diffusion, sediment separation, and paired compost control/treatment experiments. Gold Mine includes a visible water-fed conveyor and sluice line. Ember becomes ash only; fertilizer requires ash, organic waste, mineral soil/silt, dirty water, oxygen, and time.
+Engineering presents controlled thermal, gas diffusion, sediment separation, and paired compost experiments. Gold Mine includes a water-fed conveyor and Sluice line. Ember becomes ash only; fertilizer requires ash, organic waste, mineral soil/silt, dirty water, Oxygen, and time. Their broader runtime operation remains active until packaged observation covers it.
 
 ## Deterministic core state contracts
 
@@ -385,9 +389,9 @@ These APIs are deterministic and covered by Windows/Linux contracts. The Vulkan 
 
 ## v2.5.6 runtime controls
 
-Right-click exclusively pans: dragging moves the current camera and holding it near a viewport edge performs gated edge panning. `WASD PAN` routes keys to the simulation camera; MAP uses its own camera and a slow full-world snapshot without changing simulation LOD or active-region scheduling. In player scenes, MINE uses left click and BUILD places the selected resource from the sidebar Inventory pane with left click. Hold `F` and left-click the simulation to fill; pressing `F` alone does nothing.
+Right-click exclusively pans: dragging moves the current camera and holding it near a viewport edge performs gated edge panning. `WASD PAN` routes keys to the simulation camera; MAP uses its own camera and a slow full-world snapshot without changing simulation LOD or active-region scheduling. In the persistent World, MINE uses left click and BUILD places the selected resource from the sidebar Inventory pane with left click. Hold `F` and left-click the simulation to fill; pressing `F` alone does nothing.
 
 
 ## World sizes and exact saves
 
-Launch Compact, Standard, or Large with the supplied scripts or `--world-size`. Save slots use `--save-slot NAME`. Gameplay saves are exact whole-world `.shw` files under the portable `saves/worlds/<size>/<scene>/<slot>/` tree; see `SAVE_LAYOUT.md`. PPM files are retained only for authored 640x360 scene import/export.
+Launch Compact, Standard, or Large with the supplied scripts or `--world-size`. Save slots use `--save-slot NAME`. Gameplay saves are exact whole-world `.shw` files under the portable `saves/worlds/<size>/world/<slot>/` tree; see `SAVE_LAYOUT.md`. PPM files are retained only for authored 640x360 district import/export.

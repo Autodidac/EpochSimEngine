@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Replaced the normal multi-scene carousel with one persistent `WORLD` containing eight connected 640x360 districts in a centered 4x2 envelope; removed Prev/Next controls and made the player recover at the Frontier district spawn.
+- Moved normal saves to the combined `saves/worlds/<size>/world/<slot>/` namespace while retaining legacy scene IDs only for deterministic migration contracts.
+- Preserved canonical cells beneath reversible 8x8 macro scheduling, with exact liquid/gas packet attempts every two fixed ticks, eight due opportunities before conditional fine fallback, and indefinite tile retention for enclosed Air.
+- Extended deterministic and packaged GPU evidence across all eight in-place foundations, persistent player health/Oxygen, exact macro media, eighth-opportunity fallback, enclosed Air, Half Water fall/merge/drip, and settled Water equilibrium.
+- Corrected stale README, layout, save, validation, and release documentation. Cross-district ecology/weather, full machinery observation, debug overhead, broad visuals, and the photographed irregular historical hive remain active and are not claimed complete.
+
 ## 2.5.22
 
 - Recovered the photographed Fix29 hive cell-for-cell using actual scene-local 640-wide entropy in Sandbox, Ecosystem, translated tool placement, and load normalization.

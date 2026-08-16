@@ -201,16 +201,16 @@ vec3 debugStatColor(uint stat) {
 }
 
 vec3 debugKeyColor(uint key) {
-    if (key == 0u) return vec3(1.00, 0.06, 0.04);       // damaged / collapsing
-    if (key == 1u) return vec3(0.05, 0.78, 1.00);       // active
-    if (key == 2u) return vec3(1.00, 0.08, 0.72);       // fine active
-    if (key == 3u) return vec3(1.00, 0.45, 0.03);       // bulk moved
-    if (key == 4u) return vec3(0.62, 0.18, 1.00);       // bulk ready
-    if (key == 5u) return vec3(1.00, 0.88, 0.04);       // breakup to fine
-    if (key == 6u) return vec3(0.08, 0.94, 0.30);       // settled
-    if (key == 7u) return vec3(0.06, 0.74, 0.62);       // enclosed medium
-    if (key == 8u) return vec3(0.025, 0.075, 0.22);     // sleeping
-    return vec3(0.82, 0.88, 0.96);                      // stable / candidate
+    if (key == 0u) return vec3(0.92, 0.24, 0.20);       // damaged / collapsing
+    if (key == 1u) return vec3(0.18, 0.70, 0.82);       // active
+    if (key == 2u) return vec3(0.30, 0.52, 0.88);       // fine active
+    if (key == 3u) return vec3(0.92, 0.52, 0.18);       // bulk moved
+    if (key == 4u) return vec3(0.58, 0.42, 0.78);       // bulk ready
+    if (key == 5u) return vec3(0.92, 0.76, 0.22);       // breakup to fine
+    if (key == 6u) return vec3(0.28, 0.72, 0.44);       // settled
+    if (key == 7u) return vec3(0.20, 0.66, 0.62);       // enclosed medium
+    if (key == 8u) return vec3(0.12, 0.18, 0.28);     // sleeping
+    return vec3(0.68, 0.74, 0.82);                      // stable / candidate
 }
 
 bool borderPixel(uint x, uint y, uint left, uint top, uint right, uint bottom) {
@@ -220,149 +220,110 @@ bool borderPixel(uint x, uint y, uint left, uint top, uint right, uint bottom) {
 bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
                      uint panelRight, uint panelBottom, int textScale, inout vec3 color) {
     if (x < panelLeft || x >= panelRight || y < panelTop || y >= panelBottom) return false;
-    color = vec3(0.006, 0.010, 0.018);
+    color = vec3(0.008, 0.013, 0.020);
     if (borderPixel(x, y, panelLeft, panelTop, panelRight, panelBottom))
-        color = vec3(0.34, 0.72, 1.00);
+        color = vec3(0.24, 0.48, 0.62);
 
     bool textHit = false;
-    vec3 textColor = vec3(0.96, 0.99, 1.00);
+    vec3 textColor = vec3(0.90, 0.94, 0.98);
     if (fixedPixel(pixel, ivec2(int(panelLeft + 10u), int(panelTop + 5u)), textScale, 75u)) {
         textHit = true;
-        textColor = vec3(1.00);
+        textColor = vec3(0.96);
     }
     uint scopeLabelX = panelRight > panelLeft + 122u ? panelRight - 112u : panelLeft + 10u;
-    if (fixedPixel(pixel, ivec2(int(scopeLabelX), int(panelTop + 8u)), 1,
-                   196u)) {
+    if (fixedPixel(pixel, ivec2(int(scopeLabelX), int(panelTop + 8u)), 1, 196u)) {
         textHit = true;
-        textColor = vec3(0.52, 0.94, 0.58);
+        textColor = vec3(0.54, 0.80, 0.62);
     }
 
-    const uint statCount = 46u;
+    const uint statCount = 34u;
     uint rowHeight = textScale == 2 ? 18u : 12u;
     uint headerHeight = textScale == 2 ? 24u : 15u;
     uint fixedLabels[statCount] = uint[statCount](
         1u, 174u, 175u, 176u, 177u, 178u, 179u, 143u, 137u,
-        160u, 161u, 94u, 95u, 96u,
-        144u, 145u,
+        160u, 161u, 94u, 95u, 96u, 144u, 145u,
         162u, 98u, 81u, 163u, 119u, 120u, 121u,
-        164u, 115u, 114u, 122u,
-        146u, 78u, 116u, 117u, 123u, 124u, 112u, 113u, 111u,
-        149u, 150u, 151u, 152u, 153u, 154u, 155u, 156u, 110u, 82u);
+        164u, 115u, 114u, 122u, 146u, 78u, 116u, 117u, 123u, 124u, 112u);
     uint fixedValues[statCount] = uint[statCount](
-        renderPc.framesPerSecond,
-        renderPc.gridWidth,
-        renderPc.gridHeight,
-        renderPc.gridWidth * renderPc.gridHeight,
-        renderPc.tileColumns,
-        renderPc.tileRows,
+        renderPc.framesPerSecond, renderPc.gridWidth, renderPc.gridHeight,
+        renderPc.gridWidth * renderPc.gridHeight, renderPc.tileColumns, renderPc.tileRows,
         renderPc.tileColumns * renderPc.tileRows,
         renderPc.gridWidth * renderPc.gridHeight * 36u / (1024u * 1024u),
-        renderPc.activeAreaCount,
-        debugStats[STAT_SCOPE_CELLS],
-        debugStats[STAT_ACTIVE_CELLS],
-        debugStats[STAT_STRUCTURAL_CELLS],
-        debugStats[STAT_LIQUID_CELLS],
-        debugStats[STAT_GAS_CELLS],
-        debugStats[STAT_MOVE_PAIR_TESTS],
-        debugStats[STAT_CHUNK_SKIPPED_CELLS],
-        debugStats[STAT_TOTAL_TILES],
-        debugStats[STAT_ACTIVE_TILES],
-        debugStats[STAT_SLEEPING_TILES],
-        debugStats[STAT_UNCLASSIFIED_TILES],
-        debugStats[STAT_FINE_TILES],
-        debugStats[STAT_MACRO_TILES],
-        debugStats[STAT_SETTLED_TILES],
-        debugStats[STAT_TOTAL_CHUNKS],
-        debugStats[STAT_ACTIVE_CHUNKS],
-        debugStats[STAT_SLEEPING_CHUNKS],
-        debugStats[STAT_DIRTY_CHUNKS],
-        debugStats[STAT_MOVED_CELLS],
-        debugStats[STAT_MOVE_SWAPS],
-        debugStats[STAT_MACRO_TILE_MOVES],
-        debugStats[STAT_MACRO_CELL_MOVES],
-        debugStats[STAT_MACRO_GAS_TILES],
-        debugStats[STAT_MACRO_LIQUID_TILES],
-        debugStats[STAT_FINE_REPAIR_MOVES],
-        debugStats[STAT_GAS_EXCESS_MOVES],
-        debugStats[STAT_PLAYER_IMPULSES],
-        debugStats[STAT_STRUCTURAL_COLLAPSES],
-        debugStats[STAT_CONVEYOR_MOVES],
-        debugStats[STAT_MACHINE_INPUTS],
-        debugStats[STAT_MACHINE_OUTPUTS],
-        debugStats[STAT_VOLCANO_LAVA_OUTPUTS],
-        debugStats[STAT_VOLCANO_GAS_OUTPUTS],
-        debugStats[STAT_GAS_EDGE_ACTIVE_TILES],
-        debugStats[STAT_CHEMISTRY_CHANGES],
-        debugStats[STAT_ACTOR_MOVES],
-        debugStats[STAT_BEE_COUNT]);
-    for (uint stat = 0u; stat < statCount; ++stat) {
-        bool hit = statPixel(pixel,
-            ivec2(int(panelLeft + 10u), int(panelTop + headerHeight + stat * rowHeight)),
-            textScale, fixedLabels[stat], fixedValues[stat]);
-        if (hit) {
+        renderPc.activeAreaCount, debugStats[STAT_SCOPE_CELLS],
+        debugStats[STAT_ACTIVE_CELLS], debugStats[STAT_STRUCTURAL_CELLS],
+        debugStats[STAT_LIQUID_CELLS], debugStats[STAT_GAS_CELLS],
+        debugStats[STAT_MOVE_PAIR_TESTS], debugStats[STAT_CHUNK_SKIPPED_CELLS],
+        debugStats[STAT_TOTAL_TILES], debugStats[STAT_ACTIVE_TILES],
+        debugStats[STAT_SLEEPING_TILES], debugStats[STAT_UNCLASSIFIED_TILES],
+        debugStats[STAT_FINE_TILES], debugStats[STAT_MACRO_TILES],
+        debugStats[STAT_SETTLED_TILES], debugStats[STAT_TOTAL_CHUNKS],
+        debugStats[STAT_ACTIVE_CHUNKS], debugStats[STAT_SLEEPING_CHUNKS],
+        debugStats[STAT_DIRTY_CHUNKS], debugStats[STAT_MOVED_CELLS],
+        debugStats[STAT_MOVE_SWAPS], debugStats[STAT_MACRO_TILE_MOVES],
+        debugStats[STAT_MACRO_CELL_MOVES], debugStats[STAT_MACRO_GAS_TILES],
+        debugStats[STAT_MACRO_LIQUID_TILES], debugStats[STAT_FINE_REPAIR_MOVES]);
+    uint statsTop = panelTop + headerHeight;
+    if (y >= statsTop && y < statsTop + statCount * rowHeight) {
+        uint stat = (y - statsTop) / rowHeight;
+        if (statPixel(pixel, ivec2(int(panelLeft + 10u),
+            int(statsTop + stat * rowHeight)), textScale, fixedLabels[stat], fixedValues[stat])) {
             textHit = true;
             textColor = debugStatColor(stat > 2u ? stat - 3u : stat);
         }
     }
 
-    // Restrained visual grouping: resource pressure, hierarchy/activity, and
-    // world events remain readable without surrounding every row with boxes.
-    uint separatorYs[4] = uint[4](
-        panelTop + headerHeight + 14u * rowHeight - 4u,
-        panelTop + headerHeight + 23u * rowHeight - 4u,
-        panelTop + headerHeight + 27u * rowHeight - 4u,
-        panelTop + headerHeight + 36u * rowHeight - 4u);
+    uint separators[4] = uint[4](11u, 16u, 23u, 27u);
     for (uint separator = 0u; separator < 4u; ++separator) {
-        uint separatorY = separatorYs[separator];
-        if (y >= separatorY && y < separatorY + 1u &&
-            x >= panelLeft + 8u && x < panelRight - 8u)
-            color = vec3(0.10, 0.21, 0.30);
+        uint separatorY = statsTop + separators[separator] * rowHeight - 4u;
+        if (y == separatorY && x >= panelLeft + 8u && x < panelRight - 8u)
+            color = vec3(0.09, 0.16, 0.22);
     }
 
     uint keyRows = 5u;
     uint cardHeight = textScale == 2 ? 36u : 28u;
     uint keyTitleHeight = textScale == 2 ? 22u : 14u;
     uint cardsHeight = keyTitleHeight + keyRows * cardHeight + 10u;
-    uint keyTop = max(panelTop + headerHeight + statCount * rowHeight + 8u,
+    uint keyTop = max(statsTop + statCount * rowHeight + 8u,
                       panelBottom > cardsHeight ? panelBottom - cardsHeight : panelTop);
     if (fixedPixel(pixel, ivec2(int(panelLeft + 10u), int(keyTop)), textScale, 127u)) {
         textHit = true;
-        textColor = vec3(1.00);
+        textColor = vec3(0.96);
     }
     const uint keyCount = 10u;
-    // Legend order matches the state precedence used by the world overlay.
     uint keyLabels[keyCount] = uint[keyCount](
         128u, 29u, 131u, 130u, 132u, 135u, 133u, 134u, 28u, 129u);
-    uint keyColorMap[keyCount] = uint[keyCount](
-        0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u);
     uint keyColumns = panelRight - panelLeft >= 330u ? 2u : 1u;
     uint keyColumnWidth = max((panelRight - panelLeft - 20u) / keyColumns, 1u);
     uint swatchSize = textScale == 2 ? 24u : 18u;
-    for (uint key = 0u; key < keyCount; ++key) {
-        uint column = key % keyColumns;
-        uint row = key / keyColumns;
-        uint keyLeft = panelLeft + 10u + column * keyColumnWidth;
-        uint keyY = keyTop + keyTitleHeight + row * cardHeight;
-        uint cardRight = min(keyLeft + keyColumnWidth - 5u, panelRight - 5u);
-        uint cardBottom = min(keyY + cardHeight - 4u, panelBottom - 4u);
-        if (x >= keyLeft && x < cardRight && y >= keyY && y < cardBottom) {
-            color = vec3(0.025, 0.040, 0.060);
-            if (borderPixel(x, y, keyLeft, keyY, cardRight, cardBottom))
-                color = vec3(0.16, 0.26, 0.36);
-        }
-        uint swatchTop = keyY + 4u;
-        if (swatchTop + swatchSize < cardBottom && x >= keyLeft + 4u && x < keyLeft + 4u + swatchSize &&
-            y >= swatchTop && y < swatchTop + swatchSize) {
-            uint colorKey = keyColorMap[key];
-            color = debugKeyColor(colorKey);
-            if (borderPixel(x, y, keyLeft + 4u, swatchTop,
-                            keyLeft + 4u + swatchSize, swatchTop + swatchSize))
-                color = vec3(1.00);
-        }
-        if (keyY + 7u * uint(textScale) < panelBottom && fixedPixel(pixel,
-            ivec2(int(keyLeft + swatchSize + 12u), int(keyY + 7u)), textScale, keyLabels[key])) {
-            textHit = true;
-            textColor = vec3(0.94, 0.98, 1.00);
+    if (y >= keyTop + keyTitleHeight) {
+        uint row = (y - keyTop - keyTitleHeight) / cardHeight;
+        uint localX = x > panelLeft + 10u ? x - panelLeft - 10u : 0u;
+        uint column = min(localX / keyColumnWidth, keyColumns - 1u);
+        uint key = row * keyColumns + column;
+        if (row < keyRows && key < keyCount) {
+            uint keyLeft = panelLeft + 10u + column * keyColumnWidth;
+            uint keyY = keyTop + keyTitleHeight + row * cardHeight;
+            uint cardRight = min(keyLeft + keyColumnWidth - 5u, panelRight - 5u);
+            uint cardBottom = min(keyY + cardHeight - 4u, panelBottom - 4u);
+            if (x >= keyLeft && x < cardRight && y >= keyY && y < cardBottom) {
+                color = vec3(0.025, 0.038, 0.052);
+                if (borderPixel(x, y, keyLeft, keyY, cardRight, cardBottom))
+                    color = vec3(0.13, 0.20, 0.27);
+            }
+            uint swatchTop = keyY + 4u;
+            if (swatchTop + swatchSize < cardBottom && x >= keyLeft + 4u &&
+                x < keyLeft + 4u + swatchSize && y >= swatchTop && y < swatchTop + swatchSize) {
+                color = debugKeyColor(key);
+                if (borderPixel(x, y, keyLeft + 4u, swatchTop,
+                                keyLeft + 4u + swatchSize, swatchTop + swatchSize))
+                    color = vec3(0.92);
+            }
+            if (keyY + 7u * uint(textScale) < panelBottom &&
+                fixedPixel(pixel, ivec2(int(keyLeft + swatchSize + 12u), int(keyY + 7u)),
+                           textScale, keyLabels[key])) {
+                textHit = true;
+                textColor = vec3(0.90, 0.94, 0.98);
+            }
         }
     }
     if (textHit) color = textColor;
@@ -476,9 +437,13 @@ vec3 applyWorldLighting(vec3 color, Cell cell, ivec2 grid, bool mapSample) {
 }
 
 vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
-    // ONI-style readability without changing simulation storage: contiguous gas
-    // fields render as coherent translucent volumes while isolated cells remain
-    // subtle instead of producing noisy full-screen particle halos.
+    // Balanced atmosphere is deliberately presentation-invariant: macro packets
+    // may move authoritative pressure, but they must never reveal 8x8 Air tiles.
+    if (cell.material == MAT_ATMOSPHERE) {
+        base.rgb = vec3(0.22, 0.46, 0.70);
+        base.a = 0.055;
+        return base;
+    }
     float densityField = float(stateValue(cell)) / 255.0;
     uint sameNeighbors = 0u;
     sameNeighbors += cellAt(grid + ivec2(-1, 0)).material == cell.material ? 1u : 0u;
@@ -486,9 +451,9 @@ vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
     sameNeighbors += cellAt(grid + ivec2(0, -1)).material == cell.material ? 1u : 0u;
     sameNeighbors += cellAt(grid + ivec2(0, 1)).material == cell.material ? 1u : 0u;
     float cohesion = float(sameNeighbors) * 0.045;
-    if (cell.material == MAT_ATMOSPHERE || cell.material == MAT_OXYGEN) {
-        base.rgb = mix(vec3(0.22, 0.46, 0.70), base.rgb, 0.22);
-        base.a = clamp(0.075 + densityField * 0.075 + cohesion * 0.32, 0.065, 0.22);
+    if (cell.material == MAT_OXYGEN) {
+        base.rgb = mix(vec3(0.22, 0.46, 0.70), base.rgb, 0.28);
+        base.a = clamp(0.09 + densityField * 0.08 + cohesion * 0.24, 0.075, 0.22);
         return base;
     }
     float restrained = 0.08 + densityField * 0.13 + cohesion;
@@ -507,13 +472,9 @@ vec4 worldColor(Cell cell, ivec2 grid) {
         base.rgb *= 0.84;
     }
     if (isHalfWater(cell)) {
-        uint waterNeighbors = 0u;
-        waterNeighbors += cellAt(grid + ivec2(-1, 0)).material == MAT_WATER ? 1u : 0u;
-        waterNeighbors += cellAt(grid + ivec2(1, 0)).material == MAT_WATER ? 1u : 0u;
-        waterNeighbors += cellAt(grid + ivec2(0, -1)).material == MAT_WATER ? 1u : 0u;
-        waterNeighbors += cellAt(grid + ivec2(0, 1)).material == MAT_WATER ? 1u : 0u;
-        float edgeSupport = float(waterNeighbors) * 0.018;
-        base.rgb = clamp(base.rgb * (0.68 + edgeSupport) + vec3(0.0, 0.015, 0.035), 0.0, 1.0);
+        // Half Water has one stable identity; displaced-gas carrier bits and
+        // changing neighbors never tint it or make adjacent full Water flicker.
+        base.rgb = vec3(0.045, 0.22, 0.64);
         base.a = 1.0;
     }
     if (cell.material == MAT_PLANT_STEM) {
@@ -603,9 +564,13 @@ void main() {
             if (fixedPixel(pixel, ivec2(int(left + right) / 2 - labelWidth / 2, 12), scale,
                            tabLabels[tab])) text = true;
         }
-        uint sceneId = renderPc.selectedScene % max(renderPc.sceneCount, 1u);
+        bool worldName = glyphPixel(pixel, ivec2(int(sidebarLeft + 58u), 27), 2, 87u) ||
+                         glyphPixel(pixel, ivec2(int(sidebarLeft + 70u), 27), 2, 79u) ||
+                         glyphPixel(pixel, ivec2(int(sidebarLeft + 82u), 27), 2, 82u) ||
+                         glyphPixel(pixel, ivec2(int(sidebarLeft + 94u), 27), 2, 76u) ||
+                         glyphPixel(pixel, ivec2(int(sidebarLeft + 106u), 27), 2, 68u);
         text = text || fixedPixel(pixel, ivec2(int(sidebarLeft + 10u), 31), 1, 5u) ||
-               scenePixel(pixel, ivec2(int(sidebarLeft + 58u), 27), 2, sceneId) ||
+               worldName ||
                fixedPixel(pixel, ivec2(int(sidebarLeft + 10u), 51), 2, 1u) ||
                numberPixel(pixel, ivec2(int(sidebarLeft + 58u), 51), 2, renderPc.framesPerSecond) ||
                fixedPixel(pixel, ivec2(int(sidebarLeft + 136u), 51), 1,
@@ -617,21 +582,21 @@ void main() {
                numberPixel(pixel, ivec2(int(sidebarLeft + 274u), 51), 1,
                            renderPc.activeAreaCount);
 
-        // Scene files/navigation.
+        // One persistent World: SAVE and LOAD are the only world-file controls.
         uint rowGap = 4u;
-        uint sceneWidth = max((rowWidth - rowGap * 3u) / 4u, 1u);
-        uint sceneIds[4] = uint[4](41u, 42u, 65u, 66u);
-        for (uint i = 0u; i < 4u; ++i) {
-            uint left = rowLeft + i * (sceneWidth + rowGap);
-            uint right = i == 3u ? sidebarLeft + sidebarWidth - 8u : left + sceneWidth;
+        uint fileWidth = max((rowWidth - rowGap) / 2u, 1u);
+        uint fileIds[2] = uint[2](65u, 66u);
+        for (uint i = 0u; i < 2u; ++i) {
+            uint left = rowLeft + i * (fileWidth + rowGap);
+            uint right = i == 1u ? sidebarLeft + sidebarWidth - 8u : left + fileWidth;
             if (x >= left && x < right && y >= 70u && y < 98u) {
                 color = vec3(0.075, 0.105, 0.145);
                 if (borderPixel(x, y, left, 70u, right, 98u)) color *= 0.55;
-                uint length = fixedTextLength(sceneIds[i]);
+                uint length = fixedTextLength(fileIds[i]);
                 int scale = int(right - left) >= int(length * 12u + 6u) ? 2 : 1;
                 int labelWidth = int(length) * 6 * scale - scale;
                 if (fixedPixel(pixel, ivec2(int(left + right) / 2 - labelWidth / 2,
-                                             84 - (7 * scale) / 2), scale, sceneIds[i]))
+                                             84 - (7 * scale) / 2), scale, fileIds[i]))
                     color = vec3(0.96);
             }
         }
@@ -1236,85 +1201,57 @@ void main() {
     vec4 color = worldColor(cell, grid);
     color.rgb = applyWorldLighting(color.rgb, cell, grid, mapSample);
 
-    if (renderPc.debugMode != 0u || mapSample) {
+    if (mapSample) {
         bool activeArea = sectionActiveAt(grid, renderPc.activeAreaX, renderPc.activeAreaY,
                                           renderPc.activeScopeMode);
-        bool mediumCell = isCellGas(cell) || isCellLiquid(cell) || isHalfWater(cell);
-        if (!activeArea) color.rgb *= mapSample ? 0.82 : 0.52;
+        if (!activeArea) color.rgb *= 0.82;
         ivec2 activeLocal = ivec2(grid.x % ACTIVE_REGION_WIDTH_CELLS,
                                   grid.y % ACTIVE_REGION_HEIGHT_CELLS);
-        if (activeArea && (activeLocal.x == 0 || activeLocal.y == 0)) {
-            float boundaryAlpha = mapSample ? 0.22 : 0.58;
-            color.rgb = mix(color.rgb, vec3(0.18, 0.95, 1.00), boundaryAlpha);
-        }
-        if (renderPc.debugMode != 0u && !mapSample) {
-            TileState tile = tileAt(grid);
-            ChunkState chunk = chunkAt(grid);
-            ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));
-            bool readableTileGrid = renderPc.viewportWidth / max(renderPc.viewWidth, 1u) >= 2u;
-            if (readableTileGrid && (local.x == 0 || local.y == 0))
-                color.rgb = mix(color.rgb, vec3(0.94, 0.98, 1.00), 0.28);
-            ivec2 chunkLocal = ivec2(int(gridX & (CHUNK_CELL_SIZE - 1u)),
-                                    int(gridY & (CHUNK_CELL_SIZE - 1u)));
-            if (chunkLocal.x == 0 || chunkLocal.y == 0)
-                color.rgb = mix(color.rgb, vec3(0.01, 0.015, 0.025), 0.72);
+        if (activeArea && (activeLocal.x == 0 || activeLocal.y == 0))
+            color.rgb = mix(color.rgb, vec3(0.18, 0.78, 0.86), 0.22);
 
-            vec3 overlay = vec3(0.0);
-            float alpha = 0.0;
+        uint cameraRight = renderPc.cameraOriginX + renderPc.cameraViewWidth;
+        uint cameraBottom = renderPc.cameraOriginY + renderPc.cameraViewHeight;
+        bool inCamera = gridX >= renderPc.cameraOriginX && gridX < cameraRight &&
+                        gridY >= renderPc.cameraOriginY && gridY < cameraBottom;
+        bool cameraEdge = inCamera &&
+            (gridX == renderPc.cameraOriginX || gridX + 1u == cameraRight ||
+             gridY == renderPc.cameraOriginY || gridY + 1u == cameraBottom);
+        if (cameraEdge) color.rgb = vec3(1.00, 0.84, 0.22);
+    }
+
+    if (renderPc.debugMode != 0u && !mapSample) {
+        uint cellPixelsX = renderPc.viewportWidth / max(renderPc.viewWidth, 1u);
+        uint cellPixelsY = renderPc.viewportHeight / max(renderPc.viewHeight, 1u);
+        bool readableTileGrid = min(cellPixelsX, cellPixelsY) >= 1u;
+        ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));
+        bool stateEdge = local.x == 0 || local.y == 0 || local.x == 7 || local.y == 7;
+        if (readableTileGrid && stateEdge) {
+            TileState tile = tileAt(grid);
+            vec3 overlay = debugKeyColor(9u);
+            float alpha = 0.36;
             if (tileHas(tile, TILE_COLLAPSING) || tileHas(tile, TILE_DAMAGED)) {
-                overlay = debugKeyColor(0u); alpha = 0.72;
+                overlay = debugKeyColor(0u); alpha = 0.86;
             } else if (tileHas(tile, TILE_FINE_ACTIVE)) {
-                overlay = debugKeyColor(2u); alpha = 0.64;
+                overlay = debugKeyColor(2u); alpha = 0.72;
             } else if (tileHas(tile, TILE_MACRO_MOVED)) {
-                overlay = debugKeyColor(3u); alpha = 0.62;
+                overlay = debugKeyColor(3u); alpha = 0.78;
             } else if (tileHas(tile, TILE_MEDIUM_BREAKUP) &&
                        !tileHas(tile, TILE_SLEEPING)) {
-                overlay = debugKeyColor(5u); alpha = 0.60;
+                overlay = debugKeyColor(5u); alpha = 0.76;
             } else if (tileHas(tile, TILE_BULK_READY) || tileHas(tile, TILE_MACRO_MOVABLE)) {
-                overlay = debugKeyColor(4u); alpha = 0.56;
+                overlay = debugKeyColor(4u); alpha = 0.68;
             } else if (tileHas(tile, TILE_SETTLED_MEDIUM)) {
-                overlay = debugKeyColor(6u); alpha = 0.52;
+                overlay = debugKeyColor(6u); alpha = 0.58;
             } else if (tileHas(tile, TILE_MEDIUM_ENCLOSED)) {
-                overlay = debugKeyColor(7u); alpha = 0.48;
+                overlay = debugKeyColor(7u); alpha = 0.56;
             } else if (tileHas(tile, TILE_SLEEPING)) {
-                overlay = debugKeyColor(8u); alpha = 0.46;
+                overlay = debugKeyColor(8u); alpha = 0.48;
             } else if (tileHas(tile, TILE_ACTIVE)) {
-                overlay = debugKeyColor(1u); alpha = 0.44;
-            } else if (tileHas(tile, TILE_STABLE) || tileHas(tile, TILE_CANDIDATE)) {
-                overlay = debugKeyColor(9u); alpha = 0.38;
+                overlay = debugKeyColor(1u); alpha = 0.60;
             }
-            bool stateEdge = local.x <= 1 || local.y <= 1 || local.x >= 6 || local.y >= 6;
-            if (mapSample) {
-                alpha *= mediumCell ? (stateEdge ? 0.055 : 0.0) : 0.30;
-                if (!mediumCell && !stateEdge) alpha *= 0.16;
-            } else if (mediumCell) {
-                alpha *= stateEdge ? 0.16 : 0.0;
-            } else {
-                // Preserve the actual material identity; hierarchy state is an edge key.
-                alpha *= stateEdge ? 0.82 : 0.08;
-            }
-            float occupancyAlpha = max(0.28, float(tileOccupancy(tile)) / 64.0);
-            color.rgb = mix(color.rgb, overlay, alpha * occupancyAlpha);
-
-            vec3 chunkOverlay = chunkHas(chunk, CHUNK_DIRTY) ? vec3(1.00, 0.10, 0.04) :
-                (chunkHas(chunk, CHUNK_SLEEPING) ? vec3(0.035, 0.10, 0.30)
-                                                 : vec3(0.05, 0.42, 0.90));
-            float chunkAlpha = mapSample
-                ? (mediumCell ? 0.0 : 0.045)
-                : (mediumCell ? 0.0 : (chunkHas(chunk, CHUNK_SLEEPING) ? 0.10 : 0.06));
-            color.rgb = mix(color.rgb, chunkOverlay, chunkAlpha);
-
-        }
-
-        if (mapSample) {
-            uint cameraRight = renderPc.cameraOriginX + renderPc.cameraViewWidth;
-            uint cameraBottom = renderPc.cameraOriginY + renderPc.cameraViewHeight;
-            bool inCamera = gridX >= renderPc.cameraOriginX && gridX < cameraRight &&
-                            gridY >= renderPc.cameraOriginY && gridY < cameraBottom;
-            bool cameraEdge = inCamera &&
-                (gridX == renderPc.cameraOriginX || gridX + 1u == cameraRight ||
-                 gridY == renderPc.cameraOriginY || gridY + 1u == cameraBottom);
-            if (cameraEdge) color.rgb = vec3(1.00, 0.92, 0.18);
+            float occupancy = clamp(float(tileOccupancy(tile)) / 64.0, 0.28, 1.0);
+            color.rgb = mix(color.rgb, overlay, alpha * occupancy);
         }
     }
 

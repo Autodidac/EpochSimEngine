@@ -135,17 +135,9 @@ void main() {
                 allowed = (tileHas(sourceState, TILE_MACRO_LIQUID) || tileHas(sourceState, TILE_MACRO_GAS)) &&
                           regionSupported(sourceOrigin, source);
             }
-            if (!allowed && sourceEligible &&
-                (tileHas(sourceState, TILE_MACRO_LIQUID) ||
-                 tileHas(sourceState, TILE_MACRO_GAS))) {
-                // A due macro transaction that cannot commit hands the intact
-                // packet to fine motion in this same tick. Later macro phases
-                // may still succeed and clear this fallback flag atomically.
-                sourceState.flags = (sourceState.flags | TILE_ACTIVE | TILE_FINE_ACTIVE) &
-                                    ~(TILE_SLEEPING | TILE_SETTLED_MEDIUM);
-                tiles[sourceTileIndex] = sourceState;
-                markMacroChunkDirty(sourceOrigin);
-            }
+            // Failed exact packet transfers remain macro-owned until the
+            // classifier observes eight due opportunities and an actually open,
+            // incompatible perimeter. Fine work never races an intact packet.
             if (allowed) {
                 sourceTileShared = sourceTile;
                 targetTileShared = targetTile;

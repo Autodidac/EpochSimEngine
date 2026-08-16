@@ -190,13 +190,13 @@ framebuffer_to_logical_pointer(
     const float row_left = left + row_left_padding;
     const float row_width = (std::max)(1.0f, side - row_left_padding - row_right_padding);
 
-    // Scene files/navigation: PREV, NEXT, SAVE, LOAD.
-    const float scene_width = (std::max)(1.0f, (row_width - row_gap * 3.0f) / 4.0f);
-    layout.previous_scene = {{row_left, 70.0f}, {scene_width, 28.0f}};
-    layout.next_scene = {{row_left + (scene_width + row_gap), 70.0f}, {scene_width, 28.0f}};
-    layout.save_scene = {{row_left + (scene_width + row_gap) * 2.0f, 70.0f}, {scene_width, 28.0f}};
-    layout.load_scene = {{row_left + (scene_width + row_gap) * 3.0f, 70.0f},
-                         {row_width - scene_width * 3.0f - row_gap * 3.0f, 28.0f}};
+    // One persistent World owns a single SAVE/LOAD pair; no scene carousel.
+    layout.previous_scene = {{0.0f, 0.0f}, {0.0f, 0.0f}};
+    layout.next_scene = {{0.0f, 0.0f}, {0.0f, 0.0f}};
+    const float world_file_width = (std::max)(1.0f, (row_width - row_gap) * 0.5f);
+    layout.save_scene = {{row_left, 70.0f}, {world_file_width, 28.0f}};
+    layout.load_scene = {{row_left + world_file_width + row_gap, 70.0f},
+                         {row_width - world_file_width - row_gap, 28.0f}};
 
     // Simulation actions are intentionally paired and equally prominent.
     const float action_width = (std::max)(1.0f, (row_width - row_gap) * 0.5f);

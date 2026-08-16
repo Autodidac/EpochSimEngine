@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v2.5.22 scenic full-tile, live-tool, player, and fixed-step recovery."""
+"""Validate the v2.5.23 scenic full-tile, live-tool, player, and fixed-step recovery."""
 
 from pathlib import Path
 
@@ -21,17 +21,17 @@ def reject(path: str, token: str) -> None:
 
 
 # Stable, visible native release contract.
-require("CMakeLists.txt", "VERSION 2.5.22")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.22")
+require("CMakeLists.txt", "VERSION 2.5.23")
+require("RELEASE_NOTES.md", "# SandHybrid v2.5.23")
 for token in (
-    "SandHybrid-Windows-x64-v2.5.22",
-    "SandHybrid-Linux-x64-v2.5.22",
-    "refs/tags/v2.5.22",
-    "gh release create v2.5.22",
+    "SandHybrid-Windows-x64-v2.5.23",
+    "SandHybrid-Linux-x64-v2.5.23",
+    "refs/tags/v2.5.23",
+    "gh release create v2.5.23",
     "--verify-tag",
 ):
     require(".github/workflows/ci-release.yml", token)
-reject(".github/workflows/ci-release.yml", "v2.5.22-test")
+reject(".github/workflows/ci-release.yml", "v2.5.23-test")
 reject(".github/workflows/ci-release.yml", "--prerelease")
 
 # Every authored scene owns a full 8x8 surface row and intentional interior air.
@@ -70,18 +70,19 @@ require("tests/scene_spawn_contract.cpp", "SceneSpawn{1448, 927, 24u, true}")
 # Macro packets run at half cadence and survive two classifier ticks before breakup.
 for token in (
     "macro_packet_interval_ticks = 2u",
-    "exposed_packet_breakup_ticks = 2u",
+    "exposed_packet_breakup_attempts = 8u",
     "macro_packet_step_due",
 ):
     require("include/sandhybrid/simulation_policy.hpp", token)
-for token in ("macroCadenceCarry", "macroStepDue", "mediumExposureTicks >= 2u"):
+for token in ("macroCadenceCarry", "macroStepDue", "mediumExposureAttemptBudget = 8u"):
     require("shaders/tiles.comp", token)
 for token in ("macro_step_due", "if (macro_step_due)", ".reserved = 2u, // Focused acceptance"):
     require("src/vulkan_renderer.cpp", token)
 require("tests/behavior_contract.cpp", "macro_packet_step_due(2u)")
 for token in (
     "bool sourceEligible",
-    "TILE_ACTIVE | TILE_FINE_ACTIVE",
+    "classifier observes eight due opportunities",
+    "Fine work never races an intact packet",
     "TILE_SLEEPING | TILE_FINE_ACTIVE | TILE_SETTLED_MEDIUM",
 ):
     require("shaders/macro_move.comp", token)
@@ -126,4 +127,4 @@ for token in ("EPOCHGUI_BUILD_MODULES", "add_library(EpochGui STATIC", "add_libr
 require("CMakeLists.txt", "add_subdirectory(third_party/EpochGui)")
 reject("CMakeLists.txt", "add_subdirectory(third_party/EpochGui EXCLUDE_FROM_ALL)")
 require("AGENTS.md", "Never silently retain an older EpochGui pin")
-print("v2.5.22 scenic full-tile, live-tool, player, macro cadence, and fixed-step contracts valid.")
+print("v2.5.23 scenic full-tile, live-tool, player, macro cadence, and fixed-step contracts valid.")

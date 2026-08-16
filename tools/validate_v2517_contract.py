@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v2.5.22 packaged macro/Half Water/hive/cursor recovery gate."""
+"""Validate the v2.5.23 packaged macro/Half Water/hive/cursor recovery gate."""
 
 from pathlib import Path
 
@@ -21,19 +21,19 @@ def reject(path: str, token: str) -> None:
 
 
 # Stable visible publication and exact native package names.
-require("CMakeLists.txt", "VERSION 2.5.22")
+require("CMakeLists.txt", "VERSION 2.5.23")
 require("CHANGELOG.md", "## 2.5.17")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.22")
+require("RELEASE_NOTES.md", "# SandHybrid v2.5.23")
 for token in (
-    "SandHybrid-Windows-x64-v2.5.22",
-    "SandHybrid-Linux-x64-v2.5.22",
-    "refs/tags/v2.5.22",
-    "gh release create v2.5.22",
+    "SandHybrid-Windows-x64-v2.5.23",
+    "SandHybrid-Linux-x64-v2.5.23",
+    "refs/tags/v2.5.23",
+    "gh release create v2.5.23",
     "--verify-tag",
     "Expected two packages and two checksums",
 ):
     require(".github/workflows/ci-release.yml", token)
-reject(".github/workflows/ci-release.yml", "v2.5.22-test")
+reject(".github/workflows/ci-release.yml", "v2.5.23-test")
 reject(".github/workflows/ci-release.yml", "--prerelease")
 
 # The reserved Half Water bit cannot leak out of ordinary CPU full-Water constructors.
@@ -71,8 +71,8 @@ for token in (
     "runtime_acceptance_report",
 ):
     require("src/main.cpp", token)
-require("src/app.cpp", "runtime_acceptance ? pre_expansion_world_width : world.width")
-require("src/app.cpp", "runtime_acceptance ? pre_expansion_world_height : world.height")
+require("src/app.cpp", ".grid_width = world.width")
+require("src/app.cpp", ".grid_height = world.height")
 for token in (
     "run_runtime_acceptance",
     "run_acceptance_tile_pass",
@@ -89,7 +89,8 @@ for token in (
     "half_water_keeps_dripping",
     "supplied_ledge_creates_half_water",
     "full_water_crosses_unsupported_ledge",
-    "stone_foundation_",
+    "world_district_",
+    "persistent_world_player_spawn",
     "ecosystem_hard_coded_hive",
     "sandbox_hard_coded_hive",
     "placed_fix29_hive_exact",
@@ -131,4 +132,4 @@ for token in (
 require("MISSION_LEDGER.md", "v2.5.17 publication record")
 require("VALIDATION.md", "--runtime-acceptance-report")
 
-print("v2.5.22 packaged macro, Half Water, hive, cursor, and stable release contracts valid.")
+print("v2.5.23 packaged macro, Half Water, hive, cursor, and stable release contracts valid.")

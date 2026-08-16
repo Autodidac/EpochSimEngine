@@ -23,13 +23,17 @@ static_assert(scene_world_spawn(Scene::demolition, resident_world_width, residen
 static_assert(scene_world_spawn(Scene::frontier_base, resident_world_width, resident_world_height) ==
               SceneSpawn{1448, 927, 24u, true});
 static_assert(!scene_world_spawn(Scene::count, resident_world_width, resident_world_height).enabled);
+static_assert(persistent_world_spawn(resident_world_width, resident_world_height) ==
+              SceneSpawn{5928, 567, 24u, true});
 
 int main() {
-    for (std::uint32_t index = 0u; index < scene_count; ++index) {
+    if (!scene_has_character(world_scene) ||
+        !persistent_world_spawn(resident_world_width, resident_world_height).enabled)
+        return 1;
+    for (std::uint32_t index = 0u; index < legacy_scene_count; ++index) {
         const auto scene = static_cast<Scene>(index);
-        if (!scene_has_character(scene) ||
-            !scene_world_spawn(scene, resident_world_width, resident_world_height).enabled)
-            return 1;
+        if (!scene_world_spawn(scene, resident_world_width, resident_world_height).enabled)
+            return 2;
     }
     return 0;
 }

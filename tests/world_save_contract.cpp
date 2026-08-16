@@ -23,6 +23,7 @@ int main() {
     if (parse_world_size("large") != WorldSizePreset::large) return 3;
     if (parse_world_size("wrong").has_value()) return 4;
     if (normalize_world_slot("../../ My World ") != "My_World") return 5;
+    if (scene_save_name(world_scene) != "world") return 17;
 
     const auto dimensions = world_dimensions(WorldSizePreset::compact);
     std::vector<SceneCell> first(

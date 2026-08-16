@@ -32,6 +32,17 @@ struct SceneSpawn final {
     return {};
 }
 
+[[nodiscard]] constexpr SceneSpawn persistent_world_spawn(
+    const std::uint32_t world_width,
+    const std::uint32_t world_height) noexcept {
+    auto spawn = scene_local_spawn(Scene::frontier_base);
+    const auto district = persistent_world_district_index(Scene::frontier_base);
+    spawn.x += static_cast<std::int32_t>(persistent_world_origin_x(world_width) +
+        (district % persistent_world_district_columns) * pre_expansion_world_width);
+    spawn.y += static_cast<std::int32_t>(persistent_world_origin_y(world_height) +
+        (district / persistent_world_district_columns) * pre_expansion_world_height);
+    return spawn;
+}
 [[nodiscard]] constexpr SceneSpawn scene_world_spawn(
     const Scene scene,
     const std::uint32_t world_width,

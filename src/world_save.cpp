@@ -259,7 +259,7 @@ void append_cell(std::vector<std::uint8_t>& bytes, const SceneCell& cell) {
         return false;
     }
     if (preset > static_cast<std::uint32_t>(WorldSizePreset::large) ||
-        scene >= scene_count) {
+        scene >= legacy_scene_count) {
         error = "save metadata contains an invalid size or scene";
         return false;
     }
@@ -450,7 +450,7 @@ std::string normalize_world_slot(const std::string_view slot) {
 
 std::string_view scene_save_name(const Scene scene) noexcept {
     switch (scene) {
-    case Scene::sandbox: return "sandbox";
+    case Scene::sandbox: return "world";
     case Scene::blank: return "blank";
     case Scene::volcano: return "volcano";
     case Scene::waterworks: return "waterworks";

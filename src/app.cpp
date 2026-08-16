@@ -4,6 +4,7 @@
 #include "sandhybrid/world_layout.hpp"
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/scene.hpp"
+#include "sandhybrid/scene_spawn.hpp"
 #include "sandhybrid/section_scheduler.hpp"
 #include "sandhybrid/shared_state.hpp"
 #include "sandhybrid/simulation_policy.hpp"
@@ -276,13 +277,11 @@ void reset_camera_to_zero(SharedState& state, const SimulationConfig& config) no
         camera_view_width(camera_zoom_default));
     const auto visible_height = (std::min)(config.grid_height,
         camera_view_height(camera_zoom_default));
-    const auto map_origin_x = authored_scene_origin_x(config.grid_width);
-    const auto map_origin_y = authored_scene_origin_y(config.grid_height);
+    const auto spawn = persistent_world_spawn(config.grid_width, config.grid_height);
     state.camera_zoom.store(camera_zoom_default, std::memory_order_relaxed);
-    const CameraView view{map_origin_x, map_origin_y, visible_width, visible_height};
+    const CameraView view{0u, 0u, visible_width, visible_height};
     set_camera_center_clamped(state.camera_center_x, state.camera_center_y, config, view,
-                              static_cast<int>(map_origin_x + visible_width / 2u),
-                              static_cast<int>(map_origin_y + visible_height / 2u));
+                              spawn.x, spawn.y);
 }
 
 void reset_map_view(SharedState& state, const SimulationConfig& config) noexcept {
@@ -304,12 +303,13 @@ int run_application(const ApplicationOptions& options) {
     std::fprintf(stderr, "[SandHybrid] Native window created.\n");
     SharedState shared_state{};
     const auto world = world_dimensions(options.world_size);
-    const bool runtime_acceptance = !options.runtime_acceptance_report.empty();
+
     const SimulationConfig simulation_config{
-        // State acceptance needs one complete canonical authored envelope, not a
-        // multi-region gameplay residency allocation. Normal startup is unchanged.
-        .grid_width = runtime_acceptance ? pre_expansion_world_width : world.width,
-        .grid_height = runtime_acceptance ? pre_expansion_world_height : world.height,
+        // Packaged state acceptance uses the real selected resident World so the
+        // composed districts, player coordinates, sealed shell, and saves are
+        // exercised in the same allocation as normal play.
+        .grid_width = world.width,
+        .grid_height = world.height,
         .frames_in_flight = 2u,
         .max_frames_per_second = 120u,
         .world_size = options.world_size,
@@ -386,30 +386,15 @@ int run_application(const ApplicationOptions& options) {
             shared_state.map_view.store(!map, std::memory_order_release);
         }
 
-        auto scene = static_cast<Scene>(
-            shared_state.selected_scene.load(std::memory_order_relaxed) % scene_count);
+        const auto scene = world_scene;
+        shared_state.selected_scene.store(
+            static_cast<std::uint32_t>(world_scene), std::memory_order_relaxed);
         if (input.toggle_mining) {
             const bool current_mining = shared_state.mining_mode.load(std::memory_order_relaxed);
             shared_state.mining_mode.store(!current_mining, std::memory_order_release);
         }
 
-        if (input.next_scene) {
-            scene = next_scene(scene);
-            shared_state.selected_scene.store(static_cast<std::uint32_t>(scene), std::memory_order_relaxed);
-            shared_state.reset.store(true, std::memory_order_release);
-            shared_state.mining_mode.store(scene_has_character(scene),
-                                           std::memory_order_release);
-            reset_camera_to_zero(shared_state, simulation_config);
-            reset_map_view(shared_state, simulation_config);
-        } else if (input.previous_scene) {
-            scene = previous_scene(scene);
-            shared_state.selected_scene.store(static_cast<std::uint32_t>(scene), std::memory_order_relaxed);
-            shared_state.reset.store(true, std::memory_order_release);
-            shared_state.mining_mode.store(scene_has_character(scene),
-                                           std::memory_order_release);
-            reset_camera_to_zero(shared_state, simulation_config);
-            reset_map_view(shared_state, simulation_config);
-        } else if (input.reset) {
+        if (input.reset) {
             shared_state.reset.store(true, std::memory_order_release);
             reset_camera_to_zero(shared_state, simulation_config);
             reset_map_view(shared_state, simulation_config);
@@ -641,22 +626,6 @@ int run_application(const ApplicationOptions& options) {
             const auto workspace = ui::workspace_at(layout, pointer);
             if (workspace < ui::workspace_tab_count) {
                 shared_state.selected_workspace.store(workspace, std::memory_order_relaxed);
-            } else if (epochengine::gui_lib::contains(layout.previous_scene, pointer)) {
-                scene = previous_scene(scene);
-                shared_state.selected_scene.store(static_cast<std::uint32_t>(scene), std::memory_order_relaxed);
-                shared_state.reset.store(true, std::memory_order_release);
-                shared_state.mining_mode.store(scene_has_character(scene),
-                                               std::memory_order_release);
-                reset_camera_to_zero(shared_state, simulation_config);
-                reset_map_view(shared_state, simulation_config);
-            } else if (epochengine::gui_lib::contains(layout.next_scene, pointer)) {
-                scene = next_scene(scene);
-                shared_state.selected_scene.store(static_cast<std::uint32_t>(scene), std::memory_order_relaxed);
-                shared_state.reset.store(true, std::memory_order_release);
-                shared_state.mining_mode.store(scene_has_character(scene),
-                                               std::memory_order_release);
-                reset_camera_to_zero(shared_state, simulation_config);
-                reset_map_view(shared_state, simulation_config);
             } else if (epochengine::gui_lib::contains(layout.reset_scene, pointer)) {
                 shared_state.reset.store(true, std::memory_order_release);
                 reset_camera_to_zero(shared_state, simulation_config);

@@ -33,7 +33,10 @@ bool mediumBoundaryEnclosed(ivec2 origin, bool gasBoundary) {
             if (!tileInside(p)) continue;
             Cell neighbor = cells[indexOf(p)];
             if (gasBoundary) {
-                if (!isCellGas(neighbor)) return false;
+                // Similar gas packets and hard solid walls seal trapped Air.
+                // Empty/Vacuum or dynamic non-gas media expose the packet.
+                if (!isCellGas(neighbor) && !isStructural(neighbor) &&
+                    !isCellImmovable(neighbor)) return false;
             } else if (neighbor.material == MAT_EMPTY || isCellGas(neighbor)) {
                 return false;
             }
@@ -294,10 +297,14 @@ void main() {
                                    !macroCadenceCarry;
     bool gasBoundaryCandidate = fullGas && !moving && !gasEnclosed &&
                                 !macroCadenceCarry;
-    uint mediumExposureTicks = (liquidBoundaryCandidate || gasBoundaryCandidate)
-        ? min(tileStableTicks(previous) + 1u, 2u) : 0u;
-    bool liquidBoundaryFine = liquidBoundaryCandidate && mediumExposureTicks >= 2u;
-    bool gasBoundaryFine = gasBoundaryCandidate && mediumExposureTicks >= 2u;
+    const uint mediumExposureAttemptBudget = 8u;
+    uint mediumExposureAttempts = (liquidBoundaryCandidate || gasBoundaryCandidate)
+        ? min(tileStableTicks(previous) + (macroStepDue ? 1u : 0u),
+              mediumExposureAttemptBudget) : 0u;
+    bool liquidBoundaryFine = liquidBoundaryCandidate &&
+                              mediumExposureAttempts >= mediumExposureAttemptBudget;
+    bool gasBoundaryFine = gasBoundaryCandidate &&
+                           mediumExposureAttempts >= mediumExposureAttemptBudget;
     bool boundaryFineMedium = liquidBoundaryFine || gasBoundaryFine;
     bool liquidBreakup = liquidBoundaryFine &&
         !tileHas(previous, TILE_MEDIUM_BREAKUP);
@@ -307,10 +314,10 @@ void main() {
     // A complete medium tile receives a macro transaction attempt before fine
     // movement. Exposed or partially blocked transactions retain fine fallback.
     // Match the packaged v2.5.3 moving-or-enclosed packet policy: moving full
-    // media and enclosed full media get macro work. If the exact 8x8 transaction cannot commit, TILE_FINE_ACTIVE
-    // remains set below so the same tick falls back to canonical cells.
-    bool macroLiquid = fullLiquid && (moving || liquidEnclosed || macroCadenceCarry);
-    bool macroGas = fullGas && (moving || gasEnclosed || macroCadenceCarry);
+    // media remain macro-owned for eight due opportunities. Only an open,
+    // incompatible perimeter may then hand ownership to canonical fine cells.
+    bool macroLiquid = fullLiquid && !liquidBoundaryFine;
+    bool macroGas = fullGas && !gasBoundaryFine;
     bool macroPowder = fullRegion && isPowder(dominant) &&
                        !structuralTile && !isBlockCapable(dominant);
     // Block-capable solids may use tile metadata for cohesion, support, sleep,
@@ -350,7 +357,7 @@ void main() {
                      occupied >= TILE_STABILITY_OCCUPANCY && stable == occupied &&
                      !moving && !hot && !reacting;
     uint stableTicks = candidate ? min(tileStableTicks(previous) + 1u, TILE_STABILIZE_TICKS) :
-                       mediumExposureTicks;
+                       mediumExposureAttempts;
     bool stableRegion = candidate && stableTicks >= TILE_STABILIZE_TICKS;
     bool unsupportedStructural = structuralTile && !durableStructuralTile &&
                        !physicallySupported;

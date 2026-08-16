@@ -190,7 +190,7 @@ inline constexpr std::uint32_t wet_density_bonus = 32u;
 
 
 inline constexpr std::uint32_t macro_packet_interval_ticks = 2u;
-inline constexpr std::uint32_t exposed_packet_breakup_ticks = 2u;
+inline constexpr std::uint32_t exposed_packet_breakup_attempts = 8u;
 
 [[nodiscard]] constexpr bool macro_packet_step_due(
     const std::uint32_t simulation_step) noexcept {
@@ -217,9 +217,9 @@ inline constexpr std::uint32_t exposed_packet_breakup_ticks = 2u;
     const bool full_region,
     const bool moving,
     const bool perimeter_compatible,
-    const std::uint32_t exposed_ticks) noexcept {
+    const std::uint32_t exposed_attempts) noexcept {
     return full_region && !moving && !perimeter_compatible &&
-           exposed_ticks >= exposed_packet_breakup_ticks;
+           exposed_attempts >= exposed_packet_breakup_attempts;
 }
 
 [[nodiscard]] constexpr bool chunk_can_sleep(

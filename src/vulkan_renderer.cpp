@@ -4,6 +4,7 @@
 #include "sandhybrid/input_routing.hpp"
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/scene.hpp"
+#include "sandhybrid/scene_spawn.hpp"
 #include "sandhybrid/section_scheduler.hpp"
 #include "sandhybrid/simulation_policy.hpp"
 #include "sandhybrid/scene_image.hpp"
@@ -1515,6 +1516,54 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         return cells;
     }
 
+    struct ActorStateReadback final {
+        std::int32_t x{};
+        std::int32_t y{};
+        std::int32_t velocity_y{};
+        std::uint32_t enabled{};
+        std::uint32_t gold{};
+        std::uint32_t iron{};
+        std::uint32_t ammo{};
+        std::uint32_t shot_timer{};
+        std::uint32_t move_cooldown{};
+        std::uint32_t grounded{};
+        std::uint32_t health{};
+        std::uint32_t oxygen{};
+        std::int32_t hit_x{};
+        std::int32_t hit_y{};
+        std::uint32_t scene{};
+        std::uint32_t exposure_ticks{};
+        std::uint32_t aluminum{};
+        std::uint32_t copper{};
+        std::uint32_t unlocks{};
+        std::uint32_t drill_level{};
+    };
+    static_assert(sizeof(ActorStateReadback) == sizeof(std::uint32_t) * 20u);
+
+    [[nodiscard]] ActorStateReadback download_actor_state() {
+        ActorStateReadback actor{};
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
+            buffer_barrier(command_buffer, actor_buffer,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT);
+            const VkBufferCopy copy{.size = actor_buffer.size};
+            vkCmdCopyBuffer(command_buffer, actor_buffer.handle,
+                            scene_staging_buffer.handle, 1, &copy);
+            buffer_barrier(command_buffer, scene_staging_buffer,
+                           VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT);
+        });
+        void* mapped = nullptr;
+        check_vk(vkMapMemory(device, scene_staging_buffer.memory, 0,
+                             actor_buffer.size, 0, &mapped),
+                 "vkMapMemory(actor readback)");
+        std::memcpy(&actor, mapped, sizeof(actor));
+        vkUnmapMemory(device, scene_staging_buffer.memory);
+        return actor;
+    }
     struct TileStateReadback final {
         std::uint32_t material{};
         std::uint32_t occupancy{};
@@ -2350,7 +2399,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .active_section_x = state.active_window_origin_x.load(std::memory_order_relaxed),
             .active_section_y = state.active_window_origin_y.load(std::memory_order_relaxed),
             .active_mode = 1u,
-            .reserved = (debug_sample_frame / 60u) & 15u,
+            .reserved = (debug_sample_frame / 120u) & 15u,
         };
         bind_compute(command_buffer, debug_stats_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
@@ -2964,7 +3013,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const bool run_simulation = simulation_ticks != 0u;
         bool collect_debug_stats = false;
         if (debug_visible && run_simulation) {
-            collect_debug_stats = !debug_was_visible || (debug_sample_frame % 60u) == 0u;
+            collect_debug_stats = !debug_was_visible || (debug_sample_frame % 120u) == 0u;
             ++debug_sample_frame;
         } else if (!debug_visible) {
             debug_sample_frame = 0u;
@@ -3628,12 +3677,34 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             {
                 auto cells = acceptance_atmosphere_world();
                 seed_rect(cells, Material::water, 64u, 64u, 8u, 8u);
+                for (std::uint32_t y = 64u; y < 72u; ++y)
+                    for (std::uint32_t x = 64u; x < 72u; ++x)
+                        cells[index_of(x, y)].age = 8u;
                 const auto obstacle = index_of(64u, 72u);
                 cells[obstacle] = make_fill_cell(material_id(Material::stone),
                                                  static_cast<std::uint32_t>(obstacle));
                 upload_scene_cells(cells);
-                run_acceptance_tile_pass();
-                run_acceptance_macro_pass(0, 0);
+                constexpr std::uint32_t tile_macro_movable = 0x00010000u;
+                constexpr std::uint32_t tile_fine_active = 0x00020000u;
+                const auto tile_columns = divide_round_up(config.grid_width, 8u);
+                const auto source_tile_index = 8u * tile_columns + 8u;
+                bool retained_for_first_seven = true;
+                std::uint32_t seventh_flags = 0u;
+                std::uint32_t eighth_flags = 0u;
+                for (std::uint32_t attempt = 0u; attempt < 8u; ++attempt) {
+                    run_acceptance_tile_pass();
+                    const auto states = download_tile_states();
+                    const auto flags = states[source_tile_index].flags;
+                    if (attempt < 7u) {
+                        retained_for_first_seven = retained_for_first_seven &&
+                            (flags & tile_macro_movable) != 0u &&
+                            (flags & tile_fine_active) == 0u;
+                        seventh_flags = flags;
+                        run_acceptance_macro_pass(0, 0);
+                    } else {
+                        eighth_flags = flags;
+                    }
+                }
                 run_acceptance_fine_pass(0, 0);
                 run_acceptance_fine_pass(1, 1);
                 run_acceptance_fine_pass(2, 0);
@@ -3642,12 +3713,50 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 const auto source = count_rect(result, Material::water, 64u, 64u, 8u, 8u);
                 const auto outside = total - source;
                 append("macro_blocked_fine_fallback",
-                       total == 64u && source > 0u && source < 64u && outside > 0u,
+                       retained_for_first_seven &&
+                           (eighth_flags & tile_fine_active) != 0u &&
+                           total == 64u && source > 0u && source < 64u && outside > 0u,
                        "water=" + std::to_string(total) +
                            " source=" + std::to_string(source) +
-                           " moved_out=" + std::to_string(outside));
+                           " moved_out=" + std::to_string(outside) +
+                           " seventh_flags=" + std::to_string(seventh_flags) +
+                           " eighth_flags=" + std::to_string(eighth_flags));
             }
 
+            {
+                auto cells = acceptance_atmosphere_world();
+                for (std::uint32_t x = 95u; x <= 104u; ++x) {
+                    const auto north = index_of(x, 95u);
+                    const auto south = index_of(x, 104u);
+                    cells[north] = make_fill_cell(material_id(Material::stone),
+                                                  static_cast<std::uint32_t>(north));
+                    cells[south] = make_fill_cell(material_id(Material::stone),
+                                                  static_cast<std::uint32_t>(south));
+                }
+                for (std::uint32_t y = 96u; y < 104u; ++y) {
+                    const auto west = index_of(95u, y);
+                    const auto east = index_of(104u, y);
+                    cells[west] = make_fill_cell(material_id(Material::stone),
+                                                 static_cast<std::uint32_t>(west));
+                    cells[east] = make_fill_cell(material_id(Material::stone),
+                                                 static_cast<std::uint32_t>(east));
+                }
+                upload_scene_cells(cells);
+                for (std::uint32_t attempt = 0u; attempt < 12u; ++attempt)
+                    run_acceptance_tile_pass();
+                const auto states = download_tile_states();
+                const auto tile_columns = divide_round_up(config.grid_width, 8u);
+                const auto flags = states[12u * tile_columns + 12u].flags;
+                constexpr std::uint32_t tile_macro_gas = 0x00800000u;
+                constexpr std::uint32_t tile_fine_active = 0x00020000u;
+                constexpr std::uint32_t tile_medium_enclosed = 0x02000000u;
+                constexpr std::uint32_t tile_medium_breakup = 0x04000000u;
+                append("enclosed_air_remains_tiled",
+                       (flags & tile_macro_gas) != 0u &&
+                           (flags & tile_medium_enclosed) != 0u &&
+                           (flags & (tile_fine_active | tile_medium_breakup)) == 0u,
+                       "flags=" + std::to_string(flags));
+            }
             constexpr std::uint32_t water_half_bit = 0x00800000u;
             const auto water_half_units = [&](const std::vector<SceneCell>& cells) {
                 std::uint32_t units = 0u;
@@ -3667,12 +3776,26 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
             const auto check_pre_pr19_hive = [&](const std::string_view name,
                                                  const Scene scene) {
+                const bool composed_world =
+                    config.grid_width >= persistent_world_width &&
+                    config.grid_height >= persistent_world_height;
                 immediate_submit([&](const VkCommandBuffer command_buffer) {
-                    record_reset(command_buffer, static_cast<std::uint32_t>(scene));
+                    record_reset(command_buffer, composed_world
+                        ? static_cast<std::uint32_t>(world_scene)
+                        : static_cast<std::uint32_t>(scene));
                 });
                 const auto cells = download_scene_cells();
                 const std::uint32_t queen_x = 512u;
                 const std::uint32_t queen_y = scene == Scene::sandbox ? 234u : 232u;
+                const auto district = persistent_world_district_index(scene);
+                const std::uint32_t hive_origin_x = composed_world
+                    ? persistent_world_origin_x(config.grid_width) +
+                        (district % persistent_world_district_columns) * pre_expansion_world_width
+                    : authored_map_origin_x();
+                const std::uint32_t hive_origin_y = composed_world
+                    ? persistent_world_origin_y(config.grid_height) +
+                        (district / persistent_world_district_columns) * pre_expansion_world_height
+                    : authored_map_origin_y();
                 std::uint32_t mismatches = 0u;
                 std::uint32_t shell = 0u;
                 std::uint32_t support = 0u;
@@ -3686,9 +3809,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                                        static_cast<std::int32_t>(queen_y), dx, dy),
                             static_cast<std::int32_t>(queen_x),
                             static_cast<std::int32_t>(queen_y));
-                        const auto x = static_cast<std::uint32_t>(
+                        const auto x = hive_origin_x + static_cast<std::uint32_t>(
                             static_cast<std::int32_t>(queen_x) + dx);
-                        const auto y = static_cast<std::uint32_t>(
+                        const auto y = hive_origin_y + static_cast<std::uint32_t>(
                             static_cast<std::int32_t>(queen_y) + dy);
                         const auto& actual_cell = cells[index_of(x, y)];
                         const auto actual = static_cast<Material>(actual_cell.material);
@@ -4013,24 +4136,49 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            " aux=" + std::to_string(water_aux));
             }
 
-            for (std::uint32_t scene_index = 0u; scene_index < scene_count; ++scene_index) {
-                const auto scene = static_cast<Scene>(scene_index);
-                immediate_submit([&](const VkCommandBuffer command_buffer) {
-                    record_reset(command_buffer, scene_index);
-                });
-                const auto cells = download_scene_cells();
-                const auto map_width = (std::min)(config.grid_width, pre_expansion_world_width);
-                const auto map_height = (std::min)(config.grid_height, pre_expansion_world_height);
-                const auto origin_x = authored_map_origin_x();
-                const auto origin_y = authored_map_origin_y();
-                const auto first_foundation_y = origin_y + map_height - authored_scene_foundation_cells;
+            immediate_submit([&](const VkCommandBuffer command_buffer) {
+                record_reset(command_buffer, static_cast<std::uint32_t>(world_scene));
+            });
+            state.selected_scene.store(static_cast<std::uint32_t>(world_scene),
+                                       std::memory_order_release);
+            immediate_submit([&](const VkCommandBuffer command_buffer) {
+                record_actor(command_buffer, state, true, false, false);
+            });
+            const auto actor = download_actor_state();
+            const auto expected_spawn =
+                persistent_world_spawn(config.grid_width, config.grid_height);
+            append("persistent_world_player_spawn",
+                   actor.enabled != 0u && actor.x == expected_spawn.x &&
+                       actor.y == expected_spawn.y &&
+                       actor.scene == static_cast<std::uint32_t>(world_scene) &&
+                       actor.health == 255u && actor.oxygen == 255u,
+                   "enabled=" + std::to_string(actor.enabled) +
+                       " position=" + std::to_string(actor.x) + "," +
+                       std::to_string(actor.y) +
+                       " expected=" + std::to_string(expected_spawn.x) + "," +
+                       std::to_string(expected_spawn.y) +
+                       " health=" + std::to_string(actor.health) +
+                       " oxygen=" + std::to_string(actor.oxygen));
+            const auto world_cells = download_scene_cells();
+            for (std::uint32_t district = 0u;
+                 district < persistent_world_district_count; ++district) {
+                const auto scene = persistent_world_district_scene(district);
+                const auto origin_x = persistent_world_origin_x(config.grid_width) +
+                    (district % persistent_world_district_columns) * pre_expansion_world_width;
+                const auto origin_y = persistent_world_origin_y(config.grid_height) +
+                    (district / persistent_world_district_columns) * pre_expansion_world_height;
+                const auto first_foundation_y =
+                    origin_y + pre_expansion_world_height - authored_scene_foundation_cells;
                 std::uint32_t stone = 0u;
                 std::uint32_t lava = 0u;
                 std::uint32_t supported_stone = 0u;
-                for (std::uint32_t y = first_foundation_y; y < origin_y + map_height; ++y) {
-                    for (std::uint32_t x = origin_x; x < origin_x + map_width; ++x) {
-                        const auto& cell = cells[index_of(x, y)];
-                        const bool is_stone = cell.material == material_id(Material::stone);
+                for (std::uint32_t y = first_foundation_y;
+                     y < origin_y + pre_expansion_world_height; ++y) {
+                    for (std::uint32_t x = origin_x;
+                         x < origin_x + pre_expansion_world_width; ++x) {
+                        const auto& cell = world_cells[index_of(x, y)];
+                        const bool is_stone =
+                            cell.material == material_id(Material::stone);
                         stone += is_stone ? 1u : 0u;
                         lava += cell.material == material_id(Material::lava) ? 1u : 0u;
                         supported_stone += is_stone &&
@@ -4038,19 +4186,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                 (fill_aux_structural | fill_aux_supported) ? 1u : 0u;
                     }
                 }
-                const auto expected = map_width * authored_scene_foundation_cells;
-                const auto expected_lava = scene == Scene::volcano
-                    ? 3u * policy::tile_size * authored_scene_foundation_cells
-                    : 0u;
-                const auto expected_stone = expected - expected_lava;
-                append("stone_foundation_" + std::string{scene_name(scene)},
-                       stone == expected_stone && lava == expected_lava &&
-                           supported_stone == expected_stone && stone + lava == expected,
-                       "stone=" + std::to_string(stone) +
-                            " lava=" + std::to_string(lava) +
-                            " supported_stone=" + std::to_string(supported_stone) +
-                            " expected_stone=" + std::to_string(expected_stone) +
-                            " expected_lava=" + std::to_string(expected_lava));
+                const auto expected =
+                    pre_expansion_world_width * authored_scene_foundation_cells;
+                append("world_district_" + std::string{scene_name(scene)},
+                       stone == expected && lava == 0u &&
+                           supported_stone == expected,
+                       "district=" + std::to_string(district) +
+                           " stone=" + std::to_string(stone) +
+                           " lava=" + std::to_string(lava) +
+                           " supported_stone=" + std::to_string(supported_stone));
             }
             check_pre_pr19_hive("sandbox_hard_coded_hive", Scene::sandbox);
             check_pre_pr19_hive("ecosystem_hard_coded_hive", Scene::ecosystem);

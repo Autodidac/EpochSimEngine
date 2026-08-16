@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v2.5.22 systems, scene, atmosphere, UI, and release contracts."""
+"""Validate the v2.5.23 systems, scene, atmosphere, UI, and release contracts."""
 
 from pathlib import Path
 
@@ -14,26 +14,26 @@ def require(relative: str, *tokens: str) -> None:
     text = source(relative)
     missing = [token for token in tokens if token not in text]
     if missing:
-        raise SystemExit(f"{relative} missing v2.5.22 contract tokens: {missing}")
+        raise SystemExit(f"{relative} missing v2.5.23 contract tokens: {missing}")
 
 
 def reject(relative: str, *tokens: str) -> None:
     text = source(relative)
     found = [token for token in tokens if token in text]
     if found:
-        raise SystemExit(f"{relative} retains rejected v2.5.22 tokens: {found}")
+        raise SystemExit(f"{relative} retains rejected v2.5.23 tokens: {found}")
 
 
-require("CMakeLists.txt", "VERSION 2.5.22", "validate_v2521_contract.py")
+require("CMakeLists.txt", "VERSION 2.5.23", "validate_v2521_contract.py")
 require(
     ".github/workflows/ci-release.yml",
-    "refs/tags/v2.5.22",
-    "SandHybrid-Windows-x64-v2.5.22",
-    "SandHybrid-Linux-x64-v2.5.22",
-    "gh release create v2.5.22",
-    "group: sandhybrid-v2522-",
+    "refs/tags/v2.5.23",
+    "SandHybrid-Windows-x64-v2.5.23",
+    "SandHybrid-Linux-x64-v2.5.23",
+    "gh release create v2.5.23",
+    "group: sandhybrid-v2523-",
 )
-reject(".github/workflows/ci-release.yml", "v2.5.22-test", "prerelease: true")
+reject(".github/workflows/ci-release.yml", "v2.5.23-test", "prerelease: true")
 require(
     "missioncache.md",
     "## v2.5.21 systems, presentation, atmosphere, scene, and machinery recovery",
@@ -103,8 +103,8 @@ require(
     "max_time_debt_ticks = 2u",
     "scene == Scene::sandbox ? 576u : 571u",
     "mismatches == 0u && shell == 193u",
-    "const auto expected_lava = scene == Scene::volcano",
-    "stone + lava == expected",
+    "persistent_world_district_count",
+    "stone == expected && lava == 0u",
 )
 
 # Static normal materials, authoritative-state gas smoothing, and bounded debug.
@@ -122,8 +122,8 @@ require(
 )
 require(
     "src/vulkan_renderer.cpp",
-    "(debug_sample_frame % 60u) == 0u",
-    ".reserved = (debug_sample_frame / 60u) & 15u",
+    "(debug_sample_frame % 120u) == 0u",
+    ".reserved = (debug_sample_frame / 120u) & 15u",
 )
 
 # Volcano/geology, conservative atmosphere/Vacuum behavior, and combustion rates.
@@ -166,13 +166,13 @@ require(
     "blocked_solid_output",
     "expected_solid",
 )
-require("include/sandhybrid/scene.hpp", "return scene != Scene::count;")
+require("include/sandhybrid/scene.hpp", "inline constexpr std::uint32_t scene_count = 1u;")
 for token in (
     "Scene::sandbox", "Scene::blank", "Scene::volcano", "Scene::waterworks",
     "Scene::ecosystem", "Scene::engineering_lab", "Scene::gold_mine",
     "Scene::demolition", "Scene::frontier_base",
 ):
     require("include/sandhybrid/scene_spawn.hpp", token)
-require("tests/scene_spawn_contract.cpp", "for (std::uint32_t index = 0u; index < scene_count; ++index)")
+require("tests/scene_spawn_contract.cpp", "for (std::uint32_t index = 0u; index < legacy_scene_count; ++index)")
 
-print("v2.5.22 systems, scene, atmosphere, hive, UI, machinery, and release contracts valid.")
+print("v2.5.23 systems, scene, atmosphere, hive, UI, machinery, and release contracts valid.")
