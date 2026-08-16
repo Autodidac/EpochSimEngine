@@ -54,10 +54,28 @@ static_assert(world_dimensions(WorldSizePreset::compact).height == resident_worl
 static_assert(persistent_world_district_count == 8u);
 static_assert(persistent_world_width == 5120u);
 static_assert(persistent_world_height == 360u);
-static_assert(persistent_world_origin_x(world_dimensions(WorldSizePreset::compact).width) == 0u);
-static_assert(persistent_world_origin_y(world_dimensions(WorldSizePreset::compact).height) == 540u);
-static_assert(persistent_world_origin_x(world_dimensions(WorldSizePreset::large).width) == 2560u);
-static_assert(persistent_world_origin_y(world_dimensions(WorldSizePreset::large).height) == 540u);
+static_assert(persistent_world_district_gap(
+                  world_dimensions(WorldSizePreset::compact).width) == 0u);
+static_assert(persistent_world_district_gap(
+                  world_dimensions(WorldSizePreset::standard).width) == 360u);
+static_assert(persistent_world_district_gap(
+                  world_dimensions(WorldSizePreset::large).width) == 728u);
+static_assert(persistent_world_origin_x(
+                  world_dimensions(WorldSizePreset::compact).width) == 0u);
+static_assert(persistent_world_origin_y(
+                  world_dimensions(WorldSizePreset::compact).height) == 720u);
+static_assert(persistent_world_origin_x(
+                  world_dimensions(WorldSizePreset::large).width) == 0u);
+static_assert(persistent_world_origin_y(
+                  world_dimensions(WorldSizePreset::large).height) == 720u);
+static_assert(persistent_world_surface_y(resident_world_height) == 1040u);
+static_assert(persistent_world_district_origin_x(resident_world_width, 0u) == 0u);
+static_assert(persistent_world_district_origin_x(resident_world_width, 3u) == 4104u);
+static_assert(persistent_world_district_origin_x(resident_world_width, 7u) == 9576u);
+static_assert(persistent_world_district_origin_y(resident_world_height, 0u) == 720u);
+static_assert(persistent_world_district_origin_y(resident_world_height, 1u) == 744u);
+static_assert(persistent_world_district_origin_y(resident_world_height, 3u) == 904u);
+static_assert(persistent_world_district_origin_y(resident_world_height, 4u) == 696u);
 static_assert(persistent_world_district_scene(0u) == Scene::sandbox);
 static_assert(persistent_world_district_scene(1u) == Scene::ecosystem);
 static_assert(persistent_world_district_scene(2u) == Scene::engineering_lab);
@@ -90,6 +108,28 @@ int main() {
         if (resident_substrate_material(
                 resident_world_width, resident_world_height, scene, 5000u,
                 1072u) != Material::stone) return 13;
+    }
+
+    for (std::uint32_t district = 0u;
+         district < persistent_world_district_count; ++district) {
+        const auto scene = persistent_world_district_scene(district);
+        const auto origin_x =
+            persistent_world_district_origin_x(resident_world_width, district);
+        const auto origin_y =
+            persistent_world_district_origin_y(resident_world_height, district);
+        if ((origin_x % authored_scene_foundation_cells) != 0u ||
+            (origin_y % authored_scene_foundation_cells) != 0u) return 14;
+        if (origin_x + pre_expansion_world_width > resident_world_width) return 15;
+        if (origin_y + scene_surface_tile_row(scene) *
+                authored_scene_foundation_cells !=
+            persistent_world_surface_y(resident_world_height)) return 16;
+        if (district > 0u) {
+            const auto previous_end =
+                persistent_world_district_origin_x(
+                    resident_world_width, district - 1u) +
+                pre_expansion_world_width;
+            if (origin_x <= previous_end) return 17;
+        }
     }
 
     constexpr auto scene_bottom = 1080u;

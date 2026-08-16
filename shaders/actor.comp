@@ -427,10 +427,13 @@ void resetActor(inout ActorState state) {
     int authoredOriginY = int(actorPc.height) >= 1080 ? 720 : 0;
     bool persistentWorld = int(actorPc.width) >= 5120 && int(actorPc.height) >= 360;
     if (persistentWorld && actorPc.scene == SCENE_SANDBOX) {
-        ivec2 worldOrigin = max((ivec2(int(actorPc.width), int(actorPc.height)) -
-                                 ivec2(5120, 360)) / 2, ivec2(0));
-        state.x = worldOrigin.x + 3 * 640 + 168;
-        state.y = worldOrigin.y + 207;
+        int spare = max(int(actorPc.width) - 5120, 0);
+        int gap = (spare / 7 / 8) * 8;
+        int worldSurface = authoredOriginY + 40 * 8;
+        int frontierOriginX = 3 * (640 + gap);
+        int frontierOriginY = worldSurface - 17 * 8;
+        state.x = frontierOriginX + 168;
+        state.y = frontierOriginY + 207;
         state.ammo = 24u;
         state.enabled = 1u;
     } else if (actorPc.scene == SCENE_SANDBOX || actorPc.scene == SCENE_BLANK) {

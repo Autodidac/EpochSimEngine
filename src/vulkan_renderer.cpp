@@ -2146,8 +2146,20 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 }
                 const auto x = static_cast<std::int32_t>(index % config.grid_width);
                 const auto y = static_cast<std::int32_t>(index / config.grid_width);
-                if (normalized == static_cast<std::uint32_t>(Material::wood) &&
-                    fix29_hive_support_cell(queen_x, queen_y, x, y)) {
+                const auto local_queen_y = scene == Scene::sandbox ? 234 : 232;
+                const auto dx = x - queen_x;
+                const auto dy = y - queen_y;
+                const auto hive_part = classify_pre_pr19_hive_cell(
+                    dx, dy, fix29_hive_entropy(512, local_queen_y, dx, dy),
+                    512, local_queen_y);
+                const bool fixed_hive_content =
+                    (hive_part == HivePart::honey &&
+                     normalized == static_cast<std::uint32_t>(Material::honey)) ||
+                    (hive_part == HivePart::pollen &&
+                     normalized == static_cast<std::uint32_t>(Material::pollen));
+                if ((normalized == static_cast<std::uint32_t>(Material::wood) &&
+                     fix29_hive_support_cell(queen_x, queen_y, x, y)) ||
+                    fixed_hive_content) {
                     cells[index].aux |= fill_aux_structural | fill_aux_supported;
                     cells[index].aux = (cells[index].aux & ~fill_aux_state_mask) | 255u;
                 }
@@ -2335,12 +2347,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             state.mouse_y.load(std::memory_order_relaxed));
     }
 
-    void record_paint(const VkCommandBuffer command_buffer, const SharedState& state) {
-        const bool erase = state.secondary_down.load(std::memory_order_relaxed);
-        const bool paint = state.primary_down.load(std::memory_order_relaxed);
+    void record_paint_at_grid(const VkCommandBuffer command_buffer,
+                              const SharedState& state,
+                              const bool erase,
+                              const bool paint,
+                              const std::int32_t grid_x,
+                              const std::int32_t grid_y) {
         if (!erase && !paint) return;
 
-        const auto [grid_x, grid_y] = grid_cursor(state);
         const auto requested_radius = state.brush_radius.load(std::memory_order_relaxed);
         const auto material = erase ? static_cast<std::uint32_t>(Material::oxygen)
                                     : state.selected_material.load(std::memory_order_relaxed);
@@ -2374,6 +2388,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    }
+
+    void record_paint(const VkCommandBuffer command_buffer, const SharedState& state) {
+        const bool erase = state.secondary_down.load(std::memory_order_relaxed);
+        const bool paint = state.primary_down.load(std::memory_order_relaxed);
+        if (!erase && !paint) return;
+        const auto [grid_x, grid_y] = grid_cursor(state);
+        record_paint_at_grid(command_buffer, state, erase, paint, grid_x, grid_y);
     }
 
 
@@ -3630,7 +3652,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         action == WorldPrimaryAction::editor_paint,
                         std::memory_order_release);
                     immediate_submit([&](const VkCommandBuffer command_buffer) {
-                        record_paint(command_buffer, state);
+                        record_paint_at_grid(command_buffer, state, false,
+                                             state.primary_down.load(std::memory_order_acquire),
+                                             100, 100);
                     });
                     state.primary_down.store(false, std::memory_order_release);
                     return count_material(download_scene_cells(), Material::sand);
@@ -3836,12 +3860,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 const std::uint32_t queen_y = scene == Scene::sandbox ? 234u : 232u;
                 const auto district = persistent_world_district_index(scene);
                 const std::uint32_t hive_origin_x = composed_world
-                    ? persistent_world_origin_x(config.grid_width) +
-                        (district % persistent_world_district_columns) * pre_expansion_world_width
+                    ? persistent_world_district_origin_x(config.grid_width, district)
                     : authored_map_origin_x();
                 const std::uint32_t hive_origin_y = composed_world
-                    ? persistent_world_origin_y(config.grid_height) +
-                        (district / persistent_world_district_columns) * pre_expansion_world_height
+                    ? persistent_world_district_origin_y(config.grid_height, district)
                     : authored_map_origin_y();
                 std::uint32_t mismatches = 0u;
                 std::uint32_t shell = 0u;
@@ -3882,11 +3904,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                             matches = actual == Material::queen_bee;
                             break;
                         case HivePart::honey:
-                            matches = actual == Material::honey;
+                            matches = actual == Material::honey &&
+                                (actual_cell.aux &
+                                 (fill_aux_structural | fill_aux_supported)) ==
+                                    (fill_aux_structural | fill_aux_supported);
                             ++honey;
                             break;
                         case HivePart::pollen:
-                            matches = actual == Material::pollen;
+                            matches = actual == Material::pollen &&
+                                (actual_cell.aux &
+                                 (fill_aux_structural | fill_aux_supported)) ==
+                                    (fill_aux_structural | fill_aux_supported);
                             ++pollen;
                             break;
                         case HivePart::chamber:
@@ -3915,10 +3943,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         constexpr std::uint32_t bee_fed_bit = 0x10000000u;
                         const auto slot = (bee.aux >> 13u) & 127u;
                         const auto encoded_district = (bee.aux >> 20u) & 7u;
-                        const auto decoded_home_x = persistent_world_origin_x(config.grid_width) +
-                            encoded_district * pre_expansion_world_width +
+                        const auto decoded_home_x =
+                            persistent_world_district_origin_x(
+                                config.grid_width, encoded_district) +
                             (bee.aux & 127u) * 8u;
-                        const auto decoded_home_y = persistent_world_origin_y(config.grid_height) +
+                        const auto decoded_home_y =
+                            persistent_world_district_origin_y(
+                                config.grid_height, encoded_district) +
                             ((bee.aux >> 7u) & 63u) * 8u;
                         const auto expected_home_x = hive_origin_x + queen_x;
                         const auto expected_home_y = hive_origin_y + (queen_y / 8u) * 8u;
@@ -3999,11 +4030,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                             matches = actual == Material::queen_bee;
                             break;
                         case HivePart::honey:
-                            matches = actual == Material::honey;
+                            matches = actual == Material::honey &&
+                                (actual_cell.aux &
+                                 (fill_aux_structural | fill_aux_supported)) ==
+                                    (fill_aux_structural | fill_aux_supported);
                             ++honey;
                             break;
                         case HivePart::pollen:
-                            matches = actual == Material::pollen;
+                            matches = actual == Material::pollen &&
+                                (actual_cell.aux &
+                                 (fill_aux_structural | fill_aux_supported)) ==
+                                    (fill_aux_structural | fill_aux_supported);
                             ++pollen;
                             break;
                         case HivePart::chamber:
@@ -4031,6 +4068,70 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            " honey=" + std::to_string(honey) +
                            " pollen=" + std::to_string(pollen) +
                            " chamber_empty=" + std::to_string(chamber_empty));
+
+                for (std::uint32_t tick = 0u; tick < 120u; ++tick)
+                    run_acceptance_focused_tick();
+                const auto delayed = download_scene_cells();
+                std::uint32_t delayed_mismatches = 0u;
+                std::uint32_t delayed_support = 0u;
+                std::uint32_t delayed_shell = 0u;
+                std::uint32_t delayed_honey = 0u;
+                std::uint32_t delayed_pollen = 0u;
+                for (std::int32_t dy = -18; dy <= 11; ++dy) {
+                    for (std::int32_t dx = -40; dx <= 31; ++dx) {
+                        const auto part = classify_pre_pr19_hive_cell(
+                            dx, dy, fix29_hive_entropy(
+                                queen_x, queen_y, dx, dy),
+                            queen_x, queen_y);
+                        const auto x = static_cast<std::uint32_t>(queen_x + dx);
+                        const auto y = static_cast<std::uint32_t>(queen_y + dy);
+                        const auto& actual_cell = delayed[index_of(x, y)];
+                        const auto actual =
+                            static_cast<Material>(actual_cell.material);
+                        const bool fixed = (actual_cell.aux &
+                            (fill_aux_structural | fill_aux_supported)) ==
+                            (fill_aux_structural | fill_aux_supported);
+                        bool checked = true;
+                        bool matches = true;
+                        switch (part) {
+                        case HivePart::support:
+                            matches = actual == Material::wood && fixed;
+                            ++delayed_support;
+                            break;
+                        case HivePart::shell:
+                            matches = actual == Material::beehive;
+                            ++delayed_shell;
+                            break;
+                        case HivePart::queen:
+                            matches = actual == Material::queen_bee;
+                            break;
+                        case HivePart::honey:
+                            matches = actual == Material::honey && fixed;
+                            ++delayed_honey;
+                            break;
+                        case HivePart::pollen:
+                            matches = actual == Material::pollen && fixed;
+                            ++delayed_pollen;
+                            break;
+                        default:
+                            checked = false;
+                            break;
+                        }
+                        if (checked && !matches) ++delayed_mismatches;
+                    }
+                }
+                append("placed_fix29_hive_delayed_body_exact",
+                       delayed_mismatches == 0u &&
+                           delayed_support == 571u &&
+                           delayed_shell == 193u &&
+                           delayed_honey == 17u &&
+                           delayed_pollen == 20u,
+                       "ticks=120 mismatches=" +
+                           std::to_string(delayed_mismatches) +
+                           " support=" + std::to_string(delayed_support) +
+                           " shell=" + std::to_string(delayed_shell) +
+                           " honey=" + std::to_string(delayed_honey) +
+                           " pollen=" + std::to_string(delayed_pollen));
             }
 
             {
@@ -4251,14 +4352,44 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        std::to_string(expected_spawn.y) +
                        " health=" + std::to_string(actor.health) +
                        " oxygen=" + std::to_string(actor.oxygen));
+            const SectionCoordinate startup_center{
+                static_cast<std::int32_t>(expected_spawn.x /
+                                          static_cast<std::uint32_t>(active_region_width_cells)),
+                static_cast<std::int32_t>(expected_spawn.y /
+                                          static_cast<std::uint32_t>(active_region_height_cells))};
+            const auto startup_origin = active_window_origin(
+                startup_center,
+                (config.grid_width + static_cast<std::uint32_t>(active_region_width_cells) - 1u) /
+                    static_cast<std::uint32_t>(active_region_width_cells),
+                (config.grid_height + static_cast<std::uint32_t>(active_region_height_cells) - 1u) /
+                    static_cast<std::uint32_t>(active_region_height_cells));
+            const auto startup_left = startup_origin.x * active_region_width_cells;
+            const auto startup_right = startup_left +
+                active_region_width_cells * active_window_columns;
+            std::uint32_t startup_districts = 0u;
+            for (std::uint32_t district = 0u;
+                 district < persistent_world_district_count; ++district) {
+                const auto district_left = static_cast<std::int32_t>(
+                    persistent_world_district_origin_x(config.grid_width, district));
+                const auto district_right = district_left +
+                    static_cast<std::int32_t>(pre_expansion_world_width);
+                if (district_right > startup_left && district_left < startup_right) {
+                    ++startup_districts;
+                }
+            }
+            append("persistent_world_startup_sparse_footprint",
+                   config.grid_width < persistent_world_width || startup_districts <= 3u,
+                   "active_authored_districts=" + std::to_string(startup_districts) +
+                       " active_x=" + std::to_string(startup_left) + ".." +
+                       std::to_string(startup_right));
             const auto world_cells = download_scene_cells();
             for (std::uint32_t district = 0u;
                  district < persistent_world_district_count; ++district) {
                 const auto scene = persistent_world_district_scene(district);
-                const auto origin_x = persistent_world_origin_x(config.grid_width) +
-                    (district % persistent_world_district_columns) * pre_expansion_world_width;
-                const auto origin_y = persistent_world_origin_y(config.grid_height) +
-                    (district / persistent_world_district_columns) * pre_expansion_world_height;
+                const auto origin_x =
+                    persistent_world_district_origin_x(config.grid_width, district);
+                const auto origin_y =
+                    persistent_world_district_origin_y(config.grid_height, district);
                 const auto first_foundation_y =
                     origin_y + pre_expansion_world_height - authored_scene_foundation_cells;
                 std::uint32_t stone = 0u;
@@ -4280,10 +4411,20 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 }
                 const auto expected =
                     pre_expansion_world_width * authored_scene_foundation_cells;
+                const auto surface_y = origin_y +
+                    scene_surface_tile_row(scene) * authored_scene_foundation_cells;
+                const bool aligned_layout =
+                    (origin_x % authored_scene_foundation_cells) == 0u &&
+                    (origin_y % authored_scene_foundation_cells) == 0u &&
+                    surface_y == persistent_world_surface_y(config.grid_height) &&
+                    origin_x + pre_expansion_world_width <= config.grid_width;
                 append("world_district_" + std::string{scene_name(scene)},
-                       stone == expected && lava == 0u &&
+                       aligned_layout && stone == expected && lava == 0u &&
                            supported_stone == expected,
                        "district=" + std::to_string(district) +
+                           " origin=" + std::to_string(origin_x) + "," +
+                           std::to_string(origin_y) +
+                           " surface=" + std::to_string(surface_y) +
                            " stone=" + std::to_string(stone) +
                            " lava=" + std::to_string(lava) +
                            " supported_stone=" + std::to_string(supported_stone));

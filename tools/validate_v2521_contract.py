@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v2.5.24 systems, scene, atmosphere, UI, and release contracts."""
+"""Validate the v2.5.25 systems, scene, atmosphere, UI, and release contracts."""
 
 from pathlib import Path
 
@@ -14,26 +14,26 @@ def require(relative: str, *tokens: str) -> None:
     text = source(relative)
     missing = [token for token in tokens if token not in text]
     if missing:
-        raise SystemExit(f"{relative} missing v2.5.24 contract tokens: {missing}")
+        raise SystemExit(f"{relative} missing v2.5.25 contract tokens: {missing}")
 
 
 def reject(relative: str, *tokens: str) -> None:
     text = source(relative)
     found = [token for token in tokens if token in text]
     if found:
-        raise SystemExit(f"{relative} retains rejected v2.5.24 tokens: {found}")
+        raise SystemExit(f"{relative} retains rejected v2.5.25 tokens: {found}")
 
 
-require("CMakeLists.txt", "VERSION 2.5.24", "validate_v2521_contract.py")
+require("CMakeLists.txt", "VERSION 2.5.25", "validate_v2521_contract.py")
 require(
     ".github/workflows/ci-release.yml",
-    "refs/tags/v2.5.24",
-    "SandHybrid-Windows-x64-v2.5.24",
-    "SandHybrid-Linux-x64-v2.5.24",
-    "gh release create v2.5.24",
-    "group: sandhybrid-v2524-",
+    "refs/tags/v2.5.25",
+    "SandHybrid-Windows-x64-v2.5.25",
+    "SandHybrid-Linux-x64-v2.5.25",
+    "gh release create v2.5.25",
+    "group: sandhybrid-v2525-",
 )
-reject(".github/workflows/ci-release.yml", "v2.5.24-test", "prerelease: true")
+reject(".github/workflows/ci-release.yml", "v2.5.25-test", "prerelease: true")
 require(
     "missioncache.md",
     "## v2.5.21 systems, presentation, atmosphere, scene, and machinery recovery",
@@ -175,4 +175,4 @@ for token in (
     require("include/sandhybrid/scene_spawn.hpp", token)
 require("tests/scene_spawn_contract.cpp", "for (std::uint32_t index = 0u; index < legacy_scene_count; ++index)")
 
-print("v2.5.24 systems, scene, atmosphere, hive, UI, machinery, and release contracts valid.")
+print("v2.5.25 systems, scene, atmosphere, hive, UI, machinery, and release contracts valid.")

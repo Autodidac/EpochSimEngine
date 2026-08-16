@@ -88,35 +88,77 @@ ivec2 beeAuthoredWorldOrigin(uint width, uint height) {
     return ivec2(originX, skyHeight);
 }
 
+int beePersistentGap(uint width) {
+    int spare = max(int(width) - BEE_PERSISTENT_WORLD_CELLS.x, 0);
+    return (spare / 7 / 8) * 8;
+}
+
+int beePersistentSurfaceRow(uint district) {
+    if (district == 1u) return 37;
+    if (district == 2u) return 42;
+    if (district == 3u) return 17;
+    if (district == 4u || district == 5u || district == 6u) return 43;
+    if (district == 7u) return 41;
+    return 40;
+}
+
+int beePersistentSurfaceY(uint height) {
+    int authoredTop = int(height) >= BEE_AUTHORED_WORLD_CELLS.y * 3
+        ? BEE_AUTHORED_WORLD_CELLS.y * 2
+        : 0;
+    return authoredTop + 40 * 8;
+}
+
+ivec2 beePersistentDistrictOrigin(uint width, uint height, uint district) {
+    uint bounded = min(district, 7u);
+    int gap = beePersistentGap(width);
+    return ivec2(int(bounded) * (BEE_AUTHORED_WORLD_CELLS.x + gap),
+                 beePersistentSurfaceY(height) -
+                     beePersistentSurfaceRow(bounded) * 8);
+}
+
 ivec2 beePersistentWorldOrigin(uint width, uint height) {
-    return max((ivec2(int(width), int(height)) - BEE_PERSISTENT_WORLD_CELLS) / 2,
-               ivec2(0));
+    return beePersistentDistrictOrigin(width, height, 0u);
+}
+
+bool beePersistentAddress(ivec2 homeCenter, uint width, uint height,
+                          out uint district, out ivec2 districtLocal) {
+    for (uint candidate = 0u; candidate < 8u; ++candidate) {
+        ivec2 origin = beePersistentDistrictOrigin(width, height, candidate);
+        ivec2 local = homeCenter - origin;
+        if (local.x >= 0 && local.y >= 0 &&
+            local.x < BEE_AUTHORED_WORLD_CELLS.x &&
+            local.y < BEE_AUTHORED_WORLD_CELLS.y) {
+            district = candidate;
+            districtLocal = local;
+            return true;
+        }
+    }
+    district = 0u;
+    districtLocal = homeCenter;
+    return false;
 }
 
 ivec2 beeHomeCenterFromAux(uint aux, uint width, uint height) {
     if (beeUsesPersistentWorldHome(aux)) {
-        ivec2 origin = beePersistentWorldOrigin(width, height);
-        int district = int((aux >> 20u) & 7u);
+        uint district = (aux >> 20u) & 7u;
+        ivec2 origin = beePersistentDistrictOrigin(width, height, district);
         ivec2 local = ivec2(int(aux & 127u) * 8,
                             int((aux >> 7u) & 63u) * 8);
-        return origin + ivec2(district * BEE_AUTHORED_WORLD_CELLS.x, 0) + local;
+        return origin + local;
     }
     ivec2 home = ivec2(int(aux & 255u) * 4, int((aux >> 8u) & 127u) * 4);
     return beeUsesAuthoredHome(aux) ? home + beeAuthoredWorldOrigin(width, height) : home;
 }
 
 uint beePackMetadata(uint aux, ivec2 homeCenter, uint slot, uint width, uint height) {
-    ivec2 persistentOrigin = beePersistentWorldOrigin(width, height);
+    uint district = 0u;
+    ivec2 districtLocal = ivec2(0);
     bool persistent = int(width) >= BEE_PERSISTENT_WORLD_CELLS.x &&
                       int(height) >= BEE_PERSISTENT_WORLD_CELLS.y &&
-                      all(greaterThanEqual(homeCenter, persistentOrigin)) &&
-                      all(lessThan(homeCenter,
-                                   persistentOrigin + BEE_PERSISTENT_WORLD_CELLS));
+                      beePersistentAddress(homeCenter, width, height,
+                                           district, districtLocal);
     if (persistent) {
-        ivec2 worldLocal = homeCenter - persistentOrigin;
-        uint district = uint(clamp(worldLocal.x / BEE_AUTHORED_WORLD_CELLS.x, 0, 7));
-        ivec2 districtLocal = worldLocal -
-            ivec2(int(district) * BEE_AUTHORED_WORLD_CELLS.x, 0);
         uint homeX = uint(clamp(districtLocal.x / 8, 0, 127));
         uint homeY = uint(clamp(districtLocal.y / 8, 0, 63));
         uint metadata = homeX | (homeY << 7u) | ((slot & 127u) << 13u) |
@@ -134,7 +176,6 @@ uint beePackMetadata(uint aux, ivec2 homeCenter, uint slot, uint width, uint hei
     uint metadata = homeX | (homeY << 8u) | (packedSlot << 15u);
     return (aux & ~BEE_METADATA_MASK) | metadata;
 }
-
 uint beeTimerFromAge(uint age) { return age & 0xffffu; }
 uint beeTargetTileFromAge(uint age) { return age >> 16u; }
 uint beePackAge(uint timer, uint targetTile) {

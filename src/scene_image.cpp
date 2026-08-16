@@ -439,7 +439,21 @@ bool load_scene_ppm(const std::filesystem::path& path,
             const auto material_id = materials[index];
             const auto material = static_cast<Material>(material_id);
             auto aux = default_aux(material, static_cast<std::uint32_t>(index));
-            if (material_id != 0u && structural_candidate(material)) {
+            bool fixed_hive_content = false;
+            if (scene == Scene::sandbox || scene == Scene::ecosystem) {
+                const auto queen_y = scene == Scene::sandbox ? 234 : 232;
+                const auto dx = static_cast<std::int32_t>(x) - 512;
+                const auto dy = static_cast<std::int32_t>(y) - queen_y;
+                const auto part = classify_pre_pr19_hive_cell(
+                    dx, dy, fix29_hive_entropy(512, queen_y, dx, dy), 512, queen_y);
+                fixed_hive_content =
+                    (part == HivePart::honey && material == Material::honey) ||
+                    (part == HivePart::pollen && material == Material::pollen);
+            }
+            if (fixed_hive_content) {
+                aux |= aux_structural | aux_supported;
+                set_state(aux, 255u);
+            } else if (material_id != 0u && structural_candidate(material)) {
                 const auto tile = static_cast<std::size_t>(y / tile_size) * tile_columns + x / tile_size;
                 const auto occupancy = static_cast<std::uint32_t>(counts[tile * material_count + material_id]);
                 if (occupancy >= minimum_cohesive_cells) {

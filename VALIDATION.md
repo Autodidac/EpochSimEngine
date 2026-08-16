@@ -70,10 +70,10 @@ This command builds the real application and all GLSL shaders, runs the static s
 Run this from a fresh native package on a system with a working Vulkan presentation device:
 
 ```text
-sandhybrid --world-size compact --runtime-acceptance-report runtime-acceptance.json
+sandhybrid --world-size large --runtime-acceptance-report runtime-acceptance.json
 ```
 
-The executable allocates the actual compact 2560x1440 resident World, runs the production reset, actor, tile, macro-movement, and fine-movement pipelines, writes a schema-1 JSON report, and exits 0 only when every focused check passes. Seeded movement dispatch remains bounded to the first 192 columns and rows because those micro-scenarios live there, while reset and district/player checks cover the complete compact resident buffers. Unrelated long-running chemistry, effects, sunlight, weather, and cross-district travel are intentionally omitted; deterministic contracts separately enforce their source policies. Exit 3 means observed GPU state contradicted the accepted behavior. The report covers:
+The executable allocates the selected resident World (Large is 10240x1440), runs the production reset, actor, paint, tile, macro-movement, fine-movement, and chemistry pipelines, writes a schema-1 JSON report, and exits 0 only when every focused check passes. Seeded movement dispatch remains bounded to the first 192 columns and rows because those micro-scenarios live there, while reset, district, player, startup-footprint, and hard-coded hive checks cover the complete selected resident buffers. Unrelated long-running chemistry, effects, sunlight, weather, and cross-district travel are intentionally omitted; deterministic contracts separately enforce their source policies. Exit 3 means observed GPU state contradicted the accepted behavior. The report covers:
 
 - Editor paint commits exactly once while RUNNING and while PAUSED;
 - exact one-packet 8x8 Water and Hydrogen displacement;
@@ -81,21 +81,23 @@ The executable allocates the actual compact 2560x1440 resident World, runs the p
 - enclosed Air remains tiled after the same classifier budget;
 - Half Water fall, clear-gap two-to-four-cell attraction, merge, supplied-ledge split/hang/drip, and full-Water zero-jitter equilibrium;
 - isolated full Water crossing an unsupported ledge;
-- complete supported structural Stone foundations in all eight in-place World districts;
-- live persistent player state at the Frontier recovery spawn with full health and Oxygen;
-- internally consistent generated district hive support flags, shell, queen, exit, and Empty/Honey/Pollen payload. This is not acceptance of the still-unmatched irregular historical photograph.
+- complete supported structural Stone foundations and common aligned grass Y `1040` in all eight distributed World districts;
+- live persistent player state at the distributed Frontier recovery spawn with full health and Oxygen;
+- no more than three authored districts intersecting the initial Large 4x4 active window;
+- cell-exact photographed Fix29 support, shell, queen, exit, and Empty/Honey/Pollen payload in placed, Sandbox, and Ecosystem hives; the placed body is checked immediately and again after 120 focused ticks, while each hard-coded colony retains 100 unique district-correct bee homes.
 
-This focused gate does not close broader cross-district traversal, weather/ecology cycles, machinery, save migration, bee lifecycle, debug overhead, visual review, or the photographed hive mission.
+This focused gate does not close broader cross-district traversal, weather/ecology cycles, machinery, save migration, full bee lifecycle, debug overhead, or final user visual review of the photographed hive and distributed scenery.
 
-## v2.5.23 stable local release gates
+## v2.5.25 stable local release gates
 
 - `tools/validate_v2513_contract.py` preserves the first-28 P0 recovery contracts.
 - `tools/validate_v2515_contract.py` retains the macro, Half Water, hive, cursor, Fill, paused-editing, and sidebar recovery baselines.
 - `tools/validate_v2516_contract.py` retains real Blueprint slots, exact transactional placement, paused persistent-World editing, and honest sidebar rendering.
 - `tools/validate_v2517_contract.py` requires reserved Half Water state, one canonical Fix29 prefab entropy, the packaged Vulkan readback harness, high-DPI logical rendering, and a normal stable publication path.
 - `tools/validate_v2519_contract.py` requires district-specific full-tile surfaces and authored-air ownership, Designer Clear, bounded Fill writes, supported breathable player recovery, two-tick macro cadence/cohesion, and one-submit fixed-step debt shedding.
-- `tools/validate_v2521_contract.py` requires the photographed compact hive across CPU/GPU/load contracts, persistent-World player policy, Volcano/geology recovery, Actions and presentation-limit layout, fixed simulation pacing, static normal presentation, state-driven gas mixing, bounded debug sampling, conservative Sluice output, and the stable v2.5.23 publication path.
+- `tools/validate_v2521_contract.py` requires the photographed compact hive across CPU/GPU/load contracts, persistent-World player policy, Volcano/geology recovery, Actions and presentation-limit layout, fixed simulation pacing, static normal presentation, state-driven gas mixing, bounded debug sampling, conservative Sluice output, and the stable v2.5.25 publication path.
 - `tools/validate_v2522_contract.py` requires exact scene-local Fix29 hive payloads, single-spend liquid movement, conserved Half Water behavior, zero-jitter settled surfaces, and result-based packaged Vulkan evidence.
+- `tools/validate_v2525_contract.py` requires aligned distributed district origins, common grass Y, sparse Large startup, durable Fix29 contents across every constructor/runtime path, delayed exact hive readback, and stable v2.5.25 package names.
 - `tools/validate_release_tree.py` rejects tracked packages, executables, compiled shaders, payload chunks, one-shot workflows, and versioned release-note fragments.
 - Windows and Linux full Release builds compile every shader, build with warnings as errors, run all CTests, install the package, archive it, audit its contents, and generate SHA-256 files.
 - Before any public publication, both fresh native packages must execute the Vulkan state-readback command successfully; this pass is local-only. Windows high-DPI capture must also show a paused committed edit beneath its cursor and no world ghost in the sidebar.

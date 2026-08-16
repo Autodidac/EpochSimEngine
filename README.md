@@ -174,7 +174,7 @@ Shared geology contains sparse deterministic loose pixels of Iron Ore, Copper, A
 
 ## Persistent World districts
 
-One reset creates eight connected 640x360 districts in one centered 8x1 horizontal band inside the resident World:
+One reset creates eight connected 640x360 districts ordered west-to-east and distributed across the available resident World width:
 
 1. Sandbox
 2. Ecosystem and suspended hive
@@ -244,7 +244,7 @@ The Windows package includes `run.bat` at its root. It locates `sandhybrid.exe` 
 - machine work restricted to valid controller/output locations
 - paused state performs no continuous simulation ticks, actor updates, MAP refresh, lighting/day-night, reactions, or effects; direct editor mutations still commit and dirty affected hierarchy state
 
-Compact, Standard, and Large resident worlds are 5120x1440, 7680x1440, and 10240x1440 cells. The same 5120x360 eight-district horizontal band is centered at `(0,540)`, `(1280,540)`, or `(2560,540)` respectively. The active simulation gate remains one contiguous clipped 4x4 window of complete 640x360 regions around the camera; stable off-window regions reject expensive chemistry, neighborhood, and movement work without becoming another simulation instance. Sparse far-region streaming remains active in `missioncache.md`.
+Compact, Standard, and Large resident worlds are 5120x1440, 7680x1440, and 10240x1440 cells. Compact places the eight districts contiguously; Standard and Large distribute aligned gaps between them, with Large starts at X `0, 1368, 2736, 4104, 5472, 6840, 8208, 9576`. Each district translates its intended authored terrain row onto shared grass Y `1040`. The active simulation gate remains one contiguous clipped 4x4 window around the camera; the Large startup window intersects only three authored districts, and stable off-window regions reject expensive chemistry, neighborhood, and movement work without becoming another simulation instance. Sparse far-region streaming remains active in `missioncache.md`.
 
 ## Windows build
 
@@ -331,11 +331,11 @@ Uniform aligned 8x8 material regions can move as exact 64-cell packets while the
 Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and solid-supported pre-fall droplets that cannot hop along water edges or crawl after falling. See `HALF_WATER.md`.
 
 
-## v2.5.24 horizontal World, macro, and Fix29 hive recovery
+## v2.5.25 distributed World and persistent Fix29 hive recovery
 
-The local v2.5.24 target removes the normal scene carousel and composes eight former authored areas west-to-east as connected districts in one horizontal `WORLD`. The player, saves, resident buffers, atmosphere, heat, weather, and hierarchy state persist while travelling between them. Normal saves live under `saves/worlds/<size>/world/<slot>/`.
+The local v2.5.25 target keeps one connected `WORLD`, distributes its eight former authored areas across the available width, and aligns every intended grass surface to world Y `1040`. The player, saves, resident buffers, atmosphere, heat, weather, and hierarchy state persist while travelling between districts. Normal saves live under `saves/worlds/<size>/world/<slot>/`.
 
-Complete liquid/gas packets remain reversible scheduling metadata over canonical cells. They move every two fixed ticks and carry an eight-opportunity travel budget through successful swaps and blocked attempts; only a fresh open or incompatible perimeter permits fine fallback, while enclosed Air remains tiled. Sandbox and Ecosystem share the cell-exact photographed Fix29 hive body and contents, nine complete Wood support tiles, and 100 live district-aware SandHybrid bees in a compact three-lobed biohazard. Deterministic and native evidence is recorded in `MISSION_LEDGER.md`; broader traversal, long ecology/weather cycles, and visual/performance observation stay active in `missioncache.md`.
+Complete liquid/gas packets remain reversible scheduling metadata over canonical cells. They move every two fixed ticks and carry an eight-opportunity travel budget through successful swaps and blocked attempts; only a fresh open or incompatible perimeter permits fine fallback, while enclosed Air remains tiled. Sandbox and Ecosystem share the cell-exact photographed Fix29 hive body and contents, nine complete Wood support tiles, and 100 live district-aware SandHybrid bees in a compact three-lobed biohazard. Hive Honey/Pollen remain structural body content during ordinary motion and chemistry; placed exactness is checked again after 120 focused ticks. Deterministic and native evidence is recorded in `MISSION_LEDGER.md`; broader traversal, long ecology/weather cycles, and visual/performance observation stay active in `missioncache.md`.
 ## v2.5.22 systems, scene, machinery, and presentation recovery
 
 SandHybrid v2.5.22 was the preceding local recovery target, with native Windows/Linux packages, SHA-256 files, and no prerelease marker.
@@ -348,7 +348,7 @@ Half Water is the darker conserved one-unit state again, including the supplied 
 
 `IGNITE AIR` is in `ACTIONS` above `KEYMAP`. Settings provides 30/60/120/UNLIMITED presentation caps while simulation remains fixed at 60 Hz. Debug now uses bounded rotating-region samples, and the persistent World has a recoverable supported breathable player spawn.
 
-The generated, placeable, and loaded hive uses the photographed historical compact model (`24..87` shell, `<24` chamber, exit through `x=10`, seed `0xD17A5EED`) over nine complete Wood support tiles. EpochGui is fetched before release and remains current at v0.88.75 / `d8decc9`.
+The generated, placeable, and loaded hive uses the photographed historical compact model (`24..87` shell, `<24` chamber, exit through `x=10`, seed `0xD17A5EED`) over nine complete Wood support tiles. EpochGui remains the complete last-verifiable v0.88.75 / `d8decc9` snapshot; the release-time fetch is explicitly recorded as blocked by the suspended GitHub endpoint, and no dirty local dependency tree is imported.
 
 The shipped executable can run the production Vulkan state/readback gate:
 
@@ -371,7 +371,7 @@ Moving macro media match the packaged v2.5.3 reference. Runtime acceptance for b
 
 ## Resident World envelope
 
-All eight authored districts retain local 640x360 coordinates inside the centered 8x1 horizontal World band. Their boundaries are ordinary shared cell boundaries, not scene walls or load transitions. Intentional authored air stays empty/atmospheric, complete tile-authored floors and foundations remain aligned, and only the outer resident world supplies hard containment.
+All eight authored districts retain local 640x360 coordinates while their X origins are distributed across the resident width and their intended terrain surfaces meet at shared world Y `1040`. Their boundaries are ordinary shared cell boundaries, not scene walls or load transitions. Intentional authored air stays empty/atmospheric, complete tile-authored floors and foundations remain aligned, and only the outer resident world supplies hard containment.
 
 Engineering presents controlled thermal, gas diffusion, sediment separation, and paired compost experiments. Gold Mine includes a water-fed conveyor and Sluice line. Ember becomes ash only; fertilizer requires ash, organic waste, mineral soil/silt, dirty water, Oxygen, and time. Their broader runtime operation remains active until packaged observation covers it.
 

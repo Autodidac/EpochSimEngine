@@ -47,14 +47,11 @@ bool insideAuthoredLocal(ivec2 local) {
 bool insideAuthoredWorld(ivec2 worldPosition) {
     return insideAuthoredLocal(authoredLocalCoordinate(worldPosition));
 }
+int sceneSurfaceTileRow(uint scene);
+
 bool persistentWorldMode() {
     return int(pc.width) >= PERSISTENT_WORLD_CELLS.x &&
            int(pc.height) >= PERSISTENT_WORLD_CELLS.y;
-}
-
-ivec2 persistentWorldOrigin() {
-    return max((ivec2(int(pc.width), int(pc.height)) - PERSISTENT_WORLD_CELLS) / 2,
-               ivec2(0));
 }
 
 uint persistentDistrictScene(uint district) {
@@ -68,23 +65,53 @@ uint persistentDistrictScene(uint district) {
     return SCENE_DEMOLITION;
 }
 
+int persistentWorldGap() {
+    int spare = max(int(pc.width) - PERSISTENT_WORLD_CELLS.x, 0);
+    return (spare / int(PERSISTENT_WORLD_DISTRICT_COUNT - 1u) / BRICK_SIZE) * BRICK_SIZE;
+}
+
+int persistentWorldSurfaceY() {
+    return authoredWorldOrigin().y + sceneSurfaceTileRow(SCENE_SANDBOX) * BRICK_SIZE;
+}
+
+ivec2 persistentDistrictOrigin(uint district) {
+    int gap = persistentWorldGap();
+    uint bounded = min(district, PERSISTENT_WORLD_DISTRICT_COUNT - 1u);
+    uint scene = persistentDistrictScene(bounded);
+    int x = int(bounded) * (AUTHORED_WORLD_CELLS.x + gap);
+    int y = persistentWorldSurfaceY() - sceneSurfaceTileRow(scene) * BRICK_SIZE;
+    return ivec2(x, max(y, 0));
+}
+
+ivec2 persistentWorldOrigin() {
+    return persistentDistrictOrigin(0u);
+}
+
 bool persistentWorldAddress(ivec2 worldPosition, out uint scene,
                             out ivec2 local, out ivec2 districtOrigin) {
-    ivec2 worldLocal = worldPosition - persistentWorldOrigin();
-    if (worldLocal.x < 0 || worldLocal.y < 0 ||
-        worldLocal.x >= PERSISTENT_WORLD_CELLS.x ||
-        worldLocal.y >= PERSISTENT_WORLD_CELLS.y) {
-        scene = SCENE_SANDBOX;
-        local = worldLocal;
-        districtOrigin = persistentWorldOrigin();
-        return false;
+    int gap = persistentWorldGap();
+    int stride = AUTHORED_WORLD_CELLS.x + gap;
+    int relativeX = worldPosition.x;
+    if (relativeX >= 0) {
+        uint district = uint(relativeX / stride);
+        int districtX = relativeX - int(district) * stride;
+        if (district < PERSISTENT_WORLD_DISTRICT_COUNT &&
+            districtX < AUTHORED_WORLD_CELLS.x) {
+            ivec2 candidateOrigin = persistentDistrictOrigin(district);
+            ivec2 candidateLocal = worldPosition - candidateOrigin;
+            if (candidateLocal.y >= 0 &&
+                candidateLocal.y < AUTHORED_WORLD_CELLS.y) {
+                scene = persistentDistrictScene(district);
+                local = candidateLocal;
+                districtOrigin = candidateOrigin;
+                return true;
+            }
+        }
     }
-    ivec2 district = worldLocal / AUTHORED_WORLD_CELLS;
-    uint districtIndex = uint(district.y * PERSISTENT_WORLD_DISTRICTS.x + district.x);
-    scene = persistentDistrictScene(min(districtIndex, PERSISTENT_WORLD_DISTRICT_COUNT - 1u));
-    local = worldLocal - district * AUTHORED_WORLD_CELLS;
-    districtOrigin = persistentWorldOrigin() + district * AUTHORED_WORLD_CELLS;
-    return true;
+    scene = SCENE_SANDBOX;
+    districtOrigin = persistentWorldOrigin();
+    local = worldPosition - districtOrigin;
+    return false;
 }
 
 ivec2 brickCoordinate(ivec2 p) { return p / BRICK_SIZE; }
@@ -745,15 +772,25 @@ bool beehiveSupportForScene(uint scene, ivec2 p) {
     return beehiveSupportCell(queen, p - queen);
 }
 
+bool beehiveFixedContentForScene(uint scene, ivec2 p, uint material) {
+    if ((material != MAT_HONEY && material != MAT_POLLEN) ||
+        (scene != SCENE_SANDBOX && scene != SCENE_ECOSYSTEM)) return false;
+    ivec2 queen = scene == SCENE_SANDBOX ? sandboxQueen() : ecosystemQueen();
+    ivec2 offset = p - queen;
+    return beehivePrefabMaterial(queen, offset, beehivePrefabEntropy(queen, offset)) ==
+           material;
+}
+
 bool authoredStructuralCell(uint scene, ivec2 p, uint material) {
     // All structural assignments above originate from global 8x8 brick coordinates.
     // Organic agents and deliberate granular/cargo samples remain ordinary cells.
     bool authoredTerrain = material == MAT_DIRT || material == MAT_GRASS ||
                            material == MAT_SAND || material == MAT_SILT ||
                            material == MAT_SALT || material == MAT_ICE;
-    return (isBlockCapable(material) || authoredTerrain) &&
-           !looseAuthoredCargo(scene, p, material) &&
-           !looseAuthoredTerrain(scene, p, material);
+    return beehiveFixedContentForScene(scene, p, material) ||
+           ((isBlockCapable(material) || authoredTerrain) &&
+            !looseAuthoredCargo(scene, p, material) &&
+            !looseAuthoredTerrain(scene, p, material));
 
 }
 

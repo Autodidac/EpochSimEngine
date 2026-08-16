@@ -1,13 +1,13 @@
 # Changelog
 
-## Unreleased
+## 2.5.25
 
-- Replaced the normal multi-scene carousel with one persistent `WORLD` containing eight connected 640x360 districts in a centered 4x2 envelope; removed Prev/Next controls and made the player recover at the Frontier district spawn.
-- Moved normal saves to the combined `saves/worlds/<size>/world/<slot>/` namespace while retaining legacy scene IDs only for deterministic migration contracts.
-- Preserved canonical cells beneath reversible 8x8 macro scheduling, with exact liquid/gas packet attempts every two fixed ticks, eight due opportunities before conditional fine fallback, and indefinite tile retention for enclosed Air.
-- Extended deterministic and packaged GPU evidence across all eight in-place foundations, persistent player health/Oxygen, exact macro media, eighth-opportunity fallback, enclosed Air, Half Water fall/merge/drip, and settled Water equilibrium.
-- Corrected stale README, layout, save, validation, and release documentation. Cross-district ecology/weather, full machinery observation, debug overhead, broad visuals, and the photographed irregular historical hive remain active and are not claimed complete.
-
+- Distributed the eight authored districts across each resident width instead of packing Large into a centered strip; translated their distinct authored terrain rows onto common world grass Y 1040.
+- Replaced per-cell eight-district reset probing with direct persistent-world address arithmetic and reduced the Large startup active footprint from four authored districts to three.
+- Made canonical Fix29 Honey/Pollen body cells durable structural hive content across reset, tool placement, load normalization, movement, chemistry, and delayed simulation.
+- Added a 120-tick exact placed-hive readback plus runtime gates for common terrain alignment, sparse startup, all foundations, healthy player spawn, and exact hard-coded colony homes.
+- Preserved fixed-step macro/fine motion, Water/Half Water equilibrium, enclosed-Air tiling, paused editing, sidebar workspaces, player, machinery, and finite canonical-cell ownership.
+- Built local stable Windows and Linux packages only; GitHub publication and EpochGui remote fetch remain blocked/unauthorized and are reported explicitly.
 ## 2.5.22
 
 - Recovered the photographed Fix29 hive cell-for-cell using actual scene-local 640-wide entropy in Sandbox, Ecosystem, translated tool placement, and load normalization.

@@ -21,21 +21,21 @@ def reject(path: str, token: str) -> None:
 
 
 # Normal visible release and exact package names.
-require("CMakeLists.txt", "VERSION 2.5.24")
+require("CMakeLists.txt", "VERSION 2.5.25")
 require("CHANGELOG.md", "## 2.5.16")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.24")
+require("RELEASE_NOTES.md", "# SandHybrid v2.5.25")
 for token in (
-    "SandHybrid-Windows-x64-v2.5.24",
-    "SandHybrid-Linux-x64-v2.5.24",
-    "refs/tags/v2.5.24",
+    "SandHybrid-Windows-x64-v2.5.25",
+    "SandHybrid-Linux-x64-v2.5.25",
+    "refs/tags/v2.5.25",
     "Generate Windows SHA-256",
     "Generate Linux SHA-256",
     "Expected two packages and two checksums",
-    "gh release create v2.5.24",
+    "gh release create v2.5.25",
     "--verify-tag",
 ):
     require(".github/workflows/ci-release.yml", token)
-reject(".github/workflows/ci-release.yml", "v2.5.24-test")
+reject(".github/workflows/ci-release.yml", "v2.5.25-test")
 reject(".github/workflows/ci-release.yml", "--prerelease")
 
 # Exact bounded payload and transactional transformation core.

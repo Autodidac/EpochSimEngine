@@ -1,4 +1,5 @@
 #include "sandhybrid/scene_spawn.hpp"
+#include "sandhybrid/section_scheduler.hpp"
 
 using namespace sandhybrid;
 
@@ -24,7 +25,33 @@ static_assert(scene_world_spawn(Scene::frontier_base, resident_world_width, resi
               SceneSpawn{1448, 927, 24u, true});
 static_assert(!scene_world_spawn(Scene::count, resident_world_width, resident_world_height).enabled);
 static_assert(persistent_world_spawn(resident_world_width, resident_world_height) ==
-              SceneSpawn{4648, 747, 24u, true});
+              SceneSpawn{4272, 1111, 24u, true});
+
+constexpr std::uint32_t large_startup_district_overlap_count() {
+    constexpr auto spawn =
+        persistent_world_spawn(resident_world_width, resident_world_height);
+    constexpr SectionCoordinate center{
+        spawn.x / active_region_width_cells,
+        spawn.y / active_region_height_cells,
+    };
+    constexpr auto origin = active_window_origin(
+        center, resident_world_footprint_columns, resident_world_footprint_rows);
+    constexpr auto active_left =
+        static_cast<std::uint32_t>(origin.x * active_region_width_cells);
+    constexpr auto active_right = active_left +
+        static_cast<std::uint32_t>(active_window_columns * active_region_width_cells);
+    std::uint32_t overlaps = 0u;
+    for (std::uint32_t district = 0u;
+         district < persistent_world_district_count; ++district) {
+        const auto left =
+            persistent_world_district_origin_x(resident_world_width, district);
+        const auto right = left + pre_expansion_world_width;
+        overlaps += left < active_right && right > active_left ? 1u : 0u;
+    }
+    return overlaps;
+}
+
+static_assert(large_startup_district_overlap_count() == 3u);
 
 int main() {
     if (!scene_has_character(world_scene) ||

@@ -934,8 +934,11 @@ void main() {
         return;
     }
     TileState tile = tiles[tileIndex(p, pc.width)];
+    bool fixedHiveContent = isStructural(source) &&
+        (source.material == MAT_HONEY || source.material == MAT_POLLEN);
     bool minorityStructural = isStructural(source) && tile.material != source.material;
     bool durableStructural = isStructural(source) && isBlockCapable(source.material);
+    durableStructural = durableStructural || fixedHiveContent;
     if (isStructural(source) && !durableStructural && !minorityStructural &&
         tileHas(tile, TILE_DAMAGED) &&
         tileOccupancy(tile) >= TILE_MIN_COHESIVE_CELLS &&
@@ -971,7 +974,8 @@ void main() {
         result.age = 0u;
     } else if (isStructural(source)) {
         result.aux |= AUX_STRUCTURAL;
-        if (tileHas(tile, TILE_SUPPORTED)) result.aux |= AUX_SUPPORTED;
+        if (fixedHiveContent || tileHas(tile, TILE_SUPPORTED))
+            result.aux |= AUX_SUPPORTED;
         else result.aux &= ~AUX_SUPPORTED;
     }
     uint randomValue = cellHash(p, source.age ^ source.aux);
@@ -1604,14 +1608,18 @@ void main() {
             }
         }
     } else if (source.material == MAT_POLLEN) {
-        if ((hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEEHIVE)) &&
+        if (fixedHiveContent) {
+            result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
+        } else if ((hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEEHIVE)) &&
             source.age > 90u && (randomValue & 63u) == 0u) {
             result = makeCell(MAT_HONEY);
             setStateValue(result, 255u);
         }
     } else if (source.material == MAT_HONEY) {
         if (stateValue(result) == 0u) setStateValue(result, 255u);
-        if (hungryBeeTargetsHoney(p)) {
+        if (fixedHiveContent) {
+            result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
+        } else if (hungryBeeTargetsHoney(p)) {
             uint remaining = stateValue(result);
             uint portion = min(remaining, 26u);
             if (remaining <= portion) result = makeCell(MAT_EMPTY);

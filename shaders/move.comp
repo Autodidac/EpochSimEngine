@@ -319,12 +319,19 @@ bool isCellGas(Cell cell) {
     return isBaseGas(cell.material);
 }
 
+bool isHiveBoundContent(Cell cell) {
+    return (cell.aux & AUX_STRUCTURAL) != 0u &&
+           (cell.material == MAT_HONEY || cell.material == MAT_POLLEN);
+}
+
 bool isCellLiquid(Cell cell) {
-    return isBaseLiquid(cell.material) || isMolten(cell);
+    return !isHiveBoundContent(cell) &&
+           (isBaseLiquid(cell.material) || isMolten(cell));
 }
 
 bool isCellPowder(Cell cell) {
-    return isPowderCellMaterial(cell.material) && !isMolten(cell);
+    return !isHiveBoundContent(cell) &&
+           isPowderCellMaterial(cell.material) && !isMolten(cell);
 }
 
 bool isImmovableMaterial(uint material) {
@@ -342,7 +349,9 @@ bool isImmovableMaterial(uint material) {
 }
 
 bool isCellImmovable(Cell cell) {
-    return !isCellLiquid(cell) && !isCellGas(cell) && isImmovableMaterial(cell.material);
+    return isHiveBoundContent(cell) ||
+           (!isCellLiquid(cell) && !isCellGas(cell) &&
+            isImmovableMaterial(cell.material));
 }
 
 bool isStructural(Cell cell) {
@@ -357,7 +366,7 @@ bool isLooseSolid(Cell cell) {
 void releaseCollapsingStructural(ivec2 position) {
     if (!moveInside(position)) return;
     Cell cell = moveAt(position);
-    if (!isStructural(cell)) return;
+    if (!isStructural(cell) || isHiveBoundContent(cell)) return;
     TileState tile = tiles[tileIndex(position, movePc.width)];
     if (!tileHas(tile, TILE_COLLAPSING)) return;
     cell.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);

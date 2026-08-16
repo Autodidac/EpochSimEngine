@@ -29,20 +29,25 @@ inline constexpr std::uint32_t persistent_world_width =
     persistent_world_district_columns * pre_expansion_world_width;
 inline constexpr std::uint32_t persistent_world_height =
     persistent_world_district_rows * pre_expansion_world_height;
+inline constexpr std::uint32_t persistent_world_gap_slots =
+    persistent_world_district_count - 1u;
 
 static_assert(persistent_world_width == world_dimensions(WorldSizePreset::compact).width);
 static_assert(persistent_world_height == pre_expansion_world_height);
 
-[[nodiscard]] constexpr std::uint32_t persistent_world_origin_x(
-    const std::uint32_t world_width) noexcept {
-    return world_width > persistent_world_width
-        ? (world_width - persistent_world_width) / 2u : 0u;
-}
-
-[[nodiscard]] constexpr std::uint32_t persistent_world_origin_y(
-    const std::uint32_t world_height) noexcept {
-    return world_height > persistent_world_height
-        ? (world_height - persistent_world_height) / 2u : 0u;
+[[nodiscard]] constexpr std::uint32_t scene_surface_tile_row(const Scene scene) noexcept {
+    switch (scene) {
+    case Scene::sandbox:
+    case Scene::blank: return 40u;
+    case Scene::volcano:
+    case Scene::waterworks:
+    case Scene::gold_mine: return 43u;
+    case Scene::ecosystem: return 37u;
+    case Scene::engineering_lab: return 42u;
+    case Scene::demolition: return 41u;
+    case Scene::frontier_base: return 17u;
+    default: return 40u;
+    }
 }
 
 [[nodiscard]] constexpr Scene persistent_world_district_scene(
@@ -71,6 +76,50 @@ static_assert(persistent_world_height == pre_expansion_world_height);
     return 0u;
 }
 
+[[nodiscard]] constexpr std::uint32_t persistent_world_district_gap(
+    const std::uint32_t world_width) noexcept {
+    const auto spare = world_width > persistent_world_width
+        ? world_width - persistent_world_width : 0u;
+    return (spare / persistent_world_gap_slots /
+            authored_scene_foundation_cells) * authored_scene_foundation_cells;
+}
+
+[[nodiscard]] constexpr std::uint32_t persistent_world_origin_x(
+    const std::uint32_t) noexcept {
+    return 0u;
+}
+
+[[nodiscard]] constexpr std::uint32_t persistent_world_district_origin_x(
+    const std::uint32_t world_width,
+    const std::uint32_t district) noexcept {
+    const auto gap = persistent_world_district_gap(world_width);
+    return (std::min)(district, persistent_world_district_count - 1u) *
+        (pre_expansion_world_width + gap);
+}
+
+[[nodiscard]] constexpr std::uint32_t persistent_world_surface_y(
+    const std::uint32_t world_height) noexcept {
+    const auto authored_top = world_height >= pre_expansion_world_height * 3u
+        ? pre_expansion_world_height * authored_scene_sky_footprint_rows : 0u;
+    const auto requested = authored_top +
+        scene_surface_tile_row(Scene::sandbox) * authored_scene_foundation_cells;
+    if (world_height <= authored_scene_foundation_cells) return 0u;
+    return (std::min)(requested, world_height - authored_scene_foundation_cells);
+}
+
+[[nodiscard]] constexpr std::uint32_t persistent_world_district_origin_y(
+    const std::uint32_t world_height,
+    const std::uint32_t district) noexcept {
+    const auto local_surface = scene_surface_tile_row(
+        persistent_world_district_scene(district)) * authored_scene_foundation_cells;
+    const auto world_surface = persistent_world_surface_y(world_height);
+    return world_surface > local_surface ? world_surface - local_surface : 0u;
+}
+
+[[nodiscard]] constexpr std::uint32_t persistent_world_origin_y(
+    const std::uint32_t world_height) noexcept {
+    return persistent_world_district_origin_y(world_height, 0u);
+}
 [[nodiscard]] constexpr std::uint32_t authored_scene_origin_x(
     const std::uint32_t world_width) noexcept {
     // A complete authored scene occupies exactly one 640-cell camera region.
@@ -207,20 +256,6 @@ static_assert(persistent_world_height == pre_expansion_world_height);
                               blend, x, y, zone * 31u + 19u);
 }
 
-[[nodiscard]] constexpr std::uint32_t scene_surface_tile_row(const Scene scene) noexcept {
-    switch (scene) {
-    case Scene::sandbox:
-    case Scene::blank: return 40u;
-    case Scene::volcano:
-    case Scene::waterworks:
-    case Scene::gold_mine: return 43u;
-    case Scene::ecosystem: return 37u;
-    case Scene::engineering_lab: return 42u;
-    case Scene::demolition: return 41u;
-    case Scene::frontier_base: return 17u;
-    default: return 40u;
-    }
-}
 [[nodiscard]] constexpr terrain::Sample resident_substrate_sample(
     const std::uint32_t world_width,
     const std::uint32_t world_height,

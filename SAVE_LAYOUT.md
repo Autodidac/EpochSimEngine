@@ -23,11 +23,11 @@ Legacy scene IDs remain decoder-compatible for deterministic migration tooling, 
 
 ## World sizes
 
-- Compact: 2560x1440 cells
-- Standard: 5120x1440 cells
+- Compact: 5120x1440 cells
+- Standard: 7680x1440 cells
 - Large: 10240x1440 cells
 
-Every size contains the same centered 2560x720 eight-district envelope. A save is stored under its size and cannot be loaded into a differently sized resident world, preventing silent cropping, stretching, or buffer overruns.
+Every size contains the same eight west-to-east 640x360 districts and one common terrain surface at world Y `1040`. Compact has no horizontal gaps; Standard and Large distribute aligned gaps between districts. A save is stored under its size and cannot be loaded into a differently sized resident world, preventing silent cropping, stretching, or buffer overruns.
 
 ## File integrity
 

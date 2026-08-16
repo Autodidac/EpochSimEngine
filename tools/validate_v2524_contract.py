@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v2.5.24 horizontal-World, packet, Volcano, and Fix29 hive gate."""
+"""Validate the v2.5.25 horizontal-World, packet, Volcano, and Fix29 hive gate."""
 from __future__ import annotations
 
 import subprocess
@@ -17,22 +17,22 @@ def require(relative: str, *tokens: str) -> None:
     text = read(relative)
     missing = [token for token in tokens if token not in text]
     if missing:
-        raise SystemExit(f"{relative} missing v2.5.24 contract tokens: {missing}")
+        raise SystemExit(f"{relative} missing v2.5.25 contract tokens: {missing}")
 
 
 def reject(relative: str, *tokens: str) -> None:
     text = read(relative)
     found = [token for token in tokens if token in text]
     if found:
-        raise SystemExit(f"{relative} retains rejected v2.5.24 tokens: {found}")
+        raise SystemExit(f"{relative} retains rejected v2.5.25 tokens: {found}")
 
 
-require("CMakeLists.txt", "VERSION 2.5.24", "sandhybrid_v2524_source_contract")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.24",
-        "SandHybrid-Windows-x64-v2.5.24", "SandHybrid-Linux-x64-v2.5.24")
-require(".github/workflows/ci-release.yml", "refs/tags/v2.5.24",
-        "SandHybrid-Windows-x64-v2.5.24", "SandHybrid-Linux-x64-v2.5.24",
-        "gh release create v2.5.24")
+require("CMakeLists.txt", "VERSION 2.5.25", "sandhybrid_v2524_source_contract")
+require("RELEASE_NOTES.md", "# SandHybrid v2.5.25",
+        "SandHybrid-Windows-x64-v2.5.25", "SandHybrid-Linux-x64-v2.5.25")
+require(".github/workflows/ci-release.yml", "refs/tags/v2.5.25",
+        "SandHybrid-Windows-x64-v2.5.25", "SandHybrid-Linux-x64-v2.5.25",
+        "gh release create v2.5.25")
 reject(".github/workflows/ci-release.yml", "refs/tags/v2.5.23", "prerelease: true")
 require("include/sandhybrid/world_layout.hpp",
         "persistent_world_district_columns = 8u",
@@ -57,4 +57,4 @@ require("MISSION_LEDGER.md", "v2.5.24 contradiction audit")
 for validator in ("audit_fix34.py", "audit_ecology_motion.py", "validate_shader_contracts.py"):
     subprocess.run([sys.executable, str(ROOT / "tools" / validator)], cwd=ROOT, check=True)
 
-print("v2.5.24 horizontal World, productive packet, sunken Volcano, and Fix29 hive contracts valid.")
+print("v2.5.25 horizontal World, productive packet, sunken Volcano, and Fix29 hive contracts valid.")
