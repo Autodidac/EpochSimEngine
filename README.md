@@ -174,16 +174,16 @@ Shared geology contains sparse deterministic loose pixels of Iron Ore, Copper, A
 
 ## Persistent World districts
 
-One reset creates eight connected 640x360 districts in a centered 4x2 envelope inside the resident World:
+One reset creates eight connected 640x360 districts in one centered 8x1 horizontal band inside the resident World:
 
-1. North-west: Sandbox
-2. North: Ecosystem and suspended hive
-3. North-east: Engineering
-4. Far north-east: Frontier Base and player recovery spawn
-5. South-west: Volcano
-6. South: Waterworks
-7. South-east: Gold Mine and water-fed Sluice
-8. Far south-east: Demolition
+1. Sandbox
+2. Ecosystem and suspended hive
+3. Engineering
+4. Frontier Base and player recovery spawn
+5. Sunken Volcano and lake
+6. Waterworks
+7. Gold Mine and water-fed Sluice
+8. Demolition
 
 They share canonical cells, actor state, atmosphere, weather, temperature, hierarchy scheduling, conservation, and one save. `Blank` and former scene IDs remain migration-only and are not selectable runtime worlds.
 
@@ -244,7 +244,7 @@ The Windows package includes `run.bat` at its root. It locates `sandhybrid.exe` 
 - machine work restricted to valid controller/output locations
 - paused state performs no continuous simulation ticks, actor updates, MAP refresh, lighting/day-night, reactions, or effects; direct editor mutations still commit and dirty affected hierarchy state
 
-Compact, Standard, and Large resident worlds are 2560x1440, 5120x1440, and 10240x1440 cells. The same 2560x720 eight-district envelope is centered at `(0,360)`, `(1280,360)`, or `(3840,360)` respectively. The active simulation gate remains one contiguous clipped 4x4 window of complete 640x360 regions around the camera; stable off-window regions reject expensive chemistry, neighborhood, and movement work without becoming another simulation instance. Sparse far-region streaming remains active in `missioncache.md`.
+Compact, Standard, and Large resident worlds are 5120x1440, 7680x1440, and 10240x1440 cells. The same 5120x360 eight-district horizontal band is centered at `(0,540)`, `(1280,540)`, or `(2560,540)` respectively. The active simulation gate remains one contiguous clipped 4x4 window of complete 640x360 regions around the camera; stable off-window regions reject expensive chemistry, neighborhood, and movement work without becoming another simulation instance. Sparse far-region streaming remains active in `missioncache.md`.
 
 ## Windows build
 
@@ -331,11 +331,11 @@ Uniform aligned 8x8 material regions can move as exact 64-cell packets while the
 Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and solid-supported pre-fall droplets that cannot hop along water edges or crawl after falling. See `HALF_WATER.md`.
 
 
-## v2.5.23 one-World and macro recovery
+## v2.5.24 horizontal World, macro, and Fix29 hive recovery
 
-The local v2.5.23 target removes the normal scene carousel and composes eight former authored areas as connected districts in one `WORLD`. The player, saves, resident buffers, atmosphere, heat, weather, and hierarchy state persist while travelling between them. Normal saves live under `saves/worlds/<size>/world/<slot>/`.
+The local v2.5.24 target removes the normal scene carousel and composes eight former authored areas west-to-east as connected districts in one horizontal `WORLD`. The player, saves, resident buffers, atmosphere, heat, weather, and hierarchy state persist while travelling between them. Normal saves live under `saves/worlds/<size>/world/<slot>/`.
 
-Complete liquid/gas packets remain reversible scheduling metadata over canonical cells. They move every two fixed ticks and receive eight due opportunities before conditional fine fallback; a fresh boundary check protects sealed Air from needless breakup. Focused packaged Windows readback covers all eight foundations, the live Frontier player, exact Water/gas packets, eighth-opportunity fallback, enclosed Air retention, Half Water fall/merge/drip, and a zero-jitter Water basin. Broader cross-district traversal, machinery/ecology cycles, visual acceptance, debug overhead, and the photographed irregular early hive remain active in `missioncache.md`.
+Complete liquid/gas packets remain reversible scheduling metadata over canonical cells. They move every two fixed ticks and carry an eight-opportunity travel budget through successful swaps and blocked attempts; only a fresh open or incompatible perimeter permits fine fallback, while enclosed Air remains tiled. Sandbox and Ecosystem share the cell-exact photographed Fix29 hive body and contents, nine complete Wood support tiles, and 100 live district-aware SandHybrid bees in a compact three-lobed biohazard. Deterministic and native evidence is recorded in `MISSION_LEDGER.md`; broader traversal, long ecology/weather cycles, and visual/performance observation stay active in `missioncache.md`.
 ## v2.5.22 systems, scene, machinery, and presentation recovery
 
 SandHybrid v2.5.22 was the preceding local recovery target, with native Windows/Linux packages, SHA-256 files, and no prerelease marker.
@@ -371,7 +371,7 @@ Moving macro media match the packaged v2.5.3 reference. Runtime acceptance for b
 
 ## Resident World envelope
 
-All eight authored districts retain local 640x360 coordinates inside the centered 4x2 World envelope. Their boundaries are ordinary shared cell boundaries, not scene walls or load transitions. Intentional authored air stays empty/atmospheric, complete tile-authored floors and foundations remain aligned, and only the outer resident world supplies hard containment.
+All eight authored districts retain local 640x360 coordinates inside the centered 8x1 horizontal World band. Their boundaries are ordinary shared cell boundaries, not scene walls or load transitions. Intentional authored air stays empty/atmospheric, complete tile-authored floors and foundations remain aligned, and only the outer resident world supplies hard containment.
 
 Engineering presents controlled thermal, gas diffusion, sediment separation, and paired compost experiments. Gold Mine includes a water-fed conveyor and Sluice line. Ember becomes ash only; fertilizer requires ash, organic waste, mineral soil/silt, dirty water, Oxygen, and time. Their broader runtime operation remains active until packaged observation covers it.
 

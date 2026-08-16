@@ -3257,6 +3257,37 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         });
     }
 
+    void run_acceptance_chemistry_pass() {
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
+            const auto acceptance_width = (std::min)(config.grid_width, 192u);
+            const auto acceptance_height = (std::min)(config.grid_height, 192u);
+            const SimulationPush push{
+                .width = config.grid_width,
+                .height = acceptance_height,
+                .step = simulation_step,
+                .seed = random_seed,
+                .active_mode = 0u,
+            };
+            const auto next_set = current_set ^ 1u;
+            buffer_barrier(command_buffer, cell_buffers[next_set],
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            bind_compute(command_buffer, chemistry_pipeline, current_set);
+            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                               VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+            vkCmdDispatch(command_buffer,
+                          divide_round_up(acceptance_width, simulation_local_size),
+                          divide_round_up(acceptance_height, simulation_local_size), 1);
+            buffer_barrier(command_buffer, cell_buffers[next_set],
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            current_set = next_set;
+        });
+    }
     void run_acceptance_fine_pass(const std::int32_t phase, const std::int32_t parity) {
         immediate_submit([&](const VkCommandBuffer command_buffer) {
             const auto acceptance_width = (std::min)(config.grid_width, 192u);
@@ -3318,8 +3349,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         });
     }
 
-    void run_acceptance_horizontal_pass(const SharedState& state,
-                                        const std::int32_t parity) {
+    void run_acceptance_horizontal_pass(const std::int32_t parity) {
         immediate_submit([&](const VkCommandBuffer command_buffer) {
             const auto acceptance_width = (std::min)(config.grid_width, 192u);
             const auto acceptance_height = (std::min)(config.grid_height, 192u);
@@ -3352,10 +3382,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 .seed = random_seed,
                 .phase = 5,
                 .parity = parity,
-                .active_section_x = state.active_window_origin_x.load(std::memory_order_relaxed),
-                .active_section_y = state.active_window_origin_y.load(std::memory_order_relaxed),
-                .active_mode = 1u,
-                .worker_count = state.section_worker_count.load(std::memory_order_relaxed),
+                .active_mode = 0u,
             };
             bind_compute(command_buffer, movement_pipeline, current_set);
             vkCmdPushConstants(command_buffer, compute_pipeline_layout,
@@ -3655,6 +3682,26 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            std::to_string(outside_min_y) + ".." +
                            std::to_string(outside_max_x) + "," +
                            std::to_string(outside_max_y));
+
+                // A production chemistry pass must expire AUX_MOVED, after
+                // which the same packet metadata travels into a second exact
+                // 8x8 fall instead of remaining permanently locked.
+                run_acceptance_chemistry_pass();
+                run_acceptance_tile_pass();
+                run_acceptance_macro_pass(0, 1);
+                const auto second_result = download_scene_cells();
+                const auto second_total = count_material(second_result, Material::water);
+                const auto first_target_after_second =
+                    count_rect(second_result, Material::water, 64u, 72u, 8u, 8u);
+                const auto second_target =
+                    count_rect(second_result, Material::water, 64u, 80u, 8u, 8u);
+                append("macro_liquid_consecutive_packets",
+                       second_total == 64u && first_target_after_second == 0u &&
+                           second_target == 64u,
+                       "water=" + std::to_string(second_total) +
+                           " previous_target=" +
+                           std::to_string(first_target_after_second) +
+                           " second_target=" + std::to_string(second_target));
             }
 
             {
@@ -3802,6 +3849,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 std::uint32_t honey = 0u;
                 std::uint32_t pollen = 0u;
                 std::uint32_t empty_chamber = 0u;
+                std::uint32_t bee_count = 0u;
+                std::uint32_t bee_metadata_mismatches = 0u;
+                std::array<bool, 100> bee_slots{};
+                std::uint32_t unique_bee_slots = 0u;
                 for (std::int32_t dy = -18; dy <= 11; ++dy) {
                     for (std::int32_t dx = -40; dx <= 31; ++dx) {
                         const auto part = classify_pre_pr19_hive_cell(
@@ -3850,6 +3901,42 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         if (!matches) ++mismatches;
                     }
                 }
+                for (std::int32_t dy = -36; dy <= 24; ++dy) {
+                    for (std::int32_t dx = -36; dx <= 36; ++dx) {
+                        const auto x = hive_origin_x + static_cast<std::uint32_t>(
+                            static_cast<std::int32_t>(queen_x) + dx);
+                        const auto y = hive_origin_y + static_cast<std::uint32_t>(
+                            static_cast<std::int32_t>(queen_y) + dy);
+                        const auto& bee = cells[index_of(x, y)];
+                        if (bee.material != material_id(Material::bee)) continue;
+                        ++bee_count;
+                        constexpr std::uint32_t persistent_home_bit = 0x00800000u;
+                        constexpr std::uint32_t bee_swarm_bit = 0x08000000u;
+                        constexpr std::uint32_t bee_fed_bit = 0x10000000u;
+                        const auto slot = (bee.aux >> 13u) & 127u;
+                        const auto encoded_district = (bee.aux >> 20u) & 7u;
+                        const auto decoded_home_x = persistent_world_origin_x(config.grid_width) +
+                            encoded_district * pre_expansion_world_width +
+                            (bee.aux & 127u) * 8u;
+                        const auto decoded_home_y = persistent_world_origin_y(config.grid_height) +
+                            ((bee.aux >> 7u) & 63u) * 8u;
+                        const auto expected_home_x = hive_origin_x + queen_x;
+                        const auto expected_home_y = hive_origin_y + (queen_y / 8u) * 8u;
+                        const bool metadata_matches = composed_world &&
+                            (bee.aux & persistent_home_bit) != 0u &&
+                            (bee.aux & (bee_swarm_bit | bee_fed_bit)) ==
+                                (bee_swarm_bit | bee_fed_bit) &&
+                            encoded_district == district &&
+                            decoded_home_x == expected_home_x &&
+                            decoded_home_y == expected_home_y && slot < bee_slots.size();
+                        if (!metadata_matches) {
+                            ++bee_metadata_mismatches;
+                        } else if (!bee_slots[slot]) {
+                            bee_slots[slot] = true;
+                            ++unique_bee_slots;
+                        }
+                    }
+                }
                 const auto expected_support = scene == Scene::sandbox ? 576u : 571u;
                 const auto expected_honey = scene == Scene::sandbox ? 28u : 18u;
                 const auto expected_pollen = scene == Scene::sandbox ? 20u : 22u;
@@ -3857,13 +3944,18 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 append(std::string{name},
                        mismatches == 0u && shell == 193u && support == expected_support &&
                            honey == expected_honey && pollen == expected_pollen &&
-                           empty_chamber == expected_empty,
+                           empty_chamber == expected_empty && bee_count == 100u &&
+                           bee_metadata_mismatches == 0u && unique_bee_slots == 100u,
                        "mismatches=" + std::to_string(mismatches) +
                            " support=" + std::to_string(support) +
                            " shell=" + std::to_string(shell) +
                            " honey=" + std::to_string(honey) +
                            " pollen=" + std::to_string(pollen) +
-                           " chamber_empty=" + std::to_string(empty_chamber));
+                           " chamber_empty=" + std::to_string(empty_chamber) +
+                           " bees=" + std::to_string(bee_count) +
+                           " bee_metadata_mismatches=" +
+                           std::to_string(bee_metadata_mismatches) +
+                           " unique_slots=" + std::to_string(unique_bee_slots));
             };
 
             {
@@ -4091,7 +4183,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 seed_rect(cells, Material::stone, 104u, 161u, 8u, 1u);
                 seed_rect(cells, Material::water, 109u, 160u, 2u, 1u);
                 upload_scene_cells(cells);
-                run_acceptance_horizontal_pass(state, 0);
+                run_acceptance_horizontal_pass(0);
                 const auto result = download_scene_cells();
                 const auto [units, halves] = water_half_units(result);
                 append("supplied_ledge_creates_half_water",

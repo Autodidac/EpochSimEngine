@@ -11,7 +11,9 @@ const uint BEE_AUX_SWARM = 0x08000000u;
 const uint BEE_AUX_MIGRATING = 0x02000000u;
 const uint BEE_METADATA_MASK = 0x00ffffffu;
 const uint BEE_AUTHORED_HOME_SLOT_BIT = 0x80u;
+const uint BEE_PERSISTENT_HOME_BIT = 0x00800000u;
 const ivec2 BEE_AUTHORED_WORLD_CELLS = ivec2(640, 360);
+const ivec2 BEE_PERSISTENT_WORLD_CELLS = ivec2(5120, 360);
 
 const uint BEE_SWARM_BIOHAZARD_TICKS = 1800u;
 const uint BEE_SWARM_ALTERNATE_TICKS = 600u;
@@ -20,16 +22,16 @@ const uint BEE_SWARM_PHASE_TICKS =
 const uint BEE_SWARM_CYCLE_TICKS = BEE_SWARM_PHASE_TICKS * 2u;
 
 const uint BEE_INITIAL_PACKED[BEE_FORMATION_COUNT] = uint[](
-    1479u, 1850u, 1999u, 2109u, 2229u, 2235u, 2366u, 2479u, 2503u, 2510u,
-    2622u, 2773u, 2866u, 2871u, 2989u, 2999u, 3243u, 3285u, 3535u, 3885u,
-    3924u, 4010u, 4178u, 4432u, 4439u, 4560u, 4650u, 4817u, 5946u, 6208u,
-    6219u, 6340u, 6597u, 6989u, 7458u, 7527u, 7829u, 7844u, 7856u, 8042u,
-    8098u, 8172u, 8338u, 8353u, 8416u, 8429u, 8624u, 8736u, 8812u, 8909u,
-    8914u, 8938u, 8980u, 9110u, 9136u, 9170u, 9199u, 9369u, 9446u, 9578u,
-    9617u, 9623u, 9673u, 9804u, 9959u, 10042u, 10220u, 10648u, 10736u, 10853u,
-    10988u, 11118u, 11363u, 11411u, 11475u, 11549u, 11673u, 11814u, 11822u, 11930u,
-    11984u, 11998u, 12117u, 12134u, 12190u, 12211u, 12310u, 12329u, 12388u, 12456u,
-    12578u, 12596u, 12622u, 12627u, 12702u, 12750u, 12768u, 12961u, 13020u, 13097u
+    4541u, 4542u, 4543u, 4545u, 4546u, 4547u, 4668u, 4669u, 4675u, 4676u,
+    4795u, 4805u, 4922u, 4923u, 4933u, 4934u, 5049u, 5050u, 5062u, 5063u,
+    5177u, 5191u, 5433u, 5447u, 5561u, 5575u, 5689u, 5703u, 8240u, 8241u,
+    8243u, 8269u, 8271u, 8272u, 8366u, 8367u, 8401u, 8402u, 8493u, 8494u,
+    8530u, 8531u, 8620u, 8627u, 8653u, 8660u, 8747u, 8748u, 8788u, 8789u,
+    9003u, 9012u, 9036u, 9045u, 9131u, 9173u, 9259u, 9269u, 9291u, 9301u,
+    9515u, 9516u, 9527u, 9545u, 9556u, 9557u, 9644u, 9645u, 9655u, 9657u,
+    9671u, 9673u, 9683u, 9684u, 9774u, 9783u, 9788u, 9796u, 9801u, 9810u,
+    9902u, 9903u, 9909u, 9910u, 9918u, 9922u, 9930u, 9931u, 9937u, 9938u,
+    10032u, 10033u, 10034u, 10036u, 10037u, 10059u, 10060u, 10062u, 10063u, 10064u
 );
 
 uint beeHash32(uint value) {
@@ -61,10 +63,19 @@ int beeFormationSlotFromOffset(ivec2 offset) {
     return -1;
 }
 
-uint beeRawSlotFromAux(uint aux) { return (aux >> 15u) & 255u; }
+bool beeUsesPersistentWorldHome(uint aux) {
+    return (aux & BEE_PERSISTENT_HOME_BIT) != 0u;
+}
+
+uint beeRawSlotFromAux(uint aux) {
+    return beeUsesPersistentWorldHome(aux)
+        ? ((aux >> 13u) & 127u)
+        : ((aux >> 15u) & 255u);
+}
 uint beeFormationSlotFromAux(uint aux) { return beeRawSlotFromAux(aux) & 127u; }
 bool beeUsesAuthoredHome(uint aux) {
-    return (beeRawSlotFromAux(aux) & BEE_AUTHORED_HOME_SLOT_BIT) != 0u;
+    return !beeUsesPersistentWorldHome(aux) &&
+           (beeRawSlotFromAux(aux) & BEE_AUTHORED_HOME_SLOT_BIT) != 0u;
 }
 
 ivec2 beeAuthoredWorldOrigin(uint width, uint height) {
@@ -77,12 +88,42 @@ ivec2 beeAuthoredWorldOrigin(uint width, uint height) {
     return ivec2(originX, skyHeight);
 }
 
+ivec2 beePersistentWorldOrigin(uint width, uint height) {
+    return max((ivec2(int(width), int(height)) - BEE_PERSISTENT_WORLD_CELLS) / 2,
+               ivec2(0));
+}
+
 ivec2 beeHomeCenterFromAux(uint aux, uint width, uint height) {
+    if (beeUsesPersistentWorldHome(aux)) {
+        ivec2 origin = beePersistentWorldOrigin(width, height);
+        int district = int((aux >> 20u) & 7u);
+        ivec2 local = ivec2(int(aux & 127u) * 8,
+                            int((aux >> 7u) & 63u) * 8);
+        return origin + ivec2(district * BEE_AUTHORED_WORLD_CELLS.x, 0) + local;
+    }
     ivec2 home = ivec2(int(aux & 255u) * 4, int((aux >> 8u) & 127u) * 4);
     return beeUsesAuthoredHome(aux) ? home + beeAuthoredWorldOrigin(width, height) : home;
 }
 
 uint beePackMetadata(uint aux, ivec2 homeCenter, uint slot, uint width, uint height) {
+    ivec2 persistentOrigin = beePersistentWorldOrigin(width, height);
+    bool persistent = int(width) >= BEE_PERSISTENT_WORLD_CELLS.x &&
+                      int(height) >= BEE_PERSISTENT_WORLD_CELLS.y &&
+                      all(greaterThanEqual(homeCenter, persistentOrigin)) &&
+                      all(lessThan(homeCenter,
+                                   persistentOrigin + BEE_PERSISTENT_WORLD_CELLS));
+    if (persistent) {
+        ivec2 worldLocal = homeCenter - persistentOrigin;
+        uint district = uint(clamp(worldLocal.x / BEE_AUTHORED_WORLD_CELLS.x, 0, 7));
+        ivec2 districtLocal = worldLocal -
+            ivec2(int(district) * BEE_AUTHORED_WORLD_CELLS.x, 0);
+        uint homeX = uint(clamp(districtLocal.x / 8, 0, 127));
+        uint homeY = uint(clamp(districtLocal.y / 8, 0, 63));
+        uint metadata = homeX | (homeY << 7u) | ((slot & 127u) << 13u) |
+                        (district << 20u) | BEE_PERSISTENT_HOME_BIT;
+        return (aux & ~BEE_METADATA_MASK) | metadata;
+    }
+
     ivec2 authoredOrigin = beeAuthoredWorldOrigin(width, height);
     bool authored = all(greaterThanEqual(homeCenter, authoredOrigin)) &&
                     all(lessThan(homeCenter, authoredOrigin + BEE_AUTHORED_WORLD_CELLS));
@@ -143,8 +184,8 @@ ivec2 beeBiohazardTargetOffset(uint slot, uint step, ivec2 home) {
     uint formationCycle = step / 360u;
     uint increment = increments[beeHash32(uint(home.x) ^ (uint(home.y) << 16u) ^ formationCycle) & 7u];
     uint targetSlot = (slot + formationCycle * increment) % BEE_FORMATION_COUNT;
-    // A stable, slightly enlarged mask reads as a symbol instead of 100 unrelated insects.
-    ivec2 anchor = beeFormationOffset(targetSlot) * 5 / 4;
+    // The compact Fix29 composite stays readable while each bee remains an active cell.
+    ivec2 anchor = beeFormationOffset(targetSlot);
     ivec2 flutter = beeRotateOffset(ivec2(1, 0), step / 8u + slot * 5u);
     return anchor + flutter;
 }

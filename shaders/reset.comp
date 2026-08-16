@@ -20,7 +20,7 @@ const uint SCENE_FRONTIER_BASE = 8u;
 const uint SCENE_COUNT = 9u;
 const int BRICK_SIZE = 8;
 const ivec2 AUTHORED_WORLD_CELLS = ivec2(640, 360);
-const ivec2 PERSISTENT_WORLD_DISTRICTS = ivec2(4, 2);
+const ivec2 PERSISTENT_WORLD_DISTRICTS = ivec2(8, 1);
 const ivec2 PERSISTENT_WORLD_CELLS = AUTHORED_WORLD_CELLS * PERSISTENT_WORLD_DISTRICTS;
 const uint PERSISTENT_WORLD_DISTRICT_COUNT = 8u;
 
@@ -336,13 +336,13 @@ uint sandboxMaterial(ivec2 p) {
 uint volcanoMaterial(ivec2 p) {
     ivec2 world = worldBrickSize();
     ivec2 b = brickCoordinate(p);
-    int surfaceRow = max(16, world.y / 2);
-    int center = min(world.x - 3, world.x * 4 / 5);
-    int top = max(3, surfaceRow - 17);
+    int surfaceRow = max(18, world.y / 2);
+    int center = min(world.x - 4, world.x * 4 / 5);
+    int rimTop = max(4, surfaceRow - 4);
+    int buriedBase = min(world.y - 4, surfaceRow + 13);
     uint material = MAT_EMPTY;
 
-    // August 4 reference geology: a flat scenic surface over broad, complete
-    // aligned Dirt, Sand, and Stone strata instead of an empty lower half.
+    // Continuous whole-tile terrain establishes the shared surface first.
     if (b.y == surfaceRow) material = MAT_GRASS;
     else if (b.y > surfaceRow && b.y <= surfaceRow + 5) material = MAT_DIRT;
     else if (b.y > surfaceRow + 5 && b.y < world.y - 9) material = MAT_SAND;
@@ -356,36 +356,41 @@ uint volcanoMaterial(ivec2 p) {
     int lakeDx = abs(b.x - lakeCenter);
     if (lakeDx <= lakeHalfSpan) {
         int lakeSurface = surfaceRow - 2;
-        int bowlDepth = 1 + (lakeHalfSpan - lakeDx) * 8 / max(lakeHalfSpan, 1);
+        int bowlDepth = 2 + (lakeHalfSpan - lakeDx) * 8 / max(lakeHalfSpan, 1);
         int bedRow = min(surfaceRow + 8, lakeSurface + bowlDepth);
         if (b.y >= lakeSurface && b.y < bedRow) material = MAT_WATER;
         else if (b.y == bedRow) material = MAT_DIRT;
     }
 
-    // Compact far-right stepped cone from the supplied silhouette.
-    int depth = b.y - top;
-    int halfWidth = max(0, depth * 3 / 4 + 2);
-    if (b.y >= top && b.y <= surfaceRow && abs(b.x - center) <= halfWidth)
+    // Compact far-right stepped cone from the supplied silhouette, embedded in the geology. Only a short crater
+    // rim rises above the common ground; most of the cone and chamber are below.
+    int depth = b.y - rimTop;
+    int halfWidth = 3 + max(depth, 0) * 4 / 5;
+    if (b.y >= rimTop && b.y <= buriedBase &&
+        abs(b.x - center) <= halfWidth)
         material = MAT_STONE;
 
-    // One continuous throat, a retained upper chamber, and the deep horizontal
-    // magma feed shown in the reference. All authored volumes are whole bricks.
-    ivec2 chamberDelta = b - ivec2(center, surfaceRow - 4);
+    ivec2 chamberDelta = b - ivec2(center, surfaceRow + 7);
     if (chamberDelta.x * chamberDelta.x * 2 +
-        chamberDelta.y * chamberDelta.y * 5 <= 52)
+        chamberDelta.y * chamberDelta.y * 5 <= 60)
         material = MAT_LAVA;
-    if (abs(b.x - center) <= 1 && b.y >= top && b.y < world.y - 1)
+    if (abs(b.x - center) <= 1 &&
+        b.y >= rimTop + 1 && b.y < world.y - 1)
         material = MAT_LAVA;
-    if (b.y == surfaceRow - 1 && abs(b.x - center) <= 2)
-        material = MAT_MAGMA_VENT;
-    // The reference keeps one horizontal magma feed above the final Stone foundation.
-    if (b.y == world.y - 2) material = MAT_LAVA;
 
-    int craterSurface = top * BRICK_SIZE;
+    // Open crater, one internal pressure vent, and the reference bottom return.
+    if (b.y == rimTop && abs(b.x - center) <= 1)
+        material = MAT_EMPTY;
+    if (b.x == center && b.y == surfaceRow + 10)
+        material = MAT_MAGMA_VENT;
+    if (b.y == world.y - 2)
+        material = MAT_LAVA;
+
+    int craterSurface = rimTop * BRICK_SIZE;
     int craterDx = abs(p.x - (center * BRICK_SIZE + BRICK_SIZE / 2));
     if (material == MAT_EMPTY && p.y < craterSurface &&
-        p.y > max(8, craterSurface - 88) && craterDx < 88 &&
-        (hash32(indexOf(p) ^ pc.seed ^ 0x51a9u) % 53u) == 0u)
+        p.y > max(8, craterSurface - 72) && craterDx < 64 &&
+        (hash32(indexOf(p) ^ pc.seed ^ 0x51a9u) % 61u) == 0u)
         material = MAT_SMOKE;
     return material;
 }

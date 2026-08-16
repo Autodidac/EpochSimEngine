@@ -47,17 +47,17 @@ static_assert(scene_surface_tile_row(Scene::demolition) == 41u);
 static_assert(scene_surface_tile_row(Scene::frontier_base) == 17u);
 
 
-static_assert(world_dimensions(WorldSizePreset::compact).footprint_columns == 4u);
-static_assert(world_dimensions(WorldSizePreset::standard).footprint_columns == 8u);
+static_assert(world_dimensions(WorldSizePreset::compact).footprint_columns == 8u);
+static_assert(world_dimensions(WorldSizePreset::standard).footprint_columns == 12u);
 static_assert(world_dimensions(WorldSizePreset::large).footprint_columns == 16u);
 static_assert(world_dimensions(WorldSizePreset::compact).height == resident_world_height);
 static_assert(persistent_world_district_count == 8u);
-static_assert(persistent_world_width == 2560u);
-static_assert(persistent_world_height == 720u);
+static_assert(persistent_world_width == 5120u);
+static_assert(persistent_world_height == 360u);
 static_assert(persistent_world_origin_x(world_dimensions(WorldSizePreset::compact).width) == 0u);
-static_assert(persistent_world_origin_y(world_dimensions(WorldSizePreset::compact).height) == 360u);
-static_assert(persistent_world_origin_x(world_dimensions(WorldSizePreset::large).width) == 3840u);
-static_assert(persistent_world_origin_y(world_dimensions(WorldSizePreset::large).height) == 360u);
+static_assert(persistent_world_origin_y(world_dimensions(WorldSizePreset::compact).height) == 540u);
+static_assert(persistent_world_origin_x(world_dimensions(WorldSizePreset::large).width) == 2560u);
+static_assert(persistent_world_origin_y(world_dimensions(WorldSizePreset::large).height) == 540u);
 static_assert(persistent_world_district_scene(0u) == Scene::sandbox);
 static_assert(persistent_world_district_scene(1u) == Scene::ecosystem);
 static_assert(persistent_world_district_scene(2u) == Scene::engineering_lab);

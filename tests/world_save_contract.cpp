@@ -13,8 +13,8 @@ using namespace sandhybrid;
 
 static_assert(world_save_format_version == 1u);
 static_assert(world_save_chunk_edge == 64u);
-static_assert(world_dimensions(WorldSizePreset::compact).width == 2560u);
-static_assert(world_dimensions(WorldSizePreset::standard).width == 5120u);
+static_assert(world_dimensions(WorldSizePreset::compact).width == 5120u);
+static_assert(world_dimensions(WorldSizePreset::standard).width == 7680u);
 static_assert(world_dimensions(WorldSizePreset::large).width == 10240u);
 
 int main() {

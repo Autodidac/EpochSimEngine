@@ -425,10 +425,10 @@ void resetActor(inout ActorState state) {
     int authoredOriginX = int(actorPc.width) >= 640 * 3 ? 640 * 2 :
         max((int(actorPc.width) - 640) / 2, 0);
     int authoredOriginY = int(actorPc.height) >= 1080 ? 720 : 0;
-    bool persistentWorld = int(actorPc.width) >= 2560 && int(actorPc.height) >= 720;
+    bool persistentWorld = int(actorPc.width) >= 5120 && int(actorPc.height) >= 360;
     if (persistentWorld && actorPc.scene == SCENE_SANDBOX) {
         ivec2 worldOrigin = max((ivec2(int(actorPc.width), int(actorPc.height)) -
-                                 ivec2(2560, 720)) / 2, ivec2(0));
+                                 ivec2(5120, 360)) / 2, ivec2(0));
         state.x = worldOrigin.x + 3 * 640 + 168;
         state.y = worldOrigin.y + 207;
         state.ammo = 24u;
@@ -439,8 +439,8 @@ void resetActor(inout ActorState state) {
         state.ammo = 12u;
         state.enabled = 1u;
     } else if (actorPc.scene == SCENE_VOLCANO) {
-        state.x = authoredOriginX + 80;
-        state.y = authoredOriginY + 343;
+        state.x = authoredOriginX + 392;
+        state.y = authoredOriginY + 175;
         state.ammo = 12u;
         state.enabled = 1u;
     } else if (actorPc.scene == SCENE_WATERWORKS) {

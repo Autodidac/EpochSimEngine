@@ -26,7 +26,7 @@ required = {
     "swarm": ["beeOrbitTarget", "beeSwarmTarget", "beeBiohazardTargetOffset",
               "BEE_SWARM_BIOHAZARD_TICKS", "BEE_SWARM_ALTERNATE_TICKS",
               "BEE_FORMATION_COUNT = 100u", "BEE_COLONY_MAX = 100u",
-              "step / 360u", "beeFormationOffset(targetSlot) * 5 / 4"],
+              "step / 360u", "ivec2 anchor = beeFormationOffset(targetSlot)"],
     "chemistry": ["flowerDropsSeed", "grassFrontier", "stemMoisture",
                   "source.material == MAT_PLANT_STEM",
                   "Painted and loaded orphan bees self-seed",

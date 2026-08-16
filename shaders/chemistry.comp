@@ -899,6 +899,9 @@ void main() {
     }
     Cell result = source;
     result.age = source.age + 1u;
+    // Movement ownership lasts exactly one fixed tick. Leaving this bit set
+    // permanently vetoes every later fine and macro liquid transaction.
+    result.aux &= ~AUX_MOVED;
 
     if (!activeStructuralProcess(source.material) && sleepingChunkNeighborhood(p)) {
         result.aux &= ~AUX_MOVED;

@@ -293,13 +293,18 @@ void main() {
     bool macroStepDue = (pc.reserved & 2u) != 0u;
     bool macroCadenceCarry = (fullLiquid || fullGas) &&
                              tileHas(previous, TILE_MACRO_MOVED);
-    bool liquidBoundaryCandidate = fullLiquid && !moving && !liquidEnclosed &&
-                                   !macroCadenceCarry;
-    bool gasBoundaryCandidate = fullGas && !moving && !gasEnclosed &&
-                                !macroCadenceCarry;
+    // AUX_MOVED is one-tick cell ownership; TILE_MACRO_MOVED prevents a second
+    // packet commit in the same cadence. Tile counters travel with exact swaps,
+    // so an exposed packet keeps its eight-opportunity travel budget even when
+    // a commit succeeds. Enclosure resets the budget and retains macro ownership.
+    bool liquidBoundaryCandidate = fullLiquid && !liquidEnclosed;
+    bool gasBoundaryCandidate = fullGas && !gasEnclosed;
+    bool exposedMedium = liquidBoundaryCandidate || gasBoundaryCandidate;
     const uint mediumExposureAttemptBudget = 8u;
-    uint mediumExposureAttempts = (liquidBoundaryCandidate || gasBoundaryCandidate)
-        ? min(tileStableTicks(previous) + (macroStepDue ? 1u : 0u),
+    uint previousExposureAttempts = exposedMedium
+        ? tileStableTicks(previous) : 0u;
+    uint mediumExposureAttempts = exposedMedium
+        ? min(previousExposureAttempts + (macroStepDue ? 1u : 0u),
               mediumExposureAttemptBudget) : 0u;
     bool liquidBoundaryFine = liquidBoundaryCandidate &&
                               mediumExposureAttempts >= mediumExposureAttemptBudget;
@@ -392,7 +397,8 @@ void main() {
     bool fineActive = represented != 0u && (!macroMovable || fineFallbackMedium) &&
             !settledFineMedium && !settledHalfWater &&
             (collapsing || activeAgent || moving || reacting || hot || mediumBreakup ||
-                       !uniformMaterial || represented < TILE_CELL_COUNT);
+                       productiveMediumMove || !uniformMaterial ||
+                       represented < TILE_CELL_COUNT);
 
     uint flags = 0u;
     if (structuralTile) flags |= TILE_STRUCTURAL;

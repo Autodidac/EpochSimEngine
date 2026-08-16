@@ -20,7 +20,7 @@ struct SceneSpawn final {
     switch (scene) {
     case Scene::sandbox: return {80, 319, 12u, true};
     case Scene::blank: return {80, 319, 12u, true};
-    case Scene::volcano: return {80, 343, 12u, true};
+    case Scene::volcano: return {392, 175, 12u, true};
     case Scene::waterworks: return {40, 311, 12u, true};
     case Scene::ecosystem: return {80, 295, 12u, true};
     case Scene::engineering_lab: return {200, 335, 18u, true};

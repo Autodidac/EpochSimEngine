@@ -9,7 +9,7 @@ static_assert(scene_world_spawn(Scene::sandbox, resident_world_width, resident_w
 static_assert(scene_world_spawn(Scene::blank, resident_world_width, resident_world_height) ==
               SceneSpawn{1360, 1039, 12u, true});
 static_assert(scene_world_spawn(Scene::volcano, resident_world_width, resident_world_height) ==
-              SceneSpawn{1360, 1063, 12u, true});
+              SceneSpawn{1672, 895, 12u, true});
 static_assert(scene_world_spawn(Scene::waterworks, resident_world_width, resident_world_height) ==
               SceneSpawn{1320, 1031, 12u, true});
 static_assert(scene_world_spawn(Scene::ecosystem, resident_world_width, resident_world_height) ==
@@ -24,7 +24,7 @@ static_assert(scene_world_spawn(Scene::frontier_base, resident_world_width, resi
               SceneSpawn{1448, 927, 24u, true});
 static_assert(!scene_world_spawn(Scene::count, resident_world_width, resident_world_height).enabled);
 static_assert(persistent_world_spawn(resident_world_width, resident_world_height) ==
-              SceneSpawn{5928, 567, 24u, true});
+              SceneSpawn{4648, 747, 24u, true});
 
 int main() {
     if (!scene_has_character(world_scene) ||

@@ -22,8 +22,8 @@ static_assert(subterranean_zone_count == 3u);
 static_assert(authored_scene_foundation_cells == 8u);
 static_assert(authored_scene_sky_footprint_rows == 2u);
 static_assert(resident_world_lava_cells == 2u * authored_scene_foundation_cells);
-inline constexpr std::uint32_t persistent_world_district_columns = 4u;
-inline constexpr std::uint32_t persistent_world_district_rows = 2u;
+inline constexpr std::uint32_t persistent_world_district_columns = 8u;
+inline constexpr std::uint32_t persistent_world_district_rows = 1u;
 inline constexpr std::uint32_t persistent_world_district_count = 8u;
 inline constexpr std::uint32_t persistent_world_width =
     persistent_world_district_columns * pre_expansion_world_width;
@@ -31,7 +31,7 @@ inline constexpr std::uint32_t persistent_world_height =
     persistent_world_district_rows * pre_expansion_world_height;
 
 static_assert(persistent_world_width == world_dimensions(WorldSizePreset::compact).width);
-static_assert(persistent_world_height == pre_expansion_world_height * 2u);
+static_assert(persistent_world_height == pre_expansion_world_height);
 
 [[nodiscard]] constexpr std::uint32_t persistent_world_origin_x(
     const std::uint32_t world_width) noexcept {

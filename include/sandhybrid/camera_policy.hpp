@@ -28,8 +28,8 @@ struct WorldDimensions final {
 
 [[nodiscard]] constexpr WorldDimensions world_dimensions(
     const WorldSizePreset preset) noexcept {
-    const auto columns = preset == WorldSizePreset::compact ? 4u :
-                         (preset == WorldSizePreset::standard ? 8u : 16u);
+    const auto columns = preset == WorldSizePreset::compact ? 8u :
+                         (preset == WorldSizePreset::standard ? 12u : 16u);
     constexpr auto rows = 4u;
     return {pre_expansion_world_width * columns,
             pre_expansion_world_height * rows, columns, rows};
@@ -70,9 +70,9 @@ inline constexpr std::uint32_t resident_world_height =
 }
 
 static_assert(resident_world_footprint_count == 64u);
-static_assert(world_dimensions(WorldSizePreset::compact).width == 2560u);
+static_assert(world_dimensions(WorldSizePreset::compact).width == 5120u);
 static_assert(world_dimensions(WorldSizePreset::compact).height == 1440u);
-static_assert(world_dimensions(WorldSizePreset::standard).width == 5120u);
+static_assert(world_dimensions(WorldSizePreset::standard).width == 7680u);
 static_assert(world_dimensions(WorldSizePreset::large).width == resident_world_width);
 static_assert(camera_view_width(camera_zoom_min) == 1280u);
 static_assert(camera_view_height(camera_zoom_min) == 720u);

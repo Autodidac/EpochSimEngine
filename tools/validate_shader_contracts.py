@@ -107,6 +107,8 @@ def main() -> int:
     ui_layout = (ROOT / "include/sandhybrid/ui_layout.hpp").read_text(encoding="utf-8")
     macro_move = (SHADERS / "macro_move.comp").read_text(encoding="utf-8")
     reset = (SHADERS / "reset.comp").read_text(encoding="utf-8")
+    chemistry = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
+    swarm = (SHADERS / "bee_swarm.glsl").read_text(encoding="utf-8")
 
     errors: list[str] = []
     for token in (
@@ -187,8 +189,24 @@ def main() -> int:
             "single World runtime contract")
     require(world_layout, "persistent_world_district_count = 8u", errors,
             "eight-district layout contract")
-    require(reset, "const ivec2 PERSISTENT_WORLD_DISTRICTS = ivec2(4, 2)", errors,
+    require(reset, "const ivec2 PERSISTENT_WORLD_DISTRICTS = ivec2(8, 1)", errors,
             "one-buffer district reset contract")
+    require(world_layout, "persistent_world_district_columns = 8u", errors,
+            "one-row district address contract")
+    require(world_layout, "persistent_world_district_rows = 1u", errors,
+            "one-row district address contract")
+    require(chemistry, "result.aux &= ~AUX_MOVED;", errors,
+            "one-tick movement ownership contract")
+    require(tiles, "uint previousExposureAttempts = exposedMedium", errors,
+            "eight-opportunity packet travel contract")
+    require(renderer, "macro_liquid_consecutive_packets", errors,
+            "consecutive macro packet acceptance contract")
+    require(reset, "int buriedBase = min(world.y - 4, surfaceRow + 13)", errors,
+            "sunken Volcano geometry contract")
+    require(swarm, "BEE_PERSISTENT_HOME_BIT", errors,
+            "district-aware bee home contract")
+    require(swarm, "district << 20u", errors,
+            "district-aware bee home contract")
     require(ui_layout, "layout.previous_scene = {{0.0f, 0.0f}, {0.0f, 0.0f}}", errors,
             "no scene carousel contract")
     require(fullscreen, "if (readableTileGrid && stateEdge)", errors,

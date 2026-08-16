@@ -6,14 +6,14 @@ on:
   push:
     branches: [main]
     tags:
-      - v2.5.23
+      - v2.5.24
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: sandhybrid-v2523-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: sandhybrid-v2524-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -24,10 +24,10 @@ jobs:
         include:
           - os: windows-2022
             triplet: x64-windows
-            artifact: SandHybrid-Windows-x64-v2.5.23
+            artifact: SandHybrid-Windows-x64-v2.5.24
           - os: ubuntu-24.04
             triplet: x64-linux
-            artifact: SandHybrid-Linux-x64-v2.5.23
+            artifact: SandHybrid-Linux-x64-v2.5.24
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
 
@@ -55,19 +55,19 @@ jobs:
       - name: Validate v2.5.15 historical recovery
         run: python tools/validate_v2515_contract.py
 
-      - name: Validate v2.5.23 Blueprint and pause recovery
+      - name: Validate v2.5.24 Blueprint and pause recovery
         run: python tools/validate_v2516_contract.py
 
-      - name: Validate v2.5.23 packaged state-readback recovery
+      - name: Validate v2.5.24 packaged state-readback recovery
         run: python tools/validate_v2517_contract.py
 
-      - name: Validate v2.5.23 scenic tiles and fixed-step recovery
+      - name: Validate v2.5.24 scenic tiles and fixed-step recovery
         run: python tools/validate_v2519_contract.py
 
-      - name: Validate v2.5.23 systems and scene recovery
+      - name: Validate v2.5.24 systems and scene recovery
         run: python tools/validate_v2521_contract.py
 
-      - name: Validate v2.5.23 exact Fix29 hive and liquid equilibrium
+      - name: Validate v2.5.24 exact Fix29 hive and liquid equilibrium
         run: python tools/validate_v2522_contract.py
 
       - name: Audit ecology and hive motion
@@ -208,7 +208,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: github.event_name == 'push' && github.ref == 'refs/tags/v2.5.23'
+    if: github.event_name == 'push' && github.ref == 'refs/tags/v2.5.24'
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -221,7 +221,7 @@ jobs:
         with:
           path: dist
 
-      - name: Publish stable v2.5.23 release
+      - name: Publish stable v2.5.24 release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -233,14 +233,14 @@ jobs:
             printf '%s\n' "${assets[@]}" >&2
             exit 1
           fi
-          if gh release view v2.5.23 >/dev/null 2>&1; then
-            gh release upload v2.5.23 "${assets[@]}" --clobber
-            gh release edit v2.5.23 \
-              --title 'SandHybrid v2.5.23' \
+          if gh release view v2.5.24 >/dev/null 2>&1; then
+            gh release upload v2.5.24 "${assets[@]}" --clobber
+            gh release edit v2.5.24 \
+              --title 'SandHybrid v2.5.24' \
               --notes-file RELEASE_NOTES.md
           else
-            gh release create v2.5.23 "${assets[@]}" \
+            gh release create v2.5.24 "${assets[@]}" \
               --verify-tag \
-              --title 'SandHybrid v2.5.23' \
+              --title 'SandHybrid v2.5.24' \
               --notes-file RELEASE_NOTES.md
           fi

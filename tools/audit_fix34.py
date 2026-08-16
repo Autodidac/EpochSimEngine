@@ -19,16 +19,23 @@ points = [((value & 127) - 64, (value >> 7) - 64) for value in values]
 if points:
     if min(x*x + y*y for x, y in points) < 144:
         errors.append("biohazard swarm overlaps the hive")
+    if max(x for x, y in points) - min(x for x, y in points) > 52 or max(y for x, y in points) - min(y for x, y in points) > 52:
+        errors.append("biohazard swarm is no longer compact")
+    if any(-40 <= x <= 31 and -18 <= y <= -9 for x, y in points):
+        errors.append("biohazard swarm overwrites the complete Wood support tiles")
     central = sum(150 <= x*x + y*y <= 500 for x, y in points)
     upper = sum(y < -18 for x, y in points)
-    lower_left = sum(x < -18 and y > 0 for x, y in points)
-    lower_right = sum(x > 18 and y > 0 for x, y in points)
+    lower_left = sum(x < -10 and y > 0 for x, y in points)
+    lower_right = sum(x > 10 and y > 0 for x, y in points)
     if central < 14 or min(upper, lower_left, lower_right) < 18:
         errors.append("swarm no longer has a central ring and three distinct curved lobes")
-for token in ("beeBiohazardTargetOffset", "beeFormationOffset(targetSlot) * 5 / 4",
+for token in ("beeBiohazardTargetOffset", "ivec2 anchor = beeFormationOffset(targetSlot)",
               "if (boundedSidestep) return true;", "preserveAgentAge", "activeAgentPair"):
     if token not in swarm + move:
         errors.append(f"bee movement contract missing {token!r}")
+for token in ("BEE_PERSISTENT_HOME_BIT", "district << 20u"):
+    if token not in swarm:
+        errors.append(f"persistent bee-home contract missing {token!r}")
 if "shapePhase" in swarm:
     errors.append("whole biohazard symbol still rotates like a propeller")
 

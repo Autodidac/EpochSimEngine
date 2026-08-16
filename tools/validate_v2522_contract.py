@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v2.5.23 exact Fix29 hive and liquid-equilibrium recovery."""
+"""Validate the v2.5.24 exact Fix29 hive and liquid-equilibrium recovery."""
 
 from pathlib import Path
 
@@ -10,23 +10,23 @@ def require(relative: str, *tokens: str) -> None:
     text = (ROOT / relative).read_text(encoding="utf-8")
     missing = [token for token in tokens if token not in text]
     if missing:
-        raise SystemExit(f"{relative} missing v2.5.23 contract tokens: {missing}")
+        raise SystemExit(f"{relative} missing v2.5.24 contract tokens: {missing}")
 
 
 def reject(relative: str, *tokens: str) -> None:
     text = (ROOT / relative).read_text(encoding="utf-8")
     found = [token for token in tokens if token in text]
     if found:
-        raise SystemExit(f"{relative} retains rejected v2.5.23 tokens: {found}")
+        raise SystemExit(f"{relative} retains rejected v2.5.24 tokens: {found}")
 
 
-require("CMakeLists.txt", "VERSION 2.5.23", "sandhybrid_v2522_source_contract")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.23",
-        "SandHybrid-Windows-x64-v2.5.23", "SandHybrid-Linux-x64-v2.5.23")
-require(".github/workflows/ci-release.yml", "refs/tags/v2.5.23",
-        "SandHybrid-Windows-x64-v2.5.23", "SandHybrid-Linux-x64-v2.5.23",
-        "gh release create v2.5.23", "group: sandhybrid-v2523-")
-reject(".github/workflows/ci-release.yml", "v2.5.23-test", "prerelease: true")
+require("CMakeLists.txt", "VERSION 2.5.24", "sandhybrid_v2522_source_contract")
+require("RELEASE_NOTES.md", "# SandHybrid v2.5.24",
+        "SandHybrid-Windows-x64-v2.5.24", "SandHybrid-Linux-x64-v2.5.24")
+require(".github/workflows/ci-release.yml", "refs/tags/v2.5.24",
+        "SandHybrid-Windows-x64-v2.5.24", "SandHybrid-Linux-x64-v2.5.24",
+        "gh release create v2.5.24", "group: sandhybrid-v2524-")
+reject(".github/workflows/ci-release.yml", "v2.5.24-test", "prerelease: true")
 
 require("shaders/beehive.glsl",
         "ivec2 cell = queen + offset;",
@@ -65,4 +65,4 @@ require("missioncache.md",
         "then an observation window with conserved half-units")
 require("MISSION_LEDGER.md", "## Active local post-v2.5.21 recovery")
 
-print("v2.5.23 exact Fix29 hive and liquid-equilibrium contracts valid.")
+print("v2.5.24 exact Fix29 hive and liquid-equilibrium contracts valid.")
