@@ -272,7 +272,7 @@ void pan_camera_cells(SharedState& state, const SimulationConfig& config,
         center_y_state.load(std::memory_order_relaxed) + delta_y);
 }
 
-void reset_camera_to_zero(SharedState& state, const SimulationConfig& config) noexcept {
+void reset_camera_home(SharedState& state, const SimulationConfig& config) noexcept {
     const auto visible_width = (std::min)(config.grid_width,
         camera_view_width(camera_zoom_default));
     const auto visible_height = (std::min)(config.grid_height,
@@ -292,6 +292,11 @@ void reset_map_view(SharedState& state, const SimulationConfig& config) noexcept
     set_camera_center_clamped(state.map_center_x, state.map_center_y, config, view,
                               static_cast<int>(config.grid_width / 2u),
                               static_cast<int>(config.grid_height / 2u));
+}
+
+void reset_active_camera_home(SharedState& state, const SimulationConfig& config) noexcept {
+    if (state.map_view.load(std::memory_order_relaxed)) reset_map_view(state, config);
+    else reset_camera_home(state, config);
 }
 
 } // namespace
@@ -315,7 +320,7 @@ int run_application(const ApplicationOptions& options) {
         .world_size = options.world_size,
         .runtime_acceptance_report = options.runtime_acceptance_report,
     };
-    reset_camera_to_zero(shared_state, simulation_config);
+    reset_camera_home(shared_state, simulation_config);
     reset_map_view(shared_state, simulation_config);
     std::atomic_bool renderer_ready{false};
 
@@ -394,12 +399,8 @@ int run_application(const ApplicationOptions& options) {
             shared_state.mining_mode.store(!current_mining, std::memory_order_release);
         }
 
-        if (input.reset) {
-            shared_state.reset.store(true, std::memory_order_release);
-            reset_camera_to_zero(shared_state, simulation_config);
-            reset_map_view(shared_state, simulation_config);
-        }
-        if (input.reset_camera) reset_camera_to_zero(shared_state, simulation_config);
+        if (input.reset) request_world_reset(shared_state);
+        if (input.reset_camera) reset_active_camera_home(shared_state, simulation_config);
         if (input.save_scene) shared_state.save_scene_image.store(true, std::memory_order_release);
         if (input.load_scene) shared_state.load_scene_image.store(true, std::memory_order_release);
 
@@ -627,9 +628,7 @@ int run_application(const ApplicationOptions& options) {
             if (workspace < ui::workspace_tab_count) {
                 shared_state.selected_workspace.store(workspace, std::memory_order_relaxed);
             } else if (epochengine::gui_lib::contains(layout.reset_scene, pointer)) {
-                shared_state.reset.store(true, std::memory_order_release);
-                reset_camera_to_zero(shared_state, simulation_config);
-                reset_map_view(shared_state, simulation_config);
+                request_world_reset(shared_state);
             } else if (epochengine::gui_lib::contains(layout.save_scene, pointer)) {
                 shared_state.save_scene_image.store(true, std::memory_order_release);
             } else if (epochengine::gui_lib::contains(layout.load_scene, pointer)) {
@@ -645,6 +644,8 @@ int run_application(const ApplicationOptions& options) {
                     shared_state.camera_controls.load(std::memory_order_relaxed);
                 shared_state.camera_controls.store(!camera_controls,
                                                    std::memory_order_release);
+            } else if (epochengine::gui_lib::contains(layout.camera_home, pointer)) {
+                reset_active_camera_home(shared_state, simulation_config);
             } else if (epochengine::gui_lib::contains(layout.map_toggle, pointer)) {
                 const bool map = shared_state.map_view.load(std::memory_order_relaxed);
                 shared_state.map_view.store(!map, std::memory_order_release);

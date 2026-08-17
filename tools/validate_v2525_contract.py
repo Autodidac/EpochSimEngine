@@ -15,6 +15,12 @@ def require(relative: str, *tokens: str) -> None:
     if missing:
         raise SystemExit(f"{relative} missing v2.5.25 contract tokens: {missing}")
 
+def reject(relative: str, *tokens: str) -> None:
+    text = read(relative)
+    found = [token for token in tokens if token in text]
+    if found:
+        raise SystemExit(f"{relative} retains rejected v2.5.25 tokens: {found}")
+
 
 require("CMakeLists.txt", "VERSION 2.5.25", "sandhybrid_v2525_source_contract")
 require("RELEASE_NOTES.md", "# SandHybrid v2.5.25",
@@ -39,5 +45,20 @@ require("src/vulkan_renderer.cpp", "placed_fix29_hive_delayed_body_exact",
         "persistent_world_startup_sparse_footprint", "startup_districts <= 3u")
 require("missioncache.md", "2026-08-16 v2.5.25 distributed-World and persistent-hive recovery cache")
 require("MISSION_LEDGER.md", "v2.5.25 distributed-World runtime gate")
+
+require("include/sandhybrid/shared_state.hpp", "request_world_reset",
+        "Camera and MAP navigation are", "state.reset.store(true")
+require("src/app.cpp", "reset_active_camera_home", "request_world_reset(shared_state)",
+        "layout.camera_home")
+reject("src/app.cpp", "reset_camera_to_zero", "if (input.reset) {")
+require("src/window_win32.cpp", "case 'H':", "case VK_HOME:")
+require("src/window_xcb.cpp", "keysym_h", "keysym_upper_h")
+require("include/sandhybrid/ui_layout.hpp", "camera_home", "row_gap * 4.0f) / 5.0f")
+require("shaders/fullscreen.frag", "uint viewIds[5]", "109u")
+require("tools/generate_ui_text.py", "H CAM HOME")
+reject("tools/generate_ui_text.py", "0 CAM ZERO")
+require("tests/input_routing_contract.cpp", "request_world_reset(reset_state)",
+        "reset_state.map_zoom.load() != 9u")
+require("tests/ui_layout_contract.cpp", "layout.camera_home.position.x")
 
 print("v2.5.25 distributed World, common grass level, sparse startup, and persistent Fix29 hive contracts valid.")

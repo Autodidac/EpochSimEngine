@@ -28,7 +28,7 @@ struct Layout final {
     epochengine::gui_lib::Rect workspace_inventory{}, workspace_editor{}, workspace_settings{}, workspace_designer{};
     epochengine::gui_lib::Rect inventory_inventory{}, inventory_blueprints{};
     epochengine::gui_lib::Rect previous_scene{}, next_scene{}, reset_scene{}, save_scene{}, load_scene{};
-    epochengine::gui_lib::Rect mode_toggle{}, pause_toggle{}, camera_controls_toggle{}, map_toggle{}, debug_toggle{};
+    epochengine::gui_lib::Rect mode_toggle{}, pause_toggle{}, camera_controls_toggle{}, camera_home{}, map_toggle{}, debug_toggle{};
     epochengine::gui_lib::Rect atmosphere{}, fill{}, eraser{}, actions{}, ignite_air{}, keymap{}, cursor_editor{}, material_card{};
     epochengine::gui_lib::Rect settings_lighting{}, settings_fps{}, fps_30{}, fps_60{}, fps_120{}, fps_unlimited{};
     epochengine::gui_lib::Rect placement_cells{}, placement_tiles{};
@@ -204,15 +204,17 @@ framebuffer_to_logical_pointer(
     layout.pause_toggle = {{row_left + action_width + row_gap, 102.0f},
                            {row_width - action_width - row_gap, 30.0f}};
 
-    // View/input modes: MINE/BUILD, PLAYER/WASD PAN, MAP, DEBUG.
-    const float top_control_width = (std::max)(1.0f, (row_width - row_gap * 3.0f) / 4.0f);
+    // View/input controls: MINE/BUILD, PLAYER/WASD PAN, HOME, MAP, DEBUG.
+    const float top_control_width = (std::max)(1.0f, (row_width - row_gap * 4.0f) / 5.0f);
     layout.mode_toggle = {{row_left, 136.0f}, {top_control_width, 28.0f}};
     layout.camera_controls_toggle = {{row_left + (top_control_width + row_gap), 136.0f},
                                      {top_control_width, 28.0f}};
-    layout.map_toggle = {{row_left + (top_control_width + row_gap) * 2.0f, 136.0f},
+    layout.camera_home = {{row_left + (top_control_width + row_gap) * 2.0f, 136.0f},
+                          {top_control_width, 28.0f}};
+    layout.map_toggle = {{row_left + (top_control_width + row_gap) * 3.0f, 136.0f},
                          {top_control_width, 28.0f}};
-    layout.debug_toggle = {{row_left + (top_control_width + row_gap) * 3.0f, 136.0f},
-                           {row_width - top_control_width * 3.0f - row_gap * 3.0f, 28.0f}};
+    layout.debug_toggle = {{row_left + (top_control_width + row_gap) * 4.0f, 136.0f},
+                           {row_width - top_control_width * 4.0f - row_gap * 4.0f, 28.0f}};
 
     // Primary tools stay visible above the material browser.
     const float utility_width = (std::max)(1.0f, (row_width - row_gap * 2.0f) / 3.0f);

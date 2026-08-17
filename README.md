@@ -197,7 +197,7 @@ They share canonical cells, actor state, atmosphere, weather, temperature, hiera
 - `ERASER`: select vacuum/empty deletion
 - `OXYGEN`: selectable pure-gas material in the Engineering group
 - There are no previous/next scene controls; all districts coexist in `WORLD`
-- `R`: reset the complete persistent World
+- `R`: reset the complete persistent World while preserving both simulation-camera and MAP center/zoom state
 - `P` or the `RUNNING`/`PAUSED` button: pause or resume simulation; direct paint, erase, fill, Ignite Air, selection, and blueprint placement remain live while paused without advancing time
 - `N`: one simulation step while paused
 - `M`: switch the persistent player between Mine and Build ownership while Inventory is active
@@ -206,13 +206,13 @@ They share canonical cells, actor state, atmosphere, weather, temperature, hiera
 - Mouse wheel over world: brush radius
 - Middle-mouse drag: direct responsive camera pan across the World
 - Right-mouse drag: camera pan while `WASD PAN` mode is enabled
-- `0`: reset the camera and player view to the supported Frontier district spawn
+- `H` or the sidebar `H CAM HOME` button: restore the active view; MAP returns to its full-world frame, otherwise the simulation camera returns to the supported Frontier player spawn. `0` and Home remain compatibility aliases.
 - Cell/Tile placement selector: place any selected material as fine cells or one aligned 8x8 tile
 - Escape: exit
 
 ### Camera navigation
 
-- `PLAYER WASD` / `WASD PAN`: choose whether WASD controls the persistent player or camera
+- `PLAYER WASD` / `WASD PAN`: choose whether WASD controls the persistent player or camera. World `RESET` never changes camera navigation state; use `H CAM HOME` explicitly.
 - `W` / `A` / `S` / `D`: control the player unless `WASD PAN` is enabled
 - Middle-mouse drag always pans; right-mouse drag pans in `WASD PAN` mode
 - Mouse-edge camera movement is removed
@@ -389,7 +389,7 @@ These APIs are deterministic and covered by Windows/Linux contracts. The Vulkan 
 
 ## v2.5.6 runtime controls
 
-Right-click exclusively pans: dragging moves the current camera and holding it near a viewport edge performs gated edge panning. `WASD PAN` routes keys to the simulation camera; MAP uses its own camera and a slow full-world snapshot without changing simulation LOD or active-region scheduling. In the persistent World, MINE uses left click and BUILD places the selected resource from the sidebar Inventory pane with left click. Hold `F` and left-click the simulation to fill; pressing `F` alone does nothing.
+Right-click exclusively pans: dragging moves the current camera and holding it near a viewport edge performs gated edge panning. `WASD PAN` routes keys to the simulation camera; MAP uses its own camera and a slow full-world snapshot without changing simulation LOD or active-region scheduling. In the persistent World, MINE uses left click and BUILD places the selected resource from the sidebar Inventory pane with left click. Hold `F` and left-click the simulation to fill; pressing `F` alone does nothing. World `RESET` preserves both cameras. `H` and the sidebar `H CAM HOME` button explicitly restore the active camera; `0` and Home remain aliases.
 
 
 ## World sizes and exact saves

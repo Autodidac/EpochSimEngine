@@ -111,4 +111,10 @@ struct SharedState final {
     }
 };
 
+inline void request_world_reset(SharedState& state) noexcept {
+    // Reset is a simulation epoch boundary. Camera and MAP navigation are
+    // user-owned state and are changed only by the explicit Camera Home action.
+    state.reset.store(true, std::memory_order_release);
+}
+
 } // namespace sandhybrid

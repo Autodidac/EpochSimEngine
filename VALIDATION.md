@@ -90,6 +90,12 @@ This focused gate does not close broader cross-district traversal, weather/ecolo
 
 ## v2.5.25 stable local release gates
 
+The post-v2.5.25 camera-preservation follow-up adds three source/runtime gates without changing the immutable v2.5.25 archives:
+
+- `sandhybrid_input_routing_contract` proves `request_world_reset` raises only the reset epoch request and preserves simulation-camera and MAP center/zoom state.
+- `sandhybrid_ui_layout_contract` proves the new sidebar Camera Home hit region remains inside the sidebar and does not overlap camera-mode, MAP, or DEBUG controls.
+- `tools/validate_v2525_contract.py` requires Win32 and XCB `H` routing, the shader-visible `H CAM HOME` label, the five-button VIEW/INPUT row, active-view home dispatch, and camera-preserving reset routing.
+
 - `tools/validate_v2513_contract.py` preserves the first-28 P0 recovery contracts.
 - `tools/validate_v2515_contract.py` retains the macro, Half Water, hive, cursor, Fill, paused-editing, and sidebar recovery baselines.
 - `tools/validate_v2516_contract.py` retains real Blueprint slots, exact transactional placement, paused persistent-World editing, and honest sidebar rendering.

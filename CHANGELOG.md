@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- World `RESET` now preserves simulation and MAP camera center/zoom state; `H` and the sidebar `H CAM HOME` control explicitly restore the active view, with `0` and Home retained as compatibility aliases.
+- Added cross-platform `H` input routing, a non-overlapping fifth VIEW/INPUT control, the matching shader key legend, and deterministic reset-preservation/layout contracts.
+
 ## 2.5.25
 
 - Distributed the eight authored districts across each resident width instead of packing Large into a centered strip; translated their distinct authored terrain rows onto common world grass Y 1040.

@@ -1,4 +1,5 @@
 #include "sandhybrid/input_routing.hpp"
+#include "sandhybrid/shared_state.hpp"
 
 using namespace sandhybrid;
 
@@ -85,6 +86,22 @@ int main() {
     sidebar.pointer_over_world = false;
     if (route_world_primary_action(sidebar) !=
         WorldPrimaryAction::none) return 13;
+
+    SharedState reset_state;
+    reset_state.camera_center_x.store(4321);
+    reset_state.camera_center_y.store(876);
+    reset_state.camera_zoom.store(17u);
+    reset_state.map_center_x.store(6543);
+    reset_state.map_center_y.store(321);
+    reset_state.map_zoom.store(9u);
+    request_world_reset(reset_state);
+    if (!reset_state.reset.load() ||
+        reset_state.camera_center_x.load() != 4321 ||
+        reset_state.camera_center_y.load() != 876 ||
+        reset_state.camera_zoom.load() != 17u ||
+        reset_state.map_center_x.load() != 6543 ||
+        reset_state.map_center_y.load() != 321 ||
+        reset_state.map_zoom.load() != 9u) return 14;
 
     return 0;
 }

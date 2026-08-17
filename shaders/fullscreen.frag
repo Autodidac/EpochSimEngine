@@ -622,27 +622,28 @@ void main() {
         }
 
         // View/input modes.
-        uint viewWidth = max((rowWidth - rowGap * 3u) / 4u, 1u);
+        uint viewWidth = max((rowWidth - rowGap * 4u) / 5u, 1u);
         bool playerScene = renderPc.selectedScene == 6u ||
                            renderPc.selectedScene == 7u ||
                            renderPc.selectedScene == 8u;
-        uint viewIds[4] = uint[4](
+        uint viewIds[5] = uint[5](
             renderPc.miningMode != 0u ? 8u : 7u,
             playerScene && renderPc.cameraControls == 0u ? 141u : 140u,
+            109u,
             0u,
             9u);
-        for (uint control = 0u; control < 4u; ++control) {
+        for (uint control = 0u; control < 5u; ++control) {
             uint left = rowLeft + control * (viewWidth + rowGap);
-            uint right = control == 3u ? sidebarLeft + sidebarWidth - 8u : left + viewWidth;
+            uint right = control == 4u ? sidebarLeft + sidebarWidth - 8u : left + viewWidth;
             if (x >= left && x < right && y >= 136u && y < 164u) {
                 bool enabled = (control == 1u && renderPc.cameraControls != 0u) ||
-                               (control == 2u && renderPc.mapMode != 0u) ||
-                               (control == 3u && renderPc.debugMode != 0u);
+                               (control == 3u && renderPc.mapMode != 0u) ||
+                               (control == 4u && renderPc.debugMode != 0u);
                 color = enabled ? vec3(0.14, 0.31, 0.45) : vec3(0.075, 0.105, 0.145);
                 if (borderPixel(x, y, left, 136u, right, 164u)) color *= 0.55;
             }
             bool labelHit = false;
-            if (control == 2u) {
+            if (control == 3u) {
                 int scale = int(right - left) >= 42 ? 2 : 1;
                 int labelWidth = 17 * scale;
                 ivec2 origin = ivec2(int(left + right) / 2 - labelWidth / 2,

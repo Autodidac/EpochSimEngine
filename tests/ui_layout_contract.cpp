@@ -41,6 +41,8 @@ int main() {
     if (layout.mode_toggle.position.x + layout.mode_toggle.size.x >
             layout.camera_controls_toggle.position.x ||
         layout.camera_controls_toggle.position.x + layout.camera_controls_toggle.size.x >
+            layout.camera_home.position.x ||
+        layout.camera_home.position.x + layout.camera_home.size.x >
             layout.map_toggle.position.x ||
         layout.map_toggle.position.x + layout.map_toggle.size.x >
             layout.debug_toggle.position.x) return 5;
@@ -157,6 +159,7 @@ int main() {
     if (compact.mode_toggle.position.x < compact.simulation.size.x ||
         compact.pause_toggle.position.x < compact.simulation.size.x ||
         compact.camera_controls_toggle.position.x < compact.simulation.size.x ||
+        compact.camera_home.position.x < compact.simulation.size.x ||
         compact.map_toggle.position.x < compact.simulation.size.x ||
         compact.debug_toggle.position.x < compact.simulation.size.x ||
         compact.material_card.position.x < compact.simulation.size.x) return 12;

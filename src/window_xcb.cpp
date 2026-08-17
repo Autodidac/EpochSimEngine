@@ -33,6 +33,8 @@ constexpr std::uint32_t keysym_n = 0x006Eu;
 constexpr std::uint32_t keysym_upper_n = 0x004Eu;
 constexpr std::uint32_t keysym_r = 0x0072u;
 constexpr std::uint32_t keysym_upper_r = 0x0052u;
+constexpr std::uint32_t keysym_h = 0x0068u;
+constexpr std::uint32_t keysym_upper_h = 0x0048u;
 constexpr std::uint32_t keysym_f = 0x0066u;
 constexpr std::uint32_t keysym_upper_f = 0x0046u;
 constexpr std::uint32_t keysym_left_bracket = 0x005Bu;
@@ -346,7 +348,8 @@ bool NativeWindow::poll(WindowInput& input) {
                 impl_->single_step = true;
             } else if (keysym == keysym_r || keysym == keysym_upper_r) {
                 impl_->reset = true;
-            } else if (keysym == keysym_0 || keysym == keysym_home) {
+            } else if (keysym == keysym_h || keysym == keysym_upper_h ||
+                       keysym == keysym_0 || keysym == keysym_home) {
                 impl_->reset_camera = true;
             } else if (keysym == keysym_f || keysym == keysym_upper_f) {
                 impl_->fill_modifier = true;

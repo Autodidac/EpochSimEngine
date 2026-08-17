@@ -218,6 +218,7 @@ struct NativeWindow::Impl final {
             case 'R':
                 self->reset = true;
                 return 0;
+            case 'H':
             case '0':
             case VK_HOME:
                 self->reset_camera = true;
