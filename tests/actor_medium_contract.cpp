@@ -72,9 +72,9 @@ int main() {
     if (sandhybrid::classify_pre_pr19_hive_cell(0, 9) !=
         sandhybrid::HivePart::shell) return 24;
     if (sandhybrid::classify_pre_pr19_hive_cell(0, 1, 1u) !=
-        sandhybrid::HivePart::honey) return 25;
+        sandhybrid::HivePart::pollen) return 25;
     if (sandhybrid::classify_pre_pr19_hive_cell(0, 1, 5u) !=
-        sandhybrid::HivePart::pollen) return 26;
+        sandhybrid::HivePart::honey) return 26;
     if (sandhybrid::classify_pre_pr19_hive_cell(0, 1, 0u) !=
         sandhybrid::HivePart::chamber) return 27;
     if (sandhybrid::fix29_hive_entropy(512, 232, 0, -3) != 0x1c707b05u)
@@ -92,7 +92,7 @@ int main() {
         sandhybrid::HivePart::honey) return 32;
     if (sandhybrid::classify_pre_pr19_hive_cell(
             -1, -1, sandhybrid::fix29_hive_entropy(512, 234, -1, -1)) !=
-        sandhybrid::HivePart::pollen) return 33;
+        sandhybrid::HivePart::honey) return 33;
     if (sandhybrid::hive_home_from_scene_origin({1280, 720}, {100, 50}) !=
         sandhybrid::GridPosition{1380, 770}) return 34;
 

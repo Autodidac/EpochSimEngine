@@ -84,7 +84,7 @@ The executable allocates the selected resident World (Large is 10240x1440), runs
 - complete supported structural Stone foundations and common aligned grass Y `1040` in all eight distributed World districts;
 - live persistent player state at the distributed Frontier recovery spawn with full health and Oxygen;
 - no more than three authored districts intersecting the initial Large 4x4 active window;
-- cell-exact photographed Fix29 support, shell, queen, exit, and Empty/Honey/Pollen payload in placed, Sandbox, and Ecosystem hives; the placed body is checked immediately and again after 120 focused ticks, while each hard-coded colony retains 100 unique district-correct bee homes.
+- cell-exact photographed Fix29 support, shell, queen, exit, and tagged two-bit Empty/Pollen/Honey payload in placed, Sandbox, and Ecosystem hives; placed counts are `571/193/30/7/19`, Sandbox `576/193/35/13/8`, and Ecosystem `571/193/31/9/16` for support/shell/Honey/Pollen/Empty. The placed body is checked immediately and again after 120 focused ticks, while each hard-coded colony retains 100 unique district-correct bee homes.
 
 This focused gate does not close broader cross-district traversal, weather/ecology cycles, machinery, save migration, full bee lifecycle, debug overhead, or final user visual review of the photographed hive and distributed scenery.
 

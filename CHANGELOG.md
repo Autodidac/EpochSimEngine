@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Corrected the Fix29 hive chamber to the historical two-bit payload selector, restoring the Honey-dominant photographed interior across reset, tool placement, load normalization, and delayed runtime state.
 - Complete exposed liquid/gas packets now travel eight successful full-tile steps before conditional fine breakup; eight consecutive failed transactions use a separate escape counter, while successful motion and compatible enclosure reset the appropriate budgets.
 - Added packaged Vulkan acceptance for a conserved Hydrogen packet rising eight complete tiles through Water and for the independent blocked-packet fallback.
 - Restricted tile classification, chemistry, macro movement, and fine movement dispatches to the clipped 4x4 active window, reducing those Large compute domains to at most one quarter of the resident cells.

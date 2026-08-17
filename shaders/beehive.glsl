@@ -53,7 +53,7 @@ uint beehivePrefabMaterial(ivec2 queen, ivec2 offset, uint entropy) {
         return MAT_BEEHIVE;
     if (radiusSquared < BEEHIVE_CHAMBER_RADIUS_SQUARED) {
         if ((entropy & 3u) == 0u) return MAT_EMPTY;
-        return (entropy & 4u) == 0u ? MAT_HONEY : MAT_POLLEN;
+        return ((entropy >> 2u) & 3u) == 0u ? MAT_POLLEN : MAT_HONEY;
     }
     if (beehiveSupportCell(queen, offset)) return MAT_WOOD;
     return MATERIAL_COUNT;

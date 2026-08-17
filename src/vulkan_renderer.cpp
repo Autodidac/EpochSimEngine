@@ -4041,8 +4041,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     }
                 }
                 const auto expected_support = scene == Scene::sandbox ? 576u : 571u;
-                const auto expected_honey = scene == Scene::sandbox ? 28u : 18u;
-                const auto expected_pollen = scene == Scene::sandbox ? 20u : 22u;
+                const auto expected_honey = scene == Scene::sandbox ? 35u : 31u;
+                const auto expected_pollen = scene == Scene::sandbox ? 13u : 9u;
                 const auto expected_empty = scene == Scene::sandbox ? 8u : 16u;
                 append(std::string{name},
                        mismatches == 0u && shell == 193u && support == expected_support &&
@@ -4132,7 +4132,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 }
                 append("placed_fix29_hive_exact",
                        mismatches == 0u && support == 571u && shell == 193u &&
-                           honey == 17u && pollen == 20u &&
+                           honey == 30u && pollen == 7u &&
                            chamber_empty == 19u,
                        "mismatches=" + std::to_string(mismatches) +
                            " support=" + std::to_string(support) +
@@ -4196,8 +4196,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        delayed_mismatches == 0u &&
                            delayed_support == 571u &&
                            delayed_shell == 193u &&
-                           delayed_honey == 17u &&
-                           delayed_pollen == 20u,
+                           delayed_honey == 30u &&
+                           delayed_pollen == 7u,
                        "ticks=120 mismatches=" +
                            std::to_string(delayed_mismatches) +
                            " support=" + std::to_string(delayed_support) +

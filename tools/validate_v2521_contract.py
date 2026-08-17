@@ -56,6 +56,7 @@ require(
     "BEEHIVE_CHAMBER_RADIUS_SQUARED = 24",
     "BEEHIVE_EXIT_MAX_X = 10",
     "BEEHIVE_CANONICAL_SEED = 0xD17A5EEDu",
+    "((entropy >> 2u) & 3u) == 0u ? MAT_POLLEN : MAT_HONEY",
 )
 require(
     "tools/validate_shader_contracts_legacy.py",
@@ -68,13 +69,15 @@ require(
     "beehive_shell_min_radius_squared = 24",
     "beehive_shell_max_radius_squared = 88",
     "beehive_exit_max_x = 10",
+    "((entropy >> 2u) & 3u) == 0u ? Material::pollen : Material::honey",
 )
 require(
     "tests/scene_image_contract.cpp",
     "exact_hive",
-    "Scene::sandbox, 234, 576u, 28u, 20u, 8u",
-    "Scene::ecosystem, 232, 571u, 18u, 22u, 16u",
+    "Scene::sandbox, 234, 576u, 35u, 13u, 8u",
+    "Scene::ecosystem, 232, 571u, 31u, 9u, 16u",
 )
+require("include/sandhybrid/actor_medium.hpp", "((entropy >> 2u) & 3u) == 0u ? HivePart::pollen : HivePart::honey")
 reject("include/sandhybrid/actor_medium.hpp", "0xD17A55DEu", "dx <= 12", "radius_squared >= 28")
 
 # Actions and presentation caps share one logical sidebar layout. Presentation

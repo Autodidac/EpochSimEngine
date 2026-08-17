@@ -172,8 +172,8 @@ int main() {
                honey == expected_honey && pollen == expected_pollen &&
                chamber_empty == expected_empty;
     };
-    if (!exact_hive(sandhybrid::Scene::sandbox, 234, 576u, 28u, 20u, 8u) ||
-        !exact_hive(sandhybrid::Scene::ecosystem, 232, 571u, 18u, 22u, 16u))
+    if (!exact_hive(sandhybrid::Scene::sandbox, 234, 576u, 35u, 13u, 8u) ||
+        !exact_hive(sandhybrid::Scene::ecosystem, 232, 571u, 31u, 9u, 16u))
         return 15;
 
     std::filesystem::remove_all(root, cleanup_error);

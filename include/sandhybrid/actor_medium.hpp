@@ -383,7 +383,7 @@ enum class HivePart : std::uint8_t {
     if (radius_squared >= 24 && radius_squared < 88) return HivePart::shell;
     if (radius_squared < 24) {
         if ((entropy & 3u) == 0u) return HivePart::chamber;
-        return (entropy & 4u) == 0u ? HivePart::honey : HivePart::pollen;
+        return ((entropy >> 2u) & 3u) == 0u ? HivePart::pollen : HivePart::honey;
     }
     if (fix29_hive_support_cell(queen_x, queen_y, queen_x + dx, queen_y + dy))
         return HivePart::support;

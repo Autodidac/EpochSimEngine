@@ -78,7 +78,7 @@ Material pre_pr19_beehive_material(const std::int32_t offset_x,
         return Material::empty;
     if (radius_squared < beehive_chamber_radius_squared) {
         if ((entropy & 3u) == 0u) return Material::empty;
-        return ((entropy >> 2u) & 1u) == 0u ? Material::honey : Material::pollen;
+        return ((entropy >> 2u) & 3u) == 0u ? Material::pollen : Material::honey;
     }
     if (radius_squared >= beehive_shell_min_radius_squared &&
         radius_squared < beehive_shell_max_radius_squared)
