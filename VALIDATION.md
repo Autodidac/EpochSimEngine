@@ -92,6 +92,13 @@ This focused gate does not close broader cross-district traversal, weather/ecolo
 
 The post-v2.5.25 camera-preservation follow-up adds three source/runtime gates without changing the immutable v2.5.25 archives:
 
+The packet/performance follow-up adds successful-distance and bounded-dispatch gates without claiming unmeasured FPS:
+
+- `sandhybrid_behavior_contract` proves eight-step travel saturation, independent failed-attempt accumulation, success reset, and perimeter-conditional breakup.
+- `sandhybrid_section_scheduler_contract` proves clipped 4x4 dispatch dimensions and a fourfold Large cell-domain reduction.
+- Packaged Windows Vulkan acceptance proves `macro_bubble_eight_step_breakup` with Hydrogen `64`, Water `512`, progress `7` retained and progress `8` broken to fine; `macro_blocked_fine_fallback` reports exactly eight blocked attempts.
+- Serial native verification passes Windows Release `35/35` CTests and WSL Linux Release `32/32`. Interactive timestamp/FPS evidence remains required for performance mission closure.
+
 - `sandhybrid_input_routing_contract` proves `request_world_reset` raises only the reset epoch request and preserves simulation-camera and MAP center/zoom state.
 - `sandhybrid_ui_layout_contract` proves the new sidebar Camera Home hit region remains inside the sidebar and does not overlap camera-mode, MAP, or DEBUG controls.
 - `tools/validate_v2525_contract.py` requires Win32 and XCB `H` routing, the shader-visible `H CAM HOME` label, the five-button VIEW/INPUT row, active-view home dispatch, and camera-preserving reset routing.

@@ -2439,6 +2439,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                 const bool collect_debug_stats) {
         const auto active_section_x = state.active_window_origin_x.load(std::memory_order_relaxed);
         const auto active_section_y = state.active_window_origin_y.load(std::memory_order_relaxed);
+        const auto active_dispatch = active_cell_dispatch(
+            config.grid_width, config.grid_height,
+            {active_section_x, active_section_y});
         const bool macro_step_due = policy::macro_packet_step_due(simulation_step);
         SimulationPush simulation_push{
             .width = config.grid_width,
@@ -2468,8 +2471,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         bind_compute(command_buffer, tile_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
                            0, sizeof(simulation_push), &simulation_push);
-        vkCmdDispatch(command_buffer, divide_round_up(divide_round_up(config.grid_width, 8u), 8u),
-                      divide_round_up(divide_round_up(config.grid_height, 8u), 8u), 1);
+        vkCmdDispatch(command_buffer, divide_round_up(divide_round_up(active_dispatch.width, 8u), 8u),
+                      divide_round_up(divide_round_up(active_dispatch.height, 8u), 8u), 1);
         buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
              VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
              VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
@@ -2494,8 +2497,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         bind_compute(command_buffer, chemistry_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
                            0, sizeof(simulation_push), &simulation_push);
-        vkCmdDispatch(command_buffer, divide_round_up(config.grid_width, simulation_local_size),
-                      divide_round_up(config.grid_height, simulation_local_size), 1);
+        vkCmdDispatch(command_buffer, divide_round_up(active_dispatch.width, simulation_local_size),
+                      divide_round_up(active_dispatch.height, simulation_local_size), 1);
         buffer_barrier(command_buffer, cell_buffers[next_set], VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -2510,8 +2513,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const std::array<std::int32_t, 6> macro_phases = (simulation_step & 1u) == 0u
       ? std::array<std::int32_t, 6>{0, 5, 1, 2, 3, 4}
       : std::array<std::int32_t, 6>{0, 5, 2, 1, 4, 3};
-            const auto tile_columns = divide_round_up(config.grid_width, 8u);
-            const auto tile_rows = divide_round_up(config.grid_height, 8u);
+            const auto tile_columns = divide_round_up(active_dispatch.width, 8u);
+            const auto tile_rows = divide_round_up(active_dispatch.height, 8u);
             for (std::size_t phase_index = 0; phase_index < macro_phases.size(); ++phase_index) {
       const auto phase = macro_phases[phase_index];
       const MovementPush macro_push{
@@ -2599,11 +2602,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                0, sizeof(movement_push), &movement_push);
             if (phase >= 5) {
                 vkCmdDispatch(command_buffer,
-                              divide_round_up(divide_round_up(config.grid_width, 2u), simulation_local_size),
-                              divide_round_up(config.grid_height, simulation_local_size), 1);
+                              divide_round_up(divide_round_up(active_dispatch.width, 2u), simulation_local_size),
+                              divide_round_up(active_dispatch.height, simulation_local_size), 1);
             } else {
-                vkCmdDispatch(command_buffer, divide_round_up(config.grid_width, simulation_local_size),
-                              divide_round_up(divide_round_up(config.grid_height, 2u), simulation_local_size), 1);
+                vkCmdDispatch(command_buffer, divide_round_up(active_dispatch.width, simulation_local_size),
+                              divide_round_up(divide_round_up(active_dispatch.height, 2u), simulation_local_size), 1);
             }
             buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
@@ -3746,6 +3749,67 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             }
 
             {
+                // One complete Hydrogen packet rises through eight complete
+                // Water tiles. Water performs each exact downward swap, so the
+                // lighter target packet advances upward without fine-cell loss.
+                auto cells = acceptance_atmosphere_world();
+                seed_rect(cells, Material::water, 64u, 64u, 8u, 64u);
+                seed_rect(cells, Material::hydrogen, 64u, 128u, 8u, 8u);
+                upload_scene_cells(cells);
+                run_acceptance_tile_pass();
+
+                constexpr std::uint32_t tile_macro_movable = 0x00010000u;
+                constexpr std::uint32_t tile_fine_active = 0x00020000u;
+                constexpr std::uint32_t tile_medium_breakup = 0x04000000u;
+                const auto tile_columns = divide_round_up(config.grid_width, 8u);
+                std::uint32_t gas_tile_row = 16u;
+                bool retained_first_seven = true;
+                bool counted_each_step = true;
+                std::uint32_t seventh_counters = 0u;
+                for (std::uint32_t step = 1u; step <= 8u; ++step) {
+                    const auto water_source_row = gas_tile_row - 1u;
+                    run_acceptance_macro_pass(
+                        0, static_cast<std::int32_t>(water_source_row & 1u));
+                    --gas_tile_row;
+                    const auto moved_states = download_tile_states();
+                    const auto moved_state =
+                        moved_states[gas_tile_row * tile_columns + 8u];
+                    counted_each_step = counted_each_step &&
+                        (moved_state.counters & 0xffu) == step;
+                    if (step < 8u) {
+                        retained_first_seven = retained_first_seven &&
+                            (moved_state.flags & tile_macro_movable) != 0u &&
+                            (moved_state.flags & tile_fine_active) == 0u;
+                        seventh_counters = moved_state.counters;
+                        run_acceptance_chemistry_pass();
+                        run_acceptance_tile_pass();
+                    }
+                }
+                run_acceptance_tile_pass();
+                const auto final_states = download_tile_states();
+                const auto final_state = final_states[8u * tile_columns + 8u];
+                const auto result = download_scene_cells();
+                const auto hydrogen = count_material(result, Material::hydrogen);
+                const auto water = count_material(result, Material::water);
+                const auto final_hydrogen =
+                    count_rect(result, Material::hydrogen, 64u, 64u, 8u, 8u);
+                append("macro_bubble_eight_step_breakup",
+                       retained_first_seven && counted_each_step &&
+                           (final_state.flags & tile_fine_active) != 0u &&
+                           (final_state.flags & tile_medium_breakup) != 0u &&
+                           (final_state.flags & tile_macro_movable) == 0u &&
+                           (final_state.counters & 0xffu) == 8u &&
+                           hydrogen == 64u && final_hydrogen == 64u && water == 512u,
+                       "hydrogen=" + std::to_string(hydrogen) +
+                           " final_hydrogen=" + std::to_string(final_hydrogen) +
+                           " water=" + std::to_string(water) +
+                           " seventh_progress=" +
+                           std::to_string(seventh_counters & 0xffu) +
+                           " final_progress=" +
+                           std::to_string(final_state.counters & 0xffu) +
+                           " final_flags=" + std::to_string(final_state.flags));
+            }
+            {
                 auto cells = acceptance_atmosphere_world();
                 seed_rect(cells, Material::water, 64u, 64u, 8u, 8u);
                 for (std::uint32_t y = 64u; y < 72u; ++y)
@@ -3762,18 +3826,23 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 bool retained_for_first_seven = true;
                 std::uint32_t seventh_flags = 0u;
                 std::uint32_t eighth_flags = 0u;
-                for (std::uint32_t attempt = 0u; attempt < 8u; ++attempt) {
+                std::uint32_t eighth_blocked_attempts = 0u;
+                run_acceptance_tile_pass();
+                for (std::uint32_t failure = 1u; failure <= 8u; ++failure) {
+                    run_acceptance_macro_pass(0, 0);
                     run_acceptance_tile_pass();
                     const auto states = download_tile_states();
-                    const auto flags = states[source_tile_index].flags;
-                    if (attempt < 7u) {
+                    const auto tile_state = states[source_tile_index];
+                    if (failure < 8u) {
                         retained_for_first_seven = retained_for_first_seven &&
-                            (flags & tile_macro_movable) != 0u &&
-                            (flags & tile_fine_active) == 0u;
-                        seventh_flags = flags;
-                        run_acceptance_macro_pass(0, 0);
+                            (tile_state.flags & tile_macro_movable) != 0u &&
+                            (tile_state.flags & tile_fine_active) == 0u &&
+                            ((tile_state.counters >> 8u) & 0xffu) == failure;
+                        seventh_flags = tile_state.flags;
                     } else {
-                        eighth_flags = flags;
+                        eighth_flags = tile_state.flags;
+                        eighth_blocked_attempts =
+                            (tile_state.counters >> 8u) & 0xffu;
                     }
                 }
                 run_acceptance_fine_pass(0, 0);
@@ -3786,12 +3855,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 append("macro_blocked_fine_fallback",
                        retained_for_first_seven &&
                            (eighth_flags & tile_fine_active) != 0u &&
+                           eighth_blocked_attempts == 8u &&
                            total == 64u && source > 0u && source < 64u && outside > 0u,
                        "water=" + std::to_string(total) +
                            " source=" + std::to_string(source) +
                            " moved_out=" + std::to_string(outside) +
                            " seventh_flags=" + std::to_string(seventh_flags) +
-                           " eighth_flags=" + std::to_string(eighth_flags));
+                           " eighth_flags=" + std::to_string(eighth_flags) +
+                           " blocked_attempts=" +
+                           std::to_string(eighth_blocked_attempts));
             }
 
             {
@@ -4378,7 +4450,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 }
             }
             append("persistent_world_startup_sparse_footprint",
-                   config.grid_width < persistent_world_width || startup_districts <= 3u,
+                   config.grid_width <= persistent_world_width || startup_districts <= 3u,
                    "active_authored_districts=" + std::to_string(startup_districts) +
                        " active_x=" + std::to_string(startup_left) + ".." +
                        std::to_string(startup_right));

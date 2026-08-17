@@ -11,6 +11,14 @@ int main() {
     static_assert(active_window_columns == 4);
     static_assert(active_window_rows == 4);
     static_assert(active_window_section_capacity == 16u);
+    static_assert(active_cell_dispatch(10240u, 1440u, {4, 0}) ==
+                  ActiveCellDispatch{2560u, 0u, 2560u, 1440u});
+    static_assert(active_cell_dispatch(10240u, 1440u, {12, 0}) ==
+                  ActiveCellDispatch{7680u, 0u, 2560u, 1440u});
+    static_assert(active_cell_dispatch(5120u, 1440u, {0, 0}).cell_count() * 2u ==
+                  static_cast<std::uint64_t>(5120u) * 1440u);
+    static_assert(active_cell_dispatch(10240u, 1440u, {4, 0}).cell_count() * 4u ==
+                  static_cast<std::uint64_t>(10240u) * 1440u);
 
     constexpr SectionCoordinate center{5, 2};
     static_assert(active_window_origin(center, 16u, 4u) == SectionCoordinate{4, 0});

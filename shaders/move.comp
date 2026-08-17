@@ -1390,16 +1390,18 @@ void processHorizontal(ivec2 left, ivec2 right) {
 
 void main() {
     ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 dispatchOrigin = activeDispatchCellOrigin(
+        movePc.activeSectionX, movePc.activeSectionY, movePc.activeMode);
 
     if (movePc.phase == 0) {
-        ivec2 top = ivec2(gid.x, gid.y * 2 + movePc.parity);
+        ivec2 top = dispatchOrigin + ivec2(gid.x, gid.y * 2 + movePc.parity);
         ivec2 bottom = top + ivec2(0, 1);
         if (moveInside(top) && moveInside(bottom) &&
             sectionActiveAt(top, movePc.activeSectionX, movePc.activeSectionY, movePc.activeMode) &&
             sectionActiveAt(bottom, movePc.activeSectionX, movePc.activeSectionY, movePc.activeMode))
             processVertical(top, bottom);
     } else if (movePc.phase == 1 || movePc.phase == 2) {
-        ivec2 source = ivec2(gid.x, gid.y * 2 + movePc.parity);
+        ivec2 source = dispatchOrigin + ivec2(gid.x, gid.y * 2 + movePc.parity);
         int direction = movePc.phase == 1 ? -1 : 1;
         ivec2 target = source + ivec2(direction, 1);
         if (moveInside(source) && moveInside(target) &&
@@ -1407,7 +1409,7 @@ void main() {
             sectionActiveAt(target, movePc.activeSectionX, movePc.activeSectionY, movePc.activeMode))
             processDiagonal(source, target, false);
     } else if (movePc.phase == 3 || movePc.phase == 4) {
-        ivec2 source = ivec2(gid.x, gid.y * 2 + movePc.parity + 1);
+        ivec2 source = dispatchOrigin + ivec2(gid.x, gid.y * 2 + movePc.parity + 1);
         int direction = movePc.phase == 3 ? -1 : 1;
         ivec2 target = source + ivec2(direction, -1);
         if (moveInside(source) && moveInside(target) &&
@@ -1415,7 +1417,7 @@ void main() {
             sectionActiveAt(target, movePc.activeSectionX, movePc.activeSectionY, movePc.activeMode))
             processDiagonal(source, target, true);
     } else {
-        ivec2 left = ivec2(gid.x * 2 + movePc.parity, gid.y);
+        ivec2 left = dispatchOrigin + ivec2(gid.x * 2 + movePc.parity, gid.y);
         ivec2 right = left + ivec2(1, 0);
         if (moveInside(left) && moveInside(right) &&
             sectionActiveAt(left, movePc.activeSectionX, movePc.activeSectionY, movePc.activeMode) &&

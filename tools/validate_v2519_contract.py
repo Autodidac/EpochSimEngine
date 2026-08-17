@@ -70,18 +70,19 @@ require("tests/scene_spawn_contract.cpp", "SceneSpawn{1448, 927, 24u, true}")
 # Macro packets run at half cadence and survive two classifier ticks before breakup.
 for token in (
     "macro_packet_interval_ticks = 2u",
-    "exposed_packet_breakup_attempts = 8u",
+    "macro_packet_travel_steps = 8u",
+    "macro_packet_blocked_attempts = 8u",
     "macro_packet_step_due",
 ):
     require("include/sandhybrid/simulation_policy.hpp", token)
-for token in ("macroCadenceCarry", "macroStepDue", "mediumExposureAttemptBudget = 8u"):
+for token in ("macroCadenceCarry", "macroStepDue", "mediumTravelSteps >= TILE_MEDIUM_PROGRESS_LIMIT"):
     require("shaders/tiles.comp", token)
 for token in ("macro_step_due", "if (macro_step_due)", ".reserved = 2u, // Focused acceptance"):
     require("src/vulkan_renderer.cpp", token)
 require("tests/behavior_contract.cpp", "macro_packet_step_due(2u)")
 for token in (
     "bool sourceEligible",
-    "classifier observes eight due opportunities",
+    "advanceMediumPacket",
     "Fine work never races an intact packet",
     "TILE_SLEEPING | TILE_FINE_ACTIVE | TILE_SETTLED_MEDIUM",
 ):

@@ -129,7 +129,8 @@ bool tileLiquidCanSpread(ivec2 sourcePosition,
     return supplied && forwardOpen;
 }
 void main() {
-    uvec2 tile = gl_GlobalInvocationID.xy;
+    uvec2 tile = gl_GlobalInvocationID.xy + uvec2(activeDispatchTileOrigin(
+        pc.activeSectionX, pc.activeSectionY, pc.activeMode));
     uint columns = tileColumns(pc.width);
     uint rows = (pc.height + TILE_SIZE - 1u) / TILE_SIZE;
     if (tile.x >= columns || tile.y >= rows) return;
@@ -293,34 +294,47 @@ void main() {
     bool macroStepDue = (pc.reserved & 2u) != 0u;
     bool macroCadenceCarry = (fullLiquid || fullGas) &&
                              tileHas(previous, TILE_MACRO_MOVED);
-    // AUX_MOVED is one-tick cell ownership; TILE_MACRO_MOVED prevents a second
-    // packet commit in the same cadence. Tile counters travel with exact swaps,
-    // so an exposed packet keeps its eight-opportunity travel budget even when
-    // a commit succeeds. Enclosure resets the budget and retains macro ownership.
     bool liquidBoundaryCandidate = fullLiquid && !liquidEnclosed;
     bool gasBoundaryCandidate = fullGas && !gasEnclosed;
     bool exposedMedium = liquidBoundaryCandidate || gasBoundaryCandidate;
-    const uint mediumExposureAttemptBudget = 8u;
-    uint previousExposureAttempts = exposedMedium
-        ? tileStableTicks(previous) : 0u;
-    uint mediumExposureAttempts = exposedMedium
-        ? min(previousExposureAttempts + (macroStepDue ? 1u : 0u),
-              mediumExposureAttemptBudget) : 0u;
-    bool liquidBoundaryFine = liquidBoundaryCandidate &&
-                              mediumExposureAttempts >= mediumExposureAttemptBudget;
-    bool gasBoundaryFine = gasBoundaryCandidate &&
-                           mediumExposureAttempts >= mediumExposureAttemptBudget;
+    bool wasMacroMedium = tileHas(previous, TILE_MACRO_LIQUID) ||
+                          tileHas(previous, TILE_MACRO_GAS);
+    bool retainedMediumProgress = previous.material == dominant &&
+        (wasMacroMedium || tileHas(previous, TILE_MEDIUM_BREAKUP) ||
+         tileHas(previous, TILE_MEDIUM_ENCLOSED) ||
+         (tileHas(previous, TILE_FINE_ACTIVE) &&
+          (isLiquid(previous.material) || isGas(previous.material))));
+    // Counters share storage with terrain stability. Never interpret a prior
+    // material's stability age as packet distance after painting/conversion.
+    uint mediumTravelSteps = exposedMedium && retainedMediumProgress
+        ? tileMediumTravelSteps(previous) : 0u;
+    uint mediumBlockedAttempts = exposedMedium && retainedMediumProgress
+        ? tileMediumBlockedAttempts(previous) : 0u;
+    // Exact macro commits advance travel in macro_move.comp. A successful
+    // opportunity also clears the independent blocked-attempt escape. Only a
+    // due classifier that follows a failed attempt increments that counter;
+    // newly classified packets always receive their first attempt for free.
+    if (exposedMedium && wasMacroMedium && macroStepDue) {
+        mediumBlockedAttempts = macroCadenceCarry
+            ? 0u : min(mediumBlockedAttempts + 1u, TILE_MEDIUM_PROGRESS_LIMIT);
+    } else if (macroCadenceCarry) {
+        mediumBlockedAttempts = 0u;
+    }
+    bool mediumBudgetExhausted =
+        mediumTravelSteps >= TILE_MEDIUM_PROGRESS_LIMIT ||
+        mediumBlockedAttempts >= TILE_MEDIUM_PROGRESS_LIMIT;
+    bool liquidBoundaryFine = liquidBoundaryCandidate && mediumBudgetExhausted;
+    bool gasBoundaryFine = gasBoundaryCandidate && mediumBudgetExhausted;
     bool boundaryFineMedium = liquidBoundaryFine || gasBoundaryFine;
     bool liquidBreakup = liquidBoundaryFine &&
         !tileHas(previous, TILE_MEDIUM_BREAKUP);
     bool gasBreakup = gasBoundaryFine &&
         !tileHas(previous, TILE_MEDIUM_BREAKUP);
     bool mediumBreakup = liquidBreakup || gasBreakup;
-    // A complete medium tile receives a macro transaction attempt before fine
-    // movement. Exposed or partially blocked transactions retain fine fallback.
-    // Match the packaged v2.5.3 moving-or-enclosed packet policy: moving full
-    // media remain macro-owned for eight due opportunities. Only an open,
-    // incompatible perimeter may then hand ownership to canonical fine cells.
+    // Complete exposed media stay macro-owned for eight successful 8x8 steps.
+    // A fresh incompatible perimeter then hands all 64 canonical cells to fine
+    // simulation. Eight consecutive failed opportunities provide the separate
+    // escape for a genuinely stuck or misaligned packet.
     bool macroLiquid = fullLiquid && !liquidBoundaryFine;
     bool macroGas = fullGas && !gasBoundaryFine;
     bool macroPowder = fullRegion && isPowder(dominant) &&
@@ -362,7 +376,9 @@ void main() {
                      occupied >= TILE_STABILITY_OCCUPANCY && stable == occupied &&
                      !moving && !hot && !reacting;
     uint stableTicks = candidate ? min(tileStableTicks(previous) + 1u, TILE_STABILIZE_TICKS) :
-                       mediumExposureAttempts;
+                       (exposedMedium
+                            ? packTileMediumProgress(mediumTravelSteps, mediumBlockedAttempts)
+                            : 0u);
     bool stableRegion = candidate && stableTicks >= TILE_STABILIZE_TICKS;
     bool unsupportedStructural = structuralTile && !durableStructuralTile &&
                        !physicallySupported;

@@ -27,6 +27,46 @@ struct SectionAssignment final {
     std::uint8_t worker{};
 };
 
+struct ActiveCellDispatch final {
+    std::uint32_t origin_x{};
+    std::uint32_t origin_y{};
+    std::uint32_t width{};
+    std::uint32_t height{};
+
+    friend constexpr bool operator==(
+        ActiveCellDispatch, ActiveCellDispatch) noexcept = default;
+
+    [[nodiscard]] constexpr std::uint64_t cell_count() const noexcept {
+        return static_cast<std::uint64_t>(width) * height;
+    }
+};
+
+[[nodiscard]] constexpr ActiveCellDispatch active_cell_dispatch(
+    const std::uint32_t grid_width,
+    const std::uint32_t grid_height,
+    const SectionCoordinate origin) noexcept {
+    const auto requested_x = origin.x > 0
+        ? static_cast<std::uint64_t>(origin.x) * active_region_width_cells : 0u;
+    const auto requested_y = origin.y > 0
+        ? static_cast<std::uint64_t>(origin.y) * active_region_height_cells : 0u;
+    const auto origin_x = static_cast<std::uint32_t>(
+        requested_x < grid_width ? requested_x : grid_width);
+    const auto origin_y = static_cast<std::uint32_t>(
+        requested_y < grid_height ? requested_y : grid_height);
+    const auto remaining_width = grid_width - origin_x;
+    const auto remaining_height = grid_height - origin_y;
+    constexpr auto window_width = static_cast<std::uint32_t>(
+        active_window_columns * active_region_width_cells);
+    constexpr auto window_height = static_cast<std::uint32_t>(
+        active_window_rows * active_region_height_cells);
+    return {
+        origin_x,
+        origin_y,
+        remaining_width < window_width ? remaining_width : window_width,
+        remaining_height < window_height ? remaining_height : window_height,
+    };
+}
+
 struct SectionSchedule final {
     std::array<SectionAssignment, active_window_section_capacity> assignments{};
     SectionCoordinate origin{};

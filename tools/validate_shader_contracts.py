@@ -160,17 +160,31 @@ def main() -> int:
             "six-pass liquid equalization contract")
 
     for token in (
-        "const uint mediumExposureAttemptBudget = 8u;",
         "bool macroLiquid = fullLiquid && !liquidBoundaryFine;",
         "bool macroGas = fullGas && !gasBoundaryFine;",
-        "incompatible perimeter may then hand ownership to canonical fine cells",
+        "mediumTravelSteps >= TILE_MEDIUM_PROGRESS_LIMIT",
+        "mediumBlockedAttempts >= TILE_MEDIUM_PROGRESS_LIMIT",
+        "packTileMediumProgress(mediumTravelSteps, mediumBlockedAttempts)",
     ):
-        require(tiles, token, errors, "eight-opportunity macro classifier contract")
-    require(macro_move, "classifier observes eight due opportunities", errors,
-            "retained exact-packet contract")
-    require(simulation_policy, "exposed_packet_breakup_attempts = 8u", errors,
-            "CPU macro policy contract")
-
+        require(tiles, token, errors, "eight-step macro classifier contract")
+    for token in (
+        "const uint TILE_MEDIUM_PROGRESS_LIMIT = 8u;",
+        "uint tileMediumTravelSteps(TileState state)",
+        "uint tileMediumBlockedAttempts(TileState state)",
+    ):
+        require(tile_defs, token, errors, "packet progress packing contract")
+    for token in (
+        "TileState advanceMediumPacket(TileState state)",
+        "packTileMediumProgress(tileMediumTravelSteps(state) + 1u, 0u)",
+        "activeDispatchTileOrigin(",
+    ):
+        require(macro_move, token, errors, "successful exact-packet contract")
+    for token in (
+        "macro_packet_travel_steps = 8u",
+        "macro_packet_blocked_attempts = 8u",
+        "medium_packet_breaks_to_fine(",
+    ):
+        require(simulation_policy, token, errors, "CPU macro policy contract")
     for token in (
         "route_world_primary_action({",
         "WorldPrimaryAction::editor_fill",
@@ -197,10 +211,12 @@ def main() -> int:
             "one-row district address contract")
     require(chemistry, "result.aux &= ~AUX_MOVED;", errors,
             "one-tick movement ownership contract")
-    require(tiles, "uint previousExposureAttempts = exposedMedium", errors,
-            "eight-opportunity packet travel contract")
     require(renderer, "macro_liquid_consecutive_packets", errors,
             "consecutive macro packet acceptance contract")
+    require(renderer, "macro_bubble_eight_step_breakup", errors,
+            "eight-step Water bubble acceptance contract")
+    require(renderer, "active_cell_dispatch(", errors,
+            "active-window compute dispatch contract")
     require(reset, "int buriedBase = min(world.y - 4, surfaceRow + 13)", errors,
             "sunken Volcano geometry contract")
     require(swarm, "BEE_PERSISTENT_HOME_BIT", errors,

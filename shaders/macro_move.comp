@@ -49,6 +49,10 @@ bool pairCoordinates(out ivec2 sourceTile, out ivec2 targetTile) {
         sourceTile = macroPc.phase == 3 ? ivec2(baseX, pair.y) : ivec2(baseX + 1, pair.y);
         targetTile = macroPc.phase == 3 ? sourceTile + ivec2(1, 0) : sourceTile + ivec2(-1, 0);
     }
+    ivec2 dispatchOrigin = activeDispatchTileOrigin(
+        macroPc.activeSectionX, macroPc.activeSectionY, macroPc.activeMode);
+    sourceTile += dispatchOrigin;
+    targetTile += dispatchOrigin;
     return sourceTile.x >= 0 && sourceTile.y >= 0 && targetTile.x >= 0 && targetTile.y >= 0 &&
            sourceTile.x < int(columns) && targetTile.x < int(columns) &&
            sourceTile.y < int(rows) && targetTile.y < int(rows);
@@ -99,6 +103,15 @@ void markMacroChunkDirty(ivec2 p) {
     atomicOr(chunks[chunkIndex(p, macroPc.width)].flags, CHUNK_DIRTY | CHUNK_ACTIVE);
 }
 
+TileState advanceMediumPacket(TileState state) {
+    if (tileHas(state, TILE_MACRO_LIQUID) || tileHas(state, TILE_MACRO_GAS)) {
+        state.counters = packTileCounters(
+            packTileMediumProgress(tileMediumTravelSteps(state) + 1u, 0u),
+            tileCooldown(state));
+    }
+    return state;
+}
+
 void main() {
     if (gl_LocalInvocationIndex == 0u) {
         macroMoveAllowed = 0u;
@@ -136,7 +149,7 @@ void main() {
                           regionSupported(sourceOrigin, source);
             }
             // Failed exact packet transfers remain macro-owned until the
-            // classifier observes eight due opportunities and an actually open,
+            // classifier observes eight successful tile steps or blocked attempts plus an open,
             // incompatible perimeter. Fine work never races an intact packet.
             if (allowed) {
                 sourceTileShared = sourceTile;
@@ -164,8 +177,8 @@ void main() {
     barrier();
 
     if (gl_LocalInvocationIndex == 0u) {
-        TileState sourceState = tiles[sourceTileIndexShared];
-        TileState targetState = tiles[targetTileIndexShared];
+        TileState sourceState = advanceMediumPacket(tiles[sourceTileIndexShared]);
+        TileState targetState = advanceMediumPacket(tiles[targetTileIndexShared]);
         uint staleMediumFlags = TILE_SLEEPING | TILE_FINE_ACTIVE | TILE_SETTLED_MEDIUM |
                                 TILE_MEDIUM_ENCLOSED | TILE_MEDIUM_BREAKUP;
         sourceState.flags = (sourceState.flags | TILE_ACTIVE | TILE_MACRO_MOVED) & ~staleMediumFlags;

@@ -60,6 +60,13 @@ uint tileIndex(ivec2 p, uint width) {
 }
 uint tileStableTicks(TileState state) { return state.counters & 0xffffu; }
 uint tileCooldown(TileState state) { return state.counters >> 16u; }
+const uint TILE_MEDIUM_PROGRESS_LIMIT = 8u;
+uint tileMediumTravelSteps(TileState state) { return tileStableTicks(state) & 0xffu; }
+uint tileMediumBlockedAttempts(TileState state) { return (tileStableTicks(state) >> 8u) & 0xffu; }
+uint packTileMediumProgress(uint travelSteps, uint blockedAttempts) {
+    return min(travelSteps, TILE_MEDIUM_PROGRESS_LIMIT) |
+           (min(blockedAttempts, TILE_MEDIUM_PROGRESS_LIMIT) << 8u);
+}
 uint packTileCounters(uint stableTicks, uint cooldown) {
     return min(stableTicks, 0xffffu) | (min(cooldown, 0xffffu) << 16u);
 }

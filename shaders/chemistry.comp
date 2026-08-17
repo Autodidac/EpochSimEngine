@@ -888,7 +888,8 @@ bool sleepingStructuralNeighborhood(ivec2 position, Cell source) {
 }
 
 void main() {
-    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy) + activeDispatchCellOrigin(
+        pc.activeSectionX, pc.activeSectionY, pc.activeMode);
     if (!inside(p)) return;
 
     uint index = indexOf(p);

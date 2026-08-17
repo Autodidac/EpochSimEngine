@@ -45,7 +45,8 @@ require("shaders/move.comp",
         "int liquidDropDistance",
         "forwardDrop == oppositeDrop && direction > 0",
         "((a.aux | b.aux) & AUX_MOVED) == 0u")
-require("shaders/tiles.comp", "mediumExposureAttemptBudget = 8u")
+require("shaders/tiles.comp", "mediumTravelSteps >= TILE_MEDIUM_PROGRESS_LIMIT",
+        "mediumBlockedAttempts >= TILE_MEDIUM_PROGRESS_LIMIT")
 require("shaders/tiles.comp",
         "uint liquidMinimumAge = 0xffffffffu;",
         "liquidMinimumAge = min(liquidMinimumAge, cell.age);",

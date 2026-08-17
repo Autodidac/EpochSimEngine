@@ -43,8 +43,8 @@ require("shaders/reset.comp", "PERSISTENT_WORLD_DISTRICTS = ivec2(8, 1)",
         "int buriedBase = min(world.y - 4, surfaceRow + 13)",
         "Compact far-right stepped cone from the supplied silhouette")
 require("shaders/chemistry.comp", "result.aux &= ~AUX_MOVED;")
-require("shaders/tiles.comp", "const uint mediumExposureAttemptBudget = 8u",
-        "uint previousExposureAttempts = exposedMedium",
+require("shaders/tiles.comp", "mediumTravelSteps >= TILE_MEDIUM_PROGRESS_LIMIT",
+        "mediumBlockedAttempts >= TILE_MEDIUM_PROGRESS_LIMIT",
         "productiveMediumMove")
 require("shaders/bee_swarm.glsl", "BEE_PERSISTENT_HOME_BIT",
         "district << 20u", "BEE_FORMATION_COUNT = 100u")

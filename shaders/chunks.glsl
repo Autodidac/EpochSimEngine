@@ -38,6 +38,16 @@ bool chunkHas(ChunkState state, uint flag) { return (state.flags & flag) != 0u; 
 
 const ivec2 ACTIVE_WINDOW_REGIONS = ivec2(4, 4);
 
+ivec2 activeDispatchCellOrigin(int originX, int originY, uint enabled) {
+    if (enabled == 0u) return ivec2(0);
+    return ivec2(max(originX, 0) * ACTIVE_REGION_WIDTH_CELLS,
+                  max(originY, 0) * ACTIVE_REGION_HEIGHT_CELLS);
+}
+
+ivec2 activeDispatchTileOrigin(int originX, int originY, uint enabled) {
+    return activeDispatchCellOrigin(originX, originY, enabled) / int(TILE_SIZE);
+}
+
 bool sectionCoordinateActive(ivec2 candidate, ivec2 origin) {
     ivec2 local = candidate - origin;
     return all(greaterThanEqual(local, ivec2(0))) &&

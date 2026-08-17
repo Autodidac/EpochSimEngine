@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Complete exposed liquid/gas packets now travel eight successful full-tile steps before conditional fine breakup; eight consecutive failed transactions use a separate escape counter, while successful motion and compatible enclosure reset the appropriate budgets.
+- Added packaged Vulkan acceptance for a conserved Hydrogen packet rising eight complete tiles through Water and for the independent blocked-packet fallback.
+- Restricted tile classification, chemistry, macro movement, and fine movement dispatches to the clipped 4x4 active window, reducing those Large compute domains to at most one quarter of the resident cells.
 - World `RESET` now preserves simulation and MAP camera center/zoom state; `H` and the sidebar `H CAM HOME` control explicitly restore the active view, with `0` and Home retained as compatibility aliases.
 - Added cross-platform `H` input routing, a non-overlapping fifth VIEW/INPUT control, the matching shader key legend, and deterministic reset-preservation/layout contracts.
 

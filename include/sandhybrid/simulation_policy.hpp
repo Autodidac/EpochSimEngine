@@ -190,7 +190,10 @@ inline constexpr std::uint32_t wet_density_bonus = 32u;
 
 
 inline constexpr std::uint32_t macro_packet_interval_ticks = 2u;
-inline constexpr std::uint32_t exposed_packet_breakup_attempts = 8u;
+inline constexpr std::uint32_t macro_packet_travel_steps = 8u;
+inline constexpr std::uint32_t macro_packet_blocked_attempts = 8u;
+inline constexpr std::uint32_t exposed_packet_breakup_attempts =
+    macro_packet_blocked_attempts;
 
 [[nodiscard]] constexpr bool macro_packet_step_due(
     const std::uint32_t simulation_step) noexcept {
@@ -213,6 +216,32 @@ inline constexpr std::uint32_t exposed_packet_breakup_attempts = 8u;
     return full_region && (moving || perimeter_has_only_liquid_or_solid);
 }
 
+[[nodiscard]] constexpr std::uint32_t packet_travel_after_commit(
+    const std::uint32_t current_steps) noexcept {
+    return current_steps < macro_packet_travel_steps
+        ? current_steps + 1u : macro_packet_travel_steps;
+}
+
+[[nodiscard]] constexpr std::uint32_t packet_blocked_after_classifier(
+    const std::uint32_t current_attempts,
+    const bool was_macro,
+    const bool moved_last_opportunity,
+    const bool macro_step_due) noexcept {
+    if (moved_last_opportunity) return 0u;
+    if (!was_macro || !macro_step_due) return current_attempts;
+    return current_attempts < macro_packet_blocked_attempts
+        ? current_attempts + 1u : macro_packet_blocked_attempts;
+}
+
+[[nodiscard]] constexpr bool medium_packet_breaks_to_fine(
+    const bool full_region,
+    const bool perimeter_compatible,
+    const std::uint32_t successful_steps,
+    const std::uint32_t blocked_attempts) noexcept {
+    return full_region && !perimeter_compatible &&
+           (successful_steps >= macro_packet_travel_steps ||
+            blocked_attempts >= macro_packet_blocked_attempts);
+}
 [[nodiscard]] constexpr bool medium_tile_breaks_to_fine(
     const bool full_region,
     const bool moving,
