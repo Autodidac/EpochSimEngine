@@ -61,7 +61,7 @@ This command builds the real application and all GLSL shaders, runs the static s
 - CO2 renders near-black, hydrogen renders pink, and the enlarged UI hit rectangles match the fragment-shader controls.
 
 - With `F3` counters visible, complete moving Water and gas tiles attempt exact packet movement every two fixed ticks; an exposed blocked packet receives eight due opportunities before a fresh perimeter check permits fine fallback, while enclosed Air remains tiled.
-- In the Ecosystem district, compare the suspended hive against the supplied irregular historical photograph. The current formula/perch contract must not be reported as that photograph match; reset, placement, load normalization, queen/home metadata, and bee cycles must agree only after the actual historical payload is recovered.
+- In the Ecosystem district, compare the suspended hive against the supplied historical photograph. The recovered Fix29 shell/chamber/right-exit cells, exact two-bit contents, nine-tile Wood perch, and compact three-lobe SandHybrid colony are authoritative; exact reset, placement, load normalization, queen/home metadata, delayed runtime state, and packaged visual observation must agree before the visual mission closes.
 - While `PAUSED`, paint, erase, fill, and Ignite Air, confirm each edit appears immediately while both RUNNING and PAUSED, and confirm clocks, actors, reactions, lighting, MAP refresh, and effects do not advance.
 - Verify Inventory and Designer remain inside the sidebar at wide and compact sizes; each exposes `INVENTORY` and `BLUEPRINTS`, and Designer never replaces the world viewport.
 
@@ -90,13 +90,15 @@ This focused gate does not close broader cross-district traversal, weather/ecolo
 
 ## v2.5.25 stable local release gates
 
+Cold-package synchronization gate: full scene staging now declares HOST/TRANSFER dependencies in both directions. The focused audit requires those barriers, and the fresh installed Windows Large package must pass RUNNING and PAUSED paint plus the complete production suite twice consecutively before archiving.
+
 The post-v2.5.25 camera-preservation follow-up adds three source/runtime gates without changing the immutable v2.5.25 archives:
 
 The packet/performance follow-up adds successful-distance and bounded-dispatch gates without claiming unmeasured FPS:
 
 - `sandhybrid_behavior_contract` proves eight-step travel saturation, independent failed-attempt accumulation, success reset, and perimeter-conditional breakup.
 - `sandhybrid_section_scheduler_contract` proves clipped 4x4 dispatch dimensions and a fourfold Large cell-domain reduction.
-- Packaged Windows Vulkan acceptance proves `macro_bubble_eight_step_breakup` with Hydrogen `64`, Water `512`, progress `7` retained and progress `8` broken to fine; `macro_blocked_fine_fallback` reports exactly eight blocked attempts.
+- Packaged Windows Vulkan acceptance proves `macro_bubble_eight_step_breakup` with Hydrogen `64`, Water `512`, progress `7` retained and progress `8` broken to fine; `macro_blocked_fine_fallback` reports exactly eight blocked attempts. Current-source acceptance additionally follows all three authored Waterworks Hydrogen packets through the production active window with the same seven-step retention/eighth-step breakup and exact Water/Hydrogen conservation.
 - Serial native verification passes Windows Release `35/35` CTests and WSL Linux Release `32/32`. Interactive timestamp/FPS evidence remains required for performance mission closure.
 
 - `sandhybrid_input_routing_contract` proves `request_world_reset` raises only the reset epoch request and preserves simulation-camera and MAP center/zoom state.

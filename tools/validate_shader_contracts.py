@@ -230,6 +230,8 @@ def main() -> int:
             "no scene carousel contract")
     require(fullscreen, "if (readableTileGrid && stateEdge)", errors,
             "square edge-only debug contract")
+    require(fullscreen, "if (!mapSample && (x < renderPc.viewportLeft", errors,
+            "MAP overlay must be classified before camera letterbox rejection")
     if errors:
         print("current shader/interface contract validation failed:", file=sys.stderr)
         for error in errors:

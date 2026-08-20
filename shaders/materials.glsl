@@ -468,7 +468,13 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
     }
     case MAT_PLASTIC: color = vec4(0.80, 0.24 + variation, 0.42, 1.0); break;
     case MAT_ACID_RESISTANT_PLASTIC: color = vec4(0.22, 0.75, 0.78 + variation, 1.0); break;
-    case MAT_HONEY: color = vec4(0.94, 0.54 + variation, 0.06, 0.96); break;
+    case MAT_HONEY: {
+        bool fixedHiveContent = (aux & AUX_STRUCTURAL) != 0u;
+        color = fixedHiveContent
+            ? vec4(1.00, 0.78 + variation * 0.35, 0.10, 1.0)
+            : vec4(0.94, 0.54 + variation, 0.06, 0.96);
+        break;
+    }
     case MAT_BEE: {
         uint wing = (textureHash >> 7u) & 1u;
         uint stripe = (textureHash >> 4u) & 3u;
@@ -504,11 +510,17 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
     }
     case MAT_BEEHIVE: {
         bool comb = ((position.x + (position.y & 1)) % 4) == 0;
-        color = vec4(0.62, comb ? 0.37 : 0.42, 0.08, 1.0); break;
+        color = vec4(comb ? 0.78 : 0.82, comb ? 0.58 : 0.64, 0.22, 1.0); break;
     }
     case MAT_DIRTY_STEAM: color = vec4(0.43, 0.47 + variation, 0.48, 0.68); break;
     case MAT_DIRTY_WATER: color = vec4(0.16, 0.30 + variation, 0.31, 0.94); break;
-    case MAT_POLLEN: color = vec4(0.98, 0.78 + variation, 0.08, 1.0); break;
+    case MAT_POLLEN: {
+        bool fixedHiveContent = (aux & AUX_STRUCTURAL) != 0u;
+        color = fixedHiveContent
+            ? vec4(1.00, 0.92 + variation * 0.20, 0.30, 1.0)
+            : vec4(0.98, 0.78 + variation, 0.08, 1.0);
+        break;
+    }
     case MAT_QUEEN_BEE: {
         bool stripe = ((position.x + position.y) & 1) == 0;
         color = stripe ? vec4(0.78, 0.34, 0.035, 1.0)

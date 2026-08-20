@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Added explicit host/transfer barriers around full scene staging so a cold installed run cannot lose the first RUNNING editor paint before readback.
+- Fixed MAP rendering above wide camera letterboxing so the enabled whole-world overlay is visible and can verify the eight aligned district grass lines.
+- Added three normal-World Waterworks Hydrogen packets that remain exact macro tiles for seven full steps and conditionally burst to fine cells on the eighth, with Water/Hydrogen conservation checked on the production active-window path.
+- Brightened only canonical fixed Fix29 hive shell/chamber content under static lighting so the exact Honey/Pollen body remains readable beneath its Wood perch without reintroducing animated non-metal shaders.
+
+- Kept the photographed Fix29 hive composite readable during normal simulation by reserving compact three-lobe slots for non-foraging colony members instead of dispersing the entire 100-bee colony into presentation-only halo/cloud phases; real bounded foragers still leave and return through the SandHybrid lifecycle.
+
 - Corrected the Fix29 hive chamber to the historical two-bit payload selector, restoring the Honey-dominant photographed interior across reset, tool placement, load normalization, and delayed runtime state.
 - Complete exposed liquid/gas packets now travel eight successful full-tile steps before conditional fine breakup; eight consecutive failed transactions use a separate escape counter, while successful motion and compatible enclosure reset the appropriate budgets.
 - Added packaged Vulkan acceptance for a conserved Hydrogen packet rising eight complete tiles through Water and for the independent blocked-packet fallback.

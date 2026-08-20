@@ -440,6 +440,19 @@ uint waterworksMaterial(ivec2 p) {
         else if (brickRect(p, minimumBrick + ivec2(1), maximumBrick - ivec2(1)))
             material = tank == 0 ? MAT_WATER : (tank == 1 ? MAT_SALTWATER : MAT_OIL);
 
+        // Three complete authored Hydrogen packets make the macro/fine handoff
+        // visible in normal play. Each rises through Water as an exact 8x8
+        // transaction for eight successful tile steps, then exposes its 64
+        // canonical cells to the fine simulation without creating matter.
+        int bubbleRow = maximumBrick.y - 5;
+        int bubbleQuarter = minimumBrick.x + max(2, tankWidth / 4);
+        int bubbleMiddle = (minimumBrick.x + maximumBrick.x) / 2;
+        int bubbleThreeQuarter = maximumBrick.x - max(2, tankWidth / 4);
+        if (tank == 0 && b.y == bubbleRow &&
+            (b.x == bubbleQuarter || b.x == bubbleMiddle ||
+             b.x == bubbleThreeQuarter))
+            material = MAT_HYDROGEN;
+
         int outlet = (minimumBrick.x + maximumBrick.x) / 2;
         if (b.x == outlet && b.y >= maximumBrick.y - 1 && b.y < floorRow - 3) material = MAT_EMPTY;
         if ((b.x == outlet - 1 || b.x == outlet + 1) &&

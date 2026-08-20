@@ -432,6 +432,16 @@ vec3 applyWorldLighting(vec3 color, Cell cell, ivec2 grid, bool mapSample) {
     bool luminous = cell.material == MAT_LAVA || cell.material == MAT_FIRE ||
                     cell.material == MAT_LIGHTNING || cell.material == MAT_EMBER;
     if (luminous) illumination = max(illumination, 0.95);
+    // The Fix29 hive hangs beneath a complete Wood support tile. Keep its
+    // structural shell/chamber readable without animating or changing the
+    // authoritative cells; otherwise the support's shadow collapses the old
+    // bright center into the brown shell at normal zoom.
+    bool fixedHiveComposite = cell.material == MAT_BEEHIVE ||
+        cell.material == MAT_QUEEN_BEE ||
+        ((cell.material == MAT_HONEY || cell.material == MAT_POLLEN) &&
+         (cell.aux & AUX_STRUCTURAL) != 0u);
+    if (fixedHiveComposite) illumination = max(illumination, 0.90);
+    if (cell.material == MAT_BEE) illumination = max(illumination, 0.78);
     vec3 nightTint = vec3(0.54, 0.67, 0.88);
     return color * illumination * mix(nightTint, vec3(1.0), daylight);
 }
@@ -1172,17 +1182,20 @@ void main() {
         return;
     }
 
+    // MAP is intentionally a top overlay and may occupy the simulation
+    // letterbox above a wide camera view. Classify it before rejecting
+    // non-camera pixels or the enabled MAP control renders no map at all.
+    bool mapSample = mapOverlayPixel();
     uint viewportRight = renderPc.viewportLeft + renderPc.viewportWidth;
     uint viewportBottom = renderPc.viewportTop + renderPc.viewportHeight;
-    if (x < renderPc.viewportLeft || x >= viewportRight ||
-        y < renderPc.viewportTop || y >= viewportBottom) {
+    if (!mapSample && (x < renderPc.viewportLeft || x >= viewportRight ||
+        y < renderPc.viewportTop || y >= viewportBottom)) {
         // Deliberate letterbox, not a clipped simulation tile.
         vec3 bar = vec3(0.018, 0.024, 0.034);
         if ((x + y) % 24u == 0u) bar += vec3(0.006);
         outColor = vec4(bar, 1.0);
         return;
     }
-    bool mapSample = mapOverlayPixel();
     uint sampleLeft = mapSample ? renderPc.mapViewportLeft : renderPc.viewportLeft;
     uint sampleTop = mapSample ? renderPc.mapViewportTop : renderPc.viewportTop;
     uint sampleWidth = max(mapSample ? renderPc.mapViewportWidth : renderPc.viewportWidth, 1u);

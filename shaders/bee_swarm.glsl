@@ -15,12 +15,6 @@ const uint BEE_AUTHORED_HOME_SLOT_BIT = 0x80u;
 const ivec2 BEE_AUTHORED_WORLD_CELLS = ivec2(640, 360);
 const ivec2 BEE_PERSISTENT_WORLD_CELLS = ivec2(5120, 360);
 
-const uint BEE_SWARM_BIOHAZARD_TICKS = 1800u;
-const uint BEE_SWARM_ALTERNATE_TICKS = 600u;
-const uint BEE_SWARM_PHASE_TICKS =
-    BEE_SWARM_BIOHAZARD_TICKS + BEE_SWARM_ALTERNATE_TICKS;
-const uint BEE_SWARM_CYCLE_TICKS = BEE_SWARM_PHASE_TICKS * 2u;
-
 const uint BEE_INITIAL_PACKED[BEE_FORMATION_COUNT] = uint[](
     4541u, 4542u, 4543u, 4545u, 4546u, 4547u, 4668u, 4669u, 4675u, 4676u,
     4795u, 4805u, 4922u, 4923u, 4933u, 4934u, 5049u, 5050u, 5062u, 5063u,
@@ -215,53 +209,19 @@ ivec2 beeRotateOffset(ivec2 offset, uint phase) {
     return offset;
 }
 
-uint beeSwarmState(uint aux, uint step, uint width, uint height) {
-    uint local = step % BEE_SWARM_CYCLE_TICKS;
-    uint phase = local / BEE_SWARM_PHASE_TICKS;
-    uint phaseLocal = local % BEE_SWARM_PHASE_TICKS;
-    if (phaseLocal < BEE_SWARM_BIOHAZARD_TICKS) return 0u;
-    ivec2 home = beeHomeCenterFromAux(aux, width, height);
-    uint cycle = step / BEE_SWARM_CYCLE_TICKS;
-    bool reverse = (beeHash32(uint(home.x) * 73856093u ^ uint(home.y) * 19349663u ^ cycle) & 1u) != 0u;
-    return reverse ? 2u - phase : 1u + phase;
-}
-
-ivec2 beeBiohazardTargetOffset(uint slot, uint step, ivec2 home) {
-    const uint increments[8] = uint[8](1u, 3u, 7u, 9u, 11u, 13u, 17u, 19u);
-    uint formationCycle = step / 360u;
-    uint increment = increments[beeHash32(uint(home.x) ^ (uint(home.y) << 16u) ^ formationCycle) & 7u];
-    uint targetSlot = (slot + formationCycle * increment) % BEE_FORMATION_COUNT;
-    // The compact Fix29 composite stays readable while each bee remains an active cell.
-    ivec2 anchor = beeFormationOffset(targetSlot);
+ivec2 beeBiohazardTargetOffset(uint slot, uint step) {
+    // Stable one-to-one slot ownership keeps the photographed compact composite
+    // readable. Real foragers still leave through their explicit flower target
+    // and return through pollen/honey lifecycle targets.
+    ivec2 anchor = beeFormationOffset(slot);
     ivec2 flutter = beeRotateOffset(ivec2(1, 0), step / 8u + slot * 5u);
     return anchor + flutter;
-}
-
-ivec2 beeHaloTargetOffset(uint slot, uint step) {
-    int radius = 34 + int((slot * 13u) % 18u);
-    uint phase = step / 10u + slot * 7u;
-    return beeRotateOffset(ivec2(radius, 0), phase) +
-           beeRotateOffset(ivec2(2, 0), step / 3u + slot * 11u);
-}
-
-ivec2 beeCloudTargetOffset(uint slot, uint step) {
-    uint lobe = slot % 3u;
-    ivec2 center = lobe == 0u ? ivec2(0, -29) :
-                   (lobe == 1u ? ivec2(-26, 15) : ivec2(26, 15));
-    int radius = 5 + int((slot * 17u) % 16u);
-    uint phase = step / 8u + slot * 9u;
-    return center + beeRotateOffset(ivec2(radius, 0), phase) +
-           beeRotateOffset(ivec2(1, 0), step / 2u + slot * 3u);
 }
 
 ivec2 beeSwarmTarget(uint aux, uint step, uint width, uint height) {
     uint slot = beeFormationSlotFromAux(aux, width, height);
     ivec2 home = beeHomeCenterFromAux(aux, width, height);
-    uint state = beeSwarmState(aux, step, width, height);
-    ivec2 offset = state == 0u ? beeBiohazardTargetOffset(slot, step, home) :
-                   (state == 1u ? beeHaloTargetOffset(slot, step)
-                                : beeCloudTargetOffset(slot, step));
-    return home + offset;
+    return home + beeBiohazardTargetOffset(slot, step);
 }
 
 ivec2 beeOrbitTarget(uint aux, uint step, uint width, uint height) {

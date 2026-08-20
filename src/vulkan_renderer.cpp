@@ -1500,6 +1500,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
                                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                            VK_PIPELINE_STAGE_TRANSFER_BIT);
+            buffer_barrier(command_buffer, scene_staging_buffer,
+                           VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT |
+                               VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT);
             const VkBufferCopy copy{.size = scene_staging_buffer.size};
             vkCmdCopyBuffer(command_buffer, cell_buffers[current_set].handle,
                             scene_staging_buffer.handle, 1, &copy);
@@ -1936,6 +1942,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         vkUnmapMemory(device, scene_staging_buffer.memory);
 
         immediate_submit([&](const VkCommandBuffer command_buffer) {
+            buffer_barrier(command_buffer, scene_staging_buffer,
+                           VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT |
+                               VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT);
             const VkBufferCopy copy{.size = scene_staging_buffer.size};
             for (const auto& destination : cell_buffers) {
                 vkCmdCopyBuffer(command_buffer, scene_staging_buffer.handle,
@@ -3225,10 +3237,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const auto origin_y = translated_active_window
                 ? static_cast<std::uint32_t>((std::max)(active_section_y, 0) *
                                              active_region_height_cells) : 0u;
-            const auto acceptance_width =
-                (std::min)(config.grid_width - origin_x, 192u);
-            const auto acceptance_height =
-                (std::min)(config.grid_height - origin_y, 192u);
+            const auto acceptance_width = translated_active_window
+                ? (std::min)(config.grid_width - origin_x,
+                             static_cast<std::uint32_t>(active_region_width_cells))
+                : (std::min)(config.grid_width, 192u);
+            const auto acceptance_height = translated_active_window
+                ? (std::min)(config.grid_height - origin_y,
+                             static_cast<std::uint32_t>(active_region_height_cells))
+                : (std::min)(config.grid_height, 192u);
             const SimulationPush push{
                 .width = config.grid_width,
                 .height = translated_active_window ? config.grid_height : acceptance_height,
@@ -3264,10 +3280,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const auto origin_y = translated_active_window
                 ? static_cast<std::uint32_t>((std::max)(active_section_y, 0) *
                                              active_region_height_cells) : 0u;
-            const auto acceptance_width =
-                (std::min)(config.grid_width - origin_x, 192u);
-            const auto acceptance_height =
-                (std::min)(config.grid_height - origin_y, 192u);
+            const auto acceptance_width = translated_active_window
+                ? (std::min)(config.grid_width - origin_x,
+                             static_cast<std::uint32_t>(active_region_width_cells))
+                : (std::min)(config.grid_width, 192u);
+            const auto acceptance_height = translated_active_window
+                ? (std::min)(config.grid_height - origin_y,
+                             static_cast<std::uint32_t>(active_region_height_cells))
+                : (std::min)(config.grid_height, 192u);
             const MovementPush push{
                 .width = config.grid_width,
                 .height = translated_active_window ? config.grid_height : acceptance_height,
@@ -3317,10 +3337,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const auto origin_y = translated_active_window
                 ? static_cast<std::uint32_t>((std::max)(active_section_y, 0) *
                                              active_region_height_cells) : 0u;
-            const auto acceptance_width =
-                (std::min)(config.grid_width - origin_x, 192u);
-            const auto acceptance_height =
-                (std::min)(config.grid_height - origin_y, 192u);
+            const auto acceptance_width = translated_active_window
+                ? (std::min)(config.grid_width - origin_x,
+                             static_cast<std::uint32_t>(active_region_width_cells))
+                : (std::min)(config.grid_width, 192u);
+            const auto acceptance_height = translated_active_window
+                ? (std::min)(config.grid_height - origin_y,
+                             static_cast<std::uint32_t>(active_region_height_cells))
+                : (std::min)(config.grid_height, 192u);
             const SimulationPush push{
                 .width = config.grid_width,
                 .height = translated_active_window ? config.grid_height : acceptance_height,
@@ -4048,6 +4072,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 std::uint32_t first_bee_aux = 0u;
                 std::array<bool, 100> bee_slots{};
                 std::uint32_t unique_bee_slots = 0u;
+                std::uint32_t compact_bees = 0u;
+                std::uint32_t top_lobe_bees = 0u;
+                std::uint32_t left_lobe_bees = 0u;
+                std::uint32_t right_lobe_bees = 0u;
                 for (std::int32_t dy = -18; dy <= 11; ++dy) {
                     for (std::int32_t dx = -40; dx <= 31; ++dx) {
                         const auto part = classify_pre_pr19_hive_cell(
@@ -4148,9 +4176,26 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                             decoded_home_y == expected_home_y && slot < bee_slots.size();
                         if (!metadata_matches) {
                             ++bee_metadata_mismatches;
-                        } else if (!bee_slots[slot]) {
-                            bee_slots[slot] = true;
-                            ++unique_bee_slots;
+                        } else {
+                            if (!bee_slots[slot]) {
+                                bee_slots[slot] = true;
+                                ++unique_bee_slots;
+                            }
+                            const auto compact_x = dx;
+                            const auto compact_y = static_cast<std::int32_t>(queen_y) + dy -
+                                static_cast<std::int32_t>((queen_y / 8u) * 8u);
+                            if (compact_x >= -24 && compact_x <= 24 &&
+                                compact_y >= -32 && compact_y <= 18)
+                                ++compact_bees;
+                            if (compact_x >= -10 && compact_x <= 10 &&
+                                compact_y >= -32 && compact_y <= -16)
+                                ++top_lobe_bees;
+                            if (compact_x >= -24 && compact_x <= -6 &&
+                                compact_y >= -4 && compact_y <= 18)
+                                ++left_lobe_bees;
+                            if (compact_x >= 6 && compact_x <= 24 &&
+                                compact_y >= -4 && compact_y <= 18)
+                                ++right_lobe_bees;
                         }
                     }
                 }
@@ -4162,7 +4207,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        mismatches == 0u && shell == 193u && support == expected_support &&
                            honey == expected_honey && pollen == expected_pollen &&
                            empty_chamber == expected_empty && bee_count == 100u &&
-                           bee_metadata_mismatches == 0u && unique_bee_slots == 100u,
+                           bee_metadata_mismatches == 0u && unique_bee_slots == 100u &&
+                           compact_bees >= 90u && top_lobe_bees >= 20u &&
+                           left_lobe_bees >= 28u && right_lobe_bees >= 28u,
                        "mismatches=" + std::to_string(mismatches) +
                            " support=" + std::to_string(support) +
                            " shell=" + std::to_string(shell) +
@@ -4173,6 +4220,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            " bee_metadata_mismatches=" +
                            std::to_string(bee_metadata_mismatches) +
                            " unique_slots=" + std::to_string(unique_bee_slots) +
+                           " compact=" + std::to_string(compact_bees) +
+                           " lobes=" + std::to_string(top_lobe_bees) + "/" +
+                               std::to_string(left_lobe_bees) + "/" +
+                               std::to_string(right_lobe_bees) +
                            " delayed_ticks=" + std::to_string(delayed_ticks) +
                            " world_bees=" + std::to_string(
                                count_material(cells, Material::bee)) +
@@ -4660,6 +4711,125 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            std::to_string(complete_grass_tiles) +
                            " complete_dirt_tiles=" +
                            std::to_string(complete_dirt_tiles));
+            }
+            {
+                // Exercise the authored Waterworks bubbles in the same resident
+                // World cells and 640x360 active-section dispatch used by play.
+                // This closes the gap where an isolated synthetic packet passed
+                // while the visible level could still leave complete tiles stuck.
+                constexpr std::uint32_t tile_size = 8u;
+                constexpr std::uint32_t bubble_count = 3u;
+                constexpr std::uint32_t tile_macro_movable = 0x00010000u;
+                constexpr std::uint32_t tile_fine_active = 0x00020000u;
+                constexpr std::uint32_t tile_medium_breakup = 0x04000000u;
+                const auto district = persistent_world_district_index(Scene::waterworks);
+                const auto district_x = persistent_world_district_origin_x(
+                    config.grid_width, district);
+                const auto district_y = persistent_world_district_origin_y(
+                    config.grid_height, district);
+                const auto world_bricks_x = pre_expansion_world_width / tile_size;
+                const auto world_bricks_y = pre_expansion_world_height / tile_size;
+                const auto tank_width = (std::max)(8, (static_cast<int>(world_bricks_x) - 10) / 3);
+                const auto tank_left = 2;
+                const auto tank_right = (std::min)(tank_left + tank_width,
+                                                   static_cast<int>(world_bricks_x) - 2);
+                const auto bubble_row = static_cast<std::uint32_t>(
+                    static_cast<int>(world_bricks_y) - 1 - 9 - 5);
+                const auto quarter = (std::max)(2, tank_width / 4);
+                const std::array<std::uint32_t, bubble_count> bubble_columns{
+                    static_cast<std::uint32_t>(tank_left + quarter),
+                    static_cast<std::uint32_t>((tank_left + tank_right) / 2),
+                    static_cast<std::uint32_t>(tank_right - quarter)};
+                const auto initial_bubble_y = district_y + bubble_row * tile_size;
+                const auto initial_water = count_material(world_cells, Material::water);
+                const auto initial_hydrogen = count_material(world_cells, Material::hydrogen);
+                bool authored_complete = true;
+                for (const auto column : bubble_columns) {
+                    authored_complete = authored_complete &&
+                        count_rect(world_cells, Material::hydrogen,
+                                   district_x + column * tile_size,
+                                   initial_bubble_y, tile_size, tile_size) == 64u;
+                }
+                append("world_waterworks_authored_bubble_packets",
+                       authored_complete,
+                       "packets=" + std::to_string(bubble_count) +
+                           " row=" + std::to_string(bubble_row) +
+                           " initial_hydrogen=" + std::to_string(initial_hydrogen));
+
+                const auto active_section_x = static_cast<std::int32_t>(
+                    (district_x + bubble_columns[1] * tile_size) /
+                    static_cast<std::uint32_t>(active_region_width_cells));
+                const auto active_section_y = static_cast<std::int32_t>(
+                    (initial_bubble_y - tile_size * 8u) /
+                    static_cast<std::uint32_t>(active_region_height_cells));
+                run_acceptance_tile_pass(active_section_x, active_section_y, true);
+                const auto tile_columns = divide_round_up(config.grid_width, tile_size);
+                auto gas_tile_row = initial_bubble_y / tile_size;
+                bool retained_first_seven = true;
+                bool counted_each_step = true;
+                std::uint32_t seventh_progress = 0u;
+                for (std::uint32_t step = 1u; step <= 8u; ++step) {
+                    const auto water_source_row = gas_tile_row - 1u;
+                    run_acceptance_macro_pass(
+                        0, static_cast<std::int32_t>(water_source_row & 1u),
+                        active_section_x, active_section_y, true);
+                    --gas_tile_row;
+                    const auto moved_states = download_tile_states();
+                    for (const auto column : bubble_columns) {
+                        const auto tile_column = (district_x + column * tile_size) / tile_size;
+                        const auto& moved_state = moved_states[
+                            gas_tile_row * tile_columns + tile_column];
+                        counted_each_step = counted_each_step &&
+                            (moved_state.counters & 0xffu) == step;
+                        if (step < 8u) {
+                            retained_first_seven = retained_first_seven &&
+                                (moved_state.flags & tile_macro_movable) != 0u &&
+                                (moved_state.flags & tile_fine_active) == 0u;
+                            seventh_progress = moved_state.counters & 0xffu;
+                        }
+                    }
+                    if (step < 8u) {
+                        run_acceptance_chemistry_pass(
+                            active_section_x, active_section_y, true);
+                        run_acceptance_tile_pass(
+                            active_section_x, active_section_y, true);
+                    }
+                }
+                run_acceptance_tile_pass(active_section_x, active_section_y, true);
+                const auto final_states = download_tile_states();
+                const auto final_cells = download_scene_cells();
+                bool all_broke_to_fine = true;
+                bool all_packets_conserved = true;
+                const auto final_bubble_y = gas_tile_row * tile_size;
+                for (const auto column : bubble_columns) {
+                    const auto bubble_x = district_x + column * tile_size;
+                    const auto tile_column = bubble_x / tile_size;
+                    const auto& final_state = final_states[
+                        gas_tile_row * tile_columns + tile_column];
+                    all_broke_to_fine = all_broke_to_fine &&
+                        (final_state.flags & tile_fine_active) != 0u &&
+                        (final_state.flags & tile_medium_breakup) != 0u &&
+                        (final_state.flags & tile_macro_movable) == 0u &&
+                        (final_state.counters & 0xffu) == 8u;
+                    all_packets_conserved = all_packets_conserved &&
+                        count_rect(final_cells, Material::hydrogen,
+                                   bubble_x, final_bubble_y,
+                                   tile_size, tile_size) == 64u;
+                }
+                const auto final_water = count_material(final_cells, Material::water);
+                const auto final_hydrogen = count_material(final_cells, Material::hydrogen);
+                append("world_waterworks_bubbles_eight_step_breakup",
+                       authored_complete && retained_first_seven &&
+                           counted_each_step && all_broke_to_fine &&
+                           all_packets_conserved && final_water == initial_water &&
+                           final_hydrogen == initial_hydrogen,
+                       "packets=" + std::to_string(bubble_count) +
+                           " seventh_progress=" + std::to_string(seventh_progress) +
+                           " final_row=" + std::to_string(gas_tile_row) +
+                           " water=" + std::to_string(final_water) +
+                           " hydrogen=" + std::to_string(final_hydrogen) +
+                           " active_section=" + std::to_string(active_section_x) + "," +
+                           std::to_string(active_section_y));
             }
             check_pre_pr19_hive("sandbox_hard_coded_hive", Scene::sandbox);
             check_pre_pr19_hive("sandbox_hard_coded_hive_delayed", Scene::sandbox, 120u);
