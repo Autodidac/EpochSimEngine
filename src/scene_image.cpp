@@ -1,4 +1,5 @@
 #include "sandhybrid/scene_image.hpp"
+#include "sandhybrid/world_layout.hpp"
 
 #include "sandhybrid/actor_medium.hpp"
 #include "sandhybrid/material.hpp"
@@ -60,7 +61,27 @@ void set_state(std::uint32_t& aux, const std::uint32_t value) noexcept {
 }
 
 std::uint32_t pack_bee_metadata(std::uint32_t aux, const std::uint32_t home_x,
-                                const std::uint32_t home_y, const std::uint32_t slot) noexcept {
+                                const std::uint32_t home_y, const std::uint32_t slot,
+                                const std::uint32_t width,
+                                const std::uint32_t height) noexcept {
+    if (width >= persistent_world_width && height >= persistent_world_height) {
+        for (std::uint32_t district = 0u;
+             district < persistent_world_district_count; ++district) {
+            const auto origin_x = persistent_world_district_origin_x(width, district);
+            const auto origin_y = persistent_world_district_origin_y(height, district);
+            if (home_x < origin_x || home_y < origin_y ||
+                home_x >= origin_x + pre_expansion_world_width ||
+                home_y >= origin_y + pre_expansion_world_height)
+                continue;
+            const auto local_x = (home_x - origin_x) / tile_size;
+            const auto local_y = (home_y - origin_y) / tile_size;
+            const auto metadata = std::min(local_x, 127u) |
+                (std::min(local_y, 63u) << 7u) |
+                ((slot & 127u) << 13u) | (district << 20u);
+            return (aux & ~bee_metadata_mask) | metadata;
+        }
+    }
+
     const auto packed_home_x = std::min(home_x / 4u, 255u);
     const auto packed_home_y = std::min(home_y / 4u, 127u);
     const auto packed_slot = (slot & 127u) | bee_authored_home_slot_bit;
@@ -520,7 +541,8 @@ bool load_scene_ppm(const std::filesystem::path& path,
         const auto home_y = queen_indices.empty() ? fallback_home_y : static_cast<std::uint32_t>(home_index / width);
         const auto slot = colony_sizes[colony]++ % bee_formation_count;
         auto& bee = cells[bee_index];
-        bee.aux = pack_bee_metadata(bee.aux | aux_bee_fed | aux_bee_swarm, home_x, home_y, slot);
+        bee.aux = pack_bee_metadata(bee.aux | aux_bee_fed | aux_bee_swarm,
+            home_x, home_y, slot, width, height);
         bee.age = (slot * 17u) % 900u | (bee_target_none << 16u);
     }
     return true;

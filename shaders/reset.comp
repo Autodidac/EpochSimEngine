@@ -212,8 +212,8 @@ uint residentLayerMaterial(int zone, int localY, int boundaryA, int boundaryB,
 }
 
 int sceneSurfaceTileRow(uint scene) {
-    if (scene == SCENE_VOLCANO || scene == SCENE_WATERWORKS ||
-        scene == SCENE_GOLD_MINE) return 43;
+    if (scene == SCENE_VOLCANO) return 22;
+    if (scene == SCENE_WATERWORKS || scene == SCENE_GOLD_MINE) return 42;
     if (scene == SCENE_ECOSYSTEM) return 37;
     if (scene == SCENE_ENGINEERING) return 42;
     if (scene == SCENE_DEMOLITION) return 41;
@@ -425,8 +425,11 @@ uint volcanoMaterial(ivec2 p) {
 uint waterworksMaterial(ivec2 p) {
     ivec2 world = worldBrickSize();
     ivec2 b = brickCoordinate(p);
-    int floorRow = world.y - 2;
-    uint material = b.y >= floorRow ? MAT_STONE : MAT_EMPTY;
+    int surfaceRow = world.y - 3;
+    int floorRow = world.y - 1;
+    uint material = b.y == surfaceRow ? MAT_GRASS :
+                    (b.y > surfaceRow && b.y < floorRow ? MAT_DIRT :
+                    (b.y >= floorRow ? MAT_STONE : MAT_EMPTY));
 
     int tankWidth = max(8, (world.x - 10) / 3);
     for (int tank = 0; tank < 3; ++tank) {
@@ -514,7 +517,9 @@ uint engineeringMaterial(ivec2 p) {
     ivec2 world = worldBrickSize();
     ivec2 b = brickCoordinate(p);
     int floorRow = world.y - 3;
-    uint material = b.y >= floorRow ? MAT_INSULATOR : MAT_EMPTY;
+    uint material = b.y == floorRow ? MAT_GRASS :
+                    (b.y == floorRow + 1 ? MAT_DIRT :
+                    (b.y >= world.y - 1 ? MAT_STONE : MAT_EMPTY));
 
     // Brick thermal vessel.
     ivec2 tankMin = ivec2(2, 5);
@@ -598,9 +603,12 @@ uint goldMineMaterial(ivec2 p) {
     int upper = 16;  // y=128, matching the player spawn.
     int middle = 26;
     int lower = 36;
+    int surfaceRow = world.y - 3;
     int floorRow = world.y - 2;
 
-    if (b.y >= floorRow) return MAT_STONE;
+    if (b.y >= world.y - 1) return MAT_STONE;
+    if (b.y == surfaceRow) material = MAT_GRASS;
+    else if (b.y == floorRow) material = MAT_DIRT;
 
     // Large upper reservoir and filter bed, aligned to the global brick grid.
     ivec2 reservoirMin = ivec2(22, 3);
@@ -650,9 +658,8 @@ uint demolitionMaterial(ivec2 p) {
     ivec2 world = worldBrickSize();
     ivec2 b = brickCoordinate(p);
     int floorRow = world.y - 4;
-    uint material = MAT_EMPTY;
-
-    if (b.y >= floorRow) material = MAT_STONE;
+    uint material = b.y == floorRow ? MAT_GRASS :
+                    (b.y > floorRow ? MAT_DIRT : MAT_EMPTY);
 
     ivec2 towerMin = ivec2(world.x / 3, 7);
     ivec2 towerMax = ivec2(world.x * 2 / 3, floorRow);

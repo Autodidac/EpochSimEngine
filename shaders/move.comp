@@ -766,7 +766,9 @@ ivec2 beeStoredFlowerTarget(Cell bee) {
 ivec2 beeStoredHoneyTarget(Cell bee) {
     uint targetTile = beeTargetTileFromAge(bee.age);
     if (!beeTargetTileValid(targetTile, TILE_HAS_HONEY))
-        return beeHomeCenterFromAux(bee.aux, movePc.width, movePc.height) + beeLandingOffset(beeFormationSlotFromAux(bee.aux));
+        return beeHomeCenterFromAux(bee.aux, movePc.width, movePc.height) +
+            beeLandingOffset(beeFormationSlotFromAux(
+                bee.aux, movePc.width, movePc.height));
     TileState targetState = tiles[targetTile];
     ivec2 honey = tileHoneyPosition(targetTile, movePc.width, targetState);
     return beeApproachPosition(honey, beeHomeCenterFromAux(bee.aux, movePc.width, movePc.height));
@@ -782,7 +784,7 @@ ivec2 beeStoredMigratingQueen(Cell bee) {
 }
 
 ivec2 beeMovementTarget(Cell bee) {
-    uint slot = beeFormationSlotFromAux(bee.aux);
+    uint slot = beeFormationSlotFromAux(bee.aux, movePc.width, movePc.height);
     if ((bee.aux & BEE_AUX_QUEEN) != 0u) {
         uint targetTile = beeTargetTileFromAge(bee.age);
         if (!beeTargetTileValid(targetTile, TILE_HAS_FLOWER))
@@ -821,7 +823,7 @@ bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint r
     // Dense agents circulate around the moving hidden-mask target instead of
     // deadlocking behind one another. This remains bounded target motion, not wandering.
     ivec2 stepDelta = targetPosition - sourcePosition;
-    uint slot = beeFormationSlotFromAux(bee.aux);
+    uint slot = beeFormationSlotFromAux(bee.aux, movePc.width, movePc.height);
     bool clockwise = ((slot * 17u + 3u) & 1u) == 0u;
     ivec2 tangent = clockwise ? ivec2(-sourceDelta.y, sourceDelta.x)
                               : ivec2(sourceDelta.y, -sourceDelta.x);

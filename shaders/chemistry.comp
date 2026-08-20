@@ -1503,7 +1503,7 @@ void main() {
             ivec2 nearbyQueen = nearestOffset(p, MAT_QUEEN_BEE, 6);
             if (any(notEqual(nearbyQueen, ivec2(0)))) {
                 ivec2 queenPosition = p + nearbyQueen;
-                uint slot = authoredBee ? beeFormationSlotFromAux(source.aux)
+                uint slot = authoredBee ? beeFormationSlotFromAux(source.aux, pc.width, pc.height)
                                         : hash32(indexOf(p) ^ source.aux) % BEE_FORMATION_COUNT;
                 result.aux = beePackMetadata(
                     result.aux | BEE_AUX_SWARM | BEE_AUX_FED,
@@ -1537,11 +1537,11 @@ void main() {
             if (authoredBee && !migratingFollower) {
                 bool carryingPollen = (source.aux & BEE_AUX_POLLEN) != 0u;
                 bool fed = (source.aux & BEE_AUX_FED) != 0u;
-                uint slot = beeFormationSlotFromAux(source.aux);
+                uint slot = beeFormationSlotFromAux(source.aux, pc.width, pc.height);
                 ivec2 homeCenter = beeHomeCenterFromAux(source.aux, pc.width, pc.height);
 
                 if (fed && !carryingPollen && targetTile == BEE_TARGET_NONE &&
-                    beeIsForager(source.aux) &&
+                    beeIsForager(source.aux, pc.width, pc.height) &&
                     timer >= 1200u + ((slot * 29u) % 600u)) {
                     uint flowerTile = nearestFlowerTileForColony(homeCenter);
                     if (flowerTile != BEE_TARGET_NONE) {

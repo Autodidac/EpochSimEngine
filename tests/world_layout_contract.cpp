@@ -38,11 +38,11 @@ static_assert(resident_substrate_is_structural(Material::uranium));
 
 static_assert(scene_surface_tile_row(Scene::sandbox) == 40u);
 static_assert(scene_surface_tile_row(Scene::blank) == 40u);
-static_assert(scene_surface_tile_row(Scene::volcano) == 43u);
-static_assert(scene_surface_tile_row(Scene::waterworks) == 43u);
+static_assert(scene_surface_tile_row(Scene::volcano) == 22u);
+static_assert(scene_surface_tile_row(Scene::waterworks) == 42u);
 static_assert(scene_surface_tile_row(Scene::ecosystem) == 37u);
 static_assert(scene_surface_tile_row(Scene::engineering_lab) == 42u);
-static_assert(scene_surface_tile_row(Scene::gold_mine) == 43u);
+static_assert(scene_surface_tile_row(Scene::gold_mine) == 42u);
 static_assert(scene_surface_tile_row(Scene::demolition) == 41u);
 static_assert(scene_surface_tile_row(Scene::frontier_base) == 17u);
 
@@ -75,7 +75,10 @@ static_assert(persistent_world_district_origin_x(resident_world_width, 7u) == 95
 static_assert(persistent_world_district_origin_y(resident_world_height, 0u) == 720u);
 static_assert(persistent_world_district_origin_y(resident_world_height, 1u) == 744u);
 static_assert(persistent_world_district_origin_y(resident_world_height, 3u) == 904u);
-static_assert(persistent_world_district_origin_y(resident_world_height, 4u) == 696u);
+static_assert(persistent_world_district_origin_y(resident_world_height, 4u) == 864u);
+static_assert(persistent_world_district_origin_y(resident_world_height, 5u) == 704u);
+static_assert(persistent_world_district_origin_y(resident_world_height, 6u) == 704u);
+static_assert(persistent_world_district_origin_y(resident_world_height, 7u) == 712u);
 static_assert(persistent_world_district_scene(0u) == Scene::sandbox);
 static_assert(persistent_world_district_scene(1u) == Scene::ecosystem);
 static_assert(persistent_world_district_scene(2u) == Scene::engineering_lab);
@@ -104,7 +107,7 @@ int main() {
         }
         if (resident_substrate_material(
                 resident_world_width, resident_world_height, scene, 5000u,
-                surface + 8u) != (scene_surface_tile_row(scene) == 43u ? Material::stone : Material::dirt)) return 12;
+                surface + 8u) != Material::dirt) return 12;
         if (resident_substrate_material(
                 resident_world_width, resident_world_height, scene, 5000u,
                 1072u) != Material::stone) return 13;

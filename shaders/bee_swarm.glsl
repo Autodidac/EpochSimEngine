@@ -11,7 +11,7 @@ const uint BEE_AUX_SWARM = 0x08000000u;
 const uint BEE_AUX_MIGRATING = 0x02000000u;
 const uint BEE_METADATA_MASK = 0x00ffffffu;
 const uint BEE_AUTHORED_HOME_SLOT_BIT = 0x80u;
-const uint BEE_PERSISTENT_HOME_BIT = 0x00800000u;
+
 const ivec2 BEE_AUTHORED_WORLD_CELLS = ivec2(640, 360);
 const ivec2 BEE_PERSISTENT_WORLD_CELLS = ivec2(5120, 360);
 
@@ -63,19 +63,22 @@ int beeFormationSlotFromOffset(ivec2 offset) {
     return -1;
 }
 
-bool beeUsesPersistentWorldHome(uint aux) {
-    return (aux & BEE_PERSISTENT_HOME_BIT) != 0u;
+bool beeUsesPersistentWorldHome(uint width, uint height) {
+    return int(width) >= BEE_PERSISTENT_WORLD_CELLS.x &&
+           int(height) >= BEE_PERSISTENT_WORLD_CELLS.y;
 }
 
-uint beeRawSlotFromAux(uint aux) {
-    return beeUsesPersistentWorldHome(aux)
+uint beeRawSlotFromAux(uint aux, uint width, uint height) {
+    return beeUsesPersistentWorldHome(width, height)
         ? ((aux >> 13u) & 127u)
         : ((aux >> 15u) & 255u);
 }
-uint beeFormationSlotFromAux(uint aux) { return beeRawSlotFromAux(aux) & 127u; }
-bool beeUsesAuthoredHome(uint aux) {
-    return !beeUsesPersistentWorldHome(aux) &&
-           (beeRawSlotFromAux(aux) & BEE_AUTHORED_HOME_SLOT_BIT) != 0u;
+uint beeFormationSlotFromAux(uint aux, uint width, uint height) {
+    return beeRawSlotFromAux(aux, width, height) & 127u;
+}
+bool beeUsesAuthoredHome(uint aux, uint width, uint height) {
+    return !beeUsesPersistentWorldHome(width, height) &&
+           (beeRawSlotFromAux(aux, width, height) & BEE_AUTHORED_HOME_SLOT_BIT) != 0u;
 }
 
 ivec2 beeAuthoredWorldOrigin(uint width, uint height) {
@@ -97,7 +100,8 @@ int beePersistentSurfaceRow(uint district) {
     if (district == 1u) return 37;
     if (district == 2u) return 42;
     if (district == 3u) return 17;
-    if (district == 4u || district == 5u || district == 6u) return 43;
+    if (district == 4u) return 22;
+    if (district == 5u || district == 6u) return 42;
     if (district == 7u) return 41;
     return 40;
 }
@@ -140,7 +144,7 @@ bool beePersistentAddress(ivec2 homeCenter, uint width, uint height,
 }
 
 ivec2 beeHomeCenterFromAux(uint aux, uint width, uint height) {
-    if (beeUsesPersistentWorldHome(aux)) {
+    if (beeUsesPersistentWorldHome(width, height)) {
         uint district = (aux >> 20u) & 7u;
         ivec2 origin = beePersistentDistrictOrigin(width, height, district);
         ivec2 local = ivec2(int(aux & 127u) * 8,
@@ -148,7 +152,9 @@ ivec2 beeHomeCenterFromAux(uint aux, uint width, uint height) {
         return origin + local;
     }
     ivec2 home = ivec2(int(aux & 255u) * 4, int((aux >> 8u) & 127u) * 4);
-    return beeUsesAuthoredHome(aux) ? home + beeAuthoredWorldOrigin(width, height) : home;
+    return beeUsesAuthoredHome(aux, width, height)
+        ? home + beeAuthoredWorldOrigin(width, height)
+        : home;
 }
 
 uint beePackMetadata(uint aux, ivec2 homeCenter, uint slot, uint width, uint height) {
@@ -162,7 +168,7 @@ uint beePackMetadata(uint aux, ivec2 homeCenter, uint slot, uint width, uint hei
         uint homeX = uint(clamp(districtLocal.x / 8, 0, 127));
         uint homeY = uint(clamp(districtLocal.y / 8, 0, 63));
         uint metadata = homeX | (homeY << 7u) | ((slot & 127u) << 13u) |
-                        (district << 20u) | BEE_PERSISTENT_HOME_BIT;
+                        (district << 20u);
         return (aux & ~BEE_METADATA_MASK) | metadata;
     }
 
@@ -182,8 +188,8 @@ uint beePackAge(uint timer, uint targetTile) {
     return min(timer, 0xffffu) | (min(targetTile, BEE_TARGET_NONE) << 16u);
 }
 
-bool beeIsForager(uint aux) {
-    uint slot = beeFormationSlotFromAux(aux);
+bool beeIsForager(uint aux, uint width, uint height) {
+    uint slot = beeFormationSlotFromAux(aux, width, height);
     return ((slot * 37u + 11u) % 10u) == 0u;
 }
 
@@ -249,7 +255,7 @@ ivec2 beeCloudTargetOffset(uint slot, uint step) {
 }
 
 ivec2 beeSwarmTarget(uint aux, uint step, uint width, uint height) {
-    uint slot = beeFormationSlotFromAux(aux);
+    uint slot = beeFormationSlotFromAux(aux, width, height);
     ivec2 home = beeHomeCenterFromAux(aux, width, height);
     uint state = beeSwarmState(aux, step, width, height);
     ivec2 offset = state == 0u ? beeBiohazardTargetOffset(slot, step, home) :

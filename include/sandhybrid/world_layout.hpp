@@ -39,9 +39,9 @@ static_assert(persistent_world_height == pre_expansion_world_height);
     switch (scene) {
     case Scene::sandbox:
     case Scene::blank: return 40u;
-    case Scene::volcano:
+    case Scene::volcano: return 22u;
     case Scene::waterworks:
-    case Scene::gold_mine: return 43u;
+    case Scene::gold_mine: return 42u;
     case Scene::ecosystem: return 37u;
     case Scene::engineering_lab: return 42u;
     case Scene::demolition: return 41u;

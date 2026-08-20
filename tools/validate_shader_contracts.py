@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SHADERS = ROOT / "shaders"
 
 EXPECTED_STALE_ERRORS = {
+    "authored bee-home origin contract missing 'return beeUsesAuthoredHome(aux) ? home + beeAuthoredWorldOrigin'",
     "medium presentation contract missing 'cell.material == MAT_ATMOSPHERE || cell.material == MAT_OXYGEN'",
     "medium presentation contract missing 'stateEdge ? 0.16 : 0.0'",
     "medium presentation contract missing 'mediumCell ? 0.0 : 0.045'",
@@ -219,8 +220,10 @@ def main() -> int:
             "active-window compute dispatch contract")
     require(reset, "int buriedBase = min(world.y - 4, surfaceRow + 13)", errors,
             "sunken Volcano geometry contract")
-    require(swarm, "BEE_PERSISTENT_HOME_BIT", errors,
+    require(swarm, "beeUsesPersistentWorldHome(uint width, uint height)", errors,
             "district-aware bee home contract")
+    if "BEE_PERSISTENT_HOME_BIT" in swarm:
+        errors.append("persistent bee metadata collides with reserved Half Water state")
     require(swarm, "district << 20u", errors,
             "district-aware bee home contract")
     require(ui_layout, "layout.previous_scene = {{0.0f, 0.0f}, {0.0f, 0.0f}}", errors,

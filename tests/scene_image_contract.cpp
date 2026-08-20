@@ -2,6 +2,7 @@
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/scene.hpp"
 #include "sandhybrid/scene_image.hpp"
+#include "sandhybrid/world_layout.hpp"
 
 #include <cstdint>
 #include <cstdlib>
@@ -175,6 +176,49 @@ int main() {
     if (!exact_hive(sandhybrid::Scene::sandbox, 234, 576u, 35u, 13u, 8u) ||
         !exact_hive(sandhybrid::Scene::ecosystem, 232, 571u, 31u, 9u, 16u))
         return 15;
+
+    // Persistent-World PPM normalization must encode the same district-local
+    // home/slot layout as reset and Beehive painting, without borrowing the
+    // reserved Half Water flag.
+    constexpr std::uint32_t persistent_width = 5120u;
+    constexpr std::uint32_t persistent_height = 360u;
+    constexpr std::uint32_t persistent_queen_x = 512u;
+    constexpr std::uint32_t persistent_queen_y = 234u;
+    std::vector<sandhybrid::SceneCell> persistent_source(
+        static_cast<std::size_t>(persistent_width) * persistent_height);
+    persistent_source[persistent_queen_y * persistent_width + persistent_queen_x].material =
+        static_cast<std::uint32_t>(sandhybrid::Material::queen_bee);
+    for (const auto x : {470u, 471u, 552u, 553u})
+        persistent_source[persistent_queen_y * persistent_width + x].material =
+            static_cast<std::uint32_t>(sandhybrid::Material::bee);
+    const auto persistent_path = root / "persistent-world.ppm";
+    if (!sandhybrid::save_scene_ppm(persistent_path, persistent_width,
+                                    persistent_height, persistent_source, error))
+        return 16;
+    std::vector<sandhybrid::SceneCell> persistent_loaded(
+        static_cast<std::size_t>(persistent_width) * persistent_height);
+    if (!sandhybrid::load_scene_ppm(persistent_path, sandhybrid::Scene::sandbox,
+                                    persistent_width, persistent_height,
+                                    persistent_loaded, error))
+        return 17;
+    expected_slot = 0u;
+    for (const auto x : {470u, 471u, 552u, 553u}) {
+        const auto bee = persistent_loaded[
+            persistent_queen_y * persistent_width + x];
+        const auto district = (bee.aux >> 20u) & 7u;
+        const auto home_x = sandhybrid::persistent_world_district_origin_x(
+            persistent_width, district) + (bee.aux & 127u) * 8u;
+        const auto home_y = sandhybrid::persistent_world_district_origin_y(
+            persistent_height, district) + ((bee.aux >> 7u) & 63u) * 8u;
+        const auto slot = (bee.aux >> 13u) & 127u;
+        if ((bee.aux & (aux_bee_fed | aux_bee_swarm)) !=
+                (aux_bee_fed | aux_bee_swarm) ||
+            (bee.aux & aux_water_half) != 0u || district != 0u ||
+            home_x != persistent_queen_x || home_y != 232u ||
+            slot != expected_slot)
+            return 18;
+        ++expected_slot;
+    }
 
     std::filesystem::remove_all(root, cleanup_error);
     return 0;

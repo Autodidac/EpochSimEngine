@@ -623,9 +623,9 @@ void main() {
 
         // View/input modes.
         uint viewWidth = max((rowWidth - rowGap * 4u) / 5u, 1u);
-        bool playerScene = renderPc.selectedScene == 6u ||
-                           renderPc.selectedScene == 7u ||
-                           renderPc.selectedScene == 8u;
+        // The production runtime is one persistent World, so scene 0 owns the
+        // same player controls that legacy Frontier/Mine/Demolition IDs used.
+        bool playerScene = renderPc.sceneCount == 1u;
         uint viewIds[5] = uint[5](
             renderPc.miningMode != 0u ? 8u : 7u,
             playerScene && renderPc.cameraControls == 0u ? 141u : 140u,
@@ -1258,6 +1258,32 @@ void main() {
 
     if (mapSample && mapOverlayBorderPixel()) {
         color.rgb = vec3(0.68, 0.82, 0.92);
+    }
+
+    // Actor state is component data, not a material cell. Draw its actual
+    // 5x8 collision silhouette explicitly so a healthy player cannot exist in
+    // the simulation while remaining invisible in the normal World viewport.
+    if (!mapSample && actor.enabled != 0u && actor.health != 0u) {
+        ivec2 playerDelta = grid - ivec2(actor.x, actor.y);
+        bool helmet = playerDelta.y >= -7 && playerDelta.y <= -5 &&
+                      abs(playerDelta.x) <= (playerDelta.y == -5 ? 2 : 1);
+        bool torso = playerDelta.y >= -4 && playerDelta.y <= -2 &&
+                     abs(playerDelta.x) <= 2;
+        bool leftLeg = playerDelta.y >= -1 && playerDelta.y <= 0 &&
+                       playerDelta.x >= -2 && playerDelta.x <= -1;
+        bool rightLeg = playerDelta.y >= -1 && playerDelta.y <= 0 &&
+                        playerDelta.x >= 1 && playerDelta.x <= 2;
+        if (helmet) {
+            color = vec4(0.98, 0.72, 0.12, 1.0);
+            if (playerDelta.y == -6 && playerDelta.x >= 0)
+                color = vec4(0.16, 0.72, 0.90, 1.0);
+        } else if (torso) {
+            color = abs(playerDelta.x) == 2
+                ? vec4(0.08, 0.18, 0.27, 1.0)
+                : vec4(0.16, 0.78, 0.66, 1.0);
+        } else if (leftLeg || rightLeg) {
+            color = vec4(0.08, 0.16, 0.28, 1.0);
+        }
     }
 
     if (!mapSample && actor.enabled != 0u && actor.health != 0u && actor.shotTimer > 0u) {

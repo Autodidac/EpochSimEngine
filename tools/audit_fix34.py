@@ -33,9 +33,11 @@ for token in ("beeBiohazardTargetOffset", "ivec2 anchor = beeFormationOffset(tar
               "if (boundedSidestep) return true;", "preserveAgentAge", "activeAgentPair"):
     if token not in swarm + move:
         errors.append(f"bee movement contract missing {token!r}")
-for token in ("BEE_PERSISTENT_HOME_BIT", "district << 20u"):
+for token in ("beeUsesPersistentWorldHome(uint width, uint height)", "district << 20u"):
     if token not in swarm:
         errors.append(f"persistent bee-home contract missing {token!r}")
+if "BEE_PERSISTENT_HOME_BIT" in swarm:
+    errors.append("persistent bee metadata collides with reserved Half Water state")
 if "shapePhase" in swarm:
     errors.append("whole biohazard symbol still rotates like a propeller")
 

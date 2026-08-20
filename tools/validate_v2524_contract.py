@@ -46,8 +46,11 @@ require("shaders/chemistry.comp", "result.aux &= ~AUX_MOVED;")
 require("shaders/tiles.comp", "mediumTravelSteps >= TILE_MEDIUM_PROGRESS_LIMIT",
         "mediumBlockedAttempts >= TILE_MEDIUM_PROGRESS_LIMIT",
         "productiveMediumMove")
-require("shaders/bee_swarm.glsl", "BEE_PERSISTENT_HOME_BIT",
+require("shaders/bee_swarm.glsl",
+        "beeUsesPersistentWorldHome(uint width, uint height)",
+        "int(width) >= BEE_PERSISTENT_WORLD_CELLS.x",
         "district << 20u", "BEE_FORMATION_COUNT = 100u")
+reject("shaders/bee_swarm.glsl", "BEE_PERSISTENT_HOME_BIT")
 require("src/vulkan_renderer.cpp", "macro_liquid_consecutive_packets",
         "enclosed_air_remains_tiled", "bee_metadata_mismatches",
         "unique_bee_slots == 100u")
