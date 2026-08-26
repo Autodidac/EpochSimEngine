@@ -116,8 +116,9 @@ void main() {
         bool machineController = (material == MAT_SMELTER || material == MAT_ASSEMBLER ||
                                   material == MAT_INSECT_HABITAT || material == MAT_SLUICE_BOX) &&
                                  (p.x & 7) == 3 && (p.y & 7) == 3;
-        cell.aux = (cell.aux & ~AUX_RANDOM_MASK) |
-                   (cellHash(p, uint(local.x + local.y * diameter)) & AUX_RANDOM_MASK) |
+        uint paintEntropy = material == MAT_ATMOSPHERE
+            ? 0u : (cellHash(p, uint(local.x + local.y * diameter)) & AUX_RANDOM_MASK);
+        cell.aux = (cell.aux & ~AUX_RANDOM_MASK) | paintEntropy |
                    (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |
                                 AUX_PLANT_STEM | AUX_STRUCTURAL | AUX_SUPPORTED | AUX_STATE_MASK));
         if (machineController) {
@@ -165,8 +166,9 @@ void main() {
         cell = makeCell(material);
     }
 
-    cell.aux = (cell.aux & ~AUX_RANDOM_MASK) |
-               (cellHash(p, uint(local.x + local.y * diameter)) & AUX_RANDOM_MASK) |
+    uint paintEntropy = material == MAT_ATMOSPHERE
+        ? 0u : (cellHash(p, uint(local.x + local.y * diameter)) & AUX_RANDOM_MASK);
+    cell.aux = (cell.aux & ~AUX_RANDOM_MASK) | paintEntropy |
                (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |
                             AUX_PLANT_STEM | AUX_STRUCTURAL | AUX_SUPPORTED | AUX_STATE_MASK));
     if (colonySlot >= 0) {

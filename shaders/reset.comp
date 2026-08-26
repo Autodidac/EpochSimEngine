@@ -729,7 +729,7 @@ uint frontierBaseMaterial(ivec2 p) {
     if (brickRect(p, ivec2(28, 34), ivec2(29, 35))) material = MAT_SMELTER;
     if (brickRect(p, ivec2(34, 34), ivec2(35, 35))) material = MAT_ASSEMBLER;
     if (brickRect(p, ivec2(41, 34), ivec2(42, 35))) material = MAT_INSECT_HABITAT;
-    if (brickRect(p, ivec2(15, 32), ivec2(18, 35))) material = ((p.x + p.y) & 1) == 0 ? MAT_IRON : MAT_GOLD;
+    if (brickRect(p, ivec2(15, 32), ivec2(18, 35))) material = ((b.x + b.y) & 1) == 0 ? MAT_IRON : MAT_GOLD;
     if (brickRect(p, ivec2(31, 32), ivec2(33, 35))) material = MAT_COPPER;
     if (brickRect(p, ivec2(37, 32), ivec2(39, 35))) material = MAT_POWER_CELL;
 
@@ -745,7 +745,7 @@ uint frontierBaseMaterial(ivec2 p) {
     if (brickRect(p, ivec2(enemyMin.x + 5, 25), ivec2(enemyMin.x + 7, 28))) material = MAT_COPPER;
     if (brickRect(p, ivec2(enemyMin.x + 8, 25), ivec2(enemyMin.x + 10, 28))) material = MAT_PLASMA_AMMO;
 
-    if (material == MAT_EMPTY && brickRect(p, baseMin + ivec2(1), baseMax - ivec2(1)) && ((p.x + p.y) & 1) == 0)
+    if (material == MAT_EMPTY && brickRect(p, baseMin + ivec2(1), baseMax - ivec2(1)) && ((b.x + b.y) & 1) == 0)
         material = MAT_ATMOSPHERE;
     if (p.y == surface * BRICK_SIZE - 1 && p.x > 150 && p.x < 250 && (p.x % 31) == 0) material = MAT_ANT;
     if (p.y == surface * BRICK_SIZE - 1 && p.x > AUTHORED_WORLD_CELLS.x - 220 && p.x < AUTHORED_WORLD_CELLS.x - 80 && (p.x % 17) == 0)
@@ -768,22 +768,67 @@ uint materialForScene(uint scene, ivec2 p) {
     return MAT_EMPTY;
 }
 
+bool authoredCargoMaterial(uint material) {
+    return material == MAT_IRON || material == MAT_COPPER || material == MAT_GOLD ||
+           material == MAT_ALUMINUM || material == MAT_ALUMINUM_SHAVINGS ||
+           material == MAT_IRON_ORE || material == MAT_POWER_CELL ||
+           material == MAT_PLASMA_AMMO;
+}
+
+bool engineeringProcessFeed(ivec2 p) {
+    ivec2 world = worldBrickSize();
+    ivec2 b = brickCoordinate(p);
+    ivec2 hopperMin = ivec2(world.x / 3, 5);
+    ivec2 hopperMax = ivec2(world.x / 3 + 21, 20);
+    // The upper hopper is staged full-tile stock. Only the four-row bed over
+    // the outlet is loose process feed, so the whole vessel cannot collapse.
+    bool hopperBed = brickRect(p, ivec2(hopperMin.x + 1, hopperMax.y - 5),
+                              ivec2(hopperMax.x - 1, hopperMax.y - 1));
+    int floorRow = world.y - 3;
+    ivec2 controlMin = ivec2(world.x - 23, 24);
+    ivec2 controlMax = ivec2(world.x - 13, floorRow);
+    ivec2 treatmentMin = ivec2(world.x - 12, 24);
+    ivec2 treatmentMax = ivec2(world.x - 2, floorRow);
+    bool compostBed = (brickRect(p, controlMin + ivec2(1), controlMax - ivec2(1)) &&
+                       b.y >= controlMax.y - 4) ||
+                      (brickRect(p, treatmentMin + ivec2(1), treatmentMax - ivec2(1)) &&
+                       b.y >= treatmentMax.y - 4);
+    return hopperBed || compostBed;
+}
+
+bool goldMineProcessPile(ivec2 p) {
+    ivec2 b = brickCoordinate(p);
+    ivec2 minePile = b - ivec2(36, 25);
+    return minePile.y <= 0 && minePile.y > -7 && abs(minePile.x) < 9 + minePile.y;
+}
+
 bool looseAuthoredCargo(uint scene, ivec2 p, uint material) {
-    if (scene == SCENE_ENGINEERING || scene == SCENE_GOLD_MINE || scene == SCENE_FRONTIER_BASE) {
-        if (material == MAT_IRON || material == MAT_COPPER || material == MAT_GOLD ||
-            material == MAT_ALUMINUM || material == MAT_ALUMINUM_SHAVINGS ||
-            material == MAT_IRON_ORE || material == MAT_POWER_CELL ||
-            material == MAT_PLASMA_AMMO) return true;
-    }
+    if (!authoredCargoMaterial(material)) return false;
+    if (scene == SCENE_ENGINEERING) return engineeringProcessFeed(p);
+    if (scene == SCENE_GOLD_MINE) return goldMineProcessPile(p);
+    // Frontier stock is supported factory inventory, not loose rubble.
     return false;
 }
 
 bool looseAuthoredTerrain(uint scene, ivec2 p, uint material) {
     if (material != MAT_SAND && material != MAT_SILT && material != MAT_SALT && material != MAT_ICE)
         return false;
-    // Explicit samples stay loose; every structural scene surface is authored by brick helpers.
-    return scene == SCENE_SANDBOX || scene == SCENE_ENGINEERING ||
-           scene == SCENE_GOLD_MINE || scene == SCENE_DEMOLITION;
+    ivec2 world = worldBrickSize();
+    ivec2 b = brickCoordinate(p);
+    if (scene == SCENE_SANDBOX) {
+        int ground = world.y - 5;
+        ivec2 pile = b - ivec2(world.x / 5, ground - 1);
+        return pile.y <= 0 && pile.y > -6 && abs(pile.x) < 7 + pile.y;
+    }
+    if (scene == SCENE_ENGINEERING) return engineeringProcessFeed(p);
+    if (scene == SCENE_GOLD_MINE) return goldMineProcessPile(p);
+    if (scene == SCENE_DEMOLITION) {
+        int floorRow = world.y - 4;
+        int towerMinX = world.x / 3;
+        return brickRect(p, ivec2(towerMinX - 9, floorRow - 6),
+                         ivec2(towerMinX - 2, floorRow));
+    }
+    return false;
 }
 
 bool beehiveSupportForScene(uint scene, ivec2 p) {
@@ -808,7 +853,7 @@ bool authoredStructuralCell(uint scene, ivec2 p, uint material) {
                            material == MAT_SAND || material == MAT_SILT ||
                            material == MAT_SALT || material == MAT_ICE;
     return beehiveFixedContentForScene(scene, p, material) ||
-           ((isBlockCapable(material) || authoredTerrain) &&
+           ((isBlockCapable(material) || authoredTerrain || authoredCargoMaterial(material)) &&
             !looseAuthoredCargo(scene, p, material) &&
             !looseAuthoredTerrain(scene, p, material));
 
@@ -849,7 +894,9 @@ void main() {
          material == MAT_INSECT_HABITAT || material == MAT_SLUICE_BOX) &&
         (local.x & 7) == 3 && (local.y & 7) == 3;
 
-    cell.aux = (cell.aux & ~AUX_RANDOM_MASK) | (hash32(indexOf(p) ^ pc.seed) & AUX_RANDOM_MASK) |
+    uint authoredEntropy = material == MAT_ATMOSPHERE
+        ? 0u : (hash32(indexOf(p) ^ pc.seed) & AUX_RANDOM_MASK);
+    cell.aux = (cell.aux & ~AUX_RANDOM_MASK) | authoredEntropy |
                (cell.aux & (AUX_WET | AUX_CHARGED | AUX_BEE_POLLEN | AUX_BEE_FED |
                             AUX_PLANT_STEM | AUX_STRUCTURAL | AUX_SUPPORTED | AUX_STATE_MASK));
 

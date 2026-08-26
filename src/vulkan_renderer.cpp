@@ -86,7 +86,8 @@ SceneCell make_fill_cell(const std::uint32_t material_id, const std::uint32_t in
         .material = static_cast<std::uint32_t>(material),
         .age = 0u,
         .temperature = 20,
-        .aux = fill_hash(index ^ material_id * 0x9e3779b9u) & fill_aux_random_mask,
+        .aux = material == Material::atmosphere
+            ? 0u : (fill_hash(index ^ material_id * 0x9e3779b9u) & fill_aux_random_mask),
     };
     if (material == Material::magma_vent || material == Material::lava) cell.temperature = 1300;
     else if (material == Material::fire || material == Material::lightning) cell.temperature = 700;
@@ -4713,6 +4714,93 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            std::to_string(complete_dirt_tiles));
             }
             {
+                {
+                    const auto district = persistent_world_district_index(Scene::engineering_lab);
+                    const auto origin_x = persistent_world_district_origin_x(
+                        config.grid_width, district);
+                    const auto origin_y = persistent_world_district_origin_y(
+                        config.grid_height, district);
+                    constexpr std::uint32_t hopper_left = 27u;
+                    constexpr std::uint32_t hopper_right = 46u;
+                    constexpr std::uint32_t staged_top = 6u;
+                    constexpr std::uint32_t staged_bottom = 15u;
+                    constexpr std::uint32_t feed_bottom = 19u;
+                    std::uint32_t complete_staged_tiles = 0u;
+                    std::uint32_t loose_feed_cells = 0u;
+                    for (std::uint32_t brick_y = staged_top;
+                         brick_y < staged_bottom; ++brick_y) {
+                        for (std::uint32_t brick_x = hopper_left;
+                             brick_x < hopper_right; ++brick_x) {
+                            const auto tile_x = origin_x + brick_x * 8u;
+                            const auto tile_y = origin_y + brick_y * 8u;
+                            const auto expected_material =
+                                world_cells[index_of(tile_x, tile_y)].material;
+                            bool complete =
+                                expected_material != material_id(Material::atmosphere);
+                            for (std::uint32_t dy = 0u; dy < 8u; ++dy) {
+                                for (std::uint32_t dx = 0u; dx < 8u; ++dx) {
+                                    const auto& cell = world_cells[index_of(
+                                        tile_x + dx, tile_y + dy)];
+                                    complete = complete &&
+                                        cell.material == expected_material &&
+                                        (cell.aux & (fill_aux_structural |
+                                                     fill_aux_supported)) ==
+                                            (fill_aux_structural | fill_aux_supported);
+                                }
+                            }
+                            complete_staged_tiles += complete ? 1u : 0u;
+                        }
+                    }
+                    for (std::uint32_t brick_y = staged_bottom;
+                         brick_y < feed_bottom; ++brick_y) {
+                        for (std::uint32_t brick_x = hopper_left;
+                             brick_x < hopper_right; ++brick_x) {
+                            for (std::uint32_t dy = 0u; dy < 8u; ++dy) {
+                                for (std::uint32_t dx = 0u; dx < 8u; ++dx) {
+                                    const auto& cell = world_cells[index_of(
+                                        origin_x + brick_x * 8u + dx,
+                                        origin_y + brick_y * 8u + dy)];
+                                    if (cell.material !=
+                                            material_id(Material::atmosphere) &&
+                                        (cell.aux & (fill_aux_structural |
+                                                     fill_aux_supported)) == 0u)
+                                        ++loose_feed_cells;
+                                }
+                            }
+                        }
+                    }
+                    append("engineering_authored_stock_and_feed_roles",
+                           complete_staged_tiles == 171u &&
+                               loose_feed_cells == 4864u,
+                           "staged_tiles=" +
+                               std::to_string(complete_staged_tiles) +
+                               " loose_feed_cells=" +
+                               std::to_string(loose_feed_cells));
+                    const auto hydrogen_cells = count_rect(
+                        world_cells, Material::hydrogen,
+                        origin_x + 58u * 8u, origin_y + 6u * 8u,
+                        9u * 8u, 14u * 8u);
+                    const auto oxygen_cells = count_rect(
+                        world_cells, Material::oxygen,
+                        origin_x + 68u * 8u, origin_y + 6u * 8u,
+                        9u * 8u, 14u * 8u);
+                    const auto divider_glass = count_rect(
+                        world_cells, Material::glass,
+                        origin_x + 67u * 8u, origin_y + 6u * 8u,
+                        8u, 14u * 8u);
+                    const auto aperture_air = count_rect(
+                        world_cells, Material::atmosphere,
+                        origin_x + 67u * 8u, origin_y + 13u * 8u,
+                        8u, 8u);
+                    append("engineering_gas_chamber_controlled_aperture",
+                           hydrogen_cells == 8064u && oxygen_cells == 8064u &&
+                               divider_glass == 832u && aperture_air == 64u,
+                           "hydrogen=" + std::to_string(hydrogen_cells) +
+                               " oxygen=" + std::to_string(oxygen_cells) +
+                               " divider_glass=" + std::to_string(divider_glass) +
+                               " aperture_air=" + std::to_string(aperture_air));
+                }
+
                 // Exercise the authored Waterworks bubbles in the same resident
                 // World cells and 640x360 active-section dispatch used by play.
                 // This closes the gap where an isolated synthetic packet passed
@@ -4830,6 +4918,246 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            " hydrogen=" + std::to_string(final_hydrogen) +
                            " active_section=" + std::to_string(active_section_x) + "," +
                            std::to_string(active_section_y));
+            }
+            {
+                auto cells = acceptance_atmosphere_world();
+                {
+                    auto thermal_cells = acceptance_atmosphere_world();
+                    thermal_cells[index_of(80u, 80u)] = make_fill_cell(
+                        material_id(Material::water),
+                        static_cast<std::uint32_t>(index_of(80u, 80u)));
+                    thermal_cells[index_of(81u, 80u)] = make_fill_cell(
+                        material_id(Material::ember),
+                        static_cast<std::uint32_t>(index_of(81u, 80u)));
+                    thermal_cells[index_of(96u, 80u)] = make_fill_cell(
+                        material_id(Material::water),
+                        static_cast<std::uint32_t>(index_of(96u, 80u)));
+                    upload_scene_cells(thermal_cells);
+                    run_acceptance_chemistry_pass();
+                    const auto result = download_scene_cells();
+                    append("engineering_thermal_treatment_and_control",
+                           result[index_of(80u, 80u)].material ==
+                                   material_id(Material::steam) &&
+                               result[index_of(96u, 80u)].material ==
+                                   material_id(Material::water),
+                           "treatment=" + std::to_string(
+                               result[index_of(80u, 80u)].material) +
+                               " control=" + std::to_string(
+                               result[index_of(96u, 80u)].material));
+                }
+                {
+                    auto compost_cells = acceptance_atmosphere_world();
+                    auto treatment_feed = make_fill_cell(
+                        material_id(Material::ash),
+                        static_cast<std::uint32_t>(index_of(100u, 100u)));
+                    treatment_feed.age = 2000u;
+                    compost_cells[index_of(100u, 100u)] = treatment_feed;
+                    auto treatment_water = make_fill_cell(
+                        material_id(Material::dirty_water),
+                        static_cast<std::uint32_t>(index_of(101u, 100u)));
+                    treatment_water.age = 2000u;
+                    compost_cells[index_of(101u, 100u)] = treatment_water;
+                    compost_cells[index_of(99u, 100u)] = make_fill_cell(
+                        material_id(Material::silt),
+                        static_cast<std::uint32_t>(index_of(99u, 100u)));
+                    compost_cells[index_of(100u, 99u)] = make_fill_cell(
+                        material_id(Material::waste),
+                        static_cast<std::uint32_t>(index_of(100u, 99u)));
+
+                    auto control_feed = make_fill_cell(
+                        material_id(Material::ash),
+                        static_cast<std::uint32_t>(index_of(120u, 100u)));
+                    control_feed.age = 2000u;
+                    compost_cells[index_of(120u, 100u)] = control_feed;
+                    compost_cells[index_of(121u, 100u)] = make_fill_cell(
+                        material_id(Material::water),
+                        static_cast<std::uint32_t>(index_of(121u, 100u)));
+                    compost_cells[index_of(119u, 100u)] = make_fill_cell(
+                        material_id(Material::silt),
+                        static_cast<std::uint32_t>(index_of(119u, 100u)));
+                    compost_cells[index_of(120u, 99u)] = make_fill_cell(
+                        material_id(Material::waste),
+                        static_cast<std::uint32_t>(index_of(120u, 99u)));
+                    upload_scene_cells(compost_cells);
+
+                    const auto feed_index = static_cast<std::uint32_t>(
+                        index_of(100u, 100u));
+                    const auto water_index = static_cast<std::uint32_t>(
+                        index_of(101u, 100u));
+                    const auto pair_key = (std::min)(feed_index, water_index) ^
+                        ((std::max)(feed_index, water_index) * 0x9e3779b9u);
+                    const auto saved_step = simulation_step;
+                    bool event_found = false;
+                    std::uint32_t event_step = saved_step;
+                    for (std::uint32_t offset = 0u; offset < 65536u; ++offset) {
+                        const auto candidate = saved_step + offset;
+                        if ((fill_hash(pair_key ^ candidate ^ random_seed ^ 0xc06f057u) &
+                             255u) == 0u) {
+                            event_found = true;
+                            event_step = candidate;
+                            break;
+                        }
+                    }
+                    simulation_step = event_step;
+                    run_acceptance_chemistry_pass();
+                    simulation_step = saved_step;
+                    const auto result = download_scene_cells();
+                    append("engineering_compost_treatment_and_control",
+                           event_found &&
+                               result[index_of(100u, 100u)].material ==
+                                   material_id(Material::fertilizer) &&
+                               result[index_of(101u, 100u)].material ==
+                                   material_id(Material::water) &&
+                               result[index_of(120u, 100u)].material ==
+                                   material_id(Material::ash) &&
+                               result[index_of(121u, 100u)].material ==
+                                   material_id(Material::water),
+                           "event_step=" + std::to_string(event_step) +
+                               " treatment=" + std::to_string(
+                               result[index_of(100u, 100u)].material) + "/" +
+                               std::to_string(result[index_of(101u, 100u)].material) +
+                               " control=" + std::to_string(
+                               result[index_of(120u, 100u)].material) + "/" +
+                               std::to_string(result[index_of(121u, 100u)].material));
+                }
+
+                cells[index_of(96u, 100u)] = SceneCell{
+                    .material = material_id(Material::iron_ore),
+                    .age = 0u,
+                    .temperature = 20,
+                    .aux = 255u,
+                };
+                cells[index_of(96u, 108u)] = make_fill_cell(
+                    material_id(Material::iron_ore),
+                    static_cast<std::uint32_t>(index_of(96u, 108u)));
+                cells[index_of(105u, 100u)] = make_fill_cell(
+                    material_id(Material::magnet),
+                    static_cast<std::uint32_t>(index_of(105u, 100u)));
+                cells[index_of(105u, 108u)] = make_fill_cell(
+                    material_id(Material::magnet),
+                    static_cast<std::uint32_t>(index_of(105u, 108u)));
+                upload_scene_cells(cells);
+                for (std::uint32_t step = 0u; step < 8u; ++step)
+                    run_acceptance_horizontal_pass(static_cast<std::int32_t>((96u + step) & 1u));
+                const auto result = download_scene_cells();
+                const bool loose_attracted = result[index_of(104u, 100u)].material ==
+                    material_id(Material::iron_ore);
+                const auto& structural_stock = result[index_of(96u, 108u)];
+                const bool stock_retained = structural_stock.material ==
+                        material_id(Material::iron_ore) &&
+                    (structural_stock.aux & (fill_aux_structural | fill_aux_supported)) ==
+                        (fill_aux_structural | fill_aux_supported);
+                append("engineering_bounded_magnet_field",
+                       loose_attracted && stock_retained &&
+                           count_material(result, Material::iron_ore) == 2u,
+                       "loose_attracted=" + std::to_string(loose_attracted ? 1u : 0u) +
+                           " structural_stock=" + std::to_string(stock_retained ? 1u : 0u) +
+                           " iron_ore=" +
+                           std::to_string(count_material(result, Material::iron_ore)));
+            }
+
+            {
+                auto cells = acceptance_atmosphere_world();
+                auto steam = make_fill_cell(
+                    material_id(Material::steam),
+                    static_cast<std::uint32_t>(index_of(96u, 100u)));
+                steam.temperature = 140;
+                cells[index_of(96u, 100u)] = steam;
+                cells[index_of(112u, 100u)] = make_fill_cell(
+                    material_id(Material::smoke),
+                    static_cast<std::uint32_t>(index_of(112u, 100u)));
+                upload_scene_cells(cells);
+                run_acceptance_fine_pass(0, 1);
+                const auto result = download_scene_cells();
+                const bool steam_rose = result[index_of(96u, 99u)].material ==
+                    material_id(Material::steam);
+                const bool smoke_rose = result[index_of(112u, 99u)].material ==
+                    material_id(Material::smoke);
+                append("volcano_excess_gas_buoyancy",
+                       steam_rose && smoke_rose &&
+                           count_material(result, Material::steam) == 1u &&
+                           count_material(result, Material::smoke) == 1u,
+                       "steam_rose=" + std::to_string(steam_rose ? 1u : 0u) +
+                           " smoke_rose=" + std::to_string(smoke_rose ? 1u : 0u));
+            }
+
+            {
+                constexpr std::uint32_t charged_bit = 0x40000000u;
+                constexpr std::uint32_t stored_material_mask = 0x00007f00u;
+                constexpr std::uint32_t stored_volume_mask = 0x007f8000u;
+                auto cells = acceptance_atmosphere_world();
+                auto smoke = make_fill_cell(
+                    material_id(Material::smoke),
+                    static_cast<std::uint32_t>(index_of(100u, 100u)));
+                smoke.age = 64u;
+                cells[index_of(100u, 100u)] = smoke;
+                upload_scene_cells(cells);
+                run_acceptance_horizontal_pass(0);
+                const auto result = download_scene_cells();
+                const auto& absorbed = result[index_of(101u, 100u)];
+                const auto stored_material =
+                    (absorbed.aux & stored_material_mask) >> 8u;
+                const auto stored_volume =
+                    (absorbed.aux & stored_volume_mask) >> 15u;
+                append("atmosphere_delayed_excess_reabsorption",
+                       result[index_of(100u, 100u)].material == material_id(Material::empty) &&
+                           absorbed.material == material_id(Material::atmosphere) &&
+                           (absorbed.aux & charged_bit) != 0u &&
+                           stored_material == material_id(Material::smoke) &&
+                           stored_volume == 1u,
+                       "stored_material=" + std::to_string(stored_material) +
+                           " stored_volume=" + std::to_string(stored_volume) +
+                           " aux=" + std::to_string(absorbed.aux));
+            }
+
+            {
+                constexpr std::uint32_t charged_bit = 0x40000000u;
+                constexpr std::uint32_t wet_bit = 0x80000000u;
+                auto cells = acceptance_atmosphere_world();
+                const auto controller = SceneCell{
+                    .material = material_id(Material::sluice_box),
+                    .age = 0u,
+                    .temperature = 20,
+                    .aux = charged_bit | fill_aux_structural |
+                           fill_aux_supported | 255u,
+                };
+                cells[index_of(99u, 99u)] = controller;
+                cells[index_of(96u, 99u)] = SceneCell{
+                    .material = material_id(Material::sand),
+                    .age = 0u,
+                    .temperature = 20,
+                    .aux = wet_bit | 255u,
+                };
+                cells[index_of(98u, 94u)] = make_fill_cell(
+                    material_id(Material::water),
+                    static_cast<std::uint32_t>(index_of(98u, 94u)));
+                cells[index_of(98u, 95u)] = make_fill_cell(
+                    material_id(Material::water),
+                    static_cast<std::uint32_t>(index_of(98u, 95u)));
+                upload_scene_cells(cells);
+                for (std::uint32_t pass = 0u; pass < 24u; ++pass)
+                    run_acceptance_chemistry_pass();
+                const auto before_output = download_scene_cells();
+                const auto displaced_pressure =
+                    (before_output[index_of(104u, 99u)].aux & 255u) +
+                    (before_output[index_of(104u, 98u)].aux & 255u);
+                for (std::uint32_t pass = 0u; pass < 2u; ++pass)
+                    run_acceptance_chemistry_pass();
+                const auto result = download_scene_cells();
+                const auto& output = result[index_of(104u, 99u)];
+                const auto& vent = result[index_of(104u, 98u)];
+                const bool valid_output = output.material == material_id(Material::gold) ||
+                    output.material == material_id(Material::sand) ||
+                    output.material == material_id(Material::silt);
+                append("engineering_sluice_outputs_through_atmosphere",
+                       valid_output && vent.material == material_id(Material::atmosphere) &&
+                           (vent.aux & 255u) == displaced_pressure &&
+                           (result[index_of(99u, 99u)].aux & fill_aux_random_mask) == 0u,
+                       "output=" + std::to_string(output.material) +
+                           " displaced_pressure=" + std::to_string(displaced_pressure) +
+                           " vent_pressure=" + std::to_string(vent.aux & 255u) +
+                           " inventory=" + std::to_string(
+                               result[index_of(99u, 99u)].aux & fill_aux_random_mask));
             }
             check_pre_pr19_hive("sandbox_hard_coded_hive", Scene::sandbox);
             check_pre_pr19_hive("sandbox_hard_coded_hive_delayed", Scene::sandbox, 120u);

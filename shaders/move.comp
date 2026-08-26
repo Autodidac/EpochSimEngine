@@ -319,6 +319,25 @@ bool isCellGas(Cell cell) {
     return isBaseGas(cell.material);
 }
 
+bool isVisibleAtmosphereExcess(uint material) {
+    return material == MAT_OXYGEN || material == MAT_CARBON_DIOXIDE ||
+           material == MAT_HYDROGEN || material == MAT_SMOKE ||
+           material == MAT_STEAM || material == MAT_DIRTY_STEAM;
+}
+
+uint gasBuoyancyDensity(Cell cell) {
+    if (cell.material == MAT_HYDROGEN) return 0u;
+    if (cell.material == MAT_SMOKE) return 1u;
+    if (cell.material == MAT_STEAM)
+        return cell.temperature >= 34 ? 1u : 5u;
+    if (cell.material == MAT_DIRTY_STEAM)
+        return cell.temperature >= 32 ? 1u : 5u;
+    if (cell.material == MAT_ATMOSPHERE) return 2u;
+    if (cell.material == MAT_OXYGEN) return 3u;
+    if (cell.material == MAT_CARBON_DIOXIDE) return 4u;
+    return densityOf(cell.material);
+}
+
 bool isHiveBoundContent(Cell cell) {
     return (cell.aux & AUX_STRUCTURAL) != 0u &&
            (cell.material == MAT_HONEY || cell.material == MAT_POLLEN);
@@ -377,7 +396,7 @@ void releaseCollapsingStructural(ivec2 position) {
 }
 
 bool isMagnetic(uint material) {
-    return material == MAT_IRON || material == MAT_IRON_ORE;
+    return material == MAT_IRON || material == MAT_IRON_ORE || material == MAT_STEEL;
 }
 
 bool isConductive(uint material) {
@@ -403,8 +422,10 @@ void swapCells(ivec2 aPosition, ivec2 bPosition) {
                             isCellGas(a) || isCellLiquid(a);
     bool preserveTargetAge = b.material == MAT_BEE || b.material == MAT_ANT || b.material == MAT_BEETLE ||
                              isCellGas(b) || isCellLiquid(b);
-    if (!preserveAgentAge) a.age = 0u;
-    if (!preserveTargetAge) b.age = 0u;
+    if (isVisibleAtmosphereExcess(a.material)) a.age = 0u;
+    else if (!preserveAgentAge) a.age = 0u;
+    if (isVisibleAtmosphereExcess(b.material)) b.age = 0u;
+    else if (!preserveTargetAge) b.age = 0u;
     a.aux |= AUX_MOVED;
     b.aux |= AUX_MOVED;
     cells[aIndex] = b;
@@ -836,10 +857,24 @@ bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint r
            ((randomValue ^ slot) & 7u) == 0u;
 }
 
-bool magneticMoveAllowed(ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {
-    bool sourceTarget = adjacentContains(sourcePosition, MAT_MAGNET, MAT_MAGNET);
-    bool targetTarget = adjacentContains(targetPosition, MAT_MAGNET, MAT_MAGNET);
-    return targetTarget != sourceTarget ? targetTarget : (!sourceTarget && (randomValue & 63u) == 0u);
+const int MAGNET_FIELD_RADIUS = 16;
+
+int magnetFieldDistance(ivec2 position) {
+    for (int distance = 1; distance <= MAGNET_FIELD_RADIUS; ++distance) {
+        for (int dx = -distance; dx <= distance; ++dx) {
+            int dy = distance - abs(dx);
+            if (sampleAt(position + ivec2(dx, dy)).material == MAT_MAGNET) return distance;
+            if (dy != 0 && sampleAt(position + ivec2(dx, -dy)).material == MAT_MAGNET)
+                return distance;
+        }
+    }
+    return MAGNET_FIELD_RADIUS + 1;
+}
+
+bool magneticMoveAllowed(ivec2 sourcePosition, ivec2 targetPosition) {
+    int sourceDistance = magnetFieldDistance(sourcePosition);
+    if (sourceDistance > MAGNET_FIELD_RADIUS) return false;
+    return magnetFieldDistance(targetPosition) < sourceDistance;
 }
 
 bool adjacentConductive(ivec2 p) {
@@ -863,34 +898,67 @@ uint representedGasPressure(Cell cell) {
 }
 
 bool isAtmosphereIngredient(uint material) {
-    return material == MAT_ATMOSPHERE || material == MAT_OXYGEN ||
-           material == MAT_CARBON_DIOXIDE || material == MAT_HYDROGEN;
+    return material == MAT_ATMOSPHERE || isVisibleAtmosphereExcess(material);
+}
+
+uint storedAtmosphereExcessMaterial(Cell cell) {
+    if (cell.material != MAT_ATMOSPHERE || (cell.aux & AUX_CHARGED) == 0u)
+        return MAT_EMPTY;
+    uint material = halfMediumMaterial(cell);
+    uint volume = halfMediumVolume(cell);
+    return volume > 0u && isVisibleAtmosphereExcess(material) ? material : MAT_EMPTY;
+}
+
+uint storedAtmosphereExcessVolume(Cell cell) {
+    return storedAtmosphereExcessMaterial(cell) == MAT_EMPTY ? 0u : halfMediumVolume(cell);
+}
+
+void setStoredAtmosphereExcess(inout Cell cell, uint material, uint volume) {
+    clearHalfMedium(cell);
+    cell.aux &= ~AUX_CHARGED;
+    if (cell.material != MAT_ATMOSPHERE || volume == 0u ||
+        !isVisibleAtmosphereExcess(material)) return;
+    cell.aux |= AUX_CHARGED |
+                ((material & 0x7fu) << AUX_HALF_MEDIUM_MATERIAL_SHIFT) |
+                ((min(volume, 255u) & 0xffu) << AUX_HALF_MEDIUM_VOLUME_SHIFT);
 }
 
 bool mixAtmospherePair(ivec2 firstPosition, ivec2 secondPosition,
                        Cell first, Cell second) {
     if (!isAtmosphereIngredient(first.material) ||
         !isAtmosphereIngredient(second.material) ||
-        first.material == second.material) return false;
+        first.material == second.material ||
+        (first.material != MAT_ATMOSPHERE && second.material != MAT_ATMOSPHERE)) return false;
 
-    uint firstPressure = representedGasPressure(first);
-    uint secondPressure = representedGasPressure(second);
-    uint totalPressure = min(firstPressure + secondPressure, 510u);
-    int mixedTemperature = (first.temperature + second.temperature) / 2;
-    first.material = MAT_ATMOSPHERE;
-    second.material = MAT_ATMOSPHERE;
-    first.temperature = mixedTemperature;
-    second.temperature = mixedTemperature;
-    first.age = 0u;
-    second.age = 0u;
-    first.aux |= AUX_MOVED;
-    second.aux |= AUX_MOVED;
-    setStateValue(first, (totalPressure + 1u) / 2u);
-    setStateValue(second, totalPressure / 2u);
-    cells[moveIndex(firstPosition)] = first;
-    cells[moveIndex(secondPosition)] = second;
+    bool firstIsAtmosphere = first.material == MAT_ATMOSPHERE;
+    Cell atmosphere = firstIsAtmosphere ? first : second;
+    Cell excess = firstIsAtmosphere ? second : first;
+    // Age is a stability clock for visible excess. Every productive gas move
+    // resets it, so transit remains visible and only settled gas can reabsorb.
+    if (excess.age < 48u || (excess.aux & AUX_MOVED) != 0u) return false;
+
+    uint storedMaterial = storedAtmosphereExcessMaterial(atmosphere);
+    uint storedVolume = storedAtmosphereExcessVolume(atmosphere);
+    if (storedVolume > 0u && storedMaterial != excess.material) return false;
+    uint excessVolume = representedGasPressure(excess);
+    uint absorbed = min(excessVolume, 255u - storedVolume);
+    if (absorbed == 0u) return false;
+
+    setStoredAtmosphereExcess(atmosphere, excess.material, storedVolume + absorbed);
+    atmosphere.temperature = (atmosphere.temperature * 3 + excess.temperature) / 4;
+    atmosphere.aux |= AUX_MOVED;
+    if (absorbed == excessVolume) {
+        excess = Cell(MAT_EMPTY, 0u, 20, 0u);
+    } else {
+        setStateValue(excess, excessVolume - absorbed);
+        excess.age = 0u;
+        excess.aux |= AUX_MOVED;
+    }
+    cells[moveIndex(firstIsAtmosphere ? firstPosition : secondPosition)] = atmosphere;
+    cells[moveIndex(firstIsAtmosphere ? secondPosition : firstPosition)] = excess;
     markChunkDirty(firstPosition);
     markChunkDirty(secondPosition);
+    if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_GAS_EXCESS_MOVES], 1u);
     return true;
 }
 
@@ -901,12 +969,18 @@ bool expandAirIntoVacuum(ivec2 sourcePosition, ivec2 targetPosition, Cell source
     uint transferred = max(1u, pressure / 2u);
 
     Cell expanded = source;
+    uint storedMaterial = storedAtmosphereExcessMaterial(source);
+    uint storedVolume = storedAtmosphereExcessVolume(source);
+    uint transferredStored = pressure == 0u ? 0u :
+        min(storedVolume, storedVolume * transferred / pressure);
     source.age = 0u;
     expanded.age = 0u;
     source.aux |= AUX_MOVED;
     expanded.aux |= AUX_MOVED;
     setStateValue(source, pressure - transferred);
     setStateValue(expanded, transferred);
+    setStoredAtmosphereExcess(source, storedMaterial, storedVolume - transferredStored);
+    setStoredAtmosphereExcess(expanded, storedMaterial, transferredStored);
     cells[moveIndex(sourcePosition)] = source;
     cells[moveIndex(targetPosition)] = expanded;
     markChunkDirty(sourcePosition);
@@ -930,7 +1004,8 @@ bool gasHorizontalAllows(Cell cell, uint randomValue) {
     uint material = cell.material;
     if (material == MAT_HYDROGEN) return true;
     if (material == MAT_OXYGEN || material == MAT_ATMOSPHERE) return (randomValue & 1u) == 0u;
-    if (material == MAT_CARBON_DIOXIDE || material == MAT_STEAM || material == MAT_DIRTY_STEAM) {
+    if (material == MAT_CARBON_DIOXIDE || material == MAT_STEAM ||
+        material == MAT_DIRTY_STEAM || material == MAT_SMOKE) {
         return (randomValue & 3u) != 0u;
     }
     if (material == MAT_FIRE || material == MAT_RADIATION) return (randomValue & 1u) == 0u;
@@ -1145,7 +1220,7 @@ void processVertical(ivec2 top, ivec2 bottom) {
 
     bool emptyGasRise = a.material == MAT_EMPTY && gasExpansionAllows(b);
     bool densityGasRise = isCellGas(a) &&
-        densityOf(b.material) < densityOf(a.material);
+        gasBuoyancyDensity(b) < gasBuoyancyDensity(a);
     if (isCellGas(b) && (emptyGasRise || densityGasRise)) {
         if (b.material != MAT_LIGHTNING || lightningMoveAllowed(bottom, top, randomValue)) {
             swapCells(top, bottom);
@@ -1162,10 +1237,10 @@ void processVertical(ivec2 top, ivec2 bottom) {
         return;
     }
 
-    if (isMagnetic(b.material) && a.material == MAT_EMPTY && magneticMoveAllowed(bottom, top, randomValue)) {
+    if (isMagnetic(b.material) && !isStructural(b) && isOpenGas(a) && magneticMoveAllowed(bottom, top)) {
         swapCells(top, bottom);
-    } else if (isMagnetic(a.material) && b.material == MAT_EMPTY &&
-               magneticMoveAllowed(top, bottom, randomValue >> 1u)) {
+    } else if (isMagnetic(a.material) && !isStructural(a) && isOpenGas(b) &&
+               magneticMoveAllowed(top, bottom)) {
         swapCells(top, bottom);
     }
 }
@@ -1235,7 +1310,7 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
 
     bool emptyGasDiagonal = target.material == MAT_EMPTY && gasExpansionAllows(source);
     bool densityGasDiagonal = isCellGas(target) &&
-        effectiveDensity(source) < effectiveDensity(target);
+        gasBuoyancyDensity(source) < gasBuoyancyDensity(target);
     if (upward && isCellGas(source) &&
         (emptyGasDiagonal || densityGasDiagonal)) {
         if (source.material != MAT_LIGHTNING ||
@@ -1257,8 +1332,8 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
         return;
     }
 
-    if (isMagnetic(source.material) && target.material == MAT_EMPTY &&
-        magneticMoveAllowed(sourcePosition, targetPosition, randomValue)) {
+    if (isMagnetic(source.material) && !isStructural(source) && isOpenGas(target) &&
+        magneticMoveAllowed(sourcePosition, targetPosition)) {
         swapCells(sourcePosition, targetPosition);
     }
 }
@@ -1381,11 +1456,11 @@ void processHorizontal(ivec2 left, ivec2 right) {
     } else if (b.material == MAT_BEE && lifeCanEnter(a) &&
                beeMoveAllowed(b, right, left, randomValue >> 1u)) {
         swapCells(left, right);
-    } else if (isMagnetic(a.material) && b.material == MAT_EMPTY &&
-               magneticMoveAllowed(left, right, randomValue)) {
+    } else if (isMagnetic(a.material) && !isStructural(a) && isOpenGas(b) &&
+               magneticMoveAllowed(left, right)) {
         swapCells(left, right);
-    } else if (isMagnetic(b.material) && a.material == MAT_EMPTY &&
-               magneticMoveAllowed(right, left, randomValue >> 1u)) {
+    } else if (isMagnetic(b.material) && !isStructural(b) && isOpenGas(a) &&
+               magneticMoveAllowed(right, left)) {
         swapCells(left, right);
     }
 }

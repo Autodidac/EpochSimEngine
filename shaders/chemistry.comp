@@ -631,6 +631,52 @@ bool machineWaterFlowNear(ivec2 p) {
     return false;
 }
 
+uint representedAtmosphereUnits(Cell cell) {
+    return cell.material == MAT_ATMOSPHERE ? max(stateValue(cell), 1u) : 0u;
+}
+
+ivec2 machineOutputVentPosition(ivec2 controller) {
+    return machineOutputPosition(controller) + ivec2(0, -1);
+}
+
+bool machineOutputMediumAvailable(ivec2 controller) {
+    Cell outputMedium = at(machineOutputPosition(controller));
+    if (outputMedium.material == MAT_EMPTY) return true;
+    if (outputMedium.material != MAT_ATMOSPHERE) return false;
+    Cell ventMedium = at(machineOutputVentPosition(controller));
+    return ventMedium.material == MAT_ATMOSPHERE &&
+           representedAtmosphereUnits(outputMedium) + representedAtmosphereUnits(ventMedium) <= 255u;
+}
+
+bool machineOutputTransition(ivec2 p, Cell source, inout Cell result) {
+    if (source.material != MAT_EMPTY && source.material != MAT_ATMOSPHERE) return false;
+    ivec2 controllerPosition = p - ivec2(5, 0);
+    Cell machine = at(controllerPosition);
+    if (!isMachineController(controllerPosition, machine.material) ||
+        !all(equal(machineOutputPosition(controllerPosition), p)) ||
+        !machineReady(machine.material, machineInventory(machine)) ||
+        (machine.age % 24u) != 0u || !machineOutputMediumAvailable(controllerPosition)) return false;
+    result = makeCell(machineOutput(machine.material, machineInventory(machine)));
+    if (result.material == MAT_BEETLE) result.aux &= ~AUX_CHARGED;
+    return true;
+}
+
+bool machineOutputVentTransition(ivec2 p, Cell source, inout Cell result) {
+    if (source.material != MAT_ATMOSPHERE) return false;
+    ivec2 controllerPosition = p + ivec2(-5, 1);
+    Cell machine = at(controllerPosition);
+    Cell outputMedium = at(machineOutputPosition(controllerPosition));
+    if (!isMachineController(controllerPosition, machine.material) ||
+        !all(equal(machineOutputVentPosition(controllerPosition), p)) ||
+        outputMedium.material != MAT_ATMOSPHERE ||
+        !machineReady(machine.material, machineInventory(machine)) ||
+        (machine.age % 24u) != 0u || !machineOutputMediumAvailable(controllerPosition)) return false;
+    result = source;
+    setStateValue(result, representedAtmosphereUnits(source) +
+                          representedAtmosphereUnits(outputMedium));
+    result.aux |= AUX_MOVED;
+    return true;
+}
 const uint VENT_CYCLE_TICKS = 10800u;
 const uint VENT_PULSE_TICKS = 900u;
 const uint VENT_PULSE_ON_TICKS = 420u;
@@ -925,6 +971,19 @@ void main() {
         thermalDivisor = max(thermalDivisor, 20);
     result.temperature += clamp((thermalTarget - result.temperature) / thermalDivisor, -20, 20);
     result.temperature = clamp(result.temperature, -200, 5000);
+    // Machine output is a three-cell conservative transaction over the shared
+    // source buffer: product replaces the output Atmosphere while the paired
+    // vent accepts its represented pressure, and the controller consumes the
+    // matching inventory only when all three destinations are available.
+    if (machineOutputTransition(p, source, result)) {
+        if ((pc.reserved & 1u) != 0u) atomicAdd(debugStats[STAT_MACHINE_OUTPUTS], 1u);
+        commitResult(index, source, result);
+        return;
+    }
+    if (machineOutputVentTransition(p, source, result)) {
+        commitResult(index, source, result);
+        return;
+    }
 
     // Tile analysis already consumed the previous movement marker.
     result.aux &= ~AUX_MOVED;
@@ -1212,7 +1271,7 @@ void main() {
         uvec4 inventory = min(currentInventory + incomingMachineCounts(p, source.material), uvec4(15u));
         if (source.material == MAT_SLUICE_BOX && (inventory.x > 0u || inventory.y > 0u) &&
             currentInventory.z == 0u && currentInventory.w == 0u &&
-            at(machineOutputPosition(p)).material == MAT_EMPTY && machineWaterFlowNear(p)) {
+            machineOutputMediumAvailable(p) && machineWaterFlowNear(p)) {
             // Process one represented wet feed only when the external output is
             // clear. Water is a retained stream. Slot z queues Gold; slot w is
             // the exact dry-feed kind (1 Sand, 2 Silt), so blocked output never
@@ -1228,7 +1287,7 @@ void main() {
         // Output and inventory consumption use the same current-frame inventory
         // observed by the output cell. Newly arrived or newly separated feed is
         // available on the next tick, preventing consume-without-output loss.
-        bool canOutput = at(machineOutputPosition(p)).material == MAT_EMPTY &&
+        bool canOutput = machineOutputMediumAvailable(p) &&
                          machineReady(source.material, currentInventory) &&
                          (source.age % 24u) == 0u;
         if (canOutput) inventory -= machineConsumption(source.material, currentInventory);
@@ -1298,7 +1357,7 @@ void main() {
     }
 
     if (result.material == source.material && source.material == MAT_WATER &&
-        (nearLava || nearFire || result.temperature >= 100)) {
+        (nearLava || nearFire || hasNeighbor(p, MAT_EMBER) || result.temperature >= 100)) {
         result = makeCell(MAT_STEAM);
     } else if (source.material == MAT_SALTWATER &&
                (nearLava || nearFire || result.temperature >= 102)) {

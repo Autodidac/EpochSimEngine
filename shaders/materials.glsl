@@ -115,7 +115,10 @@ Cell makeCellWithEntropy(uint material, uint seed, uint step) {
     else if (material == MAT_SMELTER) temperature = 180;
     else if (material == MAT_PLANT_STEM) temperature = 20;
 
-    uint aux = hash32(material ^ seed ^ step) & AUX_RANDOM_MASK;
+    // Atmosphere uses the random-bit field for conserved visible-excess
+    // component metadata. It must never begin with cosmetic entropy there.
+    uint aux = material == MAT_ATMOSPHERE
+        ? 0u : (hash32(material ^ seed ^ step) & AUX_RANDOM_MASK);
     if (material == MAT_SALTWATER) aux |= 96u;
     else if (material == MAT_DIRTY_WATER) aux |= 96u;
     else if (material == MAT_SALT || material == MAT_HONEY || material == MAT_SILT ||
@@ -241,7 +244,7 @@ bool isConductive(uint material) {
 }
 
 bool isMagnetic(uint material) {
-    return material == MAT_IRON || material == MAT_IRON_ORE;
+    return material == MAT_IRON || material == MAT_IRON_ORE || material == MAT_STEEL;
 }
 
 bool isImmovable(uint material) {
