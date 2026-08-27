@@ -434,7 +434,10 @@ uint waterworksMaterial(ivec2 p) {
     int tankWidth = max(8, (world.x - 10) / 3);
     for (int tank = 0; tank < 3; ++tank) {
         int left = 2 + tank * (tankWidth + 1);
-        ivec2 minimumBrick = ivec2(left, 3);
+        // Leave an actual sky band above the experiment. The former y=3 tank
+        // roof occupied the weather layer and made authored Cloud storage look
+        // like a dark gas leak inside the apparatus.
+        ivec2 minimumBrick = ivec2(left, 12);
         ivec2 maximumBrick = ivec2(min(left + tankWidth, world.x - 2), floorRow - 9);
         if (brickFrame(p, minimumBrick, maximumBrick, 1)) material = MAT_GLASS;
         else if (brickRect(p, minimumBrick + ivec2(1), maximumBrick - ivec2(1)))
@@ -453,7 +456,25 @@ uint waterworksMaterial(ivec2 p) {
              b.x == bubbleThreeQuarter))
             material = MAT_HYDROGEN;
 
+        // A separated Oxygen capture row lets each Hydrogen packet complete its
+        // eight macro steps before fine contact drives conserved water synthesis.
+        int oxygenRow = bubbleRow - 10;
+        if (tank == 0 && b.y == oxygenRow &&
+            (b.x == bubbleQuarter || b.x == bubbleMiddle ||
+             b.x == bubbleThreeQuarter))
+            material = MAT_OXYGEN;
+
         int outlet = (minimumBrick.x + maximumBrick.x) / 2;
+        // The Water tank owns a complete aligned Steam riser into the visible
+        // cloud bank. This is conserved authored vapor, not a presentation-only
+        // effect; the chemistry pass transfers it one-for-one into Cloud.
+        int ventTop = 5;
+        if (tank == 0 && b.x == outlet &&
+            b.y >= ventTop && b.y <= minimumBrick.y)
+            material = b.y >= minimumBrick.y - 3 ? MAT_STEAM : MAT_EMPTY;
+        if (tank == 0 && (b.x == outlet - 1 || b.x == outlet + 1) &&
+            b.y >= ventTop && b.y <= minimumBrick.y)
+            material = MAT_GLASS;
         if (b.x == outlet && b.y >= maximumBrick.y - 1 && b.y < floorRow - 3) material = MAT_EMPTY;
         if ((b.x == outlet - 1 || b.x == outlet + 1) &&
             b.y >= maximumBrick.y - 1 && b.y < floorRow - 3) material = MAT_GLASS;
@@ -464,6 +485,23 @@ uint waterworksMaterial(ivec2 p) {
     if (brickFrame(p, basinMin, basinMax, 1)) material = MAT_GLASS;
     else if (brickRect(p, basinMin + ivec2(1), basinMax - ivec2(1))) material = MAT_WATER;
     return material;
+}
+
+// Complete 8x8 cloud bricks seed the closed weather cycle without covering
+// authored structures. Steam grows these connected reservoirs before rain.
+bool scenicCloudCell(uint scene, ivec2 p) {
+    ivec2 b = brickCoordinate(p);
+    int surfaceRow = sceneSurfaceTileRow(scene);
+    int centerX = scene == SCENE_WATERWORKS
+        ? 13 : 14 + int((scene * 9u) % 50u);
+    // Clouds belong to reachable sky, not a surface-relative row that can land
+    // inside tall authored machinery (Waterworks has surface row 42).
+    int centerY = min(surfaceRow - 8, 7 + int(scene & 1u));
+    ivec2 first = b - ivec2(centerX, centerY);
+    ivec2 second = b - ivec2(centerX + 5, centerY + 1);
+    bool firstLobe = first.x * first.x + first.y * first.y * 5 <= 24;
+    bool secondLobe = second.x * second.x + second.y * second.y * 5 <= 16;
+    return b.y < surfaceRow - 5 && (firstLobe || secondLobe);
 }
 
 ivec2 ecosystemQueen() {
@@ -872,6 +910,8 @@ void main() {
         authored = persistentWorldAddress(p, scene, local, activeAuthoredOrigin);
 
     uint material = authored ? materialForScene(scene, local) : MAT_EMPTY;
+    if (authored && material == MAT_EMPTY && scenicCloudCell(scene, local))
+        material = MAT_CLOUD;
     uint substrateScene = composedWorld ? SCENE_SANDBOX : scene;
     uvec2 substrateSample = residentWorldSubstrateSample(p, substrateScene);
     uint substrateMaterial = substrateSample.x;

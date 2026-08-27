@@ -892,6 +892,24 @@ bool smokeSteamPair(ivec2 position, Cell source, out bool primary) {
 }
 
 
+ivec2 firstWaterSynthesisPartner(ivec2 position, uint material) {
+    uint wanted = material == MAT_HYDROGEN ? MAT_OXYGEN : MAT_HYDROGEN;
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 candidate = position + cardinalOffsets[i];
+        if (at(candidate).material == wanted) return candidate;
+    }
+    return position;
+}
+
+bool hydrogenOxygenPair(ivec2 position, Cell source, out Cell partnerCell) {
+    if (source.material != MAT_HYDROGEN && source.material != MAT_OXYGEN) return false;
+    ivec2 partner = firstWaterSynthesisPartner(position, source.material);
+    if (all(equal(partner, position))) return false;
+    partnerCell = at(partner);
+    return all(equal(firstWaterSynthesisPartner(partner, partnerCell.material), position));
+}
+
+
 bool sleepingChunkNeighborhood(ivec2 position) {
     uvec2 center = chunkCoordinate(position);
     uint columns = chunkColumns(pc.width);
@@ -949,6 +967,24 @@ void main() {
     // Movement ownership lasts exactly one fixed tick. Leaving this bit set
     // permanently vetoes every later fine and macro liquid transaction.
     result.aux &= ~AUX_MOVED;
+
+    // Race-free two-cell synthesis: mutually paired Hydrogen/Oxygen contacts
+    // become one water-family unit and one pressure-bearing Atmosphere unit.
+    Cell synthesisPartner;
+    if (hydrogenOxygenPair(p, source, synthesisPartner)) {
+        int mixedTemperature = (source.temperature + synthesisPartner.temperature) / 2;
+        if (source.material == MAT_HYDROGEN) {
+            result = makeCell(mixedTemperature >= 100 ? MAT_STEAM : MAT_WATER);
+        } else {
+            result = makeCell(MAT_ATMOSPHERE);
+            setStateValue(result, 54u);
+        }
+        result.temperature = mixedTemperature;
+        result.age = 0u;
+        result.aux |= AUX_MOVED;
+        commitResult(index, source, result);
+        return;
+    }
 
     if (!activeStructuralProcess(source.material) && sleepingChunkNeighborhood(p)) {
         result.aux &= ~AUX_MOVED;
@@ -1246,12 +1282,8 @@ void main() {
             setStateValue(result, volume);
         }
     } else if (source.material == MAT_HYDROGEN) {
-        bool ignition = nearFire || hasNeighbor(p, MAT_EMBER) || hasNeighbor(p, MAT_LIGHTNING) ||
-                        result.temperature >= materialIgnitionPoint(MAT_HYDROGEN);
-        if (ignition && (hasNeighbor(p, MAT_OXYGEN) || hasNeighbor(p, MAT_ATMOSPHERE))) {
-            result = makeCell((randomValue & 3u) == 0u ? MAT_FIRE : MAT_STEAM);
-            result.temperature = max(result.temperature, 760);
-        }
+        // Hydrogen cannot consume ambient Atmosphere by itself. Water synthesis
+        // is owned exclusively by the paired Hydrogen/Oxygen transaction above.
     }
 
     // Resource cells are consumed only by one deterministic nearby machine controller.
@@ -1398,16 +1430,26 @@ void main() {
         setStateValue(result, pressure);
     }
 
-    if (source.material == MAT_STEAM) {
-        if (source.age < 300u) result.temperature = max(result.temperature, 55);
-        bool condensationConditions = hasCold(p) || result.temperature < 34;
-        if (source.age > 1800u && condensationConditions && (randomValue & 255u) == 0u) {
-            result = makeCell(MAT_WATER);
+    if (source.material == MAT_STEAM || source.material == MAT_DIRTY_STEAM) {
+        bool dirtyVapor = source.material == MAT_DIRTY_STEAM;
+        if (!dirtyVapor && source.age < 300u) result.temperature = max(result.temperature, 55);
+        bool joinsCloud = hasNeighbor(p, MAT_CLOUD) &&
+            (source.age > 120u || result.temperature < (dirtyVapor ? 70 : 75));
+        bool nucleatesCloud = source.age > (dirtyVapor ? 2100u : 1800u) &&
+            (hasCold(p) || result.temperature < (dirtyVapor ? 32 : 34)) &&
+            (randomValue & 255u) == 0u;
+        if (joinsCloud || nucleatesCloud) {
+            result = makeCell(MAT_CLOUD);
+            if (dirtyVapor) result.aux |= AUX_WET;
+            result.temperature = min(source.temperature, 24);
         }
-    } else if (source.material == MAT_DIRTY_STEAM) {
-        if (source.age > 2100u && (hasCold(p) || result.temperature < 32) &&
-            (randomValue & 255u) == 0u) {
-            result = makeCell(MAT_DIRTY_WATER);
+    } else if (source.material == MAT_CLOUD) {
+        uint connectedMass = 1u + neighborCount(p, MAT_CLOUD);
+        bool rainInterval = (pc.step % 240u) == 0u;
+        bool rainCell = (hash32(index ^ pc.seed ^ pc.step ^ 0xc10d5u) & 7u) == 0u;
+        if (source.age > 600u && connectedMass >= 6u && rainInterval && rainCell) {
+            result = makeCell((source.aux & AUX_WET) != 0u ? MAT_DIRTY_WATER : MAT_WATER);
+            result.temperature = max(source.temperature, 4);
         }
     } else if (source.material == MAT_SMOKE && source.age > 2400u &&
                (hasNeighbor(p, MAT_OXYGEN) || hasNeighbor(p, MAT_ATMOSPHERE)) &&

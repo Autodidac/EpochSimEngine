@@ -223,8 +223,9 @@ def main() -> int:
 
 
     fullscreen_medium = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
-    for token in ("halfWaterAhead", "isHalfWaterCell(a) && isOpenGas(b)",
-                  "return waterHalfUnits(trailing) >= 1u;"):
+    for token in ("halfWaterAhead", "isHalfWaterCell(a) && isAmbientLiquidGap(b)",
+                  "waterHalfUnits(trailing) == 2u",
+                  "waterHalfUnits(secondTrailing) == 0u"):
         if token not in move:
             errors.append(f"half-water fine-attraction/supply contract missing {token!r}")
     for token in ("bool settledHalfWater = halfWater && !moving",

@@ -461,6 +461,16 @@ vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
     sameNeighbors += cellAt(grid + ivec2(0, -1)).material == cell.material ? 1u : 0u;
     sameNeighbors += cellAt(grid + ivec2(0, 1)).material == cell.material ? 1u : 0u;
     float cohesion = float(sameNeighbors) * 0.045;
+    if (cell.material == MAT_CLOUD) {
+        // Authoritative Cloud is a readable cohesive bank. Its appearance is
+        // derived only from stored density and immediate Cloud mass, so it is
+        // static at equilibrium and never becomes a decorative animation.
+        float cloudMass = float(sameNeighbors) * 0.25;
+        base.rgb = mix(vec3(0.60, 0.67, 0.74), vec3(0.94, 0.96, 0.98),
+                       clamp(0.28 + cloudMass * 0.62, 0.0, 1.0));
+        base.a = clamp(0.54 + cloudMass * 0.28 + densityField * 0.08, 0.54, 0.88);
+        return base;
+    }
     if (cell.material == MAT_OXYGEN) {
         base.rgb = mix(vec3(0.22, 0.46, 0.70), base.rgb, 0.28);
         base.a = clamp(0.09 + densityField * 0.08 + cohesion * 0.24, 0.075, 0.22);

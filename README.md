@@ -137,7 +137,7 @@ Examples:
 - waste returns to soil, dirty water, smoke, or carbon dioxide
 - compost combines ash, organic waste or food, silt/soil/mud, dirty water, oxygen, and time to produce fertilizer while cleaning the paired water cell
 - smoke plus steam becomes dirty steam
-- dirty steam condenses into dirty water
+- Steam and Dirty Steam feed explicit Cloud reservoirs; only mature connected Clouds shed equal Water or Dirty Water cells during rain intervals
 - oxygen and carbon dioxide cycle through respiration, fire, water aeration, and plants
 - salt dissolves into existing water concentration without creating liquid volume
 - structural breakup preserves fragments
@@ -149,7 +149,7 @@ Debug accounting tracks cells created at explicit world boundaries, converted, i
 
 The world, palette, cards, and warnings use one generated material catalog. Frequently interacting materials use separated luminance and hue. Carbon dioxide uses near-black translucent charcoal; hydrogen uses bright pink. Oxygen remains light cyan, smoke dark gray, and steam pale blue-white so gases stay readable at a glance.
 
-Gas drawing is isolated behind `gasPresentation(...)`. The current pass uses restrained color and opacity. The boundary is ready for later material-specific density fields, flow animation, diffusion visualization, heat distortion, and layered translucency without changing chemistry or material IDs.
+Gas drawing is isolated behind `gasPresentation(...)`. The current pass uses restrained color and opacity, while Cloud is a distinct static authoritative gas reservoir rather than a Steam color effect. Steam and Dirty Steam must join or nucleate Cloud before mature connected Cloud cells can rain; the boundary remains ready for later density fields, diffusion visualization, heat distortion, and layered translucency without changing chemistry or material IDs.
 
 ## Interface
 
@@ -318,7 +318,7 @@ Each cell is 16 bytes: material ID, age, signed temperature, and packed material
 
 ## EpochGui snapshot
 
-The complete vendored EpochGui dependency, exact upstream commit, and cross-platform module compatibility policy are documented in `third_party/EpochGui/SNAPSHOT.md`. SandHybrid releases must update this full dependency to the current upstream version rather than retaining a selected-header snapshot.
+The complete vendored EpochGui dependency is current at v0.89.27 / b23f283dd9b0d6021dccd8fbc2235306418aa66a from the canonical Site mirror. Exact archive provenance, SHA-256, and the cross-platform module compatibility policy are documented in `third_party/EpochGui/SNAPSHOT.md`; SandHybrid releases must update this full dependency rather than retaining a selected-header snapshot.
 
 
 ## Hierarchical simulation
@@ -328,7 +328,7 @@ Uniform aligned 8x8 material regions can move as exact 64-cell packets while the
 
 ## Half-volume fresh water
 
-Fresh water supports conserved faint half-cells, a three-half-unit ledge release threshold, and solid-supported pre-fall droplets that cannot hop along water edges or crawl after falling. See `HALF_WATER.md`.
+Fresh water supports conserved darker half-cells only at a terminal two-cell supplied ledge: the lip hangs one half while its paired half drips. A deeper full-Water reservoir cannot cascade into halves, and pre-fall droplets cannot hop along water edges or crawl after falling. See `HALF_WATER.md`.
 
 
 ## v2.5.25 distributed World and persistent Fix29 hive recovery
@@ -344,11 +344,11 @@ This recovery uses the actual scene-local Fix29 hive hash in Sandbox, Ecosystem,
 
 The supplied 2026-08-04 Volcano silhouette now anchors the scene: a broad left lake, smoother layered underground, far-right Stone cone, central Lava throat and chamber, and bottom Lava return. Engineering, Industry, and Gold Mine recover active experiment layouts and a visible water-fed ten-percent Sluice path.
 
-Half Water is the darker conserved one-unit state again, including the supplied ledge hang/drip; full Water continues the corrected ledge/diagonal route. Normal materials render statically except for the retained metal/ore glint. State-driven gases conserve pressure while Atmosphere expands into Vacuum and raw atmospheric gases mix locally.
+Half Water is the darker conserved one-unit state again, including the supplied ledge hang/drip; full Water continues the corrected ledge/diagonal route. Normal materials render statically except for the retained metal/ore glint. State-driven gases conserve pressure while Atmosphere expands into existing Vacuum, settled visible excess reabsorbs without creating new Vacuum, Hydrogen and Oxygen synthesize Water plus pressure-bearing Atmosphere, and Steam feeds explicit Clouds before interval rain.
 
 `IGNITE AIR` is in `ACTIONS` above `KEYMAP`. Settings provides 30/60/120/UNLIMITED presentation caps while simulation remains fixed at 60 Hz. Debug now uses bounded rotating-region samples, and the persistent World has a recoverable supported breathable player spawn.
 
-The generated, placeable, and loaded hive uses the photographed historical compact model (`24..87` shell, `<24` chamber, exit through `x=10`, seed `0xD17A5EED`) over nine complete Wood support tiles. EpochGui remains the complete last-verifiable v0.88.75 / `d8decc9` snapshot; the release-time fetch is explicitly recorded as blocked by the suspended GitHub endpoint, and no dirty local dependency tree is imported.
+The generated, placeable, and loaded hive uses the photographed historical compact model (`24..87` shell, `<24` chamber, exit through `x=10`, seed `0xD17A5EED`) over nine complete Wood support tiles. EpochGui is synchronized from the GitHub-independent canonical Site mirror to the complete v0.89.27 / `b23f283` snapshot; no dirty local dependency tree is imported.
 
 The shipped executable can run the production Vulkan state/readback gate:
 
@@ -389,7 +389,7 @@ These APIs are deterministic and covered by Windows/Linux contracts. The Vulkan 
 
 ## v2.5.6 runtime controls
 
-Right-click exclusively pans: dragging moves the current camera and holding it near a viewport edge performs gated edge panning. `WASD PAN` routes keys to the simulation camera; MAP uses its own camera and a slow full-world snapshot without changing simulation LOD or active-region scheduling. In the persistent World, MINE uses left click and BUILD places the selected resource from the sidebar Inventory pane with left click. Hold `F` and left-click the simulation to fill; pressing `F` alone does nothing. World `RESET` preserves both cameras. `H` and the sidebar `H CAM HOME` button explicitly restore the active camera; `0` and Home remain aliases.
+Right-click exclusively pans: dragging moves the current camera and holding it near a viewport edge performs gated edge panning. `WASD PAN` routes keys to the simulation camera; MAP uses its own camera and a slow full-world snapshot without changing simulation LOD or active-region scheduling. In the persistent World, Inventory is the startup workspace: MINE uses left click and BUILD places the selected resource with left click, so the player laser is immediately available. Selecting Editor transfers left-click ownership to direct world painting without disabling the player. Hold `F` and left-click the simulation to fill; pressing `F` alone does nothing. World `RESET` preserves both cameras. `H` and the sidebar `H CAM HOME` button explicitly restore the active camera; `0` and Home remain aliases.
 
 
 ## World sizes and exact saves

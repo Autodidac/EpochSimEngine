@@ -111,6 +111,7 @@ Cell makeCellWithEntropy(uint material, uint seed, uint step) {
     else if (material == MAT_ICE) temperature = -20;
     else if (material == MAT_SNOW) temperature = -8;
     else if (material == MAT_STEAM || material == MAT_DIRTY_STEAM) temperature = 110;
+    else if (material == MAT_CLOUD) temperature = 12;
     else if (material == MAT_URANIUM) temperature = 42;
     else if (material == MAT_SMELTER) temperature = 180;
     else if (material == MAT_PLANT_STEM) temperature = 20;
@@ -199,7 +200,7 @@ bool isGas(uint material) {
     return material == MAT_SMOKE || material == MAT_STEAM || material == MAT_DIRTY_STEAM ||
            material == MAT_FIRE || material == MAT_LIGHTNING || material == MAT_RADIATION ||
            material == MAT_OXYGEN || material == MAT_ATMOSPHERE || material == MAT_CARBON_DIOXIDE ||
-           material == MAT_HYDROGEN;
+           material == MAT_HYDROGEN || material == MAT_CLOUD;
 }
 
 bool isFreshWater(uint material) {
@@ -547,6 +548,10 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
     case MAT_GOLD: color = vec4(0.98, 0.76 + variation, 0.10, 1.0); break;
     case MAT_OXYGEN: color = vec4(0.30, 0.76 + variation * 0.25, 1.00, 0.34); break;
     case MAT_ATMOSPHERE: color = vec4(0.34, 0.64 + variation * 0.18, 0.72, 0.16); break;
+    case MAT_CLOUD: {
+        float body = 0.72 + variation * 0.6;
+        color = vec4(body, body + 0.035, min(body + 0.08, 1.0), 0.78); break;
+    }
     case MAT_CARBON_DIOXIDE: color = vec4(0.015 + variation * 0.08, 0.020 + variation * 0.06, 0.030 + variation * 0.08, 0.62); break;
     case MAT_HYDROGEN: color = vec4(1.00, 0.32 + variation * 0.18, 0.68 + variation * 0.18, 0.42); break;
     case MAT_IRON_ORE: {

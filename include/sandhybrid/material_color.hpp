@@ -90,6 +90,7 @@ inline constexpr std::array<Rgb8, material_count> material_editor_colors{{
     {255u, 96u, 178u},   // Hydrogen
     {89u, 106u, 87u},    // Sluice box
     {87u, 163u, 184u},   // Atmosphere
+    {176u, 196u, 214u},  // Cloud
 }};
 
 [[nodiscard]] constexpr Rgb8 material_editor_color(const std::uint32_t material) noexcept {

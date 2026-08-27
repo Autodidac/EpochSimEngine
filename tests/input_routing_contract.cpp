@@ -18,6 +18,8 @@ static_assert(edge_pan_direction(639, 359, 0, 0, 640, 360) == EdgePanDirection{1
 static_assert(edge_pan_direction(320, 180, 0, 0, 640, 360) == EdgePanDirection{});
 
 int main() {
+    SharedState startup_state;
+    if (startup_state.selected_workspace.load() != 0u) return 15;
     const WorldPrimaryInput running_player_mining{
         .editor_workspace = true,
         .pointer_over_world = true,

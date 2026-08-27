@@ -77,6 +77,7 @@ enum class Material : std::uint32_t {
     hydrogen = 64,
     sluice_box = 65,
     atmosphere = 66,
+    cloud = 67,
     count
 };
 
@@ -175,6 +176,7 @@ inline constexpr std::array<std::string_view, material_count> material_names{
     "Hydrogen",
     "Sluice box",
     "Atmosphere",
+    "Cloud",
 };
 
 inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
@@ -245,6 +247,7 @@ inline constexpr std::array<MaterialProfile, material_count> material_profiles{{
     {1u, 0u, 1u, 255u, 0, 32767, 32767, 32767, 32767, 560, 180u, MaterialPhase::gas, "Engineering", "STRONG: LIGHT FUEL GAS", "WEAK: IGNITION / CONTAINMENT", "TO: STEAM / FIRE", "ROLE: ENERGY CARRIER", "DANGER: EXPLOSIVE GAS"},
     {210u, 196u, 210u, 248u, 900, 760, 1420, 2850, 2850, 32767, 165u, MaterialPhase::solid, "Industry", "STRONG: WET SAND SEPARATION", "WEAK: DRY FEED / DAMAGE", "TO: GOLD + WATER", "ROLE: GRAVITY MINERAL PROCESSOR", "DANGER: PINCH / FLOOD"},
     {2u, 0u, 2u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 4u, MaterialPhase::gas, "Unknown", "STRONG: BALANCED BREATHABLE AIR", "WEAK: PRESSURE / CONTAMINATION", "TO: CO2 / VAPOR / EXCESS GAS", "ROLE: N2/O2/AR BASELINE", "DANGER: LOW OXYGEN WHEN DEPLETED"},
+    {3u, 0u, 3u, 255u, 0, 32767, 32767, 32767, 32767, 32767, 10u, MaterialPhase::gas, "Water", "STRONG: WATER STORAGE / WEATHER", "WEAK: MATURITY / RAIN LOSS", "TO: WATER / DIRTY WATER", "ROLE: CONSERVED SKY RESERVOIR", "DANGER: STORM / FLOOD"},
 }};
 
 [[nodiscard]] constexpr const MaterialProfile& material_profile(const Material material) noexcept {
@@ -282,7 +285,7 @@ inline constexpr std::uint32_t material_slots_per_group = 10u;
 
 inline constexpr std::array<std::uint32_t, material_group_count> material_group_slot_counts{
     7u,
-    8u,
+    9u,
     8u,
     8u,
     9u,
@@ -304,7 +307,7 @@ inline constexpr std::array<std::string_view, material_group_count> material_gro
 
 inline constexpr std::array<std::array<Material, material_slots_per_group>, material_group_count> material_groups{{
     {Material::sand, Material::dirt, Material::stone, Material::mud, Material::silt, Material::crystal, Material::glass, Material::count, Material::count, Material::count},
-    {Material::water, Material::saltwater, Material::dirty_water, Material::ice, Material::snow, Material::steam, Material::dirty_steam, Material::salt, Material::count, Material::count},
+    {Material::water, Material::saltwater, Material::dirty_water, Material::ice, Material::snow, Material::steam, Material::dirty_steam, Material::salt, Material::cloud, Material::count},
     {Material::grass, Material::seed, Material::plant_stem, Material::flower, Material::wood, Material::food, Material::fertilizer, Material::pollen, Material::count, Material::count},
     {Material::honey, Material::bee, Material::queen_bee, Material::beehive, Material::beeswax, Material::ant, Material::beetle, Material::insect_habitat, Material::count, Material::count},
     {Material::fire, Material::lava, Material::oil, Material::ember, Material::ash, Material::gunpowder, Material::acid, Material::magma_vent, Material::smoke, Material::count},

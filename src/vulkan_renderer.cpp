@@ -2449,7 +2449,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
     void record_simulation_step(const VkCommandBuffer command_buffer,
                                 const SharedState& state,
-                                const bool collect_debug_stats) {
+                                const bool /*collect_debug_stats*/) {
         const auto active_section_x = state.active_window_origin_x.load(std::memory_order_relaxed);
         const auto active_section_y = state.active_window_origin_y.load(std::memory_order_relaxed);
         const auto active_dispatch = active_cell_dispatch(
@@ -2464,7 +2464,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .active_section_x = active_section_x,
             .active_section_y = active_section_y,
             .active_mode = 1u,
-            .reserved = (collect_debug_stats ? 1u : 0u) | (macro_step_due ? 2u : 0u),
+            .reserved = macro_step_due ? 2u : 0u,
         };
 
         if ((simulation_step & 3u) == 0u) {
@@ -2538,7 +2538,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
           .phase = phase,
           .parity = static_cast<std::int32_t>(
               (simulation_step + static_cast<std::uint32_t>(phase_index)) & 1u),
-          .reserved0 = collect_debug_stats ? 1u : 0u,
+          .reserved0 = 0u,
           .active_section_x = active_section_x,
           .active_section_y = active_section_y,
           .active_mode = 1u,
@@ -2604,7 +2604,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     phase == 5
                         ? ((simulation_step + static_cast<std::uint32_t>(phase_index)) & 1u)
                         : ((simulation_step + static_cast<std::uint32_t>(phase)) & 1u)),
-                .reserved0 = collect_debug_stats ? 1u : 0u,
+                .reserved0 = 0u,
                 .reserved1 = ((simulation_step & 3u) == 0u) ? 2u : 0u,
                 .active_section_x = active_section_x,
                 .active_section_y = active_section_y,
@@ -4047,7 +4047,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 if (delayed_ticks > 0u && composed_world) {
                     const auto global_queen_x = hive_origin_x + queen_x;
                     const auto global_queen_y = hive_origin_y + queen_y;
-                    const auto active_section_x = static_cast<std::int32_t>(
+                const auto active_section_x = static_cast<std::int32_t>(
                         global_queen_x / active_region_width_cells);
                     const auto active_section_y = static_cast<std::int32_t>(
                         global_queen_y / active_region_height_cells);
@@ -4546,6 +4546,23 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             {
                 auto cells = acceptance_atmosphere_world();
                 seed_rect(cells, Material::stone, 104u, 161u, 8u, 1u);
+                seed_rect(cells, Material::water, 107u, 160u, 4u, 1u);
+                upload_scene_cells(cells);
+                run_acceptance_horizontal_pass(0);
+                const auto result = download_scene_cells();
+                const auto [units, halves] = water_half_units(result);
+                append("full_water_reservoir_does_not_cascade_to_halves",
+                       units == 8u && halves == 0u &&
+                           count_material(result, Material::water) == 4u,
+                       "half_units=" + std::to_string(units) +
+                           " halves=" + std::to_string(halves) +
+                           " water_cells=" +
+                            std::to_string(count_material(result, Material::water)));
+            }
+
+            {
+                auto cells = acceptance_atmosphere_world();
+                seed_rect(cells, Material::stone, 104u, 161u, 8u, 1u);
                 cells[index_of(110u, 160u)] = make_fill_cell(
                     material_id(Material::water), static_cast<std::uint32_t>(index_of(110u, 160u)));
                 upload_scene_cells(cells);
@@ -4844,6 +4861,56 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            " row=" + std::to_string(bubble_row) +
                            " initial_hydrogen=" + std::to_string(initial_hydrogen));
 
+                std::uint32_t complete_cloud_tiles = 0u;
+                std::uint32_t cloud_cells = 0u;
+                std::uint32_t half_water_cells = 0u;
+                std::uint32_t waterworks_water_cells = 0u;
+                for (std::uint32_t brick_y = 0u; brick_y < 12u; ++brick_y) {
+                    for (std::uint32_t brick_x = 0u;
+                         brick_x < world_bricks_x; ++brick_x) {
+                        bool complete_cloud = true;
+                        for (std::uint32_t dy = 0u; dy < tile_size; ++dy) {
+                            for (std::uint32_t dx = 0u; dx < tile_size; ++dx) {
+                                const auto& cell = world_cells[index_of(
+                                    district_x + brick_x * tile_size + dx,
+                                    district_y + brick_y * tile_size + dy)];
+                                complete_cloud = complete_cloud &&
+                                    cell.material == material_id(Material::cloud);
+                                cloud_cells += cell.material ==
+                                    material_id(Material::cloud) ? 1u : 0u;
+                            }
+                        }
+                        complete_cloud_tiles += complete_cloud ? 1u : 0u;
+                    }
+                }
+                for (std::uint32_t local_y = 0u;
+                     local_y < pre_expansion_world_height; ++local_y) {
+                    for (std::uint32_t local_x = 0u;
+                         local_x < pre_expansion_world_width; ++local_x) {
+                        const auto& cell = world_cells[index_of(
+                            district_x + local_x, district_y + local_y)];
+                        if (cell.material != material_id(Material::water)) continue;
+                        ++waterworks_water_cells;
+                        half_water_cells += (cell.aux & water_half_bit) != 0u ? 1u : 0u;
+                    }
+                }
+                const auto steam_riser = count_rect(
+                    world_cells, Material::steam,
+                    district_x + 13u * tile_size,
+                    district_y + 9u * tile_size,
+                    tile_size, 4u * tile_size);
+                append("world_waterworks_visible_weather_source",
+                       complete_cloud_tiles >= 20u && cloud_cells >= 1280u &&
+                           steam_riser == 256u && waterworks_water_cells > 0u &&
+                           half_water_cells == 0u,
+                       "complete_cloud_tiles=" +
+                           std::to_string(complete_cloud_tiles) +
+                           " cloud_cells=" + std::to_string(cloud_cells) +
+                           " steam_riser=" + std::to_string(steam_riser) +
+                           " full_water_cells=" +
+                           std::to_string(waterworks_water_cells) +
+                           " half_water_cells=" +
+                           std::to_string(half_water_cells));
                 const auto active_section_x = static_cast<std::int32_t>(
                     (district_x + bubble_columns[1] * tile_size) /
                     static_cast<std::uint32_t>(active_region_width_cells));
@@ -5082,6 +5149,105 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             }
 
             {
+                auto cells = acceptance_atmosphere_world();
+                cells[index_of(100u, 100u)] = make_fill_cell(
+                    material_id(Material::hydrogen),
+                    static_cast<std::uint32_t>(index_of(100u, 100u)));
+                cells[index_of(101u, 100u)] = make_fill_cell(
+                    material_id(Material::oxygen),
+                    static_cast<std::uint32_t>(index_of(101u, 100u)));
+                upload_scene_cells(cells);
+                run_acceptance_chemistry_pass();
+                const auto result = download_scene_cells();
+                const auto& water_product = result[index_of(100u, 100u)];
+                const auto& atmosphere_product = result[index_of(101u, 100u)];
+                append("waterworks_hydrogen_oxygen_synthesis",
+                       water_product.material == material_id(Material::water) &&
+                           atmosphere_product.material == material_id(Material::atmosphere) &&
+                           (atmosphere_product.aux & 255u) == 54u &&
+                           count_material(result, Material::hydrogen) == 0u &&
+                           count_material(result, Material::oxygen) == 0u,
+                       "products=" + std::to_string(water_product.material) + "/" +
+                           std::to_string(atmosphere_product.material) +
+                           " atmosphere_pressure=" +
+                           std::to_string(atmosphere_product.aux & 255u));
+            }
+
+            {
+                const auto saved_step = simulation_step;
+                auto feed_cells = acceptance_atmosphere_world();
+                for (std::uint32_t y = 100u; y < 103u; ++y) {
+                    for (std::uint32_t x = 100u; x < 103u; ++x) {
+                        auto cloud = make_fill_cell(
+                            material_id(Material::cloud),
+                            static_cast<std::uint32_t>(index_of(x, y)));
+                        cloud.age = 300u;
+                        cloud.temperature = 12;
+                        feed_cells[index_of(x, y)] = cloud;
+                    }
+                }
+                auto steam = make_fill_cell(
+                    material_id(Material::steam),
+                    static_cast<std::uint32_t>(index_of(103u, 101u)));
+                steam.age = 121u;
+                steam.temperature = 60;
+                feed_cells[index_of(103u, 101u)] = steam;
+                simulation_step = 239u;
+                upload_scene_cells(feed_cells);
+                run_acceptance_chemistry_pass();
+                const auto fed = download_scene_cells();
+                const auto fed_clouds = count_material(fed, Material::cloud);
+                const auto remaining_steam = count_material(fed, Material::steam);
+
+                std::uint32_t rain_x = 0u;
+                std::uint32_t rain_y = 0u;
+                bool rain_candidate_found = false;
+                constexpr std::uint32_t rain_step = 240u;
+                for (std::uint32_t y = 96u; y <= 120u && !rain_candidate_found; ++y) {
+                    for (std::uint32_t x = 96u; x <= 120u; ++x) {
+                        const auto index = static_cast<std::uint32_t>(index_of(x, y));
+                        if ((fill_hash(index ^ random_seed ^ rain_step ^ 0xc10d5u) & 7u) == 0u) {
+                            rain_x = x;
+                            rain_y = y;
+                            rain_candidate_found = true;
+                            break;
+                        }
+                    }
+                }
+                auto rain_cells = acceptance_atmosphere_world();
+                if (rain_candidate_found) {
+                    for (std::uint32_t y = rain_y - 1u; y <= rain_y + 1u; ++y) {
+                        for (std::uint32_t x = rain_x - 1u; x <= rain_x + 1u; ++x) {
+                            auto cloud = make_fill_cell(
+                                material_id(Material::cloud),
+                                static_cast<std::uint32_t>(index_of(x, y)));
+                            cloud.age = 601u;
+                            cloud.temperature = 12;
+                            rain_cells[index_of(x, y)] = cloud;
+                        }
+                    }
+                }
+                simulation_step = rain_step;
+                upload_scene_cells(rain_cells);
+                run_acceptance_chemistry_pass();
+                const auto rained = download_scene_cells();
+                simulation_step = saved_step;
+                const auto rain_water = count_material(rained, Material::water) +
+                    count_material(rained, Material::dirty_water);
+                const auto remaining_clouds = count_material(rained, Material::cloud);
+                append("cloud_first_conserved_weather_cycle",
+                       fed_clouds == 10u && remaining_steam == 0u &&
+                           rain_candidate_found && rain_water > 0u &&
+                           remaining_clouds + rain_water == 9u,
+                       "fed_clouds=" + std::to_string(fed_clouds) +
+                           " remaining_steam=" + std::to_string(remaining_steam) +
+                           " rain_water=" + std::to_string(rain_water) +
+                           " remaining_clouds=" + std::to_string(remaining_clouds) +
+                           " rain_cell=" + std::to_string(rain_x) + "," +
+                           std::to_string(rain_y));
+            }
+
+            {
                 constexpr std::uint32_t charged_bit = 0x40000000u;
                 constexpr std::uint32_t stored_material_mask = 0x00007f00u;
                 constexpr std::uint32_t stored_volume_mask = 0x007f8000u;
@@ -5094,20 +5260,61 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 upload_scene_cells(cells);
                 run_acceptance_horizontal_pass(0);
                 const auto result = download_scene_cells();
-                const auto& absorbed = result[index_of(101u, 100u)];
-                const auto stored_material =
-                    (absorbed.aux & stored_material_mask) >> 8u;
-                const auto stored_volume =
-                    (absorbed.aux & stored_volume_mask) >> 15u;
+                const auto& first = result[index_of(100u, 100u)];
+                const auto& second = result[index_of(101u, 100u)];
+                const auto first_stored_material =
+                    (first.aux & stored_material_mask) >> 8u;
+                const auto second_stored_material =
+                    (second.aux & stored_material_mask) >> 8u;
+                const auto first_stored_volume =
+                    (first.aux & stored_volume_mask) >> 15u;
+                const auto second_stored_volume =
+                    (second.aux & stored_volume_mask) >> 15u;
+                const auto pressure = (first.aux & 255u) + (second.aux & 255u);
+                const auto stored_volume = first_stored_volume + second_stored_volume;
+                const bool stored_materials_valid =
+                    (first_stored_volume == 0u ||
+                     first_stored_material == material_id(Material::smoke)) &&
+                    (second_stored_volume == 0u ||
+                     second_stored_material == material_id(Material::smoke));
                 append("atmosphere_delayed_excess_reabsorption",
-                       result[index_of(100u, 100u)].material == material_id(Material::empty) &&
-                           absorbed.material == material_id(Material::atmosphere) &&
-                           (absorbed.aux & charged_bit) != 0u &&
-                           stored_material == material_id(Material::smoke) &&
-                           stored_volume == 1u,
-                       "stored_material=" + std::to_string(stored_material) +
+                       first.material == material_id(Material::atmosphere) &&
+                           second.material == material_id(Material::atmosphere) &&
+                           ((first.aux | second.aux) & charged_bit) != 0u &&
+                           pressure == 54u && stored_volume == 1u &&
+                           stored_materials_valid,
+                       "first_material=" + std::to_string(first.material) +
+                           " second_material=" + std::to_string(second.material) +
+                           " pressure=" + std::to_string(pressure) +
                            " stored_volume=" + std::to_string(stored_volume) +
-                           " aux=" + std::to_string(absorbed.aux));
+                           " first_aux=" + std::to_string(first.aux) +
+                           " second_aux=" + std::to_string(second.aux));
+            }
+
+            {
+                auto cells = acceptance_atmosphere_world();
+                seed_rect(cells, Material::water, 80u, 80u, 8u, 8u);
+                cells[index_of(100u, 100u)] = make_fill_cell(
+                    material_id(Material::hydrogen),
+                    static_cast<std::uint32_t>(index_of(100u, 100u)));
+                upload_scene_cells(cells);
+                const auto before_debug = download_scene_cells();
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    reset_debug_stats(command_buffer);
+                    record_debug_stats(command_buffer, state, 0u);
+                });
+                const auto after_debug = download_scene_cells();
+                const bool identical = before_debug.size() == after_debug.size() &&
+                    std::equal(before_debug.begin(), before_debug.end(),
+                               after_debug.begin(),
+                               [](const SceneCell& before, const SceneCell& after) {
+                                   return before.material == after.material &&
+                                       before.age == after.age &&
+                                       before.temperature == after.temperature &&
+                                       before.aux == after.aux;
+                               });
+                append("debug_collection_is_read_only", identical,
+                       "cells_compared=" + std::to_string(before_debug.size()));
             }
 
             {
@@ -5158,6 +5365,63 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            " vent_pressure=" + std::to_string(vent.aux & 255u) +
                            " inventory=" + std::to_string(
                                result[index_of(99u, 99u)].aux & fill_aux_random_mask));
+            }
+            {
+                auto cells = acceptance_atmosphere_world();
+                const auto target_x = static_cast<std::uint32_t>(actor.x + 24);
+                const auto target_y = static_cast<std::uint32_t>(actor.y - 4);
+                cells[index_of(target_x, target_y)] = make_fill_cell(
+                    material_id(Material::stone),
+                    static_cast<std::uint32_t>(index_of(target_x, target_y)));
+                upload_scene_cells(cells);
+                const ActorPush push{
+                    .width = config.grid_width,
+                    .height = config.grid_height,
+                    .step = simulation_step,
+                    .seed = random_seed,
+                    .aim_x = static_cast<std::int32_t>(target_x),
+                    .aim_y = static_cast<std::int32_t>(target_y),
+                    .fire = 1u,
+                    .scene = static_cast<std::uint32_t>(world_scene),
+                    .simulate = 0u,
+                    .active_mode = 0u,
+                };
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    bind_compute(command_buffer, actor_pipeline, current_set);
+                    vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                                       VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                       sizeof(push), &push);
+                    vkCmdDispatch(command_buffer, 1, 1, 1);
+                    buffer_barrier(command_buffer, cell_buffers[current_set],
+                                   VK_ACCESS_SHADER_WRITE_BIT,
+                                   VK_ACCESS_SHADER_READ_BIT |
+                                       VK_ACCESS_SHADER_WRITE_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                    buffer_barrier(command_buffer, actor_buffer,
+                                   VK_ACCESS_SHADER_WRITE_BIT,
+                                   VK_ACCESS_SHADER_READ_BIT |
+                                       VK_ACCESS_SHADER_WRITE_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+                });
+                const auto fired_actor = download_actor_state();
+                const auto fired_cells = download_scene_cells();
+                const auto& damaged = fired_cells[index_of(target_x, target_y)];
+                append("inventory_player_laser_produces_visible_hit_state",
+                       fired_actor.shot_timer == 4u &&
+                           fired_actor.hit_x == static_cast<std::int32_t>(target_x) &&
+                           fired_actor.hit_y == static_cast<std::int32_t>(target_y) &&
+                           damaged.material == material_id(Material::stone) &&
+                           (damaged.aux & 255u) == 111u,
+                       "shot_timer=" + std::to_string(fired_actor.shot_timer) +
+                           " hit=" + std::to_string(fired_actor.hit_x) + "," +
+                           std::to_string(fired_actor.hit_y) +
+                           " target=" + std::to_string(target_x) + "," +
+                           std::to_string(target_y) +
+                           " target_health=" +
+                           std::to_string(damaged.aux & 255u));
             }
             check_pre_pr19_hive("sandbox_hard_coded_hive", Scene::sandbox);
             check_pre_pr19_hive("sandbox_hard_coded_hive_delayed", Scene::sandbox, 120u);
@@ -5258,17 +5522,23 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const auto before_draw = Clock::now();
             const bool simulation_due = before_draw >= next_simulation;
             const std::uint32_t simulation_ticks = simulation_due ? 1u : 0u;
+            bool simulation_overdue = false;
             if (simulation_due) {
                 next_simulation += simulation_interval;
                 constexpr std::uint32_t max_time_debt_ticks = 2u;
-                if (before_draw > next_simulation + simulation_interval * max_time_debt_ticks)
+                if (before_draw > next_simulation + simulation_interval * max_time_debt_ticks) {
+                    // Discard stale wall-clock debt instead of creating a GPU catch-up spiral.
                     next_simulation = before_draw + simulation_interval;
+                } else {
+                    simulation_overdue = before_draw >= next_simulation;
+                }
             }
 
-            // The 30 FPS mode still submits every fixed 60 Hz simulation tick,
-            // but only every second submission acquires and presents an image.
-            const bool present_frame = active_limit != 0u ||
+            // Overdue fixed ticks get renderless submissions before presentation.
+            // Debug rendering therefore cannot change authoritative tick order/state.
+            const bool present_requested = active_limit != 0u ||
                 ((thirty_fps_divider++ & 1u) == 0u);
+            const bool present_frame = present_requested && !simulation_overdue;
             if (!draw_frame(state, simulation_ticks, present_frame)) {
                 recreate_swapchain(width, height);
             } else if (present_frame) {

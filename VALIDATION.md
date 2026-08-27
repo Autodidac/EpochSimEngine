@@ -73,16 +73,23 @@ Run this from a fresh native package on a system with a working Vulkan presentat
 sandhybrid --world-size large --runtime-acceptance-report runtime-acceptance.json
 ```
 
-The executable allocates the selected resident World (Large is 10240x1440), runs the production reset, actor, paint, tile, macro-movement, fine-movement, and chemistry pipelines, writes a schema-1 JSON report, and exits 0 only when every focused check passes. Seeded movement dispatch remains bounded to the first 192 columns and rows because those micro-scenarios live there, while reset, district, player, startup-footprint, and hard-coded hive checks cover the complete selected resident buffers. Unrelated long-running chemistry, effects, sunlight, weather, and cross-district travel are intentionally omitted; deterministic contracts separately enforce their source policies. Exit 3 means observed GPU state contradicted the accepted behavior. The report covers:
+The executable allocates the selected resident World (Large is 10240x1440), runs the production reset, actor, paint, tile, macro-movement, fine-movement, and chemistry pipelines, writes a schema-1 JSON report, and exits 0 only when every focused check passes. Seeded movement dispatch remains bounded to the first 192 columns and rows because those micro-scenarios live there, while reset, district, player, startup-footprint, and hard-coded hive checks cover the complete selected resident buffers. Unrelated long-running chemistry, effects, sunlight, multi-interval weather/ecology, and cross-district travel are intentionally omitted; deterministic contracts separately enforce their source policies. Exit 3 means observed GPU state contradicted the accepted behavior. The report covers:
 
 - Editor paint commits exactly once while RUNNING and while PAUSED;
 - exact one-packet 8x8 Water and Hydrogen displacement;
 - blocked Water retains macro ownership for seven due opportunities and enters fine fallback on the eighth only after an open-boundary check;
 - enclosed Air remains tiled after the same classifier budget;
-- Half Water fall, clear-gap two-to-four-cell attraction, merge, supplied-ledge split/hang/drip, and full-Water zero-jitter equilibrium;
+- Half Water fall, clear-gap two-to-four-cell attraction, merge, terminal supplied-ledge split/hang/drip, and full-Water zero-jitter equilibrium;
+- a four-cell supplied full-Water reservoir remains four full cells with zero Half flags instead of cascading into darker halves;
+- paired cardinal Hydrogen/Oxygen synthesis into one Water-family cell plus one pressure-bearing Atmosphere cell;
+- Steam joining an explicit Cloud reservoir, then mature connected Cloud converting one-for-one into interval Water rain without direct Steam-to-rain;
+- actual Waterworks reset state containing 40 complete visible Cloud tiles, a 256-cell Steam riser, 42,048 full-Water cells, and zero Half-Water cells;
+- settled Smoke reabsorption preserving two Atmosphere cells, total pressure, and stored excess without creating Vacuum;
+- debug-stat collection leaving every canonical cell byte-identical;
 - isolated full Water crossing an unsupported ledge;
 - complete supported structural Stone foundations and common aligned grass Y `1040` in all eight distributed World districts;
 - live persistent player state at the distributed Frontier recovery spawn with full health and Oxygen;
+- Inventory startup ownership producing actor shot timer 4, an exact terrain hit, and expected two-hit Stone integrity 111 while Editor paint remains independently routed;
 - no more than three authored districts intersecting the initial Large 4x4 active window;
 - cell-exact photographed Fix29 support, shell, queen, exit, and tagged two-bit Empty/Pollen/Honey payload in placed, Sandbox, and Ecosystem hives; placed counts are `571/193/30/7/19`, Sandbox `576/193/35/13/8`, and Ecosystem `571/193/31/9/16` for support/shell/Honey/Pollen/Empty. The placed body is checked immediately and again after 120 focused ticks, while each hard-coded colony retains 100 unique district-correct bee homes.
 
@@ -99,7 +106,7 @@ The packet/performance follow-up adds successful-distance and bounded-dispatch g
 - `sandhybrid_behavior_contract` proves eight-step travel saturation, independent failed-attempt accumulation, success reset, and perimeter-conditional breakup.
 - `sandhybrid_section_scheduler_contract` proves clipped 4x4 dispatch dimensions and a fourfold Large cell-domain reduction.
 - Packaged Windows Vulkan acceptance proves `macro_bubble_eight_step_breakup` with Hydrogen `64`, Water `512`, progress `7` retained and progress `8` broken to fine; `macro_blocked_fine_fallback` reports exactly eight blocked attempts. Current-source acceptance additionally follows all three authored Waterworks Hydrogen packets through the production active window with the same seven-step retention/eighth-step breakup and exact Water/Hydrogen conservation.
-- Serial native verification passes Windows Release `35/35` CTests and WSL Linux Release `32/32`. Interactive timestamp/FPS evidence remains required for performance mission closure.
+- Serial native verification passes Windows Release `40/40` CTests and WSL Linux Release `32/32`. The complete standalone EpochGui v0.89.27 Windows suite passes `10/10`, including both optional modules. Interactive timestamp/FPS evidence remains required for performance mission closure.
 
 - `sandhybrid_input_routing_contract` proves `request_world_reset` raises only the reset epoch request and preserves simulation-camera and MAP center/zoom state.
 - `sandhybrid_ui_layout_contract` proves the new sidebar Camera Home hit region remains inside the sidebar and does not overlap camera-mode, MAP, or DEBUG controls.
@@ -114,6 +121,6 @@ The packet/performance follow-up adds successful-distance and bounded-dispatch g
 - `tools/validate_v2522_contract.py` requires exact scene-local Fix29 hive payloads, single-spend liquid movement, conserved Half Water behavior, zero-jitter settled surfaces, and result-based packaged Vulkan evidence.
 - `tools/validate_v2525_contract.py` requires aligned distributed district origins, common grass Y, sparse Large startup, durable Fix29 contents across every constructor/runtime path, delayed exact hive readback, and stable v2.5.25 package names.
 - `tools/validate_release_tree.py` rejects tracked packages, executables, compiled shaders, payload chunks, one-shot workflows, and versioned release-note fragments.
-- Windows and Linux full Release builds compile every shader, build with warnings as errors, run all CTests, install the package, archive it, audit its contents, and generate SHA-256 files.
+- Windows and Linux full Release builds compile every shader, build with warnings as errors, run all CTests, install the package, archive it, audit its contents, and generate SHA-256 files. The current WSL tree compiles SPIR-V with its native ELF x86-64 shaderc glslc; no Windows shader compiler is used in that lane.
 - Before any public publication, both fresh native packages must execute the Vulkan state-readback command successfully; this pass is local-only. Windows high-DPI capture must also show a paused committed edit beneath its cursor and no world ghost in the sidebar.
 - Runtime and visual acceptance stays active in `missioncache.md`; deterministic contracts and focused readback are evidence, not substitutes for every remaining mission scenario.

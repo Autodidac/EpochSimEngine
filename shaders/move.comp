@@ -56,7 +56,7 @@ const uint MATERIAL_DENSITY[MATERIAL_COUNT] = uint[](
       1u, 255u, 230u,   1u, 150u, 210u,   7u,  11u,
     225u, 245u, 220u, 240u, 225u, 175u,  92u,  93u,
      10u,  18u,  70u, 254u,  60u,  55u,  42u,  58u,
-      1u, 210u,   2u
+      1u, 210u,   2u,   3u
 );
 
 uint moveHash(ivec2 p, uint salt) {
@@ -133,11 +133,17 @@ bool isStoredGasMaterial(uint material) {
     return material == MAT_SMOKE || material == MAT_STEAM || material == MAT_DIRTY_STEAM ||
            material == MAT_FIRE || material == MAT_LIGHTNING || material == MAT_RADIATION ||
            material == MAT_OXYGEN || material == MAT_ATMOSPHERE || material == MAT_CARBON_DIOXIDE ||
-           material == MAT_HYDROGEN;
+           material == MAT_HYDROGEN || material == MAT_CLOUD;
 }
 
 bool isOpenGas(Cell cell) {
     return cell.material == MAT_EMPTY || isStoredGasMaterial(cell.material);
+}
+
+// Horizontal liquid spreading may displace only true ambient space. Reactive
+// gas packets keep their column and are exchanged vertically by buoyancy.
+bool isAmbientLiquidGap(Cell cell) {
+    return cell.material == MAT_EMPTY || cell.material == MAT_ATMOSPHERE;
 }
 
 uint halfMediumMaterial(Cell cell) {
@@ -333,6 +339,7 @@ uint gasBuoyancyDensity(Cell cell) {
     if (cell.material == MAT_DIRTY_STEAM)
         return cell.temperature >= 32 ? 1u : 5u;
     if (cell.material == MAT_ATMOSPHERE) return 2u;
+    if (cell.material == MAT_CLOUD) return 2u;
     if (cell.material == MAT_OXYGEN) return 3u;
     if (cell.material == MAT_CARBON_DIOXIDE) return 4u;
     return densityOf(cell.material);
@@ -688,7 +695,13 @@ bool fullWaterSplitSupplied(ivec2 sourcePosition, int direction) {
     if (!solidSupportsWaterAt(sourcePosition)) return false;
     if (waterHalfUnits(moveAt(sourcePosition)) != 2u) return false;
     Cell trailing = sampleAt(sourcePosition - ivec2(direction, 0));
-    return waterHalfUnits(trailing) >= 1u;
+    Cell secondTrailing = sampleAt(sourcePosition - ivec2(direction * 2, 0));
+    // A half-volume drip is the terminal two-cell meniscus at a ledge, not a
+    // new identity that can propagate backward through an arbitrarily deep
+    // reservoir. The two full cells preserve the old supplied-drip behavior;
+    // a third Water cell keeps the body full and lets the macro/fine flow move
+    // it as ordinary Water until the frontier actually thins.
+    return waterHalfUnits(trailing) == 2u && waterHalfUnits(secondTrailing) == 0u;
 }
 
 bool halfWaterAhead(ivec2 position, int direction) {
@@ -944,12 +957,30 @@ bool mixAtmospherePair(ivec2 firstPosition, ivec2 secondPosition,
     uint absorbed = min(excessVolume, 255u - storedVolume);
     if (absorbed == 0u) return false;
 
-    setStoredAtmosphereExcess(atmosphere, excess.material, storedVolume + absorbed);
     atmosphere.temperature = (atmosphere.temperature * 3 + excess.temperature) / 4;
     atmosphere.aux |= AUX_MOVED;
     if (absorbed == excessVolume) {
-        excess = Cell(MAT_EMPTY, 0u, 20, 0u);
+        // A fully accepted packet expands the same conserved atmosphere into
+        // both pair cells immediately. No intermediate Vacuum is observable.
+        uint baselinePressure = representedGasPressure(atmosphere);
+        if (baselinePressure <= 1u) return false;
+        uint totalStored = storedVolume + absorbed;
+        Cell expanded = atmosphere;
+        uint firstPressure = baselinePressure / 2u;
+        uint secondPressure = baselinePressure - firstPressure;
+        uint firstStored = totalStored / 2u;
+        uint secondStored = totalStored - firstStored;
+        atmosphere.age = 0u;
+        expanded.age = 0u;
+        atmosphere.aux |= AUX_MOVED;
+        expanded.aux |= AUX_MOVED;
+        setStateValue(atmosphere, firstPressure);
+        setStateValue(expanded, secondPressure);
+        setStoredAtmosphereExcess(atmosphere, excess.material, firstStored);
+        setStoredAtmosphereExcess(expanded, excess.material, secondStored);
+        excess = expanded;
     } else {
+        setStoredAtmosphereExcess(atmosphere, excess.material, storedVolume + absorbed);
         setStateValue(excess, excessVolume - absorbed);
         excess.age = 0u;
         excess.aux |= AUX_MOVED;
@@ -993,7 +1024,8 @@ bool gasExpansionAllows(Cell cell) {
     if (cell.material == MAT_ATMOSPHERE || cell.material == MAT_OXYGEN)
         return cell.age < 24u;
     if (cell.material == MAT_CARBON_DIOXIDE || cell.material == MAT_STEAM ||
-        cell.material == MAT_DIRTY_STEAM || cell.material == MAT_SMOKE)
+        cell.material == MAT_DIRTY_STEAM || cell.material == MAT_SMOKE ||
+        cell.material == MAT_CLOUD)
         return cell.age < 96u;
     return true;
 }
@@ -1005,7 +1037,7 @@ bool gasHorizontalAllows(Cell cell, uint randomValue) {
     if (material == MAT_HYDROGEN) return true;
     if (material == MAT_OXYGEN || material == MAT_ATMOSPHERE) return (randomValue & 1u) == 0u;
     if (material == MAT_CARBON_DIOXIDE || material == MAT_STEAM ||
-        material == MAT_DIRTY_STEAM || material == MAT_SMOKE) {
+        material == MAT_DIRTY_STEAM || material == MAT_SMOKE || material == MAT_CLOUD) {
         return (randomValue & 3u) != 0u;
     }
     if (material == MAT_FIRE || material == MAT_RADIATION) return (randomValue & 1u) == 0u;
@@ -1361,12 +1393,12 @@ void processHorizontal(ivec2 left, ivec2 right) {
                                keepLeft ? a : b, keepLeft ? b : a);
             return;
         }
-        if (isHalfWaterCell(a) && isOpenGas(b) &&
+        if (isHalfWaterCell(a) && isAmbientLiquidGap(b) &&
             (a.aux & AUX_MOVED) == 0u &&
             !canCellFallInto(a, sampleAt(left + ivec2(0, 1))) &&
             halfWaterAhead(left, 1)) {
             swapCells(left, right);
-        } else if (isHalfWaterCell(b) && isOpenGas(a) &&
+        } else if (isHalfWaterCell(b) && isAmbientLiquidGap(a) &&
                    (b.aux & AUX_MOVED) == 0u &&
                    !canCellFallInto(b, sampleAt(right + ivec2(0, 1))) &&
                    halfWaterAhead(right, -1)) {
@@ -1428,7 +1460,7 @@ void processHorizontal(ivec2 left, ivec2 right) {
     if (expandAirIntoVacuum(left, right, a, b) ||
         expandAirIntoVacuum(right, left, b, a)) return;
 
-    if (isCellLiquid(a) && isOpenGas(b) && liquidCanSpread(left, right, a, randomValue)) {
+    if (isCellLiquid(a) && isAmbientLiquidGap(b) && liquidCanSpread(left, right, a, randomValue)) {
         if (a.material == MAT_WATER && !isHalfWaterCell(a) &&
             solidLedgePrecedesDrop(right, 1)) {
             if (fullWaterSplitSupplied(left, 1)) splitFullWaterPair(left, right, a, b);
@@ -1436,7 +1468,7 @@ void processHorizontal(ivec2 left, ivec2 right) {
         } else {
             swapCells(left, right);
         }
-    } else if (isCellLiquid(b) && isOpenGas(a) &&
+    } else if (isCellLiquid(b) && isAmbientLiquidGap(a) &&
                liquidCanSpread(right, left, b, randomValue >> 1u)) {
         if (b.material == MAT_WATER && !isHalfWaterCell(b) &&
             solidLedgePrecedesDrop(left, -1)) {

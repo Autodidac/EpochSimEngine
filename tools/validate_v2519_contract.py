@@ -109,8 +109,8 @@ for token in ("aligned `8x8`", "Designer exposes an explicit sidebar `CLEAR`", "
 
 # Every release carries the complete current EpochGui dependency and an exact upstream pin.
 for token in (
-    "d8decc9ee2e73e0009f1e8c49d86a52db6748b28",
-    "v0.88.75",
+    "b23f283dd9b0d6021dccd8fbc2235306418aa66a",
+    "v0.89.27",
     "complete vendored EpochGui dependency",
 ):
     require("third_party/EpochGui/SNAPSHOT.md", token)

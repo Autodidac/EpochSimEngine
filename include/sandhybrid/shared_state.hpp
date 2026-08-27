@@ -62,7 +62,7 @@ struct SharedState final {
     std::atomic_int map_center_x{static_cast<int>(resident_world_width / 2u)};
     std::atomic_int map_center_y{static_cast<int>(resident_world_height / 2u)};
     std::atomic_uint32_t selected_inventory_slot{0};
-    std::atomic_uint32_t selected_workspace{1}; // 0 inventory, 1 editor, 2 settings, 3 designer
+    std::atomic_uint32_t selected_workspace{0}; // 0 inventory/player, 1 editor, 2 settings, 3 designer
     std::atomic_uint32_t inventory_pane{0}; // 0 inventory, 1 blueprints
     std::atomic_uint32_t designer_mode{0}; // 0 static model, 1 map chunk
     std::atomic_uint32_t designer_pane{0}; // 0 inventory, 1 blueprints

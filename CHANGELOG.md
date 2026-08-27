@@ -1,6 +1,16 @@
 # Changelog
 
 ## Unreleased
+- Updated the complete vendored EpochGui dependency to v0.89.27 at b23f283dd9b0d6021dccd8fbc2235306418aa66a from the checksum-verified Site mirror; all 10 upstream Windows tests pass.
+- Restricted Half Water ledge splitting to a terminal two-cell full-Water supply so deep reservoirs keep one full-Water identity instead of cascading into darker halves.
+- Lowered the Waterworks tanks beneath a reachable sky band, added a conserved Steam riser and aligned Cloud bank, and made authoritative Cloud storage visibly readable without shader animation.
+- Restored Inventory/player ownership as the startup workspace so the terrain laser is available by default while Editor painting remains independently live when selected.
+- Added production Vulkan gates for actual Waterworks Cloud/Steam/full-Water state, deep-reservoir non-cascade, and a visible actor-laser hit.
+
+- Prevented delayed Smoke/Steam reabsorption from carving a transient Vacuum by splitting conserved Atmosphere pressure and stored excess across both cells.
+- Added race-free paired Hydrogen/Oxygen synthesis into Water plus pressure-bearing Atmosphere and prevented Water/Half Water from laterally displacing stored raw gases.
+- Added explicit aligned Cloud reservoirs: Steam and Dirty Steam feed or nucleate Clouds, and only mature connected Clouds convert one-for-one into interval Water or Dirty Water rain.
+- Decoupled debug collection from all physics push flags and made an overdue fixed tick renderless, with production readback proving the debug pass is cell-state read-only.
 
 - Added explicit host/transfer barriers around full scene staging so a cold installed run cannot lose the first RUNNING editor paint before readback.
 - Fixed MAP rendering above wide camera letterboxing so the enabled whole-world overlay is visible and can verify the eight aligned district grass lines.

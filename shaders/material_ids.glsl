@@ -68,6 +68,7 @@ const uint MAT_WASTE = 63u;
 const uint MAT_HYDROGEN = 64u;
 const uint MAT_SLUICE_BOX = 65u;
 const uint MAT_ATMOSPHERE = 66u;
-const uint MATERIAL_COUNT = 67u;
+const uint MAT_CLOUD = 67u;
+const uint MATERIAL_COUNT = 68u;
 
 #endif

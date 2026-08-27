@@ -81,6 +81,7 @@ uint materialDensity(uint material) {
     case 64u: return 1u;
     case 65u: return 210u;
     case 66u: return 2u;
+    case 67u: return 3u;
     default: return 0u;
     }
 }
@@ -154,6 +155,7 @@ uint materialBasePhase(uint material) {
     case 64u: return PHASE_GAS;
     case 65u: return PHASE_SOLID;
     case 66u: return PHASE_GAS;
+    case 67u: return PHASE_GAS;
     default: return PHASE_SOLID;
     }
 }
@@ -227,6 +229,7 @@ int materialSofteningPoint(uint material) {
     case 64u: return 32767;
     case 65u: return 760;
     case 66u: return 32767;
+    case 67u: return 32767;
     default: return NO_TEMPERATURE;
     }
 }
@@ -300,6 +303,7 @@ int materialMeltingPoint(uint material) {
     case 64u: return 32767;
     case 65u: return 1420;
     case 66u: return 32767;
+    case 67u: return 32767;
     default: return NO_TEMPERATURE;
     }
 }
@@ -373,6 +377,7 @@ int materialBoilingPoint(uint material) {
     case 64u: return 32767;
     case 65u: return 2850;
     case 66u: return 32767;
+    case 67u: return 32767;
     default: return NO_TEMPERATURE;
     }
 }
@@ -446,6 +451,7 @@ int materialVaporizationPoint(uint material) {
     case 64u: return 32767;
     case 65u: return 2850;
     case 66u: return 32767;
+    case 67u: return 32767;
     default: return NO_TEMPERATURE;
     }
 }
@@ -519,6 +525,7 @@ int materialIgnitionPoint(uint material) {
     case 64u: return 560;
     case 65u: return 32767;
     case 66u: return 32767;
+    case 67u: return 32767;
     default: return NO_TEMPERATURE;
     }
 }
@@ -592,6 +599,7 @@ uint materialThermalConductivity(uint material) {
     case 64u: return 180u;
     case 65u: return 165u;
     case 66u: return 4u;
+    case 67u: return 10u;
     default: return 32u;
     }
 }

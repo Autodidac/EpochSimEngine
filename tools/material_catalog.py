@@ -67,10 +67,11 @@ MATERIALS = [
     ('hydrogen', 'Hydrogen', 1, 0, 0, 255, 'STRONG: LIGHT FUEL GAS', 'WEAK: IGNITION / CONTAINMENT', 'TO: STEAM / FIRE', 'ROLE: ENERGY CARRIER', 'DANGER: EXPLOSIVE GAS'),
     ('sluice_box', 'Sluice box', 210, 196, 900, 248, 'STRONG: WET SAND SEPARATION', 'WEAK: DRY FEED / DAMAGE', 'TO: GOLD + WATER', 'ROLE: GRAVITY MINERAL PROCESSOR', 'DANGER: PINCH / FLOOD'),
     ('atmosphere', 'Atmosphere', 2, 0, 0, 255, 'STRONG: BALANCED BREATHABLE AIR', 'WEAK: PRESSURE / CONTAMINATION', 'TO: CO2 / VAPOR / EXCESS GAS', 'ROLE: N2/O2/AR BASELINE', 'DANGER: LOW OXYGEN WHEN DEPLETED'),
+    ('cloud', 'Cloud', 3, 0, 0, 255, 'STRONG: WATER STORAGE / WEATHER', 'WEAK: MATURITY / RAIN LOSS', 'TO: WATER / DIRTY WATER', 'ROLE: CONSERVED SKY RESERVOIR', 'DANGER: STORM / FLOOD'),
 ]
 GROUPS = [
     ('ground', 'Terrain', [1, 3, 4, 6, 60, 5, 24]),
-    ('fluids', 'Water', [2, 30, 33, 20, 26, 10, 32, 19]),
+    ('fluids', 'Water', [2, 30, 33, 20, 26, 10, 32, 19, 67]),
     ('life', 'Life', [8, 27, 58, 29, 14, 62, 61, 34]),
     ('colony', 'Colony', [17, 18, 35, 31, 28, 56, 57, 53]),
     ('fire_chemistry', 'Heat', [11, 12, 13, 23, 22, 25, 7, 41, 9]),
@@ -97,7 +98,7 @@ PHASE_GAS = 4
 PHASE_PLASMA = 5
 
 _BASE_LIQUIDS = {'water', 'acid', 'oil', 'honey', 'saltwater', 'dirty_water'}
-_BASE_GASES = {'smoke', 'steam', 'dirty_steam', 'oxygen', 'carbon_dioxide', 'radiation', 'hydrogen', 'atmosphere'}
+_BASE_GASES = {'smoke', 'steam', 'dirty_steam', 'oxygen', 'carbon_dioxide', 'radiation', 'hydrogen', 'atmosphere', 'cloud'}
 _BASE_PLASMA = {'fire', 'lightning', 'plasma_bolt'}
 _BASE_POWDERS = {
     'sand', 'dirt', 'mud', 'salt', 'ash', 'gunpowder', 'snow', 'seed', 'pollen',
@@ -173,6 +174,7 @@ PHYSICS_OVERRIDES = {
     'hydrogen': (1, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, 560, 180),
     'sluice_box': (210, 760, 1420, 2850, 2850, NO_TEMPERATURE, 165),
     'atmosphere': (2, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, 4),
+    'cloud': (3, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, NO_TEMPERATURE, 10),
 }
 
 
