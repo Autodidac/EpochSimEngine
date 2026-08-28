@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -64,6 +65,27 @@ struct ActiveCellDispatch final {
         origin_y,
         remaining_width < window_width ? remaining_width : window_width,
         remaining_height < window_height ? remaining_height : window_height,
+    };
+}
+
+[[nodiscard]] constexpr ActiveCellDispatch expanded_cell_dispatch(
+    const ActiveCellDispatch dispatch,
+    const std::uint32_t grid_width,
+    const std::uint32_t grid_height,
+    const std::uint32_t halo) noexcept {
+    const auto origin_x = dispatch.origin_x > halo ? dispatch.origin_x - halo : 0u;
+    const auto origin_y = dispatch.origin_y > halo ? dispatch.origin_y - halo : 0u;
+    const auto far_x = (std::min)(
+        static_cast<std::uint64_t>(grid_width),
+        static_cast<std::uint64_t>(dispatch.origin_x) + dispatch.width + halo);
+    const auto far_y = (std::min)(
+        static_cast<std::uint64_t>(grid_height),
+        static_cast<std::uint64_t>(dispatch.origin_y) + dispatch.height + halo);
+    return {
+        origin_x,
+        origin_y,
+        static_cast<std::uint32_t>(far_x - origin_x),
+        static_cast<std::uint32_t>(far_y - origin_y),
     };
 }
 

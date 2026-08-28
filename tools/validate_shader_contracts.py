@@ -107,10 +107,12 @@ def main() -> int:
     world_layout = (ROOT / "include/sandhybrid/world_layout.hpp").read_text(encoding="utf-8")
     scene_spawn = (ROOT / "include/sandhybrid/scene_spawn.hpp").read_text(encoding="utf-8")
     simulation_policy = (ROOT / "include/sandhybrid/simulation_policy.hpp").read_text(encoding="utf-8")
+    section_scheduler = (ROOT / "include/sandhybrid/section_scheduler.hpp").read_text(encoding="utf-8")
     ui_layout = (ROOT / "include/sandhybrid/ui_layout.hpp").read_text(encoding="utf-8")
     macro_move = (SHADERS / "macro_move.comp").read_text(encoding="utf-8")
     reset = (SHADERS / "reset.comp").read_text(encoding="utf-8")
     chemistry = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
+    copy_cells = (SHADERS / "copy_cells.comp").read_text(encoding="utf-8")
     materials = (SHADERS / "materials.glsl").read_text(encoding="utf-8")
     sunlight = (SHADERS / "sunlight.comp").read_text(encoding="utf-8")
     swarm = (SHADERS / "bee_swarm.glsl").read_text(encoding="utf-8")
@@ -320,6 +322,42 @@ def main() -> int:
         require(renderer, token, errors, "production weather/laser/ecology acceptance contract")
 
     for token in (
+        "expanded_cell_dispatch(",
+        "const auto origin_x = dispatch.origin_x > halo ? dispatch.origin_x - halo : 0u;",
+    ):
+        require(section_scheduler, token, errors,
+                "bounded active-window cell-buffer snapshot contract")
+    for token in (
+        "void copy_cell_rectangle(",
+        "copy_cells_pipeline = create_compute_pipeline(\"copy_cells.comp.spv\")",
+        "bind_compute(command_buffer, copy_cells_pipeline, source_set)",
+        "copy_cell_rectangle(command_buffer, next_set, current_set, active_dispatch);",
+        "constexpr std::uint32_t movement_snapshot_halo = 16u;",
+        "copy_cell_rectangle(command_buffer, current_set, snapshot_set, snapshot_dispatch);",
+        "divide_round_up(active_dispatch.width, sunlight_local_size)",
+    ):
+        require(renderer, token, errors,
+                "bounded production GPU transfer/dispatch contract")
+    for token in (
+        "activeDispatchCellOrigin(",
+        "gl_GlobalInvocationID.x + uint(dispatchOrigin.x)",
+    ):
+        require(sunlight, token, errors,
+                "active-window sunlight dispatch contract")
+    forbidden_full_tick_copy = (
+        "const VkBufferCopy snapshot_copy{.srcOffset = 0, .dstOffset = 0, "
+        ".size = cell_buffers[current_set].size};"
+    )
+    if forbidden_full_tick_copy in renderer:
+        errors.append("fixed simulation tick reintroduced a full-world cell-buffer copy")
+    if "std::vector<VkBufferCopy> rows" in renderer:
+        errors.append("bounded cell copy reintroduced Mesa-hostile per-row transfer regions")
+    for token in (
+        "destinationCells[index] = sourceCells[index]",
+    ):
+        require(copy_cells, token, errors,
+                "single-dispatch bounded cell-buffer copy contract")
+    for token in (
         "bool respirePackedMedium(inout Cell cell)",
         "setPackedAtmosphereComponent(cell, MAT_CARBON_DIOXIDE, carbon + 1u)",
         "bool photosynthesizePackedMedium(inout Cell cell)",
@@ -339,7 +377,7 @@ def main() -> int:
         require(sunlight, token, errors,
                 "transparent Atmosphere and bounded weather-light contract")
     for token in (
-        "bool fertilizerWaterPairReady(ivec2 fertilizerPosition, Cell fertilizer)",
+        "bool fertilizerHarvestReady(ivec2 fertilizerPosition, Cell fertilizer)",
         "bool harvestConsumesCarbon(ivec2 carbonPosition)",
         "photosynthesizePackedMedium(result)",
     ):
@@ -355,7 +393,8 @@ def main() -> int:
     for token in (
         "bool dissolvedOutgasPair(ivec2 position, Cell source)",
         "bool dissolvedOxygenPair(ivec2 position, Cell source)",
-        "returns it to a mutually selected compatible Atmosphere",
+        "returns it through a disjoint compatible Atmosphere pair",
+        "ivec2 aerationPairPartner(ivec2 position)",
     ):
         require(chemistry, token, errors,
                 "conserved waterfall aeration chemistry contract")

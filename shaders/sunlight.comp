@@ -9,7 +9,9 @@ layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 2) writeonly buffer Sunlight { uint light[]; };
 
 void main() {
-    uint x = gl_GlobalInvocationID.x;
+    ivec2 dispatchOrigin = activeDispatchCellOrigin(
+        pc.activeSectionX, pc.activeSectionY, pc.activeMode);
+    uint x = gl_GlobalInvocationID.x + uint(dispatchOrigin.x);
     if (x >= pc.width) return;
 
     uint intensity = 255u;

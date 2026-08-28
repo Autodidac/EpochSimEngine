@@ -847,32 +847,6 @@ ivec2 harvestWaterTarget(ivec2 fertilizerPosition) {
     return best;
 }
 
-ivec2 harvestFertilizerTarget(ivec2 waterPosition) {
-    uint bestIndex = 0xffffffffu;
-    ivec2 best = waterPosition;
-    for (uint i = 0u; i < 4u; ++i) {
-        ivec2 candidate = waterPosition + cardinalOffsets[i];
-        if (!inside(candidate)) continue;
-        Cell fertilizer = at(candidate);
-        if (fertilizer.material != MAT_FERTILIZER ||
-            !fertilizerBaseReady(candidate, fertilizer) ||
-            any(notEqual(harvestWaterTarget(candidate), waterPosition))) continue;
-        uint candidateIndex = indexOf(candidate);
-        if (candidateIndex < bestIndex) {
-            bestIndex = candidateIndex;
-            best = candidate;
-        }
-    }
-    return best;
-}
-
-bool fertilizerWaterPairReady(ivec2 fertilizerPosition, Cell fertilizer) {
-    if (!fertilizerBaseReady(fertilizerPosition, fertilizer)) return false;
-    ivec2 waterPosition = harvestWaterTarget(fertilizerPosition);
-    return any(notEqual(waterPosition, fertilizerPosition)) &&
-           all(equal(harvestFertilizerTarget(waterPosition), fertilizerPosition));
-}
-
 ivec2 harvestCarbonTarget(ivec2 fertilizerPosition) {
     uint bestIndex = 0xffffffffu;
     ivec2 best = fertilizerPosition;
@@ -888,15 +862,19 @@ ivec2 harvestCarbonTarget(ivec2 fertilizerPosition) {
     return best;
 }
 
-ivec2 harvestFertilizerForCarbon(ivec2 carbonPosition) {
+ivec2 harvestFertilizerTarget(ivec2 resourcePosition, bool carbonResource) {
     uint bestIndex = 0xffffffffu;
-    ivec2 best = carbonPosition;
+    ivec2 best = resourcePosition;
     for (uint i = 0u; i < 4u; ++i) {
-        ivec2 candidate = carbonPosition + cardinalOffsets[i];
+        ivec2 candidate = resourcePosition + cardinalOffsets[i];
         if (!inside(candidate)) continue;
         Cell fertilizer = at(candidate);
-        if (!fertilizerWaterPairReady(candidate, fertilizer) ||
-            any(notEqual(harvestCarbonTarget(candidate), carbonPosition))) continue;
+        if (!fertilizerBaseReady(candidate, fertilizer)) continue;
+        ivec2 waterTarget = harvestWaterTarget(candidate);
+        ivec2 carbonTarget = harvestCarbonTarget(candidate);
+        if (all(equal(waterTarget, candidate)) || all(equal(carbonTarget, candidate))) continue;
+        ivec2 target = carbonResource ? carbonTarget : waterTarget;
+        if (any(notEqual(target, resourcePosition))) continue;
         uint candidateIndex = indexOf(candidate);
         if (candidateIndex < bestIndex) {
             bestIndex = candidateIndex;
@@ -906,27 +884,27 @@ ivec2 harvestFertilizerForCarbon(ivec2 carbonPosition) {
     return best;
 }
 
+// Each resource elects one adjacent controller by canonical cell index. The
+// Fertilizer commits only when it wins both owners, so one Water or carbon unit
+// cannot fund two crops and llvmpipe sees no recursive selector call graph.
 bool fertilizerHarvestReady(ivec2 fertilizerPosition, Cell fertilizer) {
-    if (!fertilizerWaterPairReady(fertilizerPosition, fertilizer)) return false;
-    ivec2 carbonPosition = harvestCarbonTarget(fertilizerPosition);
-    return any(notEqual(carbonPosition, fertilizerPosition)) &&
-           all(equal(harvestFertilizerForCarbon(carbonPosition), fertilizerPosition));
+    if (!fertilizerBaseReady(fertilizerPosition, fertilizer)) return false;
+    ivec2 waterTarget = harvestWaterTarget(fertilizerPosition);
+    ivec2 carbonTarget = harvestCarbonTarget(fertilizerPosition);
+    if (all(equal(waterTarget, fertilizerPosition)) ||
+        all(equal(carbonTarget, fertilizerPosition))) return false;
+    return all(equal(harvestFertilizerTarget(waterTarget, false), fertilizerPosition)) &&
+           all(equal(harvestFertilizerTarget(carbonTarget, true), fertilizerPosition));
 }
 
 bool harvestConsumesWater(ivec2 waterPosition) {
     if (!isFullFreshWater(at(waterPosition))) return false;
-    ivec2 fertilizerPosition = harvestFertilizerTarget(waterPosition);
-    return any(notEqual(fertilizerPosition, waterPosition)) &&
-           fertilizerHarvestReady(fertilizerPosition, at(fertilizerPosition)) &&
-           all(equal(harvestWaterTarget(fertilizerPosition), waterPosition));
+    return any(notEqual(harvestFertilizerTarget(waterPosition, false), waterPosition));
 }
 
 bool harvestConsumesCarbon(ivec2 carbonPosition) {
     if (!isHarvestCarbon(at(carbonPosition))) return false;
-    ivec2 fertilizerPosition = harvestFertilizerForCarbon(carbonPosition);
-    return any(notEqual(fertilizerPosition, carbonPosition)) &&
-           fertilizerWaterPairReady(fertilizerPosition, at(fertilizerPosition)) &&
-           all(equal(harvestCarbonTarget(fertilizerPosition), carbonPosition));
+    return any(notEqual(harvestFertilizerTarget(carbonPosition, true), carbonPosition));
 }
 
 // Waterfall aeration is a reversible one-unit transaction. Only ordinary
@@ -948,108 +926,52 @@ bool aerationReceiver(Cell cell, int gasTemperature) {
            cell.temperature == gasTemperature;
 }
 
-ivec2 dissolvedOutgasAtmosphereTarget(ivec2 waterPosition) {
-    Cell water = at(waterPosition);
-    if (!hasDissolvedWaterGas(water) || (water.aux & AUX_MOVED) != 0u) return waterPosition;
-    int gasTemperature = dissolvedWaterGasTemperature(water);
-    uint bestIndex = 0xffffffffu;
-    ivec2 best = waterPosition;
-    for (uint i = 0u; i < 4u; ++i) {
-        ivec2 candidate = waterPosition + cardinalOffsets[i];
-        if (!inside(candidate) || !aerationReceiver(at(candidate), gasTemperature)) continue;
-        uint candidateIndex = indexOf(candidate);
-        if (candidateIndex < bestIndex) {
-            bestIndex = candidateIndex;
-            best = candidate;
-        }
+ivec2 aerationPairPartner(ivec2 position) {
+    // Four phases cover every cardinal edge while pairing each cell with at
+    // most one neighbor. Both endpoints derive the same partner directly.
+    uint phase = pc.step & 3u;
+    if (phase < 2u) {
+        bool forward = (uint(position.x) & 1u) == phase;
+        return position + ivec2(forward ? 1 : -1, 0);
     }
-    return best;
-}
-
-ivec2 dissolvedOutgasWaterTarget(ivec2 atmospherePosition) {
-    uint bestIndex = 0xffffffffu;
-    ivec2 best = atmospherePosition;
-    for (uint i = 0u; i < 4u; ++i) {
-        ivec2 candidate = atmospherePosition + cardinalOffsets[i];
-        if (!inside(candidate)) continue;
-        Cell water = at(candidate);
-        if (!hasDissolvedWaterGas(water) || (water.aux & AUX_MOVED) != 0u ||
-            any(notEqual(dissolvedOutgasAtmosphereTarget(candidate), atmospherePosition))) continue;
-        uint candidateIndex = indexOf(candidate);
-        if (candidateIndex < bestIndex) {
-            bestIndex = candidateIndex;
-            best = candidate;
-        }
-    }
-    return best;
+    bool forward = (uint(position.y) & 1u) == (phase - 2u);
+    return position + ivec2(0, forward ? 1 : -1);
 }
 
 bool dissolvedOutgasPair(ivec2 position, Cell source) {
+    ivec2 partnerPosition = aerationPairPartner(position);
+    if (!inside(partnerPosition)) return false;
+    Cell partner = at(partnerPosition);
     if (hasDissolvedWaterGas(source)) {
-        ivec2 atmospherePosition = dissolvedOutgasAtmosphereTarget(position);
-        return any(notEqual(atmospherePosition, position)) &&
-               all(equal(dissolvedOutgasWaterTarget(atmospherePosition), position));
+        return (source.aux & AUX_MOVED) == 0u &&
+               aerationReceiver(partner, dissolvedWaterGasTemperature(source));
     }
-    if (!balancedAerationAtmosphere(source)) return false;
-    ivec2 waterPosition = dissolvedOutgasWaterTarget(position);
-    return any(notEqual(waterPosition, position)) &&
-           all(equal(dissolvedOutgasAtmosphereTarget(waterPosition), position));
+    if (!balancedAerationAtmosphere(source) ||
+        !hasDissolvedWaterGas(partner) ||
+        (partner.aux & AUX_MOVED) != 0u) return false;
+    return aerationReceiver(source, dissolvedWaterGasTemperature(partner));
 }
 
 bool aerationDissolveEvent(ivec2 waterPosition, ivec2 atmospherePosition) {
     uint pair = indexOf(waterPosition) ^ (indexOf(atmospherePosition) * 0x9e3779b9u);
-    return (hash32(pair ^ pc.step * 0x85ebca6bu ^ pc.seed ^ 0xa311u) & 63u) == 0u;
-}
-
-ivec2 dissolvedOxygenDonorTarget(ivec2 waterPosition) {
-    Cell water = at(waterPosition);
-    if (!isFullFreshWater(water) || hasDissolvedWaterGas(water) ||
-        stateValue(water) != 0u || (water.aux & AUX_MOVED) == 0u) return waterPosition;
-    uint bestIndex = 0xffffffffu;
-    ivec2 best = waterPosition;
-    for (uint i = 0u; i < 4u; ++i) {
-        ivec2 candidate = waterPosition + cardinalOffsets[i];
-        if (!inside(candidate) || !aerationDonor(at(candidate)) ||
-            any(notEqual(dissolvedOutgasWaterTarget(candidate), candidate)) ||
-            !aerationDissolveEvent(waterPosition, candidate)) continue;
-        uint candidateIndex = indexOf(candidate);
-        if (candidateIndex < bestIndex) {
-            bestIndex = candidateIndex;
-            best = candidate;
-        }
-    }
-    return best;
-}
-
-ivec2 dissolvedOxygenWaterTarget(ivec2 atmospherePosition) {
-    if (!aerationDonor(at(atmospherePosition)) ||
-        any(notEqual(dissolvedOutgasWaterTarget(atmospherePosition), atmospherePosition)))
-        return atmospherePosition;
-    uint bestIndex = 0xffffffffu;
-    ivec2 best = atmospherePosition;
-    for (uint i = 0u; i < 4u; ++i) {
-        ivec2 candidate = atmospherePosition + cardinalOffsets[i];
-        if (!inside(candidate) ||
-            any(notEqual(dissolvedOxygenDonorTarget(candidate), atmospherePosition))) continue;
-        uint candidateIndex = indexOf(candidate);
-        if (candidateIndex < bestIndex) {
-            bestIndex = candidateIndex;
-            best = candidate;
-        }
-    }
-    return best;
+    // Each edge is eligible once per four-step pairing cycle. A 1/16 event in
+    // its phase preserves the prior 1/64 per-step average without conflicts.
+    return (hash32(pair ^ pc.step * 0x85ebca6bu ^ pc.seed ^ 0xa311u) & 15u) == 0u;
 }
 
 bool dissolvedOxygenPair(ivec2 position, Cell source) {
+    ivec2 partnerPosition = aerationPairPartner(position);
+    if (!inside(partnerPosition)) return false;
+    Cell partner = at(partnerPosition);
     if (isFullFreshWater(source) && !hasDissolvedWaterGas(source)) {
-        ivec2 donorPosition = dissolvedOxygenDonorTarget(position);
-        return any(notEqual(donorPosition, position)) &&
-               all(equal(dissolvedOxygenWaterTarget(donorPosition), position));
+        return stateValue(source) == 0u && (source.aux & AUX_MOVED) != 0u &&
+               aerationDonor(partner) &&
+               aerationDissolveEvent(position, partnerPosition);
     }
     if (!aerationDonor(source)) return false;
-    ivec2 waterPosition = dissolvedOxygenWaterTarget(position);
-    return any(notEqual(waterPosition, position)) &&
-           all(equal(dissolvedOxygenDonorTarget(waterPosition), position));
+    return isFullFreshWater(partner) && !hasDissolvedWaterGas(partner) &&
+           stateValue(partner) == 0u && (partner.aux & AUX_MOVED) != 0u &&
+           aerationDissolveEvent(partnerPosition, position);
 }
 
 ivec2 firstOppositeGas(ivec2 position, uint material) {
@@ -1167,7 +1089,7 @@ void main() {
     }
 
     // Waterfall aeration preserves the Oxygen unit inside the moving Water
-    // payload, then returns it to a mutually selected compatible Atmosphere
+    // payload, then returns it through a disjoint compatible Atmosphere pair
     // cell after movement stops. The carrier cannot split or phase-change while
     // it owns that unit, so neither matter nor its source temperature vanishes.
     if (dissolvedOutgasPair(p, source)) {
@@ -1193,7 +1115,7 @@ void main() {
         result = source;
         result.age = source.age + 1u;
         if (source.material == MAT_WATER) {
-            ivec2 donorPosition = dissolvedOxygenDonorTarget(p);
+            ivec2 donorPosition = aerationPairPartner(p);
             setDissolvedWaterOxygen(result, at(donorPosition).temperature);
             result.age = 0u;
         } else {

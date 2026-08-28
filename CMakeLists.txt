@@ -151,6 +151,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         sunlight.comp
         tiles.comp
         chunks.comp
+        copy_cells.comp
         chemistry.comp
         macro_move.comp
         move.comp

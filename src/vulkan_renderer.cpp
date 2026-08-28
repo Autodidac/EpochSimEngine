@@ -50,6 +50,7 @@ constexpr std::uint32_t sunlight_local_size = 64;
 constexpr std::uint32_t debug_stats_local_size = 256;
 constexpr std::uint32_t debug_stat_word_count = 128;
 
+
 [[noreturn]] void throw_vk(const char* operation, const VkResult result) {
     throw std::runtime_error(std::string{operation} + " failed with VkResult " + std::to_string(result));
 }
@@ -389,6 +390,7 @@ struct VulkanRenderer::Impl final {
     VkPipeline sunlight_pipeline{};
     VkPipeline tile_pipeline{};
     VkPipeline chunk_pipeline{};
+    VkPipeline copy_cells_pipeline{};
     VkPipeline chemistry_pipeline{};
     VkPipeline macro_movement_pipeline{};
     VkPipeline movement_pipeline{};
@@ -499,6 +501,7 @@ save_slot(normalize_world_slot(requested_save_slot)) {
             if (sunlight_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, sunlight_pipeline, nullptr);
             if (tile_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, tile_pipeline, nullptr);
             if (chunk_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chunk_pipeline, nullptr);
+            if (copy_cells_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, copy_cells_pipeline, nullptr);
             if (chemistry_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_pipeline, nullptr);
             if (macro_movement_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, macro_movement_pipeline, nullptr);
             if (movement_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, movement_pipeline, nullptr);
@@ -1113,6 +1116,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         sunlight_pipeline = create_compute_pipeline("sunlight.comp.spv");
         tile_pipeline = create_compute_pipeline("tiles.comp.spv");
         chunk_pipeline = create_compute_pipeline("chunks.comp.spv");
+        copy_cells_pipeline = create_compute_pipeline("copy_cells.comp.spv");
         chemistry_pipeline = create_compute_pipeline("chemistry.comp.spv");
         macro_movement_pipeline = create_compute_pipeline("macro_move.comp.spv");
         movement_pipeline = create_compute_pipeline("move.comp.spv");
@@ -1444,6 +1448,29 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         vkCmdPipelineBarrier(command_buffer, source_stage, destination_stage, 0,
                              0, nullptr, 1, &barrier, 0, nullptr);
     }
+
+    void copy_cell_rectangle(const VkCommandBuffer command_buffer,
+                             const std::uint32_t source_set,
+                             const std::uint32_t destination_set,
+                             const ActiveCellDispatch rectangle) const {
+        if (rectangle.width == 0u || rectangle.height == 0u ||
+            destination_set != (source_set ^ 1u)) return;
+        const SimulationPush copy_push{
+            .width = config.grid_width,
+            .height = config.grid_height,
+            .brush_x = static_cast<std::int32_t>(rectangle.origin_x),
+            .brush_y = static_cast<std::int32_t>(rectangle.origin_y),
+            .radius = rectangle.width,
+            .material = rectangle.height,
+            .reserved = 0u,
+        };
+        bind_compute(command_buffer, copy_cells_pipeline, source_set);
+        vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
+                           0, sizeof(copy_push), &copy_push);
+        vkCmdDispatch(command_buffer, divide_round_up(rectangle.width, simulation_local_size),
+                      divide_round_up(rectangle.height, simulation_local_size), 1);
+    }
+
 
     void bind_compute(const VkCommandBuffer command_buffer, const VkPipeline pipeline,
                       const std::uint32_t set_index) const {
@@ -2492,7 +2519,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             bind_compute(command_buffer, sunlight_pipeline, current_set);
             vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
                                0, sizeof(simulation_push), &simulation_push);
-            vkCmdDispatch(command_buffer, divide_round_up(config.grid_width, sunlight_local_size), 1, 1);
+            vkCmdDispatch(command_buffer, divide_round_up(active_dispatch.width, sunlight_local_size), 1, 1);
             buffer_barrier(command_buffer, sunlight_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                            VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
@@ -2528,12 +2555,23 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         bind_compute(command_buffer, chemistry_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
                            0, sizeof(simulation_push), &simulation_push);
-        vkCmdDispatch(command_buffer, divide_round_up(active_dispatch.width, simulation_local_size),
+        vkCmdDispatch(command_buffer,
+                      divide_round_up(active_dispatch.width, simulation_local_size),
                       divide_round_up(active_dispatch.height, simulation_local_size), 1);
         buffer_barrier(command_buffer, cell_buffers[next_set], VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        buffer_barrier(command_buffer, cell_buffers[current_set],
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        copy_cell_rectangle(command_buffer, next_set, current_set, active_dispatch);
+        buffer_barrier(command_buffer, cell_buffers[next_set], VK_ACCESS_SHADER_READ_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        current_set = next_set;
+        buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
         // Full uniform 8x8 regions use the same fall/diagonal/spread decisions
         // as cells, but transfer all 64 canonical cells in parallel. Mixed,
@@ -2586,21 +2624,22 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         // buffer, while pressure, support, and bee attraction read this exact
         // immutable snapshot, eliminating cross-invocation read/write races.
         const auto snapshot_set = current_set ^ 1u;
+        constexpr std::uint32_t movement_snapshot_halo = 16u;
+        const auto snapshot_dispatch = expanded_cell_dispatch(
+            active_dispatch, config.grid_width, config.grid_height, movement_snapshot_halo);
         buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
-                       VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT);
+                       VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         buffer_barrier(command_buffer, cell_buffers[snapshot_set],
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                       VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT);
-        const VkBufferCopy snapshot_copy{.srcOffset = 0, .dstOffset = 0, .size = cell_buffers[current_set].size};
-        vkCmdCopyBuffer(command_buffer, cell_buffers[current_set].handle,
-                        cell_buffers[snapshot_set].handle, 1, &snapshot_copy);
-        buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_TRANSFER_READ_BIT,
+                       VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        copy_cell_rectangle(command_buffer, current_set, snapshot_set, snapshot_dispatch);
+        buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_READ_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        buffer_barrier(command_buffer, cell_buffers[snapshot_set], VK_ACCESS_TRANSFER_WRITE_BIT,
-                       VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        buffer_barrier(command_buffer, cell_buffers[snapshot_set], VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
         bind_compute(command_buffer, movement_pipeline, current_set);
@@ -3365,6 +3404,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 ? (std::min)(config.grid_height - origin_y,
                              static_cast<std::uint32_t>(active_region_height_cells))
                 : (std::min)(config.grid_height, 192u);
+            const ActiveCellDispatch acceptance_dispatch{
+                origin_x, origin_y, acceptance_width, acceptance_height};
             const SimulationPush push{
                 .width = config.grid_width,
                 .height = translated_active_window ? config.grid_height : acceptance_height,
@@ -3388,11 +3429,26 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                           divide_round_up(acceptance_width, simulation_local_size),
                           divide_round_up(acceptance_height, simulation_local_size), 1);
             buffer_barrier(command_buffer, cell_buffers[next_set],
+                           VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            buffer_barrier(command_buffer, cell_buffers[current_set],
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            copy_cell_rectangle(command_buffer, next_set, current_set,
+                                acceptance_dispatch);
+            buffer_barrier(command_buffer, cell_buffers[next_set],
+                           VK_ACCESS_SHADER_READ_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            buffer_barrier(command_buffer, cell_buffers[current_set],
                            VK_ACCESS_SHADER_WRITE_BIT,
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-            current_set = next_set;
         });
     }
 
@@ -3434,25 +3490,24 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const auto acceptance_height = (std::min)(config.grid_height, 192u);
             const auto snapshot_set = current_set ^ 1u;
             buffer_barrier(command_buffer, cell_buffers[current_set],
-                           VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT);
-            buffer_barrier(command_buffer, cell_buffers[snapshot_set],
-                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_ACCESS_TRANSFER_WRITE_BIT,
-                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT);
-            const VkBufferCopy copy{.size = cell_buffers[current_set].size};
-            vkCmdCopyBuffer(command_buffer, cell_buffers[current_set].handle,
-                            cell_buffers[snapshot_set].handle, 1, &copy);
-            buffer_barrier(command_buffer, cell_buffers[current_set],
-                           VK_ACCESS_TRANSFER_READ_BIT,
-                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
             buffer_barrier(command_buffer, cell_buffers[snapshot_set],
-                           VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            copy_cell_rectangle(command_buffer, current_set, snapshot_set,
+                                {0u, 0u, acceptance_width, acceptance_height});
+            buffer_barrier(command_buffer, cell_buffers[current_set],
+                           VK_ACCESS_SHADER_READ_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            buffer_barrier(command_buffer, cell_buffers[snapshot_set],
+                           VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
             const MovementPush push{
                 .width = config.grid_width,
@@ -3495,25 +3550,24 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const auto acceptance_height = (std::min)(config.grid_height, 192u);
             const auto snapshot_set = current_set ^ 1u;
             buffer_barrier(command_buffer, cell_buffers[current_set],
-                           VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT);
-            buffer_barrier(command_buffer, cell_buffers[snapshot_set],
-                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_ACCESS_TRANSFER_WRITE_BIT,
-                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT);
-            const VkBufferCopy copy{.size = cell_buffers[current_set].size};
-            vkCmdCopyBuffer(command_buffer, cell_buffers[current_set].handle,
-                            cell_buffers[snapshot_set].handle, 1, &copy);
-            buffer_barrier(command_buffer, cell_buffers[current_set],
-                           VK_ACCESS_TRANSFER_READ_BIT,
-                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
             buffer_barrier(command_buffer, cell_buffers[snapshot_set],
-                           VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            copy_cell_rectangle(command_buffer, current_set, snapshot_set,
+                                {0u, 0u, acceptance_width, acceptance_height});
+            buffer_barrier(command_buffer, cell_buffers[current_set],
+                           VK_ACCESS_SHADER_READ_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            buffer_barrier(command_buffer, cell_buffers[snapshot_set],
+                           VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
             const MovementPush push{
                 .width = config.grid_width,
@@ -3560,6 +3614,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             ? (std::min)(config.grid_height - origin_y,
                          static_cast<std::uint32_t>(active_region_height_cells))
             : (std::min)(config.grid_height, 192u);
+        const ActiveCellDispatch acceptance_dispatch{
+            origin_x, origin_y, acceptance_width, acceptance_height};
         immediate_submit([&](const VkCommandBuffer command_buffer) {
             const SimulationPush simulation_push{
                 .width = config.grid_width,
@@ -3598,34 +3654,51 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                           divide_round_up(acceptance_width, simulation_local_size),
                           divide_round_up(acceptance_height, simulation_local_size), 1);
             buffer_barrier(command_buffer, cell_buffers[next_set],
+                           VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            buffer_barrier(command_buffer, cell_buffers[current_set],
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            copy_cell_rectangle(command_buffer, next_set, current_set,
+                                acceptance_dispatch);
+            buffer_barrier(command_buffer, cell_buffers[next_set],
+                           VK_ACCESS_SHADER_READ_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            buffer_barrier(command_buffer, cell_buffers[current_set],
                            VK_ACCESS_SHADER_WRITE_BIT,
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-            current_set = next_set;
 
             const auto snapshot_set = current_set ^ 1u;
-            const VkDeviceSize snapshot_bytes = cell_buffers[current_set].size;
+            const auto snapshot_dispatch = translated_active_window
+                ? expanded_cell_dispatch(acceptance_dispatch, config.grid_width,
+                                         config.grid_height, 16u)
+                : acceptance_dispatch;
             buffer_barrier(command_buffer, cell_buffers[current_set],
-                           VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT);
-            buffer_barrier(command_buffer, cell_buffers[snapshot_set],
-                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_ACCESS_TRANSFER_WRITE_BIT,
-                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT);
-            const VkBufferCopy copy{.size = snapshot_bytes};
-            vkCmdCopyBuffer(command_buffer, cell_buffers[current_set].handle,
-                            cell_buffers[snapshot_set].handle, 1, &copy);
-            buffer_barrier(command_buffer, cell_buffers[current_set],
-                           VK_ACCESS_TRANSFER_READ_BIT,
-                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
             buffer_barrier(command_buffer, cell_buffers[snapshot_set],
-                           VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            copy_cell_rectangle(command_buffer, current_set, snapshot_set,
+                                snapshot_dispatch);
+            buffer_barrier(command_buffer, cell_buffers[current_set],
+                           VK_ACCESS_SHADER_READ_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            buffer_barrier(command_buffer, cell_buffers[snapshot_set],
+                           VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
             bind_compute(command_buffer, movement_pipeline, current_set);
@@ -5590,8 +5663,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 bool aeration_step_found = false;
                 for (std::uint32_t candidate = 0u;
                      candidate < 4096u && !aeration_step_found; ++candidate) {
-                    if ((fill_hash(pair ^ candidate * 0x85ebca6bu ^
-                                   random_seed ^ 0xa311u) & 63u) == 0u) {
+                    if ((candidate & 3u) == 3u &&
+                        (fill_hash(pair ^ candidate * 0x85ebca6bu ^
+                                   random_seed ^ 0xa311u) & 15u) == 0u) {
                         aeration_step = candidate;
                         aeration_step_found = true;
                     }
@@ -5630,7 +5704,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         .acquired_air = acquired[index_of(donor_x, donor_y)],
                         .held_water = held[index_of(water_x, water_y)],
                         .released_water = released[index_of(water_x, water_y)],
-                        .released_air = released[index_of(donor_x, donor_y)],
+                        .released_air = released[index_of(water_x - 1u, water_y)],
                     };
                 };
                 const auto normal = run_aeration(false);
@@ -5664,7 +5738,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     (normal.released_water.aux &
                         (dissolved_bit | 0x007fff00u | 0x00800000u)) == 0u &&
                     normal.released_air.material == material_id(Material::atmosphere) &&
-                    (normal.released_air.aux & 255u) == 54u;
+                    (normal.released_air.aux & 255u) == 55u;
                 append("waterfall_dissolved_oxygen_closed_transaction",
                        acquisition_conserved && hold_is_unsplit && release_conserved,
                        "step=" + std::to_string(aeration_step) +

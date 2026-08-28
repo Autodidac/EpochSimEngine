@@ -19,6 +19,14 @@ int main() {
                   static_cast<std::uint64_t>(5120u) * 1440u);
     static_assert(active_cell_dispatch(10240u, 1440u, {4, 0}).cell_count() * 4u ==
                   static_cast<std::uint64_t>(10240u) * 1440u);
+    static_assert(expanded_cell_dispatch(
+                      active_cell_dispatch(10240u, 1440u, {4, 0}),
+                      10240u, 1440u, 16u) ==
+                  ActiveCellDispatch{2544u, 0u, 2592u, 1440u});
+    static_assert(expanded_cell_dispatch(
+                      active_cell_dispatch(10240u, 1440u, {0, 0}),
+                      10240u, 1440u, 16u) ==
+                  ActiveCellDispatch{0u, 0u, 2576u, 1440u});
 
     constexpr SectionCoordinate center{5, 2};
     static_assert(active_window_origin(center, 16u, 4u) == SectionCoordinate{4, 0});

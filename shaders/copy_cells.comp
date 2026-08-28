@@ -1,0 +1,16 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "materials.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(std430, binding = 0) readonly buffer SourceCells { Cell sourceCells[]; };
+layout(std430, binding = 1) writeonly buffer DestinationCells { Cell destinationCells[]; };
+
+void main() {
+    ivec2 invocation = ivec2(gl_GlobalInvocationID.xy);
+    if (invocation.x >= int(pc.radius) || invocation.y >= int(pc.material)) return;
+    ivec2 position = invocation + ivec2(pc.brushX, pc.brushY);
+    if (!inside(position)) return;
+    uint index = indexOf(position);
+    destinationCells[index] = sourceCells[index];
+}
