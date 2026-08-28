@@ -382,18 +382,13 @@ void updateBreathing(inout ActorState state) {
         state.exposureTicks = 0u;
         if ((actorPc.step % 180u) == 0u && actorInside(oxygenCell)) {
             uint oxygenIndex = actorIndex(oxygenCell);
-            Cell oxygen = cells[oxygenIndex];
-            uint volume = max(stateValue(oxygen), 1u);
-            if (oxygen.material == MAT_ATMOSPHERE && volume > 1u) {
-                setStateValue(oxygen, volume - 1u);
-                cells[oxygenIndex] = oxygen;
-            } else {
-                Cell carbonDioxide = makeCellWithEntropy(MAT_CARBON_DIOXIDE, actorPc.seed, actorPc.step);
-                setStateValue(carbonDioxide, oxygen.material == MAT_ATMOSPHERE ? 220u : volume);
-                recordConservation(oxygen, carbonDioxide);
-                cells[oxygenIndex] = carbonDioxide;
+            Cell before = cells[oxygenIndex];
+            Cell after = before;
+            if (respirePackedMedium(after)) {
+                recordConservation(before, after);
+                cells[oxygenIndex] = after;
+                markActorChunkDirty(oxygenCell);
             }
-            markActorChunkDirty(oxygenCell);
         }
     } else {
         state.exposureTicks = min(state.exposureTicks + 1u, 4095u);

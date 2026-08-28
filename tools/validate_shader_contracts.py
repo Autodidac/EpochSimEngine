@@ -111,6 +111,8 @@ def main() -> int:
     macro_move = (SHADERS / "macro_move.comp").read_text(encoding="utf-8")
     reset = (SHADERS / "reset.comp").read_text(encoding="utf-8")
     chemistry = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
+    materials = (SHADERS / "materials.glsl").read_text(encoding="utf-8")
+    sunlight = (SHADERS / "sunlight.comp").read_text(encoding="utf-8")
     swarm = (SHADERS / "bee_swarm.glsl").read_text(encoding="utf-8")
 
     errors: list[str] = []
@@ -306,8 +308,56 @@ def main() -> int:
         "inventory_player_laser_conserves_mined_resource",
         "full_inventory_laser_releases_exact_loose_fragment",
         "blocked_full_inventory_laser_retains_exact_world_unit",
+        "packed_atmosphere_respiration_conserves_pressure",
+        "closed_crop_visible_co2_water_biomass",
+        "closed_crop_stored_co2_debug_identity",
+        "waterfall_dissolved_oxygen_closed_transaction",
+        "waterfall_aeration_debug_identity",
     ):
-        require(renderer, token, errors, "production weather/laser acceptance contract")
+        require(renderer, token, errors, "production weather/laser/ecology acceptance contract")
+
+    for token in (
+        "bool respirePackedMedium(inout Cell cell)",
+        "setPackedAtmosphereComponent(cell, MAT_CARBON_DIOXIDE, carbon + 1u)",
+        "bool photosynthesizePackedMedium(inout Cell cell)",
+    ):
+        require(materials, token, errors, "packed Atmosphere ecology contract")
+    for token in (
+        "respirePackedMedium(after)",
+        "recordConservation(before, after)",
+    ):
+        require(actor, token, errors, "conserved actor respiration contract")
+    require(chemistry, "respirePackedMedium(result)", errors,
+            "conserved life/fire respiration contract")
+    for token in (
+        "material == MAT_CLOUD",
+        "material != MAT_EMPTY && !isGas(material)",
+    ):
+        require(sunlight, token, errors,
+                "transparent Atmosphere and bounded weather-light contract")
+    for token in (
+        "bool fertilizerWaterPairReady(ivec2 fertilizerPosition, Cell fertilizer)",
+        "bool harvestConsumesCarbon(ivec2 carbonPosition)",
+        "photosynthesizePackedMedium(result)",
+    ):
+        require(chemistry, token, errors,
+                "conserved Water/CO2/Oxygen/biomass crop contract")
+    for token in (
+        "bool hasDissolvedWaterGas(Cell cell)",
+        "bool setDissolvedWaterOxygen(inout Cell cell, int gasTemperature)",
+        "void clearDissolvedWaterGas(inout Cell cell)",
+    ):
+        require(materials, token, errors,
+                "one-unit dissolved Water/Oxygen ownership contract")
+    for token in (
+        "bool dissolvedOutgasPair(ivec2 position, Cell source)",
+        "bool dissolvedOxygenPair(ivec2 position, Cell source)",
+        "returns it to a mutually selected compatible Atmosphere",
+    ):
+        require(chemistry, token, errors,
+                "conserved waterfall aeration chemistry contract")
+    require(move, "!moveHasDissolvedWaterGas(a) && fullWaterSplitSupplied(left, 1)",
+            errors, "dissolved Water cannot enter Half Water payload contract")
 
     if errors:
         print("current shader/interface contract validation failed:", file=sys.stderr)

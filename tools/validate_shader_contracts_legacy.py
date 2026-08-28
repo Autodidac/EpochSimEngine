@@ -934,7 +934,7 @@ def main() -> int:
     ):
         if forbidden in app_cpp:
             errors.append(f"player-scene camera duplication remains: {forbidden!r}")
-    if "recordConservation(oxygen, carbonDioxide)" not in actor:
+    if "respirePackedMedium(after)" not in actor or "recordConservation(before, after)" not in actor:
         errors.append("actor respiration does not exchange oxygen for equal-volume CO2")
     if "state.y < 112" in actor:
         errors.append("actor breathing regressed to a hard-coded world-height suffocation rule")

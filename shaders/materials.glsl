@@ -140,6 +140,136 @@ Cell makeCellWithEntropy(uint material, uint seed, uint step) {
     return Cell(material, 0u, temperature, aux);
 }
 
+// Atmosphere uses the otherwise-cosmetic payload bits as one exact stored
+// excess component. The low byte remains the represented baseline Oxygen
+// volume. AUX_CHARGED is only the component-present discriminator on Air.
+const uint AUX_PACKED_COMPONENT_MATERIAL_SHIFT = 8u;
+const uint AUX_PACKED_COMPONENT_MATERIAL_MASK = 0x00007f00u;
+const uint AUX_PACKED_COMPONENT_VOLUME_SHIFT = 15u;
+const uint AUX_PACKED_COMPONENT_VOLUME_MASK = 0x007f8000u;
+
+bool isPackedAtmosphereComponent(uint material) {
+    return material == MAT_OXYGEN || material == MAT_CARBON_DIOXIDE ||
+           material == MAT_HYDROGEN || material == MAT_SMOKE ||
+           material == MAT_STEAM || material == MAT_DIRTY_STEAM;
+}
+
+uint packedAtmosphereComponentMaterial(Cell cell) {
+    if (cell.material != MAT_ATMOSPHERE || (cell.aux & AUX_CHARGED) == 0u)
+        return MAT_EMPTY;
+    uint material = (cell.aux & AUX_PACKED_COMPONENT_MATERIAL_MASK) >>
+                    AUX_PACKED_COMPONENT_MATERIAL_SHIFT;
+    uint volume = (cell.aux & AUX_PACKED_COMPONENT_VOLUME_MASK) >>
+                  AUX_PACKED_COMPONENT_VOLUME_SHIFT;
+    return volume > 0u && isPackedAtmosphereComponent(material) ? material : MAT_EMPTY;
+}
+
+uint packedAtmosphereComponentVolume(Cell cell) {
+    return packedAtmosphereComponentMaterial(cell) == MAT_EMPTY ? 0u :
+        ((cell.aux & AUX_PACKED_COMPONENT_VOLUME_MASK) >>
+         AUX_PACKED_COMPONENT_VOLUME_SHIFT);
+}
+
+void setPackedAtmosphereComponent(inout Cell cell, uint material, uint volume) {
+    cell.aux &= ~(AUX_CHARGED | AUX_PACKED_COMPONENT_MATERIAL_MASK |
+                  AUX_PACKED_COMPONENT_VOLUME_MASK);
+    if (cell.material != MAT_ATMOSPHERE || volume == 0u ||
+        !isPackedAtmosphereComponent(material)) return;
+    cell.aux |= AUX_CHARGED |
+                ((material & 0x7fu) << AUX_PACKED_COMPONENT_MATERIAL_SHIFT) |
+                ((min(volume, 255u) & 0xffu) << AUX_PACKED_COMPONENT_VOLUME_SHIFT);
+}
+
+// Convert exactly one represented Oxygen unit into one represented CO2 unit.
+// Failure is non-mutating when an Air cell cannot store the resulting component.
+bool respirePackedMedium(inout Cell cell) {
+    uint preserved = cell.aux & AUX_MOVED;
+    if (cell.material == MAT_OXYGEN) {
+        uint oxygen = max(stateValue(cell), 1u);
+        if (oxygen == 1u) {
+            cell = Cell(MAT_CARBON_DIOXIDE, cell.age, cell.temperature, preserved | 1u);
+        } else {
+            cell = Cell(MAT_ATMOSPHERE, cell.age, cell.temperature, preserved);
+            setStateValue(cell, oxygen - 1u);
+            setPackedAtmosphereComponent(cell, MAT_CARBON_DIOXIDE, 1u);
+        }
+        return true;
+    }
+    if (cell.material != MAT_ATMOSPHERE) return false;
+    uint oxygen = stateValue(cell);
+    uint component = packedAtmosphereComponentMaterial(cell);
+    uint carbon = packedAtmosphereComponentVolume(cell);
+    if (oxygen <= 1u || carbon >= 255u ||
+        (carbon > 0u && component != MAT_CARBON_DIOXIDE)) return false;
+    setStateValue(cell, oxygen - 1u);
+    setPackedAtmosphereComponent(cell, MAT_CARBON_DIOXIDE, carbon + 1u);
+    return true;
+}
+
+// Inverse one-unit exchange used only after the plant-side Water/biomass budget
+// validates. Pressure and total represented gas units remain unchanged.
+bool photosynthesizePackedMedium(inout Cell cell) {
+    uint preserved = cell.aux & AUX_MOVED;
+    if (cell.material == MAT_CARBON_DIOXIDE) {
+        uint carbon = max(stateValue(cell), 1u);
+        if (carbon == 1u) {
+            cell = Cell(MAT_OXYGEN, cell.age, cell.temperature, preserved | 1u);
+        } else {
+            cell = Cell(MAT_ATMOSPHERE, cell.age, cell.temperature, preserved | 1u);
+            setPackedAtmosphereComponent(cell, MAT_CARBON_DIOXIDE, carbon - 1u);
+        }
+        return true;
+    }
+    if (cell.material != MAT_ATMOSPHERE || stateValue(cell) >= 255u ||
+        packedAtmosphereComponentMaterial(cell) != MAT_CARBON_DIOXIDE) return false;
+    uint carbon = packedAtmosphereComponentVolume(cell);
+    if (carbon == 0u) return false;
+    setStateValue(cell, stateValue(cell) + 1u);
+    setPackedAtmosphereComponent(cell, MAT_CARBON_DIOXIDE, carbon - 1u);
+    return true;
+}
+
+// A moving full fresh-Water cell may temporarily own exactly one dissolved
+// Oxygen unit. AUX_PLANT_STEM is type-disjoint on Water and therefore marks
+// this payload without colliding with the Half Water flag, salinity state, or
+// electrical charge. The payload keeps the donor gas temperature so the unit
+// can later return to a compatible Atmosphere cell without losing heat.
+const uint AUX_DISSOLVED_GAS_PRESENT = AUX_PLANT_STEM;
+const uint AUX_DISSOLVED_GAS_MATERIAL_SHIFT = 8u;
+const uint AUX_DISSOLVED_GAS_MATERIAL_MASK = 0x00007f00u;
+const uint AUX_DISSOLVED_GAS_TEMPERATURE_SHIFT = 15u;
+const uint AUX_DISSOLVED_GAS_TEMPERATURE_MASK = 0x007f8000u;
+
+bool hasDissolvedWaterGas(Cell cell) {
+    if (cell.material != MAT_WATER || isHalfWater(cell) ||
+        (cell.aux & AUX_DISSOLVED_GAS_PRESENT) == 0u) return false;
+    uint material = (cell.aux & AUX_DISSOLVED_GAS_MATERIAL_MASK) >>
+                    AUX_DISSOLVED_GAS_MATERIAL_SHIFT;
+    return material == MAT_OXYGEN;
+}
+
+int dissolvedWaterGasTemperature(Cell cell) {
+    uint encoded = (cell.aux & AUX_DISSOLVED_GAS_TEMPERATURE_MASK) >>
+                   AUX_DISSOLVED_GAS_TEMPERATURE_SHIFT;
+    return int(encoded) - 100;
+}
+
+bool setDissolvedWaterOxygen(inout Cell cell, int gasTemperature) {
+    if (cell.material != MAT_WATER || isHalfWater(cell) || stateValue(cell) != 0u ||
+        hasDissolvedWaterGas(cell) || gasTemperature < -100 || gasTemperature > 155)
+        return false;
+    uint encodedTemperature = uint(gasTemperature + 100);
+    cell.aux &= ~(AUX_RANDOM_MASK | AUX_DISSOLVED_GAS_PRESENT);
+    cell.aux |= AUX_DISSOLVED_GAS_PRESENT |
+                (MAT_OXYGEN << AUX_DISSOLVED_GAS_MATERIAL_SHIFT) |
+                (encodedTemperature << AUX_DISSOLVED_GAS_TEMPERATURE_SHIFT);
+    return true;
+}
+
+void clearDissolvedWaterGas(inout Cell cell) {
+    cell.aux &= ~(AUX_RANDOM_MASK | AUX_DISSOLVED_GAS_PRESENT);
+}
+
 #ifndef SANDHYBRID_NO_SIM_PUSH
 uint cellHash(ivec2 position, uint salt) {
     return hash32(uint(position.x) * 73856093u ^ uint(position.y) * 19349663u ^ pc.step * 83492791u ^ pc.seed ^ salt);

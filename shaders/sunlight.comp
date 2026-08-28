@@ -25,7 +25,12 @@ void main() {
                    material == MAT_DIRTY_WATER || material == MAT_GLASS ||
                    material == MAT_ICE || material == MAT_CRYSTAL) {
             intensity = intensity > 3u ? intensity - 3u : 0u;
-        } else if (material != MAT_EMPTY) {
+        } else if (material == MAT_CLOUD) {
+            intensity = intensity > 2u ? intensity - 2u : 0u;
+        } else if (material == MAT_STEAM || material == MAT_DIRTY_STEAM ||
+                   material == MAT_SMOKE) {
+            intensity = intensity > 1u ? intensity - 1u : 0u;
+        } else if (material != MAT_EMPTY && !isGas(material)) {
             intensity = intensity > 8u ? intensity - 8u : 0u;
         }
     }

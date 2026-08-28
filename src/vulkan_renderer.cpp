@@ -3348,7 +3348,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
     void run_acceptance_chemistry_pass(const std::int32_t active_section_x = 0,
                                        const std::int32_t active_section_y = 0,
-                                       const bool translated_active_window = false) {
+                                       const bool translated_active_window = false,
+                                       const bool collect_debug = false) {
         immediate_submit([&](const VkCommandBuffer command_buffer) {
             const auto origin_x = translated_active_window
                 ? static_cast<std::uint32_t>((std::max)(active_section_x, 0) *
@@ -3372,6 +3373,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 .active_section_x = active_section_x,
                 .active_section_y = active_section_y,
                 .active_mode = translated_active_window ? 1u : 0u,
+                .reserved = collect_debug ? 1u : 0u,
             };
             const auto next_set = current_set ^ 1u;
             buffer_barrier(command_buffer, cell_buffers[next_set],
@@ -3393,6 +3395,39 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             current_set = next_set;
         });
     }
+
+    void run_acceptance_sunlight_pass() {
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
+            const auto acceptance_height = (std::min)(config.grid_height, 192u);
+            vkCmdFillBuffer(command_buffer, sunlight_buffer.handle, 0,
+                            sunlight_buffer.size, 0u);
+            buffer_barrier(command_buffer, sunlight_buffer,
+                           VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            const SimulationPush push{
+                .width = config.grid_width,
+                .height = acceptance_height,
+                .step = simulation_step,
+                .seed = random_seed,
+                .active_mode = 0u,
+            };
+            bind_compute(command_buffer, sunlight_pipeline, current_set);
+            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                               VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                               sizeof(push), &push);
+            vkCmdDispatch(command_buffer,
+                          divide_round_up(config.grid_width, sunlight_local_size),
+                          1u, 1u);
+            buffer_barrier(command_buffer, sunlight_buffer,
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        });
+    }
+
     void run_acceptance_fine_pass(const std::int32_t phase, const std::int32_t parity) {
         immediate_submit([&](const VkCommandBuffer command_buffer) {
             const auto acceptance_width = (std::min)(config.grid_width, 192u);
@@ -5381,6 +5416,274 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            std::to_string(atmosphere_product.material) +
                            " atmosphere_pressure=" +
                            std::to_string(atmosphere_product.aux & 255u));
+            }
+
+            {
+                const auto saved_step = simulation_step;
+                constexpr std::uint32_t respiration_x = 100u;
+                constexpr std::uint32_t respiration_y = 100u;
+                std::uint32_t respiration_step = 0u;
+                bool respiration_step_found = false;
+                for (std::uint32_t candidate = 0u;
+                     candidate < 4096u && !respiration_step_found; ++candidate) {
+                    const auto random_value = fill_hash(
+                        respiration_x * 73856093u ^
+                        respiration_y * 19349663u ^
+                        candidate * 83492791u ^ random_seed ^ 54u);
+                    if ((random_value & 127u) == 0u) {
+                        respiration_step = candidate;
+                        respiration_step_found = true;
+                    }
+                }
+                auto respiration_cells = acceptance_atmosphere_world();
+                respiration_cells[index_of(respiration_x - 1u, respiration_y)] =
+                    make_fill_cell(
+                        material_id(Material::fire),
+                        static_cast<std::uint32_t>(
+                            index_of(respiration_x - 1u, respiration_y)));
+                upload_scene_cells(respiration_cells);
+                simulation_step = respiration_step;
+                run_acceptance_chemistry_pass();
+                const auto respired = download_scene_cells();
+                simulation_step = saved_step;
+                const auto& carrier =
+                    respired[index_of(respiration_x, respiration_y)];
+                const auto stored_material = (carrier.aux & 0x00007f00u) >> 8u;
+                const auto stored_volume = (carrier.aux & 0x007f8000u) >> 15u;
+                const auto oxygen_volume = carrier.aux & 255u;
+                append("packed_atmosphere_respiration_conserves_pressure",
+                       respiration_step_found &&
+                           carrier.material == material_id(Material::atmosphere) &&
+                           oxygen_volume == 53u &&
+                           stored_material == material_id(Material::carbon_dioxide) &&
+                           stored_volume == 1u &&
+                           oxygen_volume + stored_volume == 54u,
+                       "step=" + std::to_string(respiration_step) +
+                           " carrier=" + std::to_string(carrier.material) +
+                           " oxygen=" + std::to_string(oxygen_volume) +
+                           " stored_material=" + std::to_string(stored_material) +
+                           " stored_volume=" + std::to_string(stored_volume));
+            }
+
+            {
+                const auto saved_step = simulation_step;
+                constexpr std::uint32_t fertilizer_x = 100u;
+                constexpr std::uint32_t fertilizer_y = 100u;
+                constexpr std::uint32_t water_x = 99u;
+                constexpr std::uint32_t carbon_x = 101u;
+                const auto fertilizer_index = static_cast<std::uint32_t>(
+                    index_of(fertilizer_x, fertilizer_y));
+                const auto crop_step =
+                    (512u - ((fertilizer_index * 3u) & 511u)) & 511u;
+                struct CropSnapshot final {
+                    SceneCell product;
+                    SceneCell fertilizer;
+                    SceneCell water;
+                    SceneCell carbon;
+                };
+                const auto run_crop_transaction =
+                    [&](const bool packed_carbon, const bool collect_debug) {
+                        auto crop_cells = acceptance_atmosphere_world();
+                        crop_cells[index_of(fertilizer_x, fertilizer_y - 1u)] =
+                            make_fill_cell(material_id(Material::empty),
+                                           static_cast<std::uint32_t>(index_of(
+                                               fertilizer_x, fertilizer_y - 1u)));
+                        auto fertilizer = make_fill_cell(
+                            material_id(Material::fertilizer), fertilizer_index);
+                        fertilizer.age = 1200u;
+                        crop_cells[index_of(fertilizer_x, fertilizer_y)] = fertilizer;
+                        crop_cells[index_of(water_x, fertilizer_y)] = make_fill_cell(
+                            material_id(Material::water),
+                            static_cast<std::uint32_t>(index_of(water_x, fertilizer_y)));
+                        crop_cells[index_of(fertilizer_x + 2u, fertilizer_y)] =
+                            make_fill_cell(
+                                material_id(Material::grass),
+                                static_cast<std::uint32_t>(index_of(
+                                    fertilizer_x + 2u, fertilizer_y)));
+                        auto carbon = make_fill_cell(
+                            packed_carbon ? material_id(Material::atmosphere)
+                                          : material_id(Material::carbon_dioxide),
+                            static_cast<std::uint32_t>(index_of(carbon_x, fertilizer_y)));
+                        if (packed_carbon) {
+                            carbon.aux = 53u | 0x40000000u |
+                                ((material_id(Material::carbon_dioxide) & 0x7fu) << 8u) |
+                                (1u << 15u);
+                        }
+                        crop_cells[index_of(carbon_x, fertilizer_y)] = carbon;
+                        upload_scene_cells(crop_cells);
+                        simulation_step = crop_step;
+                        run_acceptance_sunlight_pass();
+                        run_acceptance_chemistry_pass(0, 0, false, collect_debug);
+                        const auto result = download_scene_cells();
+                        return CropSnapshot{
+                            .product = result[index_of(fertilizer_x, fertilizer_y - 1u)],
+                            .fertilizer = result[index_of(fertilizer_x, fertilizer_y)],
+                            .water = result[index_of(water_x, fertilizer_y)],
+                            .carbon = result[index_of(carbon_x, fertilizer_y)],
+                        };
+                    };
+                const auto visible = run_crop_transaction(false, false);
+                const auto packed = run_crop_transaction(true, false);
+                const auto packed_debug = run_crop_transaction(true, true);
+                simulation_step = saved_step;
+                const auto visible_stored_material =
+                    (visible.carbon.aux & 0x00007f00u) >> 8u;
+                const auto visible_stored_volume =
+                    (visible.carbon.aux & 0x007f8000u) >> 15u;
+                append("closed_crop_visible_co2_water_biomass",
+                       visible.product.material == material_id(Material::food) &&
+                           visible.fertilizer.material == material_id(Material::dirt) &&
+                           visible.water.material == material_id(Material::empty) &&
+                           visible.carbon.material == material_id(Material::atmosphere) &&
+                           (visible.carbon.aux & 255u) == 1u &&
+                           visible_stored_material ==
+                               material_id(Material::carbon_dioxide) &&
+                           visible_stored_volume == 179u,
+                       "step=" + std::to_string(crop_step) +
+                           " product=" + std::to_string(visible.product.material) +
+                           " fertilizer=" +
+                           std::to_string(visible.fertilizer.material) +
+                           " water=" + std::to_string(visible.water.material) +
+                           " oxygen=" +
+                           std::to_string(visible.carbon.aux & 255u) +
+                           " stored_co2=" +
+                           std::to_string(visible_stored_volume));
+                const auto same_cell = [](const SceneCell& first,
+                                          const SceneCell& second) {
+                    return first.material == second.material &&
+                           first.age == second.age &&
+                           first.temperature == second.temperature &&
+                           first.aux == second.aux;
+                };
+                append("closed_crop_stored_co2_debug_identity",
+                       packed.product.material == material_id(Material::food) &&
+                           packed.fertilizer.material == material_id(Material::dirt) &&
+                           packed.water.material == material_id(Material::empty) &&
+                           packed.carbon.material == material_id(Material::atmosphere) &&
+                           (packed.carbon.aux & 255u) == 54u &&
+                           (packed.carbon.aux & 0x007f8000u) == 0u &&
+                           (packed.carbon.aux & 0x40000000u) == 0u &&
+                           same_cell(packed.product, packed_debug.product) &&
+                           same_cell(packed.fertilizer, packed_debug.fertilizer) &&
+                           same_cell(packed.water, packed_debug.water) &&
+                           same_cell(packed.carbon, packed_debug.carbon),
+                       "oxygen=" + std::to_string(packed.carbon.aux & 255u) +
+                           " packed_aux=" + std::to_string(packed.carbon.aux) +
+                           " debug_aux=" +
+                           std::to_string(packed_debug.carbon.aux));
+            }
+
+            {
+                const auto saved_step = simulation_step;
+                constexpr std::uint32_t water_x = 100u;
+                constexpr std::uint32_t water_y = 100u;
+                constexpr std::uint32_t donor_x = water_x;
+                constexpr std::uint32_t donor_y = water_y - 1u;
+                constexpr std::uint32_t moved_bit = 0x01000000u;
+                constexpr std::uint32_t dissolved_bit = 0x08000000u;
+                const auto water_index = static_cast<std::uint32_t>(
+                    index_of(water_x, water_y));
+                const auto donor_index = static_cast<std::uint32_t>(
+                    index_of(donor_x, donor_y));
+                const auto pair = water_index ^ (donor_index * 0x9e3779b9u);
+                std::uint32_t aeration_step = 0u;
+                bool aeration_step_found = false;
+                for (std::uint32_t candidate = 0u;
+                     candidate < 4096u && !aeration_step_found; ++candidate) {
+                    if ((fill_hash(pair ^ candidate * 0x85ebca6bu ^
+                                   random_seed ^ 0xa311u) & 63u) == 0u) {
+                        aeration_step = candidate;
+                        aeration_step_found = true;
+                    }
+                }
+                struct AerationSnapshot final {
+                    SceneCell acquired_water;
+                    SceneCell acquired_air;
+                    SceneCell held_water;
+                    SceneCell released_water;
+                    SceneCell released_air;
+                };
+                const auto run_aeration = [&](const bool collect_debug) {
+                    auto aeration_cells = acceptance_atmosphere_world();
+                    auto water = make_fill_cell(
+                        material_id(Material::water), water_index);
+                    water.temperature = 20;
+                    water.aux = moved_bit;
+                    aeration_cells[index_of(water_x, water_y)] = water;
+                    auto donor = make_fill_cell(
+                        material_id(Material::atmosphere), donor_index);
+                    donor.temperature = 20;
+                    donor.aux = 54u;
+                    aeration_cells[index_of(donor_x, donor_y)] = donor;
+                    upload_scene_cells(aeration_cells);
+                    simulation_step = aeration_step;
+                    run_acceptance_chemistry_pass(0, 0, false, collect_debug);
+                    const auto acquired = download_scene_cells();
+                    ++simulation_step;
+                    run_acceptance_chemistry_pass(0, 0, false, collect_debug);
+                    const auto held = download_scene_cells();
+                    ++simulation_step;
+                    run_acceptance_chemistry_pass(0, 0, false, collect_debug);
+                    const auto released = download_scene_cells();
+                    return AerationSnapshot{
+                        .acquired_water = acquired[index_of(water_x, water_y)],
+                        .acquired_air = acquired[index_of(donor_x, donor_y)],
+                        .held_water = held[index_of(water_x, water_y)],
+                        .released_water = released[index_of(water_x, water_y)],
+                        .released_air = released[index_of(donor_x, donor_y)],
+                    };
+                };
+                const auto normal = run_aeration(false);
+                const auto debug = run_aeration(true);
+                simulation_step = saved_step;
+                const auto same_cell = [](const SceneCell& first,
+                                          const SceneCell& second) {
+                    return first.material == second.material &&
+                           first.age == second.age &&
+                           first.temperature == second.temperature &&
+                           first.aux == second.aux;
+                };
+                const auto dissolved_material =
+                    (normal.acquired_water.aux & 0x00007f00u) >> 8u;
+                const auto dissolved_temperature =
+                    static_cast<std::int32_t>(
+                        (normal.acquired_water.aux & 0x007f8000u) >> 15u) - 100;
+                const bool acquisition_conserved = aeration_step_found &&
+                    normal.acquired_water.material == material_id(Material::water) &&
+                    (normal.acquired_water.aux & dissolved_bit) != 0u &&
+                    dissolved_material == material_id(Material::oxygen) &&
+                    dissolved_temperature == 20 &&
+                    (normal.acquired_air.aux & 255u) == 53u;
+                const bool hold_is_unsplit =
+                    normal.held_water.material == material_id(Material::water) &&
+                    (normal.held_water.aux & dissolved_bit) != 0u &&
+                    (normal.held_water.aux & 0x00800000u) == 0u &&
+                    (normal.held_water.aux & moved_bit) == 0u;
+                const bool release_conserved =
+                    normal.released_water.material == material_id(Material::water) &&
+                    (normal.released_water.aux &
+                        (dissolved_bit | 0x007fff00u | 0x00800000u)) == 0u &&
+                    normal.released_air.material == material_id(Material::atmosphere) &&
+                    (normal.released_air.aux & 255u) == 54u;
+                append("waterfall_dissolved_oxygen_closed_transaction",
+                       acquisition_conserved && hold_is_unsplit && release_conserved,
+                       "step=" + std::to_string(aeration_step) +
+                           " acquired_o2=" +
+                           std::to_string(normal.acquired_air.aux & 255u) +
+                           "+1 held_temp=" +
+                           std::to_string(dissolved_temperature) +
+                           " released_o2=" +
+                           std::to_string(normal.released_air.aux & 255u));
+                append("waterfall_aeration_debug_identity",
+                       same_cell(normal.acquired_water, debug.acquired_water) &&
+                           same_cell(normal.acquired_air, debug.acquired_air) &&
+                           same_cell(normal.held_water, debug.held_water) &&
+                           same_cell(normal.released_water, debug.released_water) &&
+                           same_cell(normal.released_air, debug.released_air),
+                       "normal_released_aux=" +
+                           std::to_string(normal.released_air.aux) +
+                           " debug_released_aux=" +
+                           std::to_string(debug.released_air.aux));
             }
 
             {

@@ -821,7 +821,15 @@ bool fertilizerBaseReady(ivec2 fertilizerPosition, Cell fertilizer) {
     if (at(fertilizerPosition + ivec2(0, -1)).material != MAT_EMPTY) return false;
     bool crop = hasWithin(fertilizerPosition, MAT_GRASS, 3) ||
                 hasWithin(fertilizerPosition, MAT_FLOWER, 3);
-    return crop && ((pc.step + indexOf(fertilizerPosition) * 3u) & 511u) == 0u;
+    return crop && light[indexOf(fertilizerPosition)] > 130u &&
+           ((pc.step + indexOf(fertilizerPosition) * 3u) & 511u) == 0u;
+}
+
+bool isHarvestCarbon(Cell cell) {
+    return (cell.material == MAT_CARBON_DIOXIDE && stateValue(cell) > 0u) ||
+           (cell.material == MAT_ATMOSPHERE &&
+            packedAtmosphereComponentMaterial(cell) == MAT_CARBON_DIOXIDE &&
+            packedAtmosphereComponentVolume(cell) > 0u);
 }
 
 ivec2 harvestWaterTarget(ivec2 fertilizerPosition) {
@@ -858,18 +866,190 @@ ivec2 harvestFertilizerTarget(ivec2 waterPosition) {
     return best;
 }
 
-bool fertilizerHarvestReady(ivec2 fertilizerPosition, Cell fertilizer) {
+bool fertilizerWaterPairReady(ivec2 fertilizerPosition, Cell fertilizer) {
     if (!fertilizerBaseReady(fertilizerPosition, fertilizer)) return false;
     ivec2 waterPosition = harvestWaterTarget(fertilizerPosition);
     return any(notEqual(waterPosition, fertilizerPosition)) &&
            all(equal(harvestFertilizerTarget(waterPosition), fertilizerPosition));
 }
 
+ivec2 harvestCarbonTarget(ivec2 fertilizerPosition) {
+    uint bestIndex = 0xffffffffu;
+    ivec2 best = fertilizerPosition;
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 candidate = fertilizerPosition + cardinalOffsets[i];
+        if (!inside(candidate) || !isHarvestCarbon(at(candidate))) continue;
+        uint candidateIndex = indexOf(candidate);
+        if (candidateIndex < bestIndex) {
+            bestIndex = candidateIndex;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+ivec2 harvestFertilizerForCarbon(ivec2 carbonPosition) {
+    uint bestIndex = 0xffffffffu;
+    ivec2 best = carbonPosition;
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 candidate = carbonPosition + cardinalOffsets[i];
+        if (!inside(candidate)) continue;
+        Cell fertilizer = at(candidate);
+        if (!fertilizerWaterPairReady(candidate, fertilizer) ||
+            any(notEqual(harvestCarbonTarget(candidate), carbonPosition))) continue;
+        uint candidateIndex = indexOf(candidate);
+        if (candidateIndex < bestIndex) {
+            bestIndex = candidateIndex;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+bool fertilizerHarvestReady(ivec2 fertilizerPosition, Cell fertilizer) {
+    if (!fertilizerWaterPairReady(fertilizerPosition, fertilizer)) return false;
+    ivec2 carbonPosition = harvestCarbonTarget(fertilizerPosition);
+    return any(notEqual(carbonPosition, fertilizerPosition)) &&
+           all(equal(harvestFertilizerForCarbon(carbonPosition), fertilizerPosition));
+}
+
 bool harvestConsumesWater(ivec2 waterPosition) {
     if (!isFullFreshWater(at(waterPosition))) return false;
     ivec2 fertilizerPosition = harvestFertilizerTarget(waterPosition);
     return any(notEqual(fertilizerPosition, waterPosition)) &&
+           fertilizerHarvestReady(fertilizerPosition, at(fertilizerPosition)) &&
            all(equal(harvestWaterTarget(fertilizerPosition), waterPosition));
+}
+
+bool harvestConsumesCarbon(ivec2 carbonPosition) {
+    if (!isHarvestCarbon(at(carbonPosition))) return false;
+    ivec2 fertilizerPosition = harvestFertilizerForCarbon(carbonPosition);
+    return any(notEqual(fertilizerPosition, carbonPosition)) &&
+           fertilizerWaterPairReady(fertilizerPosition, at(fertilizerPosition)) &&
+           all(equal(harvestCarbonTarget(fertilizerPosition), carbonPosition));
+}
+
+// Waterfall aeration is a reversible one-unit transaction. Only ordinary
+// component-free Atmosphere participates so its packed excess slot remains
+// available to respiration/photosynthesis and every Oxygen unit has one owner.
+bool balancedAerationAtmosphere(Cell cell) {
+    return cell.material == MAT_ATMOSPHERE &&
+           packedAtmosphereComponentMaterial(cell) == MAT_EMPTY &&
+           packedAtmosphereComponentVolume(cell) == 0u;
+}
+
+bool aerationDonor(Cell cell) {
+    return balancedAerationAtmosphere(cell) && stateValue(cell) > 1u &&
+           cell.temperature >= -100 && cell.temperature <= 155;
+}
+
+bool aerationReceiver(Cell cell, int gasTemperature) {
+    return balancedAerationAtmosphere(cell) && stateValue(cell) < 255u &&
+           cell.temperature == gasTemperature;
+}
+
+ivec2 dissolvedOutgasAtmosphereTarget(ivec2 waterPosition) {
+    Cell water = at(waterPosition);
+    if (!hasDissolvedWaterGas(water) || (water.aux & AUX_MOVED) != 0u) return waterPosition;
+    int gasTemperature = dissolvedWaterGasTemperature(water);
+    uint bestIndex = 0xffffffffu;
+    ivec2 best = waterPosition;
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 candidate = waterPosition + cardinalOffsets[i];
+        if (!inside(candidate) || !aerationReceiver(at(candidate), gasTemperature)) continue;
+        uint candidateIndex = indexOf(candidate);
+        if (candidateIndex < bestIndex) {
+            bestIndex = candidateIndex;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+ivec2 dissolvedOutgasWaterTarget(ivec2 atmospherePosition) {
+    uint bestIndex = 0xffffffffu;
+    ivec2 best = atmospherePosition;
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 candidate = atmospherePosition + cardinalOffsets[i];
+        if (!inside(candidate)) continue;
+        Cell water = at(candidate);
+        if (!hasDissolvedWaterGas(water) || (water.aux & AUX_MOVED) != 0u ||
+            any(notEqual(dissolvedOutgasAtmosphereTarget(candidate), atmospherePosition))) continue;
+        uint candidateIndex = indexOf(candidate);
+        if (candidateIndex < bestIndex) {
+            bestIndex = candidateIndex;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+bool dissolvedOutgasPair(ivec2 position, Cell source) {
+    if (hasDissolvedWaterGas(source)) {
+        ivec2 atmospherePosition = dissolvedOutgasAtmosphereTarget(position);
+        return any(notEqual(atmospherePosition, position)) &&
+               all(equal(dissolvedOutgasWaterTarget(atmospherePosition), position));
+    }
+    if (!balancedAerationAtmosphere(source)) return false;
+    ivec2 waterPosition = dissolvedOutgasWaterTarget(position);
+    return any(notEqual(waterPosition, position)) &&
+           all(equal(dissolvedOutgasAtmosphereTarget(waterPosition), position));
+}
+
+bool aerationDissolveEvent(ivec2 waterPosition, ivec2 atmospherePosition) {
+    uint pair = indexOf(waterPosition) ^ (indexOf(atmospherePosition) * 0x9e3779b9u);
+    return (hash32(pair ^ pc.step * 0x85ebca6bu ^ pc.seed ^ 0xa311u) & 63u) == 0u;
+}
+
+ivec2 dissolvedOxygenDonorTarget(ivec2 waterPosition) {
+    Cell water = at(waterPosition);
+    if (!isFullFreshWater(water) || hasDissolvedWaterGas(water) ||
+        stateValue(water) != 0u || (water.aux & AUX_MOVED) == 0u) return waterPosition;
+    uint bestIndex = 0xffffffffu;
+    ivec2 best = waterPosition;
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 candidate = waterPosition + cardinalOffsets[i];
+        if (!inside(candidate) || !aerationDonor(at(candidate)) ||
+            any(notEqual(dissolvedOutgasWaterTarget(candidate), candidate)) ||
+            !aerationDissolveEvent(waterPosition, candidate)) continue;
+        uint candidateIndex = indexOf(candidate);
+        if (candidateIndex < bestIndex) {
+            bestIndex = candidateIndex;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+ivec2 dissolvedOxygenWaterTarget(ivec2 atmospherePosition) {
+    if (!aerationDonor(at(atmospherePosition)) ||
+        any(notEqual(dissolvedOutgasWaterTarget(atmospherePosition), atmospherePosition)))
+        return atmospherePosition;
+    uint bestIndex = 0xffffffffu;
+    ivec2 best = atmospherePosition;
+    for (uint i = 0u; i < 4u; ++i) {
+        ivec2 candidate = atmospherePosition + cardinalOffsets[i];
+        if (!inside(candidate) ||
+            any(notEqual(dissolvedOxygenDonorTarget(candidate), atmospherePosition))) continue;
+        uint candidateIndex = indexOf(candidate);
+        if (candidateIndex < bestIndex) {
+            bestIndex = candidateIndex;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+bool dissolvedOxygenPair(ivec2 position, Cell source) {
+    if (isFullFreshWater(source) && !hasDissolvedWaterGas(source)) {
+        ivec2 donorPosition = dissolvedOxygenDonorTarget(position);
+        return any(notEqual(donorPosition, position)) &&
+               all(equal(dissolvedOxygenWaterTarget(donorPosition), position));
+    }
+    if (!aerationDonor(source)) return false;
+    ivec2 waterPosition = dissolvedOxygenWaterTarget(position);
+    return any(notEqual(waterPosition, position)) &&
+           all(equal(dissolvedOxygenDonorTarget(waterPosition), position));
 }
 
 ivec2 firstOppositeGas(ivec2 position, uint material) {
@@ -982,6 +1162,43 @@ void main() {
         result.temperature = mixedTemperature;
         result.age = 0u;
         result.aux |= AUX_MOVED;
+        commitResult(index, source, result);
+        return;
+    }
+
+    // Waterfall aeration preserves the Oxygen unit inside the moving Water
+    // payload, then returns it to a mutually selected compatible Atmosphere
+    // cell after movement stops. The carrier cannot split or phase-change while
+    // it owns that unit, so neither matter nor its source temperature vanishes.
+    if (dissolvedOutgasPair(p, source)) {
+        result = source;
+        result.age = 0u;
+        result.aux &= ~AUX_MOVED;
+        if (hasDissolvedWaterGas(source)) {
+            clearDissolvedWaterGas(result);
+        } else {
+            setStateValue(result, stateValue(source) + 1u);
+        }
+        commitResult(index, source, result);
+        return;
+    }
+    if (hasDissolvedWaterGas(source)) {
+        result = source;
+        result.age = source.age + 1u;
+        result.aux &= ~AUX_MOVED;
+        commitResult(index, source, result);
+        return;
+    }
+    if (dissolvedOxygenPair(p, source)) {
+        result = source;
+        result.age = source.age + 1u;
+        if (source.material == MAT_WATER) {
+            ivec2 donorPosition = dissolvedOxygenDonorTarget(p);
+            setDissolvedWaterOxygen(result, at(donorPosition).temperature);
+            result.age = 0u;
+        } else {
+            setStateValue(result, stateValue(source) - 1u);
+        }
         commitResult(index, source, result);
         return;
     }
@@ -1264,29 +1481,30 @@ void main() {
     // Atmosphere is a conserved local volume. Respiration exchanges one oxygen
     // volume for one CO2 volume; photosynthesis performs the inverse exchange.
     if (source.material == MAT_OXYGEN || source.material == MAT_ATMOSPHERE) {
-        uint volume = representedOxygenVolume(source);
-        uvec2 demand = respiringNeighborDemand(p);
-        uint beeRoll = hash32(randomValue ^ 0xb33a71u) & 0x0003ffffu;
-        uint lifeRoll = hash32(randomValue ^ 0x11fe21u) & 0x0000ffffu;
-        bool beeRespiration = demand.x > 0u && beeRoll < demand.x;       // 128x slower than v2.4.0
-        bool otherRespiration = demand.y > 0u && lifeRoll < demand.y;  // 32x slower than v2.4.0
-        bool fireRespiration = nearFire && (randomValue & 127u) == 0u;
-        bool emberRespiration = hasNeighbor(p, MAT_EMBER) &&
-                                (hash32(randomValue ^ 0xe6be2u) & 2047u) == 0u;
-        if (beeRespiration || otherRespiration || fireRespiration || emberRespiration) {
-            if (source.material == MAT_ATMOSPHERE && volume > 1u) {
+        if (source.material == MAT_ATMOSPHERE && harvestConsumesCarbon(p)) {
+            result = source;
+            photosynthesizePackedMedium(result);
+        } else {
+            uint volume = representedOxygenVolume(source);
+            uvec2 demand = respiringNeighborDemand(p);
+            uint beeRoll = hash32(randomValue ^ 0xb33a71u) & 0x0003ffffu;
+            uint lifeRoll = hash32(randomValue ^ 0x11fe21u) & 0x0000ffffu;
+            bool beeRespiration = demand.x > 0u && beeRoll < demand.x;       // 128x slower than v2.4.0
+            bool otherRespiration = demand.y > 0u && lifeRoll < demand.y;  // 32x slower than v2.4.0
+            bool fireRespiration = nearFire && (randomValue & 127u) == 0u;
+            bool emberRespiration = hasNeighbor(p, MAT_EMBER) &&
+                                    (hash32(randomValue ^ 0xe6be2u) & 2047u) == 0u;
+            if (beeRespiration || otherRespiration || fireRespiration || emberRespiration) {
                 result = source;
-                setStateValue(result, volume - 1u);
-            } else {
-                result = makeCell(MAT_CARBON_DIOXIDE);
-                setStateValue(result, source.material == MAT_ATMOSPHERE ? 220u : volume);
+                // If another stored component occupies the single-component Air
+                // carrier, the breath waits rather than deleting either owner.
+                respirePackedMedium(result);
             }
         }
     } else if (source.material == MAT_CARBON_DIOXIDE) {
-        if (hasNeighbor(p, MAT_GRASS) && light[index] > 130u && (randomValue & 127u) == 0u) {
-            uint volume = max(stateValue(source), 1u);
-            result = makeCell(MAT_OXYGEN);
-            setStateValue(result, volume);
+        if (harvestConsumesCarbon(p)) {
+            result = source;
+            photosynthesizePackedMedium(result);
         }
     } else if (source.material == MAT_HYDROGEN) {
         // Hydrogen cannot consume ambient Atmosphere by itself. Water synthesis

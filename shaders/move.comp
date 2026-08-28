@@ -114,6 +114,12 @@ bool isHalfWaterCell(Cell cell) {
     return cell.material == MAT_WATER && (cell.aux & AUX_WATER_HALF) != 0u;
 }
 
+bool moveHasDissolvedWaterGas(Cell cell) {
+    return cell.material == MAT_WATER && !isHalfWaterCell(cell) &&
+           (cell.aux & AUX_BEE_SWARM) != 0u &&
+           ((cell.aux & 0x00007f00u) >> 8u) == MAT_OXYGEN;
+}
+
 uint waterHalfUnits(Cell cell) {
     return cell.material == MAT_WATER ? (isHalfWaterCell(cell) ? 1u : 2u) : 0u;
 }
@@ -1502,7 +1508,7 @@ void processHorizontal(ivec2 left, ivec2 right) {
     if (isCellLiquid(a) && isAmbientLiquidGap(b) && liquidCanSpread(left, right, a, randomValue)) {
         if (a.material == MAT_WATER && !isHalfWaterCell(a) &&
             solidLedgePrecedesDrop(right, 1)) {
-            if (fullWaterSplitSupplied(left, 1)) splitFullWaterPair(left, right, a, b);
+            if (!moveHasDissolvedWaterGas(a) && fullWaterSplitSupplied(left, 1)) splitFullWaterPair(left, right, a, b);
             else swapCells(left, right);
         } else {
             swapCells(left, right);
@@ -1511,7 +1517,7 @@ void processHorizontal(ivec2 left, ivec2 right) {
                liquidCanSpread(right, left, b, randomValue >> 1u)) {
         if (b.material == MAT_WATER && !isHalfWaterCell(b) &&
             solidLedgePrecedesDrop(left, -1)) {
-            if (fullWaterSplitSupplied(right, -1)) splitFullWaterPair(right, left, b, a);
+            if (!moveHasDissolvedWaterGas(b) && fullWaterSplitSupplied(right, -1)) splitFullWaterPair(right, left, b, a);
             else swapCells(left, right);
         } else {
             swapCells(left, right);
