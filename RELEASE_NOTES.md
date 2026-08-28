@@ -12,29 +12,26 @@ Distributed persistent World, common terrain level, and durable photographed Fix
 - One hundred district-aware SandHybrid bees retain foraging, feeding, pollen, queen, birth, migration, hazards, and return-home behavior; no SimpleSandSim bee runtime was imported.
 - Complete liquid/gas packets remain reversible metadata over canonical cells, move every two fixed ticks, and retain the eight-opportunity conditional fine-fallback contract. Half Water, paused editing, sidebar ownership, player recovery, machinery, atmosphere, and fixed-step presentation contracts remain intact.
 - Full Water now keeps one renderer identity and cannot cascade into Half Water from a deep reservoir; only a terminal two-cell supplied ledge creates the conserved hang/drip pair.
-- Waterworks now owns reachable aligned sky Clouds and a conserved Steam riser, and Inventory starts with actor weapon ownership while Editor remains available for independent live paint.
+- Waterworks now owns 52 complete aligned Cloud tiles at world Y `520..559` in the middle of the next camera region up. Its open catchment, powered boiler, Steam riser, mature Cloud storage, and one-for-one rain form the actual conserved apparatus loop. Inventory starts with actor weapon ownership while Editor remains available for independent live paint.
+- The persistent player is one shared 9x23-cell body, just under three complete tiles tall; collision, support, recovery, breathing, medium displacement, rendering, pickup exclusion, and laser origin all derive from those dimensions.
 
 ## Release verification
 
-The native Windows Large Vulkan acceptance report proves exact placed hive content both immediately and after 120 ticks, exact Sandbox/Ecosystem hives and 100 unique bee homes, common Y `1040` terrain for all eight districts, three-district startup footprint, healthy player spawn `(4272,1111)`, consecutive macro Water movement, gas movement, enclosed-Air tiling, productive eighth-opportunity fallback, zero-jitter full Water, and conserved Half Water fall/merge/drip cases.
+The native Windows and Linux Large Vulkan acceptance reports prove exact placed hive content both immediately and after 120 ticks, exact Sandbox/Ecosystem hives and 100 unique bee homes, common Y `1040` terrain for all eight districts, three-district startup footprint, a clear/supported/breathable 207-cell player body at `(4272,1111)`, consecutive macro Water movement, gas movement, enclosed-Air tiling, productive eighth-opportunity fallback, zero-jitter full Water, and conserved Half Water fall/merge/drip cases.
 
-The corrected native tree passes Windows Release 40/40 tests and Linux Release 32/32; standalone EpochGui v0.89.27 passes 10/10 upstream Windows tests. Rebuilt Large Windows/RTX 5080 and Linux/llvmpipe executables each pass all 45 production Vulkan checks. Install, package-tree, archive, and checksum evidence is recorded in `MISSION_LEDGER.md`. Broad visual traversal, sustained ecology/weather/machinery behavior, measured frame time, and user observation of the final package remain active in `missioncache.md`; focused readback does not mark those missions COMPLETE.
+The corrected native tree passes Windows Release 40/40 tests and Linux Release 32/32; standalone EpochGui v0.89.27 passes 10/10 upstream Windows tests. Rebuilt Large Windows/RTX 5080 and Linux/llvmpipe executables each pass all 46 production Vulkan checks. Install, package-tree, archive, and checksum evidence is recorded in `MISSION_LEDGER.md`. Broad visual traversal, sustained ecology/weather/machinery behavior, measured frame time, and user observation of the final package remain active in `missioncache.md`; focused readback does not mark those missions COMPLETE.
 
 ## Dependency snapshot
 
 The complete vendored EpochGui dependency is synchronized from the canonical GitHub-independent Site mirror to v0.89.27 at `b23f283dd9b0d6021dccd8fbc2235306418aa66a`. The immutable 96,950-byte source archive verifies SHA-256 `842f9e6372a9742b1a0eaf72b4ac456a0d1f0a596888cac0b0dbbccbca3e01a0`; every non-CMake source file matches byte-for-byte, and the documented CMake integration is the only delta.
 
-## Current corrective local assets
+## Stable release assets
 
-- SandHybrid-Windows-x64-current.zip — 3,328,226 bytes — SHA-256 8d35eb2698f3a8347a0e098ff087ed02d7cc6e8d2e1965fd2a17e8a52bd43511
-- SandHybrid-Linux-x64-current.tar.gz — 3,095,360 bytes — SHA-256 79c3cd23ffaf98cb4958616621cdc5becc51f8681a339817751d19a90f8f0e1d
+- SandHybrid-Windows-x64-current.zip
+- SandHybrid-Windows-x64-current.zip.sha256
+- SandHybrid-Linux-x64-current.tar.gz
+- SandHybrid-Linux-x64-current.tar.gz.sha256
+- simengine-source.tar.gz
+- simengine-source.tar.gz.sha256
 
-Both sibling checksum files verify. These mutable local assets supersede the rejected earlier current packages; the immutable v2.5.25 archives remain untouched.
-## Stable local assets
-
-- SandHybrid-Windows-x64-v2.5.25.zip
-- SandHybrid-Windows-x64-v2.5.25.zip.sha256
-- SandHybrid-Linux-x64-v2.5.25.tar.gz
-- SandHybrid-Linux-x64-v2.5.25.tar.gz.sha256
-
-This pass is authorized for local packages only. It does not push, tag, publish, or modify a public GitHub release.
+Exact byte sizes and SHA-256 values are published beside the finalized hosted artifacts after both native package/runtime gates pass. The normal stable Site release and committed-tree source update are authorized; GitHub tags, releases, and repository state remain untouched.

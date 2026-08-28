@@ -1084,6 +1084,11 @@ void main() {
     bool nearSmoke = hasNeighbor(p, MAT_SMOKE);
     bool nearSteam = hasNeighbor(p, MAT_STEAM) || hasNeighbor(p, MAT_DIRTY_STEAM);
     bool nearSalt = hasNeighbor(p, MAT_SALT);
+    // A Waterworks boiler is active only where a Water cell touches both the
+    // Smelter heat face and its adjacent Power Cell. The transaction changes
+    // phase one-for-one and does not introduce a synthetic weather payload.
+    bool nearPoweredBoiler = hasNeighbor(p, MAT_SMELTER) &&
+                             hasNeighbor(p, MAT_POWER_CELL);
 
     // Canonical thermal behavior is material/temperature based. The material
     // ID is retained through melting and vaporization; only chemical
@@ -1389,7 +1394,8 @@ void main() {
     }
 
     if (result.material == source.material && source.material == MAT_WATER &&
-        (nearLava || nearFire || hasNeighbor(p, MAT_EMBER) || result.temperature >= 100)) {
+        (nearLava || nearFire || nearPoweredBoiler || hasNeighbor(p, MAT_EMBER) ||
+         result.temperature >= 100)) {
         result = makeCell(MAT_STEAM);
     } else if (source.material == MAT_SALTWATER &&
                (nearLava || nearFire || result.temperature >= 102)) {

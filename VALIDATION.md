@@ -83,12 +83,12 @@ The executable allocates the selected resident World (Large is 10240x1440), runs
 - a four-cell supplied full-Water reservoir remains four full cells with zero Half flags instead of cascading into darker halves;
 - paired cardinal Hydrogen/Oxygen synthesis into one Water-family cell plus one pressure-bearing Atmosphere cell;
 - Steam joining an explicit Cloud reservoir, then mature connected Cloud converting one-for-one into interval Water rain without direct Steam-to-rain;
-- actual Waterworks reset state containing 40 complete visible Cloud tiles, a 256-cell Steam riser, 42,048 full-Water cells, and zero Half-Water cells;
+- actual Waterworks reset state containing 52 complete high-sky Cloud tiles (`3,328` cells at Y `520..559`), zero low Cloud cells, a 256-cell Steam riser, a complete 64-cell powered boiler, a 4,352-cell open catchment, 42,112 full-Water cells, and zero Half-Water cells;
 - settled Smoke reabsorption preserving two Atmosphere cells, total pressure, and stored excess without creating Vacuum;
 - debug-stat collection leaving every canonical cell byte-identical;
 - isolated full Water crossing an unsupported ledge;
 - complete supported structural Stone foundations and common aligned grass Y `1040` in all eight distributed World districts;
-- live persistent player state at the distributed Frontier recovery spawn with full health and Oxygen;
+- live persistent player state at the distributed Frontier recovery spawn with full health and Oxygen, plus a shared 23-cell-tall body with all 207 footprint cells clear, nine support cells, and a breathable head sample;
 - Inventory startup ownership producing actor shot timer 4, an exact terrain hit, and expected two-hit Stone integrity 111 while Editor paint remains independently routed;
 - no more than three authored districts intersecting the initial Large 4x4 active window;
 - cell-exact photographed Fix29 support, shell, queen, exit, and tagged two-bit Empty/Pollen/Honey payload in placed, Sandbox, and Ecosystem hives; placed counts are `571/193/30/7/19`, Sandbox `576/193/35/13/8`, and Ecosystem `571/193/31/9/16` for support/shell/Honey/Pollen/Empty. The placed body is checked immediately and again after 120 focused ticks, while each hard-coded colony retains 100 unique district-correct bee homes.
@@ -105,7 +105,7 @@ The packet/performance follow-up adds successful-distance and bounded-dispatch g
 
 - `sandhybrid_behavior_contract` proves eight-step travel saturation, independent failed-attempt accumulation, success reset, and perimeter-conditional breakup.
 - `sandhybrid_section_scheduler_contract` proves clipped 4x4 dispatch dimensions and a fourfold Large cell-domain reduction.
-- Packaged Windows Vulkan acceptance proves `macro_bubble_eight_step_breakup` with Hydrogen `64`, Water `512`, progress `7` retained and progress `8` broken to fine; `macro_blocked_fine_fallback` reports exactly eight blocked attempts. Current-source acceptance additionally follows all three authored Waterworks Hydrogen packets through the production active window with the same seven-step retention/eighth-step breakup and exact Water/Hydrogen conservation.
+- Packaged Windows and Linux Vulkan acceptance proves `macro_bubble_eight_step_breakup` with Hydrogen `64`, Water `512`, progress `7` retained and progress `8` broken to fine; `macro_blocked_fine_fallback` reports exactly eight blocked attempts. Current-source acceptance additionally follows all three authored Waterworks Hydrogen packets through the production active window with the same seven-step retention/eighth-step breakup, exact Hydrogen conservation, and exact total Water-family conservation while four Water units become Steam at the powered source.
 - Serial native verification passes Windows Release `40/40` CTests and WSL Linux Release `32/32`. The complete standalone EpochGui v0.89.27 Windows suite passes `10/10`, including both optional modules. Interactive timestamp/FPS evidence remains required for performance mission closure.
 
 - `sandhybrid_input_routing_contract` proves `request_world_reset` raises only the reset epoch request and preserves simulation-camera and MAP center/zoom state.

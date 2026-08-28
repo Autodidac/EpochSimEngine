@@ -477,7 +477,7 @@ def main() -> int:
     tiles_comp = (SHADERS / "tiles.comp").read_text(encoding="utf-8")
     debug_stats_comp = (SHADERS / "debug_stats.comp").read_text(encoding="utf-8")
 
-    if actor_comp.count("ivec2 center = ivec2(state.x, state.y - 4);") != 1:
+    if actor_comp.count("ivec2 center = ivec2(state.x, state.y + ACTOR_HEAD_CENTER_OFFSET);") != 1:
         errors.append("actor breathing center declaration must be unique")
     for token in (
         "hitMaterial == MAT_BEETLE",

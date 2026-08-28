@@ -480,28 +480,40 @@ uint waterworksMaterial(ivec2 p) {
             b.y >= maximumBrick.y - 1 && b.y < floorRow - 3) material = MAT_GLASS;
     }
 
+    // The Waterworks catchment is open to the sky. Its resident Water feeds a
+    // powered boiler at the riser foot; every boiled cell remains one conserved
+    // cell as Steam, Cloud, rain, and finally catchment Water again.
     ivec2 basinMin = ivec2(2, floorRow - 4);
-    ivec2 basinMax = ivec2(world.x - 2, floorRow + 1);
-    if (brickFrame(p, basinMin, basinMax, 1)) material = MAT_GLASS;
-    else if (brickRect(p, basinMin + ivec2(1), basinMax - ivec2(1))) material = MAT_WATER;
+    ivec2 basinMax = ivec2(world.x - 2, floorRow);
+    bool basinSide = (b.x == basinMin.x || b.x == basinMax.x) &&
+                     b.y >= basinMin.y && b.y < basinMax.y;
+    bool basinWater = b.x > basinMin.x && b.x < basinMax.x &&
+                      b.y > basinMin.y && b.y < basinMax.y;
+    if (basinSide) material = MAT_GLASS;
+    else if (basinWater) material = MAT_WATER;
+    if (b == ivec2(12, floorRow - 2)) material = MAT_SMELTER;
+    if (b == ivec2(12, floorRow - 1)) material = MAT_POWER_CELL;
     return material;
 }
 
-// Complete 8x8 cloud bricks seed the closed weather cycle without covering
-// authored structures. Steam grows these connected reservoirs before rain.
-bool scenicCloudCell(uint scene, ivec2 p) {
-    ivec2 b = brickCoordinate(p);
-    int surfaceRow = sceneSurfaceTileRow(scene);
-    int centerX = scene == SCENE_WATERWORKS
-        ? 13 : 14 + int((scene * 9u) % 50u);
-    // Clouds belong to reachable sky, not a surface-relative row that can land
-    // inside tall authored machinery (Waterworks has surface row 42).
-    int centerY = min(surfaceRow - 8, 7 + int(scene & 1u));
-    ivec2 first = b - ivec2(centerX, centerY);
-    ivec2 second = b - ivec2(centerX + 5, centerY + 1);
+// The persistent Waterworks cloud bank occupies complete aligned 8x8 tiles in
+// the vertical middle of the camera region immediately above the authored band.
+// Its global Y is deliberately independent of the district surface translation.
+bool persistentHighSkyCloudCell(ivec2 worldPosition) {
+    if (!persistentWorldMode()) return false;
+    ivec2 districtOrigin = persistentDistrictOrigin(5u);
+    int localX = worldPosition.x - districtOrigin.x;
+    if (localX < 0 || localX >= AUTHORED_WORLD_CELLS.x) return false;
+    if (worldPosition.y < AUTHORED_WORLD_CELLS.y ||
+        worldPosition.y >= AUTHORED_WORLD_CELLS.y * 2) return false;
+
+    ivec2 b = ivec2(localX / BRICK_SIZE, worldPosition.y / BRICK_SIZE);
+    int centerY = (AUTHORED_WORLD_CELLS.y + AUTHORED_WORLD_CELLS.y / 2) / BRICK_SIZE;
+    ivec2 first = b - ivec2(13, centerY);
+    ivec2 second = b - ivec2(18, centerY + 1);
     bool firstLobe = first.x * first.x + first.y * first.y * 5 <= 24;
     bool secondLobe = second.x * second.x + second.y * second.y * 5 <= 16;
-    return b.y < surfaceRow - 5 && (firstLobe || secondLobe);
+    return firstLobe || secondLobe;
 }
 
 ivec2 ecosystemQueen() {
@@ -910,7 +922,7 @@ void main() {
         authored = persistentWorldAddress(p, scene, local, activeAuthoredOrigin);
 
     uint material = authored ? materialForScene(scene, local) : MAT_EMPTY;
-    if (authored && material == MAT_EMPTY && scenicCloudCell(scene, local))
+    if (material == MAT_EMPTY && persistentHighSkyCloudCell(p))
         material = MAT_CLOUD;
     uint substrateScene = composedWorld ? SCENE_SANDBOX : scene;
     uvec2 substrateSample = residentWorldSubstrateSample(p, substrateScene);

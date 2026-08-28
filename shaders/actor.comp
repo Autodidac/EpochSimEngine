@@ -100,21 +100,21 @@ void nudgeMedium(ivec2 sourcePosition, ivec2 direction) {
 void disturbMediumAroundActor(ivec2 center, ivec2 direction) {
     if (all(equal(direction, ivec2(0)))) return;
     if (direction.x != 0) {
-        int edgeX = center.x + direction.x * 3;
-        nudgeMedium(ivec2(edgeX, center.y - 1), direction);
-        nudgeMedium(ivec2(edgeX, center.y - 4), direction);
-        nudgeMedium(ivec2(edgeX, center.y - 7), direction);
+        int edgeX = center.x + direction.x * (ACTOR_HALF_WIDTH + 1);
+        nudgeMedium(ivec2(edgeX, center.y - 2), direction);
+        nudgeMedium(ivec2(edgeX, center.y + ACTOR_TOOL_ORIGIN_OFFSET), direction);
+        nudgeMedium(ivec2(edgeX, center.y + ACTOR_HEAD_CENTER_OFFSET), direction);
     } else {
-        int edgeY = direction.y < 0 ? center.y - 8 : center.y + 1;
-        nudgeMedium(ivec2(center.x - 2, edgeY), direction);
+        int edgeY = direction.y < 0 ? center.y + ACTOR_TOP_OFFSET - 1 : center.y + 1;
+        nudgeMedium(ivec2(center.x - ACTOR_HALF_WIDTH, edgeY), direction);
         nudgeMedium(ivec2(center.x, edgeY), direction);
-        nudgeMedium(ivec2(center.x + 2, edgeY), direction);
+        nudgeMedium(ivec2(center.x + ACTOR_HALF_WIDTH, edgeY), direction);
     }
 }
 
 bool bodyClear(ivec2 center) {
-    for (int y = -7; y <= 0; ++y) {
-        for (int x = -2; x <= 2; ++x) {
+    for (int y = ACTOR_TOP_OFFSET; y <= 0; ++y) {
+        for (int x = -ACTOR_HALF_WIDTH; x <= ACTOR_HALF_WIDTH; ++x) {
             if (blocksActor(actorAt(center + ivec2(x, y)))) return false;
         }
     }
@@ -122,7 +122,7 @@ bool bodyClear(ivec2 center) {
 }
 
 bool groundedAt(ivec2 center) {
-    for (int x = -2; x <= 2; ++x) {
+    for (int x = -ACTOR_HALF_WIDTH; x <= ACTOR_HALF_WIDTH; ++x) {
         if (blocksActor(actorAt(center + ivec2(x, 1)))) return true;
     }
     return false;
@@ -147,8 +147,8 @@ void updateUnlocks(inout ActorState state) {
 
 void collectResources(inout ActorState state) {
     ivec2 center = ivec2(state.x, state.y);
-    for (int y = -7; y <= 1; ++y) {
-        for (int x = -3; x <= 3; ++x) {
+    for (int y = ACTOR_TOP_OFFSET; y <= 1; ++y) {
+        for (int x = -ACTOR_HALF_WIDTH - 1; x <= ACTOR_HALF_WIDTH + 1; ++x) {
             ivec2 p = center + ivec2(x, y);
             if (!actorInside(p)) continue;
             uint index = actorIndex(p);
@@ -252,7 +252,7 @@ void damageCell(ivec2 p, uint damage) {
 }
 
 void fireTool(inout ActorState state) {
-    vec2 origin = vec2(float(state.x), float(state.y - 4));
+    vec2 origin = vec2(float(state.x), float(state.y + ACTOR_TOOL_ORIGIN_OFFSET));
     vec2 target = vec2(float(actorPc.aimX), float(actorPc.aimY));
     vec2 delta = target - origin;
     float targetDistance = length(delta);
@@ -305,8 +305,8 @@ void depositResource(inout ActorState state) {
 
     // Do not drop directly inside the actor pickup volume. The deposited cell
     // remains in the unified world and can then fall onto a conveyor or machine.
-    ivec2 delta = target - ivec2(state.x, state.y - 4);
-    if (delta.x * delta.x + delta.y * delta.y < 36) return;
+    ivec2 delta = target - ivec2(state.x, state.y + ACTOR_TOOL_ORIGIN_OFFSET);
+    if (abs(delta.x) <= ACTOR_HALF_WIDTH + 2 && delta.y >= ACTOR_TOP_OFFSET - ACTOR_TOOL_ORIGIN_OFFSET - 1 && delta.y <= -ACTOR_TOOL_ORIGIN_OFFSET + 1) return;
 
     // BUILD mode consumes the explicitly selected compact-inventory slot.
     uint slot = actorPc.inventorySlot % 4u;
@@ -329,7 +329,7 @@ void depositResource(inout ActorState state) {
 }
 
 void updateBreathing(inout ActorState state) {
-    ivec2 center = ivec2(state.x, state.y - 4);
+    ivec2 center = ivec2(state.x, state.y + ACTOR_HEAD_CENTER_OFFSET);
     ivec2 oxygenCell = center;
     uint oxygenVolume = 0u;
     uint toxicVolume = 0u;
@@ -388,7 +388,7 @@ void updateBreathing(inout ActorState state) {
 
 bool spawnSupportedAndBreathable(ivec2 center) {
     if (!bodyClear(center) || !groundedAt(center)) return false;
-    uint head = actorAt(center + ivec2(0, -4)).material;
+    uint head = actorAt(center + ivec2(0, ACTOR_HEAD_CENTER_OFFSET)).material;
     return head == MAT_ATMOSPHERE || head == MAT_OXYGEN;
 }
 
@@ -479,7 +479,7 @@ void resetActor(inout ActorState state) {
     }
     recoverActorSpawn(state);
     state.hitX = state.x;
-    state.hitY = state.y - 4;
+    state.hitY = state.y + ACTOR_TOOL_ORIGIN_OFFSET;
 }
 
 void main() {
@@ -531,8 +531,8 @@ void main() {
             center = next;
         }
 
-        state.x = clamp(center.x, 3, int(actorPc.width) - 4);
-        state.y = clamp(center.y, 8, int(actorPc.height) - 2);
+        state.x = clamp(center.x, ACTOR_HALF_WIDTH + 1, int(actorPc.width) - ACTOR_HALF_WIDTH - 2);
+        state.y = clamp(center.y, -ACTOR_TOP_OFFSET, int(actorPc.height) - 2);
         ivec2 finalCenter = ivec2(state.x, state.y);
         ivec2 actorDelta = clamp(finalCenter - originalCenter, ivec2(-1), ivec2(1));
         if (any(notEqual(actorDelta, ivec2(0)))) {

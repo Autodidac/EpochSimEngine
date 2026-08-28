@@ -54,6 +54,10 @@ static_assert(world_dimensions(WorldSizePreset::compact).height == resident_worl
 static_assert(persistent_world_district_count == 8u);
 static_assert(persistent_world_width == 5120u);
 static_assert(persistent_world_height == 360u);
+static_assert(persistent_world_weather_region_top_y == 360u);
+static_assert(persistent_world_weather_region_bottom_y == 720u);
+static_assert(persistent_world_weather_cloud_tile_y == 536u);
+static_assert(persistent_world_weather_cloud_tile_y % authored_scene_foundation_cells == 0u);
 static_assert(persistent_world_district_gap(
                   world_dimensions(WorldSizePreset::compact).width) == 0u);
 static_assert(persistent_world_district_gap(

@@ -94,6 +94,7 @@ def main() -> int:
 
     move = (SHADERS / "move.comp").read_text(encoding="utf-8")
     actor = (SHADERS / "actor.comp").read_text(encoding="utf-8")
+    actor_defs = (SHADERS / "actor.glsl").read_text(encoding="utf-8")
     tiles = (SHADERS / "tiles.comp").read_text(encoding="utf-8")
     tile_defs = (SHADERS / "tiles.glsl").read_text(encoding="utf-8")
     terrain_glsl = (SHADERS / "terrain_generation.glsl").read_text(encoding="utf-8")
@@ -104,6 +105,7 @@ def main() -> int:
     input_routing = (ROOT / "include/sandhybrid/input_routing.hpp").read_text(encoding="utf-8")
     scene = (ROOT / "include/sandhybrid/scene.hpp").read_text(encoding="utf-8")
     world_layout = (ROOT / "include/sandhybrid/world_layout.hpp").read_text(encoding="utf-8")
+    scene_spawn = (ROOT / "include/sandhybrid/scene_spawn.hpp").read_text(encoding="utf-8")
     simulation_policy = (ROOT / "include/sandhybrid/simulation_policy.hpp").read_text(encoding="utf-8")
     ui_layout = (ROOT / "include/sandhybrid/ui_layout.hpp").read_text(encoding="utf-8")
     macro_move = (SHADERS / "macro_move.comp").read_text(encoding="utf-8")
@@ -127,6 +129,35 @@ def main() -> int:
     require(actor, "state.shotTimer = plasma ? 6u : 4u", errors,
             "compact tool-burst contract")
     require(fullscreen, "bool tinyDash", errors, "sparse tool-render contract")
+    for token in (
+        "const int ACTOR_HALF_WIDTH = 4;",
+        "const int ACTOR_HEIGHT = 23;",
+        "const int ACTOR_TOP_OFFSET = 1 - ACTOR_HEIGHT;",
+        "const int ACTOR_HEAD_CENTER_OFFSET = -18;",
+        "const int ACTOR_TOOL_ORIGIN_OFFSET = -13;",
+    ):
+        require(actor_defs, token, errors, "shared 23-cell player geometry contract")
+    for token in (
+        "for (int y = ACTOR_TOP_OFFSET; y <= 0; ++y)",
+        "for (int x = -ACTOR_HALF_WIDTH; x <= ACTOR_HALF_WIDTH; ++x)",
+        "state.y + ACTOR_HEAD_CENTER_OFFSET",
+        "state.y + ACTOR_TOOL_ORIGIN_OFFSET",
+        "state.y = clamp(center.y, -ACTOR_TOP_OFFSET",
+    ):
+        require(actor, token, errors, "scaled player simulation contract")
+    for token in (
+        "presentation share this 9x23 footprint",
+        "playerDelta.y >= ACTOR_TOP_OFFSET",
+        "actor.y + ACTOR_TOOL_ORIGIN_OFFSET",
+    ):
+        require(fullscreen, token, errors, "scaled player presentation contract")
+    for token in (
+        "player_half_width_cells = 4",
+        "player_body_height_cells = 23",
+        "player_head_center_offset_cells = -18",
+        "player_tool_origin_offset_cells = -13",
+    ):
+        require(scene_spawn, token, errors, "CPU player geometry contract")
 
     for token in (
         "terrainTrapResource",

@@ -7,6 +7,12 @@
 
 namespace sandhybrid {
 
+inline constexpr std::int32_t player_half_width_cells = 4;
+inline constexpr std::int32_t player_body_height_cells = 23;
+inline constexpr std::int32_t player_top_offset_cells = 1 - player_body_height_cells;
+inline constexpr std::int32_t player_head_center_offset_cells = -18;
+inline constexpr std::int32_t player_tool_origin_offset_cells = -13;
+
 struct SceneSpawn final {
     std::int32_t x{};
     std::int32_t y{};

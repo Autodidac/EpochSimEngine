@@ -1283,34 +1283,35 @@ void main() {
         color.rgb = vec3(0.68, 0.82, 0.92);
     }
 
-    // Actor state is component data, not a material cell. Draw its actual
-    // 5x8 collision silhouette explicitly so a healthy player cannot exist in
-    // the simulation while remaining invisible in the normal World viewport.
+    // Actor state is component data, not a material cell. Simulation and
+    // presentation share this 9x23 footprint: just under three 8x8 tiles tall.
     if (!mapSample && actor.enabled != 0u && actor.health != 0u) {
         ivec2 playerDelta = grid - ivec2(actor.x, actor.y);
-        bool helmet = playerDelta.y >= -7 && playerDelta.y <= -5 &&
-                      abs(playerDelta.x) <= (playerDelta.y == -5 ? 2 : 1);
-        bool torso = playerDelta.y >= -4 && playerDelta.y <= -2 &&
-                     abs(playerDelta.x) <= 2;
-        bool leftLeg = playerDelta.y >= -1 && playerDelta.y <= 0 &&
-                       playerDelta.x >= -2 && playerDelta.x <= -1;
-        bool rightLeg = playerDelta.y >= -1 && playerDelta.y <= 0 &&
-                        playerDelta.x >= 1 && playerDelta.x <= 2;
+        bool helmet = playerDelta.y >= ACTOR_TOP_OFFSET && playerDelta.y <= -16 &&
+                      abs(playerDelta.x) <= (playerDelta.y == -16 ? ACTOR_HALF_WIDTH : 3);
+        bool neck = playerDelta.y == -15 && abs(playerDelta.x) <= 2;
+        bool torso = playerDelta.y >= -14 && playerDelta.y <= -6 &&
+                     abs(playerDelta.x) <= ACTOR_HALF_WIDTH;
+        bool leftLeg = playerDelta.y >= -5 && playerDelta.y <= 0 &&
+                       playerDelta.x >= -ACTOR_HALF_WIDTH && playerDelta.x <= -1;
+        bool rightLeg = playerDelta.y >= -5 && playerDelta.y <= 0 &&
+                        playerDelta.x >= 1 && playerDelta.x <= ACTOR_HALF_WIDTH;
         if (helmet) {
             color = vec4(0.98, 0.72, 0.12, 1.0);
-            if (playerDelta.y == -6 && playerDelta.x >= 0)
+            if (playerDelta.y >= -20 && playerDelta.y <= -18 && playerDelta.x >= 0)
                 color = vec4(0.16, 0.72, 0.90, 1.0);
-        } else if (torso) {
-            color = abs(playerDelta.x) == 2
+        } else if (neck || torso) {
+            color = abs(playerDelta.x) == ACTOR_HALF_WIDTH
                 ? vec4(0.08, 0.18, 0.27, 1.0)
                 : vec4(0.16, 0.78, 0.66, 1.0);
         } else if (leftLeg || rightLeg) {
-            color = vec4(0.08, 0.16, 0.28, 1.0);
+            color = playerDelta.y == 0
+                ? vec4(0.04, 0.10, 0.20, 1.0)
+                : vec4(0.08, 0.16, 0.28, 1.0);
         }
     }
-
     if (!mapSample && actor.enabled != 0u && actor.health != 0u && actor.shotTimer > 0u) {
-        vec2 toolOrigin = vec2(float(actor.x), float(actor.y - 4));
+        vec2 toolOrigin = vec2(float(actor.x), float(actor.y + ACTOR_TOOL_ORIGIN_OFFSET));
         vec2 toolHit = vec2(float(actor.hitX), float(actor.hitY));
         vec2 ray = toolHit - toolOrigin;
         float raySquared = max(dot(ray, ray), 0.0001);

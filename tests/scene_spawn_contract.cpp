@@ -3,6 +3,12 @@
 
 using namespace sandhybrid;
 
+static_assert(player_body_height_cells == 23);
+static_assert(player_body_height_cells < 3 * static_cast<std::int32_t>(authored_scene_foundation_cells));
+static_assert(player_top_offset_cells == -22);
+static_assert(player_half_width_cells == 4);
+static_assert(player_head_center_offset_cells >= player_top_offset_cells);
+static_assert(player_tool_origin_offset_cells > player_top_offset_cells);
 static_assert(authored_scene_origin_x(resident_world_width) == 1280u);
 static_assert(authored_scene_origin_y(resident_world_height) == 720u);
 static_assert(scene_world_spawn(Scene::sandbox, resident_world_width, resident_world_height) ==

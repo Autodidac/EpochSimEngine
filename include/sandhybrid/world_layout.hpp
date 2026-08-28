@@ -31,9 +31,23 @@ inline constexpr std::uint32_t persistent_world_height =
     persistent_world_district_rows * pre_expansion_world_height;
 inline constexpr std::uint32_t persistent_world_gap_slots =
     persistent_world_district_count - 1u;
+inline constexpr std::uint32_t persistent_world_weather_region_top_y =
+    pre_expansion_world_height;
+inline constexpr std::uint32_t persistent_world_weather_region_bottom_y =
+    pre_expansion_world_height * 2u;
+inline constexpr std::uint32_t persistent_world_weather_cloud_tile_y =
+    ((persistent_world_weather_region_top_y + pre_expansion_world_height / 2u) /
+     authored_scene_foundation_cells) * authored_scene_foundation_cells;
+
 
 static_assert(persistent_world_width == world_dimensions(WorldSizePreset::compact).width);
 static_assert(persistent_world_height == pre_expansion_world_height);
+static_assert(persistent_world_weather_cloud_tile_y == 536u);
+static_assert(persistent_world_weather_cloud_tile_y >=
+              persistent_world_weather_region_top_y);
+static_assert(persistent_world_weather_cloud_tile_y +
+              authored_scene_foundation_cells <=
+              persistent_world_weather_region_bottom_y);
 
 [[nodiscard]] constexpr std::uint32_t scene_surface_tile_row(const Scene scene) noexcept {
     switch (scene) {
