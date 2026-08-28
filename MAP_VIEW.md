@@ -8,3 +8,4 @@ The v2.5.6 map is a presentation/debug view over a separate GPU snapshot. It doe
 - The live main-camera rectangle is drawn separately from restrained 640x360 outlines around the contiguous 4x4 simulation-active window; per-tile/per-chunk checkerboard status paint is disabled in MAP.
 - The snapshot refreshes at 4 Hz so full-world inspection does not force full-rate rendering or simulation work.
 - Closing MAP returns to the unchanged simulation camera.
+- MAP must show the continuous high-sky Cloud deck, both hard outer sidewalls, common grass row, Volcano silhouette, and all eight distributed districts from the same canonical snapshot. It may never substitute a district-only weather bank, decorative plume, or LOD-created material.

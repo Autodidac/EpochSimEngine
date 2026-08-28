@@ -16,6 +16,8 @@ The v2.5.3 ownership rule is authoritative for fluids: a complete moving liquid 
 
 Pause does not change ownership or advance either movement path. Direct editor mutations still update canonical cells and dirty the affected hierarchy while the simulation clock remains frozen.
 
+Clouds, Steam, Smoke, Air, and all other gases follow the same rule: complete 8x8 metadata may accelerate transport, but the 64 underlying cells remain the only material ownership. The continuous high-sky Cloud deck therefore sleeps and wakes by ordinary reversible hierarchy state, spans district gaps, and stays inside the two hard boundary columns. Weather conversion changes exact canonical units rather than replacing a tile payload.
+
 ## 64x64 sleeping chunks
 
 Eight macro tiles per axis form a 64x64 scheduling chunk. Each chunk caches active, sleeping, dirty, boundary, and quiet-tick state.

@@ -137,7 +137,7 @@ Examples:
 - waste returns to soil, dirty water, smoke, or carbon dioxide
 - compost combines ash, organic waste or food, silt/soil/mud, dirty water, oxygen, and time to produce fertilizer while cleaning the paired water cell
 - smoke plus steam becomes dirty steam
-- Steam and Dirty Steam feed explicit high-sky Cloud reservoirs; only mature connected Clouds shed equal Water or Dirty Water cells during rain intervals, completing the powered Waterworks Water-to-Steam-to-Cloud-to-rain loop
+- Steam and Dirty Steam feed the continuous high-sky Cloud deck one-for-one; only mature connected Clouds shed equal Water or Dirty Water cells during rain intervals, completing the finite Waterworks Water-to-Steam-to-Cloud-to-rain loop without district-owned weather storage
 - oxygen and carbon dioxide cycle through respiration, fire, water aeration, and plants
 - salt dissolves into existing water concentration without creating liquid volume
 - structural breakup preserves fragments
@@ -149,7 +149,7 @@ Debug accounting tracks cells created at explicit world boundaries, converted, i
 
 The world, palette, cards, and warnings use one generated material catalog. Frequently interacting materials use separated luminance and hue. Carbon dioxide uses near-black translucent charcoal; hydrogen uses bright pink. Oxygen remains light cyan, smoke dark gray, and steam pale blue-white so gases stay readable at a glance.
 
-Gas drawing is isolated behind `gasPresentation(...)`. The current pass uses restrained color and opacity, while Cloud is a distinct static authoritative gas reservoir rather than a Steam color effect. Waterworks places its bank in complete tiles at world Y `520..559`, in the middle of the camera region above the district. Steam and Dirty Steam must join or nucleate Cloud before mature connected Cloud cells can rain; the boundary remains ready for later density fields, diffusion visualization, heat distortion, and layered translucency without changing chemistry or material IDs.
+Gas drawing is isolated behind `gasPresentation(...)`. The current pass uses restrained color and opacity, while Cloud is distinct static authoritative state rather than a Steam color effect. Reset places a continuous deck of complete aligned Cloud tiles at world Y `520..559` across every traversable column of the persistent World; the two sealed outer sidewall columns remain hard containment. Steam and Dirty Steam must join or nucleate Cloud one-for-one before mature connected Cloud cells can rain; the boundary remains ready for later density fields, diffusion visualization, heat distortion, and layered translucency without changing chemistry or material IDs.
 
 ## Interface
 
@@ -334,7 +334,7 @@ Fresh water supports conserved darker half-cells only at a terminal two-cell sup
 
 ## v2.5.25 distributed World and persistent Fix29 hive recovery
 
-The v2.5.25 target keeps one connected `WORLD`, distributes its eight former authored areas across the available width, and aligns every intended grass surface to world Y `1040`. The shared 9x23-cell player, saves, resident buffers, atmosphere, heat, weather, and hierarchy state persist while travelling between districts. Waterworks places 52 aligned Cloud tiles high in the next camera region and drives them from its powered boiler and open catchment. Normal saves live under `saves/worlds/<size>/world/<slot>/`.
+The v2.5.25 target keeps one connected `WORLD`, distributes its eight former authored areas across the available width, and aligns every intended grass surface to world Y `1040`. The shared 9x23-cell player, saves, resident buffers, atmosphere, heat, weather, and hierarchy state persist while travelling between districts. One aligned high-sky Cloud deck spans every traversable column; Waterworks is one conserved feeder through its powered boiler, Steam riser, and open catchment rather than the owner of an isolated weather bank. Normal saves live under `saves/worlds/<size>/world/<slot>/`.
 
 Complete liquid/gas packets remain reversible scheduling metadata over canonical cells. They move every two fixed ticks: eight successful exact tile transactions form the travel budget, while eight consecutive failures use an independent escape budget that every successful move clears. Only a fresh open or incompatible perimeter permits fine fallback, while enclosed Air resets both budgets and remains tiled. Sandbox and Ecosystem share the cell-exact photographed Fix29 hive body and contents, nine complete Wood support tiles, and 100 live district-aware SandHybrid bees in a compact three-lobed biohazard. Hive Honey/Pollen remain structural body content during ordinary motion and chemistry; placed exactness is checked again after 120 focused ticks. Deterministic and native evidence is recorded in `MISSION_LEDGER.md`; broader traversal, long ecology/weather cycles, and visual/performance observation stay active in `missioncache.md`.
 ## v2.5.22 systems, scene, machinery, and presentation recovery
@@ -390,7 +390,7 @@ These APIs are deterministic and covered by Windows/Linux contracts. The Vulkan 
 
 ## v2.5.6 runtime controls
 
-Right-click exclusively pans: dragging moves the current camera and holding it near a viewport edge performs gated edge panning. `WASD PAN` routes keys to the simulation camera; MAP uses its own camera and a slow full-world snapshot without changing simulation LOD or active-region scheduling. In the persistent World, Inventory is the startup workspace: MINE uses left click and BUILD places the selected resource with left click, so the player laser is immediately available. Selecting Editor transfers left-click ownership to direct world painting without disabling the player. Hold `F` and left-click the simulation to fill; pressing `F` alone does nothing. World `RESET` preserves both cameras. `H` and the sidebar `H CAM HOME` button explicitly restore the active camera; `0` and Home remain aliases.
+Right-click exclusively pans: dragging moves the current camera and holding it near a viewport edge performs gated edge panning. `WASD PAN` routes keys to the simulation camera; MAP uses its own camera and a slow full-world snapshot without changing simulation LOD or active-region scheduling. In the persistent World, Inventory is the startup workspace: MINE uses left click and BUILD places the selected resource with left click, so the player laser is immediately available. Selecting Editor transfers left-click ownership to direct world painting without disabling the player. Terminal laser damage transfers the exact material to matching inventory, otherwise releases the same unit into one deterministic adjacent actor-clear cell, and retains the source cell if both destinations are blocked; it never erases the unit. Hold `F` and left-click the simulation to fill; pressing `F` alone does nothing. World `RESET` preserves both cameras. `H` and the sidebar `H CAM HOME` button explicitly restore the active camera; `0` and Home remain aliases.
 
 
 ## World sizes and exact saves

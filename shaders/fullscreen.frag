@@ -432,6 +432,9 @@ vec3 applyWorldLighting(vec3 color, Cell cell, ivec2 grid, bool mapSample) {
     bool luminous = cell.material == MAT_LAVA || cell.material == MAT_FIRE ||
                     cell.material == MAT_LIGHTNING || cell.material == MAT_EMBER;
     if (luminous) illumination = max(illumination, 0.95);
+    bool weatherGas = cell.material == MAT_SMOKE || cell.material == MAT_STEAM ||
+                      cell.material == MAT_DIRTY_STEAM || cell.material == MAT_CLOUD;
+    if (weatherGas) illumination = max(illumination, 0.48);
     // The Fix29 hive hangs beneath a complete Wood support tile. Keep its
     // structural shell/chamber readable without animating or changing the
     // authoritative cells; otherwise the support's shadow collapses the old
@@ -469,6 +472,15 @@ vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
         base.rgb = mix(vec3(0.60, 0.67, 0.74), vec3(0.94, 0.96, 0.98),
                        clamp(0.28 + cloudMass * 0.62, 0.0, 1.0));
         base.a = clamp(0.54 + cloudMass * 0.28 + densityField * 0.08, 0.54, 0.88);
+        return base;
+    }
+    if (cell.material == MAT_SMOKE) {
+        // Smoke is authoritative contaminant excess, not an opaque black
+        // material column. Density and local mass control a static grey plume.
+        float mass = float(sameNeighbors) * 0.25;
+        base.rgb = mix(vec3(0.46, 0.50, 0.56), vec3(0.68, 0.71, 0.74),
+                       clamp(mass * 0.55 + densityField * 0.20, 0.0, 1.0));
+        base.a = clamp(0.12 + densityField * 0.12 + cohesion * 0.62, 0.09, 0.34);
         return base;
     }
     if (cell.material == MAT_OXYGEN) {

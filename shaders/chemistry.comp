@@ -709,8 +709,8 @@ bool ventOutletBlockedBySolid(Cell cell) {
     return isStructural(cell) || isImmovable(cell.material);
 }
 
-bool ventOutletMedium(Cell cell) {
-    return !ventOutletBlockedBySolid(cell);
+bool ventOutletOwnsLava(Cell cell) {
+    return cell.material == MAT_LAVA;
 }
 
 uint lavaNeighborCount(ivec2 p) {
@@ -1105,29 +1105,31 @@ void main() {
     }
 
     Cell belowSource = at(p + ivec2(0, 1));
-    if (ventOutletMedium(source) && belowSource.material == MAT_MAGMA_VENT) {
+    if (ventOutletOwnsLava(source) && belowSource.material == MAT_MAGMA_VENT) {
         ivec2 ventPosition = p + ivec2(0, 1);
         uint pressure = stateValue(belowSource);
         uint emission = ventEmissionKind(ventPosition, pressure);
         if (emission == 2u) {
-            if (source.material == MAT_LAVA) {
-                result = source;
-                setStateValue(result, 255u);
-                result.temperature = max(result.temperature, 1250);
-                result.age = 0u;
-                result.aux |= AUX_MOVED;
-            } else {
-                result = makeCell(MAT_LAVA);
-                setStateValue(result, 255u);
-                result.temperature = 1250;
-            }
-            if ((pc.reserved & 1u) != 0u) atomicAdd(debugStats[STAT_VOLCANO_LAVA_OUTPUTS], 1u);
+            // Pressure changes the already-owned Lava outlet. Movement then
+            // displaces the medium above transactionally instead of chemistry
+            // overwriting Atmosphere, Water, or another gas.
+            result = source;
+            setStateValue(result, 255u);
+            result.temperature = max(result.temperature, 1250);
+            result.age = 0u;
+            result.aux |= AUX_MOVED;
+            if ((pc.reserved & 1u) != 0u)
+                atomicAdd(debugStats[STAT_VOLCANO_LAVA_OUTPUTS], 1u);
         } else if (emission == 1u) {
+            // One exact Lava unit becomes one ejecta unit. It subsequently rises
+            // through the Lava throat and ambient sky by conserved cell swaps.
             uint roll = hash32(indexOf(ventPosition) ^ pc.step ^ 0x9a551u);
             uint ejecta = roll % 8u;
-            result = makeCell(ejecta == 0u ? MAT_ASH : (ejecta <= 3u ? MAT_SMOKE : MAT_STEAM));
+            result = makeCell(ejecta == 0u ? MAT_ASH :
+                              (ejecta <= 3u ? MAT_SMOKE : MAT_STEAM));
             result.temperature = ejecta == 0u ? 180 : 240;
-            if ((pc.reserved & 1u) != 0u) atomicAdd(debugStats[STAT_VOLCANO_GAS_OUTPUTS], 1u);
+            if ((pc.reserved & 1u) != 0u)
+                atomicAdd(debugStats[STAT_VOLCANO_GAS_OUTPUTS], 1u);
         }
     } else if (source.material == MAT_EMPTY) {
         // Source materials create effects into empty space without racing a
@@ -1426,12 +1428,12 @@ void main() {
     } else if (source.material == MAT_MAGMA_VENT) {
         result.temperature = 1350;
         Cell outlet = at(p + ivec2(0, -1));
-        bool blocked = ventOutletBlockedBySolid(outlet);
+        bool outletOwnsLava = ventOutletOwnsLava(outlet);
         uint pressure = stateValue(source);
-        uint emission = blocked ? 0u : ventEmissionKind(p, pressure);
+        uint emission = outletOwnsLava ? ventEmissionKind(p, pressure) : 0u;
         if (emission == 2u) pressure = pressure > 20u ? pressure - 20u : 0u;
         else if (emission == 1u) pressure = pressure > 6u ? pressure - 6u : 0u;
-        uint recharge = blocked ? 20u : (ventPulseActive(p) ? 24u : 8u);
+        uint recharge = !outletOwnsLava ? 20u : (ventPulseActive(p) ? 24u : 8u);
         pressure = min(255u, pressure + recharge);
         setStateValue(result, pressure);
     }
@@ -1457,10 +1459,7 @@ void main() {
             result = makeCell((source.aux & AUX_WET) != 0u ? MAT_DIRTY_WATER : MAT_WATER);
             result.temperature = max(source.temperature, 4);
         }
-    } else if (source.material == MAT_SMOKE && source.age > 2400u &&
-               (hasNeighbor(p, MAT_OXYGEN) || hasNeighbor(p, MAT_ATMOSPHERE)) &&
-               (randomValue & 255u) == 0u) {
-        result = makeCell(MAT_CARBON_DIOXIDE);
+
     }
 
     if (source.material == MAT_FIRE) {

@@ -28,5 +28,7 @@ The scenes do not share a blindly fixed Y origin. Each district translates its i
 - Each district keeps its authored empty interior; resident substrate never backfills it.
 - Every district has a complete supported Stone foundation and a deterministic breathable player recovery point.
 - Structural containment exists only at the outer resident-world boundary.
+- The shared high-sky weather deck occupies complete aligned Cloud tiles across every traversable world column at Y `520..559`; the first and last tile columns remain hard sidewall containment. District gaps are part of the same atmosphere and weather system, not separate skies.
+- Volcano reset authors its Stone/Lava silhouette and throat without a decorative Smoke column. Runtime Smoke, Steam, and Ash must come from balanced Lava-owned vent transactions and then use the same universal gas/atmosphere rules as every other district.
 - Large startup activates no more than three authored districts inside the initial 4x4 scheduler window; other districts remain canonical resident state without paying active chemistry/movement cost.
 - Runtime screenshot contradictions and unfinished cross-district behavior remain release-blocking evidence in `missioncache.md`.

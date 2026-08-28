@@ -263,6 +263,34 @@ def main() -> int:
             "square edge-only debug contract")
     require(fullscreen, "if (!mapSample && (x < renderPc.viewportLeft", errors,
             "MAP overlay must be classified before camera letterbox rejection")
+    for token in (
+        "bool tryStoreResource(inout ActorState state, uint material)",
+        "bool releaseDamagedFragment(ActorState state",
+        "retain the exact pre-hit structural cell",
+        "releaseDamagedFragment(state, p, fragment)",
+    ):
+        require(actor, token, errors, "conserved player-laser transfer contract")
+    for token in (
+        "bool persistentHighSkyCloudCell(ivec2 worldPosition)",
+        "uint contour = hash32(uint(tile.x) ^ pc.seed ^ 0xc10d5u)",
+        "return tile.y >= top && tile.y <= bottom",
+    ):
+        require(reset, token, errors, "world-wide aligned high-sky Cloud contract")
+    for token in (
+        "bool ventOutletOwnsLava(Cell cell)",
+        "One exact Lava unit becomes one ejecta unit",
+        "uint emission = outletOwnsLava ? ventEmissionKind(p, pressure) : 0u",
+    ):
+        require(chemistry, token, errors, "conserved Volcano outlet contract")
+    for token in (
+        "world_wide_high_sky_weather_inventory",
+        "volcano_converts_owned_lava_without_overwriting_ambient",
+        "inventory_player_laser_conserves_mined_resource",
+        "full_inventory_laser_releases_exact_loose_fragment",
+        "blocked_full_inventory_laser_retains_exact_world_unit",
+    ):
+        require(renderer, token, errors, "production weather/laser acceptance contract")
+
     if errors:
         print("current shader/interface contract validation failed:", file=sys.stderr)
         for error in errors:
@@ -274,7 +302,7 @@ def main() -> int:
             "Legacy shader contracts passed except for the explicitly superseded "
             "implementation strings checked by the current replacement suite."
         )
-    print("Current liquid, terrain, fracture, input, macro, debug, and one-World contracts valid.")
+    print("Current liquid, terrain, fracture, input, macro, weather, laser, debug, and one-World contracts valid.")
     return 0
 
 

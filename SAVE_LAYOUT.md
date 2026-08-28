@@ -31,6 +31,6 @@ Every size contains the same eight west-to-east 640x360 districts and one common
 
 ## File integrity
 
-`world.shw` stores every exact 16-byte canonical cell, including material, age, temperature, and auxiliary state, across the combined World. The payload is split into deterministic 64x64 chunks. Each chunk chooses raw or run-length encoding and carries its own checksum; the complete payload also has a checksum.
+`world.shw` stores every exact 16-byte canonical cell, including material, age, temperature, and auxiliary state, across the combined World. Cloud deck units, Steam/Smoke composition, Water/Half Water state, Volcano ejecta, and district-gap atmosphere are saved as ordinary canonical ownership, never regenerated decoration. Actor inventory is a separate persisted owner in the same closed material ledger, so a laser transfer changes ownership without changing the world-plus-inventory total. The payload is split into deterministic 64x64 chunks. Each chunk chooses raw or run-length encoding and carries its own checksum; the complete payload also has a checksum.
 
 Saving writes `world.tmp`, rotates the previous valid file to `world.bak`, then atomically publishes `world.shw`. Loading validates the complete file before changing either resident buffer. If the primary file is damaged, the loader attempts `world.bak`.

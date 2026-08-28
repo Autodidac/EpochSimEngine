@@ -13,6 +13,8 @@ Fresh Water uses conserved half-units without changing the canonical 16-byte cel
 
 Full Water falls and then levels through valid fine or exact macro movement, including the restored unsupported-ledge/diagonal route shared with Saltwater and Oil. Connected full-Water reservoirs retain the same full-cell material and renderer identity regardless of movement, tile, sleep, or displaced-medium flags; only the reserved Half flag selects the darker state. A solitary surface pixel is valid only when it still represents conserved volume and no productive move exists; it must then sleep. Unsupported or equalizable residual Water remains active until it moves or merges.
 
+Every Water-family unit remains canonical cell state through tiles, chunks, actors, machinery, weather, save/load, and presentation. The Half flag is never randomized, inferred from color, or reused by bee/actor metadata. Water-to-Steam-to-Cloud-to-rain transactions conserve the same integer units; tools are the only explicit external source/sink.
+
 ## Ambient Air isolation
 
 When Water splits into two Half Water ledge cells against balanced Air, the Air is represented only by a zero-pressure marker. It does not occupy Half Water pressure/state bits, cannot displace the Half Water, and restores as canonical Air when the halves consolidate. Non-Air excess gases retain their represented volume.

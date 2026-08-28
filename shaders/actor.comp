@@ -145,6 +145,19 @@ void updateUnlocks(inout ActorState state) {
     state.drillLevel = 1u + ((state.unlocks & 1u) != 0u ? 1u : 0u);
 }
 
+bool tryStoreResource(inout ActorState state, uint material) {
+    if (material == MAT_GOLD && state.gold < 9999u) state.gold += 1u;
+    else if ((material == MAT_IRON || material == MAT_IRON_ORE ||
+              material == MAT_STEEL) && state.iron < 9999u) state.iron += 1u;
+    else if (material == MAT_COPPER && state.copper < 9999u) state.copper += 1u;
+    else if ((material == MAT_ALUMINUM || material == MAT_ALUMINUM_SHAVINGS) &&
+             state.aluminum < 9999u) state.aluminum += 1u;
+    else if (material == MAT_PLASMA_AMMO && state.ammo < 999u) state.ammo += 1u;
+    else return false;
+    atomicAdd(conservation[CONS_CONVERTED], 1u);
+    return true;
+}
+
 void collectResources(inout ActorState state) {
     ivec2 center = ivec2(state.x, state.y);
     for (int y = ACTOR_TOP_OFFSET; y <= 1; ++y) {
@@ -153,40 +166,50 @@ void collectResources(inout ActorState state) {
             if (!actorInside(p)) continue;
             uint index = actorIndex(p);
             Cell resourceCell = cells[index];
-            if (isStructural(resourceCell)) continue;
-            uint material = resourceCell.material;
-            if (material == MAT_GOLD) {
-                atomicAdd(conservation[CONS_CONVERTED], 1u);
-                cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
-                markActorChunkDirty(p);
-                state.gold = min(state.gold + 1u, 9999u);
-            } else if (material == MAT_IRON || material == MAT_IRON_ORE || material == MAT_STEEL) {
-                atomicAdd(conservation[CONS_CONVERTED], 1u);
-                cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
-                markActorChunkDirty(p);
-                state.iron = min(state.iron + 1u, 9999u);
-            } else if (material == MAT_COPPER) {
-                atomicAdd(conservation[CONS_CONVERTED], 1u);
-                cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
-                markActorChunkDirty(p);
-                state.copper = min(state.copper + 1u, 9999u);
-            } else if (material == MAT_ALUMINUM || material == MAT_ALUMINUM_SHAVINGS) {
-                atomicAdd(conservation[CONS_CONVERTED], 1u);
-                cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
-                markActorChunkDirty(p);
-                state.aluminum = min(state.aluminum + 1u, 9999u);
-            } else if (material == MAT_PLASMA_AMMO) {
-                atomicAdd(conservation[CONS_CONVERTED], 1u);
-                cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
-                markActorChunkDirty(p);
-                state.ammo = min(state.ammo + 1u, 999u);
-            }
+            if (isStructural(resourceCell) ||
+                !tryStoreResource(state, resourceCell.material)) continue;
+            cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
+            markActorChunkDirty(p);
         }
     }
     updateUnlocks(state);
 }
 
-void damageCell(ivec2 p, uint damage) {
+bool insideActorBody(ActorState state, ivec2 p) {
+    ivec2 delta = p - ivec2(state.x, state.y);
+    return abs(delta.x) <= ACTOR_HALF_WIDTH &&
+           delta.y >= ACTOR_TOP_OFFSET && delta.y <= 0;
+}
+
+bool releaseDamagedFragment(ActorState state, ivec2 sourcePosition,
+                            Cell fragment) {
+    int away = sourcePosition.x >= state.x ? 1 : -1;
+    // Prefer cells that the current radius-one burst already visited. This
+    // prevents a conserved fragment from being hit a second time in the same
+    // click after it leaves the structural source.
+    ivec2 targets[5] = ivec2[5](
+        sourcePosition + ivec2(0, -1),
+        sourcePosition + ivec2(away, -1),
+        sourcePosition + ivec2(-away, -1),
+        sourcePosition + ivec2(-away, 0),
+        sourcePosition + ivec2(away, 0));
+    for (uint targetIndex = 0u; targetIndex < 5u; ++targetIndex) {
+        ivec2 targetPosition = targets[targetIndex];
+        if (!actorInside(targetPosition) || insideActorBody(state, targetPosition))
+            continue;
+        Cell target = actorAt(targetPosition);
+        if (target.material != MAT_EMPTY && !isCellGas(target) &&
+            !isCellLiquid(target)) continue;
+        cells[actorIndex(sourcePosition)] = target;
+        cells[actorIndex(targetPosition)] = fragment;
+        markActorChunkDirty(sourcePosition);
+        markActorChunkDirty(targetPosition);
+        return true;
+    }
+    return false;
+}
+
+void damageCell(inout ActorState state, ivec2 p, uint damage) {
     if (!actorInside(p)) return;
     uint index = actorIndex(p);
     Cell cell = cells[index];
@@ -207,28 +230,20 @@ void damageCell(ivec2 p, uint damage) {
         uint health = stateValue(cell);
         if (health == 0u) health = 255u;
         if (health <= damage) {
-  Cell fragment = cell;
-  fragment.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
-  fragment.aux |= AUX_MOVED;
-  fragment.age = 0u;
-  setStateValue(fragment, 1u);
-  recordConservation(cell, fragment);
-  int away = p.x >= actor.x ? 1 : -1;
-  ivec2 targets[3] = ivec2[3](p + ivec2(0, 1),
-      p + ivec2(away, 1), p + ivec2(-away, 1));
-  for (uint targetIndex = 0u; targetIndex < 3u; ++targetIndex) {
-      ivec2 targetPosition = targets[targetIndex];
-      if (!actorInside(targetPosition)) continue;
-      Cell target = actorAt(targetPosition);
-      if (target.material != MAT_EMPTY && !isCellGas(target) && !isCellLiquid(target))
-          continue;
-      cells[index] = target;
-      cells[actorIndex(targetPosition)] = fragment;
-      markActorChunkDirty(p);
-      markActorChunkDirty(targetPosition);
-      return;
-  }
-  cells[index] = fragment;
+            Cell fragment = cell;
+            fragment.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
+            fragment.aux |= AUX_MOVED;
+            fragment.age = 0u;
+            setStateValue(fragment, 1u);
+            if (tryStoreResource(state, fragment.material)) {
+                recordConservation(cell, fragment);
+                cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
+            } else if (releaseDamagedFragment(state, p, fragment)) {
+                recordConservation(cell, fragment);
+            }
+            // If neither inventory nor a body-clear destination accepts the
+            // unit, retain the exact pre-hit structural cell. A terminal tool
+            // action may not destroy or temporarily unown represented matter.
         } else {
             setStateValue(cell, health - damage);
             cell.age = 0u;
@@ -240,9 +255,15 @@ void damageCell(ivec2 p, uint damage) {
     uint looseHealth = stateValue(cell);
     if (looseHealth == 0u) looseHealth = 48u;
     if (damage >= looseHealth) {
-        Cell emptyCell = Cell(MAT_EMPTY, 0u, 20, 0u);
-        recordConservation(cell, emptyCell);
-        cells[index] = emptyCell;
+        Cell fragment = cell;
+        fragment.age = 0u;
+        fragment.aux |= AUX_MOVED;
+        setStateValue(fragment, 1u);
+        if (tryStoreResource(state, fragment.material))
+            cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
+        else
+            releaseDamagedFragment(state, p, fragment);
+        // A blocked non-inventory material remains byte-identical at source.
     } else {
         setStateValue(cell, looseHealth - damage);
         cell.age = 0u;
@@ -250,7 +271,6 @@ void damageCell(ivec2 p, uint damage) {
         cells[index] = cell;
     }
 }
-
 void fireTool(inout ActorState state) {
     vec2 origin = vec2(float(state.x), float(state.y + ACTOR_TOOL_ORIGIN_OFFSET));
     vec2 target = vec2(float(actorPc.aimX), float(actorPc.aimY));
@@ -288,7 +308,7 @@ void fireTool(inout ActorState state) {
         uint damage = plasma ? 255u : (state.drillLevel >= 2u ? 192u : 144u);
         for (int y = -radius; y <= radius; ++y) {
             for (int x = -radius; x <= radius; ++x) {
-                if (x * x + y * y <= radius * radius) damageCell(hit + ivec2(x, y), damage);
+                if (x * x + y * y <= radius * radius) damageCell(state, hit + ivec2(x, y), damage);
             }
         }
         if (plasma) state.ammo -= 1u;

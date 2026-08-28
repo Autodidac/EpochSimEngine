@@ -13,8 +13,8 @@ The project separates three validation levels:
 | 3 | Lower-melting metals melt before steel | Gold/copper thresholds asserted below steel | Heat gold, copper, and steel together. |
 | 4 | Plastic softens, melts, burns, or decomposes | Plastic threshold ordering and conversion text asserted; chemistry rules statically required | Heat plastic gradually, then expose it to fire. |
 | 5 | Plastic reacts with lava and produces configured byproducts | Canonical chemistry includes plastic ignition/decomposition outputs | Drop both plastic types into lava and inspect products/counters. |
-| 6 | Blocked thermal vent builds toward eruption | `update_vent_pressure` and eruption threshold contracts | Seal the Volcano-district vent and watch pressure/gas/magma escalation. |
-| 7 | Open vent releases pressure without automatic major eruption | Open-pressure decay contract | Open the vent path and confirm pressure falls through gas/lava release. |
+| 6 | Blocked thermal vent builds toward eruption | `update_vent_pressure` and eruption threshold contracts | Seal the Volcano-district vent and confirm pressure accumulates without overwriting the solid cap or ambient medium. |
+| 7 | Open vent releases conserved ejecta without automatic major eruption | Lava-owned outlet and exact conversion contracts | Open a Lava throat and confirm a pulse either pressures its owned Lava cell or converts exactly one Lava unit into one Ash/Smoke/Steam unit before transport; Atmosphere and other media must not be overwritten. |
 | 8 | Water fills/equalizes a basin quickly without volume loss | Bounded local equalization test preserves 64/64 units | Use the Waterworks district, alter a basin, and compare conservation counters. |
 | 9 | `Alt` shows the exact material under cursor | Direct cursor-to-cell render path and input suppression statically checked | Hold `Alt` and move across cell boundaries, gases, liquids, and damaged terrain. |
 | 10 | Dense settled cells qualify for stability without reconstruction | 52/64 occupancy and 120-tick stability contracts | Fill one 8x8 region above threshold; verify existing cells stop falling and empty positions stay empty. |
@@ -55,6 +55,7 @@ This command builds the real application and all GLSL shaders, runs the static s
 - A complete mouse down/up pair received within one native poll still produces exactly one `primary_pressed` or `secondary_pressed` edge.
 - Character primary action drills ordinary terrain even while plasma ammunition is carried. Plasma is consumed only when the first ray hit is a hostile target.
 - Every stable terrain pixel requires two ordinary laser hits: 255 integrity with 144 damage per hit.
+- A terminal laser hit is an exact material transaction: matching inventory receives one unit when it has capacity; otherwise one deterministic adjacent actor-clear cell receives the same material; if both paths are blocked, the damaged source cell remains. The gun never deletes matter.
 - At 32 remaining pixels the region stays coherent; at 31 remaining pixels all survivors release in the same simulation pass.
 - Ambient empty cells restore oxygen and never cause passive health loss. Health damage requires prolonged zero-oxygen exposure inside a concentrated toxic pocket.
 - Authored terrain remains stable, while deliberate sand/silt/cargo samples remain loose and simulated.
@@ -83,7 +84,9 @@ The executable allocates the selected resident World (Large is 10240x1440), runs
 - a four-cell supplied full-Water reservoir remains four full cells with zero Half flags instead of cascading into darker halves;
 - paired cardinal Hydrogen/Oxygen synthesis into one Water-family cell plus one pressure-bearing Atmosphere cell;
 - Steam joining an explicit Cloud reservoir, then mature connected Cloud converting one-for-one into interval Water rain without direct Steam-to-rain;
-- actual Waterworks reset state containing 52 complete high-sky Cloud tiles (`3,328` cells at Y `520..559`), zero low Cloud cells, a 256-cell Steam riser, a complete 64-cell powered boiler, a 4,352-cell open catchment, 42,112 full-Water cells, and zero Half-Water cells;
+- actual persistent-World reset state containing a complete aligned high-sky Cloud deck at Y `520..559` over every traversable tile column while both outer sidewall columns remain hard containment, zero low district-owned Cloud cells, zero reset-authored Volcano Smoke, a 256-cell Waterworks Steam riser, a complete 64-cell powered boiler, a 4,352-cell open catchment, 42,112 full-Water cells, and zero Half-Water cells;
+- balanced Volcano emission proving one owned Lava outlet becomes exactly one Ash/Smoke/Steam ejecta unit while adjacent Atmosphere remains intact and the vent recharges;
+- terminal laser conservation with inventory capacity, full-inventory adjacent loose fallback, and fully blocked source-cell retention;
 - settled Smoke reabsorption preserving two Atmosphere cells, total pressure, and stored excess without creating Vacuum;
 - debug-stat collection leaving every canonical cell byte-identical;
 - isolated full Water crossing an unsupported ledge;

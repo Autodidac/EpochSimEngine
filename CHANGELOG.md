@@ -3,10 +3,12 @@
 ## Unreleased
 - Updated the complete vendored EpochGui dependency to v0.89.27 at b23f283dd9b0d6021dccd8fbc2235306418aa66a from the checksum-verified Site mirror; all 10 upstream Windows tests pass.
 - Restricted Half Water ledge splitting to a terminal two-cell full-Water supply so deep reservoirs keep one full-Water identity instead of cascading into darker halves.
-- Moved the Waterworks Cloud bank into complete aligned tiles at world Y `520..559`, in the middle of the next camera region above the district; the open catchment, powered boiler, Steam riser, mature Cloud storage, and one-for-one rain now form the actual conserved apparatus loop.
+- Replaced the isolated Waterworks Cloud bank with one continuous deck of complete aligned Cloud tiles across every traversable high-sky column at world Y `520..559`; sealed sidewalls remain hard containment, while Waterworks Steam feeds the shared one-for-one Cloud/rain loop.
 - Rescaled the persistent player to one shared 9x23-cell body—just under three full tiles tall—so collision, support, spawn recovery, breathing, displacement, rendering, pickup exclusion, and laser origin agree.
 - Restored Inventory/player ownership as the startup workspace so the terrain laser is available by default while Editor painting remains independently live when selected.
-- Added production Vulkan gates for actual high-sky Waterworks Cloud/Steam/full-Water state, powered boiler and open catchment, the shared 23-cell player volume, deep-reservoir non-cascade, and a visible actor-laser hit.
+- Added production Vulkan gates for full-width high-sky Cloud coverage, Waterworks Steam/full-Water state, powered boiler and open catchment, the shared 23-cell player volume, deep-reservoir non-cascade, and the inventory, loose-fallback, and blocked-retention laser paths.
+- Made Volcano reset plume-free and balanced Magma Vent output: pressure is spent only against an owned Lava outlet, and every gas/ash ejecta unit converts one exact Lava unit before ordinary transport.
+- Made the player gun a conserved material-transfer tool; it never deletes a terminally damaged world cell.
 
 - Prevented delayed Smoke/Steam reabsorption from carving a transient Vacuum by splitting conserved Atmosphere pressure and stored excess across both cells.
 - Added race-free paired Hydrogen/Oxygen synthesis into Water plus pressure-bearing Atmosphere and prevented Water/Half Water from laterally displacing stored raw gases.

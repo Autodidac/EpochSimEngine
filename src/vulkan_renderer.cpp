@@ -1571,6 +1571,39 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         vkUnmapMemory(device, scene_staging_buffer.memory);
         return actor;
     }
+
+    void upload_actor_state(const ActorStateReadback& actor) {
+        void* mapped = nullptr;
+        check_vk(vkMapMemory(device, scene_staging_buffer.memory, 0,
+                             actor_buffer.size, 0, &mapped),
+                 "vkMapMemory(actor upload)");
+        std::memcpy(mapped, &actor, sizeof(actor));
+        vkUnmapMemory(device, scene_staging_buffer.memory);
+
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
+            buffer_barrier(command_buffer, scene_staging_buffer,
+                           VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT |
+                               VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT);
+            buffer_barrier(command_buffer, actor_buffer,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT);
+            const VkBufferCopy copy{.size = actor_buffer.size};
+            vkCmdCopyBuffer(command_buffer, scene_staging_buffer.handle,
+                            actor_buffer.handle, 1, &copy);
+            buffer_barrier(command_buffer, actor_buffer,
+                           VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        });
+    }
     struct TileStateReadback final {
         std::uint32_t material{};
         std::uint32_t occupancy{};
@@ -4915,6 +4948,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 std::uint32_t cloud_max_y = 0u;
                 std::uint32_t half_water_cells = 0u;
                 std::uint32_t waterworks_water_cells = 0u;
+                const auto resident_tile_columns =
+                    divide_round_up(config.grid_width, tile_size);
+                std::vector<bool> cloud_column_covered(resident_tile_columns, false);
                 const auto cloud_brick_top =
                     persistent_world_weather_region_top_y / tile_size;
                 const auto cloud_brick_bottom =
@@ -4922,13 +4958,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 for (std::uint32_t brick_y = cloud_brick_top;
                      brick_y < cloud_brick_bottom; ++brick_y) {
                     for (std::uint32_t brick_x = 0u;
-                         brick_x < world_bricks_x; ++brick_x) {
+                         brick_x < resident_tile_columns; ++brick_x) {
                         bool complete_cloud = true;
                         for (std::uint32_t dy = 0u; dy < tile_size; ++dy) {
                             for (std::uint32_t dx = 0u; dx < tile_size; ++dx) {
+                                const auto world_x = brick_x * tile_size + dx;
                                 const auto world_y = brick_y * tile_size + dy;
-                                const auto& cell = world_cells[index_of(
-                                    district_x + brick_x * tile_size + dx, world_y)];
+                                const auto& cell = world_cells[index_of(world_x, world_y)];
                                 const bool cloud = cell.material ==
                                     material_id(Material::cloud);
                                 complete_cloud = complete_cloud && cloud;
@@ -4939,9 +4975,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                 }
                             }
                         }
-                        complete_cloud_tiles += complete_cloud ? 1u : 0u;
+                        if (complete_cloud) {
+                            ++complete_cloud_tiles;
+                            cloud_column_covered[brick_x] = true;
+                        }
                     }
                 }
+                const auto covered_cloud_columns = static_cast<std::uint32_t>(
+                    std::count(cloud_column_covered.begin(),
+                               cloud_column_covered.end(), true));
                 for (std::uint32_t local_y = 0u;
                      local_y < pre_expansion_world_height; ++local_y) {
                     for (std::uint32_t local_x = 0u;
@@ -4974,15 +5016,34 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     world_cells, Material::atmosphere,
                     district_x + 3u * tile_size, district_y + 40u * tile_size,
                     (world_bricks_x - 6u) * tile_size, tile_size);
-                append("world_waterworks_visible_weather_source",
-                       complete_cloud_tiles >= 20u && cloud_cells >= 1280u &&
+                const auto volcano_district =
+                    persistent_world_district_index(Scene::volcano);
+                const auto volcano_reset_smoke = count_rect(
+                    world_cells, Material::smoke,
+                    persistent_world_district_origin_x(
+                        config.grid_width, volcano_district),
+                    persistent_world_district_origin_y(
+                        config.grid_height, volcano_district),
+                    pre_expansion_world_width, pre_expansion_world_height);
+                append("world_wide_high_sky_weather_inventory",
+                       resident_tile_columns >= 3u &&
+                            !cloud_column_covered.front() &&
+                            !cloud_column_covered.back() &&
+                            covered_cloud_columns == resident_tile_columns - 2u &&
+                            complete_cloud_tiles >=
+                                (resident_tile_columns - 2u) * 3u &&
+                            cloud_cells == complete_cloud_tiles * tile_size * tile_size &&
                             low_cloud_cells == 0u &&
                             cloud_min_y >= persistent_world_weather_region_top_y &&
                             cloud_max_y < persistent_world_weather_region_bottom_y &&
                             steam_riser == 256u && waterworks_water_cells > 0u &&
                             half_water_cells == 0u && boiler_smelter == 64u &&
-                            boiler_power == 64u && open_catchment_cells >= 4096u,
-                       "complete_cloud_tiles=" +
+                            boiler_power == 64u && open_catchment_cells >= 4096u &&
+                            volcano_reset_smoke == 0u,
+                       "covered_columns=" +
+                            std::to_string(covered_cloud_columns) + "/" +
+                            std::to_string(resident_tile_columns) +
+                            " complete_cloud_tiles=" +
                             std::to_string(complete_cloud_tiles) +
                             " cloud_cells=" + std::to_string(cloud_cells) +
                             " high_sky_y=" + std::to_string(cloud_min_y) + ".." +
@@ -4993,6 +5054,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                             std::to_string(boiler_power) +
                             " open_catchment=" +
                             std::to_string(open_catchment_cells) +
+                            " volcano_reset_smoke=" +
+                            std::to_string(volcano_reset_smoke) +
                             " full_water_cells=" +
                             std::to_string(waterworks_water_cells) +
                             " half_water_cells=" +
@@ -5280,6 +5343,80 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
             {
                 const auto saved_step = simulation_step;
+                constexpr std::uint32_t vent_x = 100u;
+                constexpr std::uint32_t vent_y = 101u;
+                const auto vent_index = static_cast<std::uint32_t>(
+                    index_of(vent_x, vent_y));
+                const auto vent_offset =
+                    fill_hash(vent_index ^ random_seed ^ 0x76e17u) % 10800u;
+                std::uint32_t emission_step = 0u;
+                bool emission_step_found = false;
+                for (std::uint32_t candidate = 0u;
+                     candidate < 10800u && !emission_step_found; ++candidate) {
+                    const auto cycle = (candidate + vent_offset) % 10800u;
+                    const auto roll = fill_hash(
+                        vent_index ^ candidate ^ 0x76e17u);
+                    if ((cycle % 900u) < 420u && (roll & 3u) != 0u) {
+                        emission_step = candidate;
+                        emission_step_found = true;
+                    }
+                }
+
+                auto converted_cells = acceptance_atmosphere_world();
+                auto vent = make_fill_cell(
+                    material_id(Material::magma_vent), vent_index);
+                vent.aux = (vent.aux & ~255u) | 100u;
+                converted_cells[index_of(vent_x, vent_y)] = vent;
+                converted_cells[index_of(vent_x, vent_y - 1u)] = make_fill_cell(
+                    material_id(Material::lava),
+                    static_cast<std::uint32_t>(index_of(vent_x, vent_y - 1u)));
+                upload_scene_cells(converted_cells);
+                simulation_step = emission_step;
+                run_acceptance_chemistry_pass();
+                const auto converted = download_scene_cells();
+                const auto& ejecta = converted[index_of(vent_x, vent_y - 1u)];
+                const bool exact_ejecta =
+                    ejecta.material == material_id(Material::ash) ||
+                    ejecta.material == material_id(Material::smoke) ||
+                    ejecta.material == material_id(Material::steam);
+                const auto converted_units = count_material(converted, Material::lava) +
+                    count_material(converted, Material::ash) +
+                    count_material(converted, Material::smoke) +
+                    count_material(converted, Material::steam);
+
+                auto ambient_cells = acceptance_atmosphere_world();
+                auto ambient_vent = make_fill_cell(
+                    material_id(Material::magma_vent), vent_index);
+                ambient_vent.aux = (ambient_vent.aux & ~255u) | 100u;
+                ambient_cells[index_of(vent_x, vent_y)] = ambient_vent;
+                upload_scene_cells(ambient_cells);
+                simulation_step = emission_step;
+                run_acceptance_chemistry_pass();
+                const auto ambient = download_scene_cells();
+                const auto& ambient_outlet =
+                    ambient[index_of(vent_x, vent_y - 1u)];
+                const auto& recharged_vent = ambient[index_of(vent_x, vent_y)];
+                simulation_step = saved_step;
+                append("volcano_converts_owned_lava_without_overwriting_ambient",
+                       emission_step_found && exact_ejecta && converted_units == 1u &&
+                           ambient_outlet.material ==
+                               material_id(Material::atmosphere) &&
+                           count_material(ambient, Material::ash) == 0u &&
+                           count_material(ambient, Material::smoke) == 0u &&
+                           count_material(ambient, Material::steam) == 0u &&
+                           (recharged_vent.aux & 255u) == 120u,
+                       "step=" + std::to_string(emission_step) +
+                           " ejecta=" + std::to_string(ejecta.material) +
+                           " converted_units=" +
+                           std::to_string(converted_units) +
+                           " ambient=" +
+                           std::to_string(ambient_outlet.material) +
+                           " recharge=" +
+                           std::to_string(recharged_vent.aux & 255u));
+            }
+
+            {
+                const auto saved_step = simulation_step;
                 auto boiler_cells = acceptance_atmosphere_world();
                 boiler_cells[index_of(100u, 100u)] = make_fill_cell(
                     material_id(Material::water),
@@ -5550,6 +5687,145 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            std::to_string(target_y) +
                            " target_health=" +
                            std::to_string(damaged.aux & 255u));
+            }
+            const auto fire_acceptance_laser = [&](const std::uint32_t target_x,
+                                                    const std::uint32_t target_y) {
+                const ActorPush push{
+                    .width = config.grid_width,
+                    .height = config.grid_height,
+                    .step = simulation_step,
+                    .seed = random_seed,
+                    .aim_x = static_cast<std::int32_t>(target_x),
+                    .aim_y = static_cast<std::int32_t>(target_y),
+                    .fire = 1u,
+                    .scene = static_cast<std::uint32_t>(world_scene),
+                    .simulate = 0u,
+                    .active_mode = 0u,
+                };
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    bind_compute(command_buffer, actor_pipeline, current_set);
+                    vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                                       VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                       sizeof(push), &push);
+                    vkCmdDispatch(command_buffer, 1, 1, 1);
+                    buffer_barrier(command_buffer, cell_buffers[current_set],
+                                   VK_ACCESS_SHADER_WRITE_BIT,
+                                   VK_ACCESS_SHADER_READ_BIT |
+                                       VK_ACCESS_SHADER_WRITE_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                    buffer_barrier(command_buffer, actor_buffer,
+                                   VK_ACCESS_SHADER_WRITE_BIT,
+                                   VK_ACCESS_SHADER_READ_BIT |
+                                       VK_ACCESS_SHADER_WRITE_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+                });
+            };
+            {
+                auto mining_actor = actor;
+                mining_actor.gold = 0u;
+                mining_actor.shot_timer = 0u;
+                const auto target_x = static_cast<std::uint32_t>(mining_actor.x + 24);
+                const auto target_y = static_cast<std::uint32_t>(
+                    mining_actor.y + player_tool_origin_offset_cells);
+                auto cells = acceptance_atmosphere_world();
+                cells[index_of(target_x, target_y)] = make_fill_cell(
+                    material_id(Material::gold),
+                    static_cast<std::uint32_t>(index_of(target_x, target_y)));
+                const std::uint64_t before_units =
+                    count_material(cells, Material::gold) + mining_actor.gold;
+                upload_scene_cells(cells);
+                upload_actor_state(mining_actor);
+                fire_acceptance_laser(target_x, target_y);
+                auto rearmed = download_actor_state();
+                rearmed.shot_timer = 0u;
+                upload_actor_state(rearmed);
+                fire_acceptance_laser(target_x, target_y);
+                const auto result_actor = download_actor_state();
+                const auto result = download_scene_cells();
+                const std::uint64_t after_units =
+                    count_material(result, Material::gold) + result_actor.gold;
+                append("inventory_player_laser_conserves_mined_resource",
+                       result_actor.gold == 1u && before_units == after_units &&
+                           count_material(result, Material::gold) == 0u &&
+                           result[index_of(target_x, target_y)].material ==
+                               material_id(Material::empty),
+                       "before_units=" + std::to_string(before_units) +
+                           " after_units=" + std::to_string(after_units) +
+                           " inventory=" + std::to_string(result_actor.gold) +
+                           " world_gold=" + std::to_string(
+                               count_material(result, Material::gold)));
+            }
+            {
+                auto full_actor = actor;
+                full_actor.gold = 9999u;
+                full_actor.shot_timer = 0u;
+                const auto target_x = static_cast<std::uint32_t>(full_actor.x + 24);
+                const auto target_y = static_cast<std::uint32_t>(
+                    full_actor.y + player_tool_origin_offset_cells);
+                auto cells = acceptance_atmosphere_world();
+                cells[index_of(target_x, target_y)] = make_fill_cell(
+                    material_id(Material::gold),
+                    static_cast<std::uint32_t>(index_of(target_x, target_y)));
+                upload_scene_cells(cells);
+                upload_actor_state(full_actor);
+                fire_acceptance_laser(target_x, target_y);
+                auto rearmed = download_actor_state();
+                rearmed.shot_timer = 0u;
+                upload_actor_state(rearmed);
+                fire_acceptance_laser(target_x, target_y);
+                const auto result_actor = download_actor_state();
+                const auto result = download_scene_cells();
+                const auto& fragment = result[index_of(target_x, target_y - 1u)];
+                append("full_inventory_laser_releases_exact_loose_fragment",
+                       result_actor.gold == 9999u &&
+                           count_material(result, Material::gold) == 1u &&
+                           result[index_of(target_x, target_y)].material ==
+                               material_id(Material::atmosphere) &&
+                           fragment.material == material_id(Material::gold) &&
+                           (fragment.aux & fill_aux_structural) == 0u &&
+                           (fragment.aux & 255u) == 1u,
+                       "inventory=" + std::to_string(result_actor.gold) +
+                           " world_gold=" + std::to_string(
+                               count_material(result, Material::gold)) +
+                           " fragment=" + std::to_string(fragment.material) +
+                           "/" + std::to_string(fragment.aux & 255u));
+            }
+            {
+                auto blocked_actor = actor;
+                blocked_actor.x = 124;
+                blocked_actor.y = 14;
+                blocked_actor.gold = 9999u;
+                blocked_actor.shot_timer = 0u;
+                constexpr std::uint32_t target_x = 124u;
+                constexpr std::uint32_t target_y = 0u;
+                auto cells = acceptance_atmosphere_world();
+                cells[index_of(target_x, target_y)] = make_fill_cell(
+                    material_id(Material::gold),
+                    static_cast<std::uint32_t>(index_of(target_x, target_y)));
+                upload_scene_cells(cells);
+                upload_actor_state(blocked_actor);
+                fire_acceptance_laser(target_x, target_y);
+                auto rearmed = download_actor_state();
+                rearmed.shot_timer = 0u;
+                upload_actor_state(rearmed);
+                fire_acceptance_laser(target_x, target_y);
+                const auto result_actor = download_actor_state();
+                const auto result = download_scene_cells();
+                const auto& retained = result[index_of(target_x, target_y)];
+                append("blocked_full_inventory_laser_retains_exact_world_unit",
+                       result_actor.gold == 9999u &&
+                           count_material(result, Material::gold) == 1u &&
+                           retained.material == material_id(Material::gold) &&
+                           (retained.aux & fill_aux_structural) != 0u &&
+                           (retained.aux & 255u) == 111u,
+                       "inventory=" + std::to_string(result_actor.gold) +
+                           " world_gold=" + std::to_string(
+                               count_material(result, Material::gold)) +
+                           " retained_health=" +
+                           std::to_string(retained.aux & 255u));
             }
             check_pre_pr19_hive("sandbox_hard_coded_hive", Scene::sandbox);
             check_pre_pr19_hive("sandbox_hard_coded_hive_delayed", Scene::sandbox, 120u);

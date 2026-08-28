@@ -413,12 +413,10 @@ uint volcanoMaterial(ivec2 p) {
     if (b.y == world.y - 2)
         material = MAT_LAVA;
 
-    int craterSurface = rimTop * BRICK_SIZE;
-    int craterDx = abs(p.x - (center * BRICK_SIZE + BRICK_SIZE / 2));
-    if (material == MAT_EMPTY && p.y < craterSurface &&
-        p.y > max(8, craterSurface - 72) && craterDx < 64 &&
-        (hash32(indexOf(p) ^ pc.seed ^ 0x51a9u) % 61u) == 0u)
-        material = MAT_SMOKE;
+    // Reset authors only the vent and its stored pressure. Smoke/Steam are
+    // runtime products of that vent and enter the same conserved atmosphere
+    // transport used by every district; a reset-time plume became a permanent
+    // dark column that could neither disperse nor account for its source.
     return material;
 }
 
@@ -496,24 +494,25 @@ uint waterworksMaterial(ivec2 p) {
     return material;
 }
 
-// The persistent Waterworks cloud bank occupies complete aligned 8x8 tiles in
-// the vertical middle of the camera region immediately above the authored band.
-// Its global Y is deliberately independent of the district surface translation.
+// The persistent World begins with one declared, finite Cloud inventory. Every
+// horizontal tile column owns a connected three-tile-deep deck, with bounded
+// deterministic upper/lower lobes for a natural silhouette. This spans all
+// eight districts and every inter-district gap rather than hiding weather in a
+// Waterworks-only apparatus. Cloud remains canonical cells; hierarchy may own
+// these exact aligned 8x8 regions only as reversible scheduling metadata.
 bool persistentHighSkyCloudCell(ivec2 worldPosition) {
     if (!persistentWorldMode()) return false;
-    ivec2 districtOrigin = persistentDistrictOrigin(5u);
-    int localX = worldPosition.x - districtOrigin.x;
-    if (localX < 0 || localX >= AUTHORED_WORLD_CELLS.x) return false;
+    if (worldPosition.x < 0 || worldPosition.x >= int(pc.width)) return false;
     if (worldPosition.y < AUTHORED_WORLD_CELLS.y ||
         worldPosition.y >= AUTHORED_WORLD_CELLS.y * 2) return false;
 
-    ivec2 b = ivec2(localX / BRICK_SIZE, worldPosition.y / BRICK_SIZE);
-    int centerY = (AUTHORED_WORLD_CELLS.y + AUTHORED_WORLD_CELLS.y / 2) / BRICK_SIZE;
-    ivec2 first = b - ivec2(13, centerY);
-    ivec2 second = b - ivec2(18, centerY + 1);
-    bool firstLobe = first.x * first.x + first.y * first.y * 5 <= 24;
-    bool secondLobe = second.x * second.x + second.y * second.y * 5 <= 16;
-    return firstLobe || secondLobe;
+    ivec2 tile = worldPosition / BRICK_SIZE;
+    int centerY = (AUTHORED_WORLD_CELLS.y + AUTHORED_WORLD_CELLS.y / 2) /
+                  BRICK_SIZE;
+    uint contour = hash32(uint(tile.x) ^ pc.seed ^ 0xc10d5u);
+    int top = centerY - 1 - int(contour & 1u);
+    int bottom = centerY + 1 + int((contour >> 1u) & 1u);
+    return tile.y >= top && tile.y <= bottom;
 }
 
 ivec2 ecosystemQueen() {
