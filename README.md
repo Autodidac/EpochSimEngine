@@ -395,4 +395,4 @@ Right-click exclusively pans: dragging moves the current camera and holding it n
 
 ## World sizes and exact saves
 
-Launch Compact, Standard, or Large with the supplied scripts or `--world-size`. Save slots use `--save-slot NAME`. Gameplay saves are exact whole-world `.shw` files under the portable `saves/worlds/<size>/world/<slot>/` tree; see `SAVE_LAYOUT.md`. PPM files are retained only for authored 640x360 district import/export.
+Launch Compact, Standard, or Large with the supplied scripts or `--world-size`. Save slots use `--save-slot NAME`. Gameplay saves are exact whole-world schema-2 `.shw` files under the portable `saves/worlds/<size>/world/<slot>/` tree. They preserve every canonical cell plus the exact 20-word GPU actor owner—position, motion, inventory, health, Oxygen, weapon state, unlocks, and drill level—under one checksum and one atomic primary/backup transaction. Schema-1 cell-only files remain readable without inventing actor ownership; see `SAVE_LAYOUT.md`. PPM files are retained only for authored 640x360 district import/export.

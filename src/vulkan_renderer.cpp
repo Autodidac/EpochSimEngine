@@ -1523,28 +1523,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         return cells;
     }
 
-    struct ActorStateReadback final {
-        std::int32_t x{};
-        std::int32_t y{};
-        std::int32_t velocity_y{};
-        std::uint32_t enabled{};
-        std::uint32_t gold{};
-        std::uint32_t iron{};
-        std::uint32_t ammo{};
-        std::uint32_t shot_timer{};
-        std::uint32_t move_cooldown{};
-        std::uint32_t grounded{};
-        std::uint32_t health{};
-        std::uint32_t oxygen{};
-        std::int32_t hit_x{};
-        std::int32_t hit_y{};
-        std::uint32_t scene{};
-        std::uint32_t exposure_ticks{};
-        std::uint32_t aluminum{};
-        std::uint32_t copper{};
-        std::uint32_t unlocks{};
-        std::uint32_t drill_level{};
-    };
+    using ActorStateReadback = WorldSaveActorState;
     static_assert(sizeof(ActorStateReadback) == sizeof(std::uint32_t) * 20u);
 
     [[nodiscard]] ActorStateReadback download_actor_state() {
@@ -2167,11 +2146,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const auto scene = static_cast<Scene>(scene_index % scene_count);
         std::vector<SceneCell> cells(
   static_cast<std::size_t>(config.grid_width) * config.grid_height);
+        WorldSaveOwners owners{};
         WorldSaveMetadata metadata{};
         std::string error;
         if (!load_world(executable_directory(), config.world_size,
               config.grid_width, config.grid_height, scene,
-              save_slot, cells, metadata, error)) {
+              save_slot, cells, owners, metadata, error)) {
   startup_log("World load skipped: " + error);
   return false;
         }
@@ -2212,6 +2192,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             }
         }
         upload_scene_cells(cells);
+        if (owners.actor_present) upload_actor_state(owners.actor);
         if (!error.empty()) startup_log("World load recovery: " + error);
         startup_log("Loaded exact world save: " +
           world_save_path(executable_directory(), config.world_size,
@@ -2222,6 +2203,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     void save_world_slot(const std::uint32_t scene_index) {
         const auto scene = static_cast<Scene>(scene_index % scene_count);
         const auto cells = download_scene_cells();
+        const WorldSaveOwners owners{
+            .actor_present = true,
+            .actor = download_actor_state(),
+        };
         const WorldSaveMetadata metadata{
   .world_size = config.world_size,
   .width = config.grid_width,
@@ -2229,7 +2214,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
   .scene = scene,
         };
         std::string error;
-        if (!save_world(executable_directory(), metadata, save_slot, cells, error))
+        if (!save_world(executable_directory(), metadata, save_slot, cells, owners, error))
   throw std::runtime_error("Unable to save world: " + error);
         startup_log("Saved exact world state: " +
           world_save_path(executable_directory(), config.world_size,
@@ -5883,6 +5868,91 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                count_material(result, Material::gold)) +
                            " retained_health=" +
                            std::to_string(retained.aux & 255u));
+            }
+            {
+                const auto save_root = executable_directory() /
+                    "runtime-acceptance-save-owner";
+                std::error_code cleanup_error;
+                std::filesystem::remove_all(save_root, cleanup_error);
+
+                auto saved_cells = download_scene_cells();
+                constexpr std::uint32_t saved_x = 144u;
+                constexpr std::uint32_t saved_y = 144u;
+                const auto saved_index = index_of(saved_x, saved_y);
+                saved_cells[saved_index] = SceneCell{
+                    .material = material_id(Material::water),
+                    .age = 37u,
+                    .temperature = 73,
+                    .aux = 0x00800000u |
+                        ((material_id(Material::atmosphere) & 0x7fu) << 8u) | 121u,
+                };
+                auto saved_actor = download_actor_state();
+                saved_actor.gold = 17u;
+                saved_actor.iron = 23u;
+                saved_actor.aluminum = 5u;
+                saved_actor.copper = 6u;
+                saved_actor.health = 201u;
+                saved_actor.oxygen = 187u;
+                saved_actor.unlocks = 15u;
+                saved_actor.drill_level = 2u;
+                const WorldSaveOwners saved_owners{
+                    .actor_present = true,
+                    .actor = saved_actor,
+                };
+                const WorldSaveMetadata save_metadata{
+                    .world_size = config.world_size,
+                    .width = config.grid_width,
+                    .height = config.grid_height,
+                    .scene = world_scene,
+                };
+                std::string save_error;
+                const bool save_ok = save_world(
+                    save_root, save_metadata, "acceptance", saved_cells,
+                    saved_owners, save_error);
+
+                std::vector<SceneCell> loaded_cells(saved_cells.size());
+                WorldSaveOwners loaded_owners{};
+                WorldSaveMetadata loaded_metadata{};
+                std::string load_error;
+                const bool load_ok = save_ok && load_world(
+                    save_root, config.world_size, config.grid_width,
+                    config.grid_height, world_scene, "acceptance", loaded_cells,
+                    loaded_owners, loaded_metadata, load_error);
+                const bool exact_cells = load_ok &&
+                    std::memcmp(saved_cells.data(), loaded_cells.data(),
+                                saved_cells.size() * sizeof(SceneCell)) == 0;
+                const bool exact_actor = load_ok && loaded_owners.actor_present &&
+                    std::memcmp(&saved_actor, &loaded_owners.actor,
+                                sizeof(saved_actor)) == 0;
+                if (load_ok) {
+                    upload_scene_cells(loaded_cells);
+                    upload_actor_state(loaded_owners.actor);
+                }
+                const auto gpu_actor = load_ok ? download_actor_state()
+                                               : ActorStateReadback{};
+                const auto gpu_cells = load_ok ? download_scene_cells()
+                                               : std::vector<SceneCell>{};
+                const bool gpu_exact = load_ok &&
+                    std::memcmp(&saved_actor, &gpu_actor, sizeof(saved_actor)) == 0 &&
+                    gpu_cells.size() == loaded_cells.size() &&
+                    gpu_cells[saved_index].material == material_id(Material::water) &&
+                    gpu_cells[saved_index].age == 37u &&
+                    gpu_cells[saved_index].temperature == 73 &&
+                    gpu_cells[saved_index].aux == saved_cells[saved_index].aux;
+                append("persistent_world_save_preserves_actor_owner_and_half_water",
+                       save_ok && load_ok && exact_cells && exact_actor && gpu_exact &&
+                           loaded_metadata.format_version == world_save_format_version &&
+                           loaded_metadata.owner_payload_bytes ==
+                               world_save_actor_bytes + 16u,
+                       "save=" + std::to_string(save_ok ? 1u : 0u) +
+                           " load=" + std::to_string(load_ok ? 1u : 0u) +
+                           " cells=" + std::to_string(exact_cells ? 1u : 0u) +
+                           " actor=" + std::to_string(exact_actor ? 1u : 0u) +
+                           " gpu=" + std::to_string(gpu_exact ? 1u : 0u) +
+                           " save_error=" + save_error +
+                           " load_error=" + load_error);
+                cleanup_error.clear();
+                std::filesystem::remove_all(save_root, cleanup_error);
             }
             check_pre_pr19_hive("sandbox_hard_coded_hive", Scene::sandbox);
             check_pre_pr19_hive("sandbox_hard_coded_hive_delayed", Scene::sandbox, 120u);

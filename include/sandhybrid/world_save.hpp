@@ -13,9 +13,41 @@
 
 namespace sandhybrid {
 
-inline constexpr std::uint32_t world_save_format_version = 1u;
+inline constexpr std::uint32_t world_save_format_version = 2u;
+inline constexpr std::uint32_t world_save_min_format_version = 1u;
 inline constexpr std::uint32_t world_save_chunk_edge = 64u;
+inline constexpr std::uint32_t world_save_actor_version = 1u;
+inline constexpr std::uint32_t world_save_actor_bytes = 80u;
 inline constexpr std::string_view default_world_save_slot = "quick";
+
+struct WorldSaveActorState final {
+    std::int32_t x{};
+    std::int32_t y{};
+    std::int32_t velocity_y{};
+    std::uint32_t enabled{};
+    std::uint32_t gold{};
+    std::uint32_t iron{};
+    std::uint32_t ammo{};
+    std::uint32_t shot_timer{};
+    std::uint32_t move_cooldown{};
+    std::uint32_t grounded{};
+    std::uint32_t health{};
+    std::uint32_t oxygen{};
+    std::int32_t hit_x{};
+    std::int32_t hit_y{};
+    std::uint32_t scene{};
+    std::uint32_t exposure_ticks{};
+    std::uint32_t aluminum{};
+    std::uint32_t copper{};
+    std::uint32_t unlocks{};
+    std::uint32_t drill_level{};
+};
+static_assert(sizeof(WorldSaveActorState) == world_save_actor_bytes);
+
+struct WorldSaveOwners final {
+    bool actor_present{};
+    WorldSaveActorState actor{};
+};
 
 struct WorldSaveMetadata final {
     std::uint32_t format_version{world_save_format_version};
@@ -28,6 +60,7 @@ struct WorldSaveMetadata final {
     std::uint64_t cell_count{};
     std::uint64_t payload_bytes{};
     std::uint64_t payload_hash{};
+    std::uint64_t owner_payload_bytes{};
 };
 
 [[nodiscard]] constexpr std::string_view world_size_name(
@@ -70,6 +103,24 @@ bool save_world(const std::filesystem::path& application_directory,
                 const WorldSaveMetadata& metadata,
                 std::string_view slot,
                 std::span<const SceneCell> cells,
+                const WorldSaveOwners& owners,
+                std::string& error);
+
+bool save_world(const std::filesystem::path& application_directory,
+                const WorldSaveMetadata& metadata,
+                std::string_view slot,
+                std::span<const SceneCell> cells,
+                std::string& error);
+
+bool load_world(const std::filesystem::path& application_directory,
+                WorldSizePreset expected_size,
+                std::uint32_t expected_width,
+                std::uint32_t expected_height,
+                Scene expected_scene,
+                std::string_view slot,
+                std::span<SceneCell> cells,
+                WorldSaveOwners& owners,
+                WorldSaveMetadata& metadata,
                 std::string& error);
 
 bool load_world(const std::filesystem::path& application_directory,

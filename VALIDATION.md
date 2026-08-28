@@ -81,6 +81,7 @@ The executable allocates the selected resident World (Large is 10240x1440), runs
 - blocked Water retains macro ownership for seven due opportunities and enters fine fallback on the eighth only after an open-boundary check;
 - enclosed Air remains tiled after the same classifier budget;
 - Half Water fall, clear-gap two-to-four-cell attraction, merge, terminal supplied-ledge split/hang/drip, exact split/merge Water heat, displaced-medium temperature/pressure restoration, save/backup/Blueprint payload retention, and full-Water zero-jitter equilibrium;
+- an exact schema-2 save/load transaction over the production GPU buffers, including every canonical cell, a tagged Half Water payload, and the full 20-word actor owner; CPU contracts also prove primary/backup owner recovery, no-mutation failure, invalid-owner rejection, and schema-1 cell-only migration;
 - a four-cell supplied full-Water reservoir remains four full cells with zero Half flags instead of cascading into darker halves;
 - paired cardinal Hydrogen/Oxygen synthesis into one Water-family cell plus one pressure-bearing Atmosphere cell;
 - Steam joining an explicit Cloud reservoir, then mature connected Cloud converting one-for-one into interval Water rain without direct Steam-to-rain;
@@ -96,7 +97,7 @@ The executable allocates the selected resident World (Large is 10240x1440), runs
 - no more than three authored districts intersecting the initial Large 4x4 active window;
 - cell-exact photographed Fix29 support, shell, queen, exit, and tagged two-bit Empty/Pollen/Honey payload in placed, Sandbox, and Ecosystem hives; placed counts are `571/193/30/7/19`, Sandbox `576/193/35/13/8`, and Ecosystem `571/193/31/9/16` for support/shell/Honey/Pollen/Empty. The placed body is checked immediately and again after 120 focused ticks, while each hard-coded colony retains 100 unique district-correct bee homes.
 
-This focused gate does not close broader cross-district traversal, weather/ecology cycles, machinery, save migration, full bee lifecycle, debug overhead, or final user visual review of the photographed hive and distributed scenery.
+This focused gate does not close broader cross-district traversal, multi-interval weather/ecology cycles, all machinery, repeated long-running save/reload conservation, full bee lifecycle, measured debug overhead, or final user visual review of the photographed hive and distributed scenery.
 
 ## v2.5.25 stable local release gates
 
@@ -109,7 +110,7 @@ The packet/performance follow-up adds successful-distance and bounded-dispatch g
 - `sandhybrid_behavior_contract` proves eight-step travel saturation, independent failed-attempt accumulation, success reset, and perimeter-conditional breakup.
 - `sandhybrid_section_scheduler_contract` proves clipped 4x4 dispatch dimensions and a fourfold Large cell-domain reduction.
 - Packaged Windows and Linux Vulkan acceptance proves `macro_bubble_eight_step_breakup` with Hydrogen `64`, Water `512`, progress `7` retained and progress `8` broken to fine; `macro_blocked_fine_fallback` reports exactly eight blocked attempts. Current-source acceptance additionally follows all three authored Waterworks Hydrogen packets through the production active window with the same seven-step retention/eighth-step breakup, exact Hydrogen conservation, and exact total Water-family conservation while four Water units become Steam at the powered source.
-- Serial native verification passes Windows Release `40/40` CTests and WSL Linux Release `32/32`. The complete standalone EpochGui v0.89.27 Windows suite passes `10/10`, including both optional modules. The current Half Water ownership tree additionally passes `51/51` Compact production checks on both RTX 5080 and Linux llvmpipe, including exact split/merge heat and displaced-medium restoration. Interactive timestamp/FPS evidence remains required for performance mission closure.
+- Serial native verification passes Windows Release `40/40` CTests and WSL Linux Release `32/32`. The complete standalone EpochGui v0.89.27 Windows suite passes `10/10`, including both optional modules. The current ownership tree additionally passes `52/52` Compact production checks on both RTX 5080 and Linux llvmpipe, including exact split/merge heat, displaced-medium restoration, and byte-exact schema-2 cell/actor disk-to-GPU recovery. Interactive timestamp/FPS evidence remains required for performance mission closure.
 
 - `sandhybrid_input_routing_contract` proves `request_world_reset` raises only the reset epoch request and preserves simulation-camera and MAP center/zoom state.
 - `sandhybrid_ui_layout_contract` proves the new sidebar Camera Home hit region remains inside the sidebar and does not overlap camera-mode, MAP, or DEBUG controls.

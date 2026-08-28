@@ -21,8 +21,13 @@ namespace {
 constexpr std::array<std::uint8_t, 8> save_magic{
     'S', 'H', 'W', 'R', 'L', 'D', '1', 0,
 };
+constexpr std::array<std::uint8_t, 8> owner_magic{
+    'S', 'H', 'O', 'W', 'N', 'R', '1', 0,
+};
 constexpr std::uint32_t save_header_bytes = 72u;
 constexpr std::uint32_t chunk_header_bytes = 32u;
+constexpr std::uint32_t owner_header_bytes = 16u;
+constexpr std::uint32_t owner_record_bytes = owner_header_bytes + world_save_actor_bytes;
 constexpr std::uint32_t encoding_raw = 0u;
 constexpr std::uint32_t encoding_run_length = 1u;
 constexpr std::uint64_t fnv_offset_64 = 14695981039346656037ull;
@@ -56,6 +61,29 @@ void append_cell(std::vector<std::uint8_t>& bytes, const SceneCell& cell) {
     append_u32(bytes, cell.aux);
 }
 
+void append_actor(std::vector<std::uint8_t>& bytes,
+                  const WorldSaveActorState& actor) {
+    append_i32(bytes, actor.x);
+    append_i32(bytes, actor.y);
+    append_i32(bytes, actor.velocity_y);
+    append_u32(bytes, actor.enabled);
+    append_u32(bytes, actor.gold);
+    append_u32(bytes, actor.iron);
+    append_u32(bytes, actor.ammo);
+    append_u32(bytes, actor.shot_timer);
+    append_u32(bytes, actor.move_cooldown);
+    append_u32(bytes, actor.grounded);
+    append_u32(bytes, actor.health);
+    append_u32(bytes, actor.oxygen);
+    append_i32(bytes, actor.hit_x);
+    append_i32(bytes, actor.hit_y);
+    append_u32(bytes, actor.scene);
+    append_u32(bytes, actor.exposure_ticks);
+    append_u32(bytes, actor.aluminum);
+    append_u32(bytes, actor.copper);
+    append_u32(bytes, actor.unlocks);
+    append_u32(bytes, actor.drill_level);
+}
 [[nodiscard]] bool read_u32(const std::span<const std::uint8_t> bytes,
                             std::size_t& offset,
                             std::uint32_t& value) noexcept {
@@ -87,6 +115,57 @@ void append_cell(std::vector<std::uint8_t>& bytes, const SceneCell& cell) {
            read_u32(bytes, offset, temperature) &&
            read_u32(bytes, offset, cell.aux) &&
            ((cell.temperature = static_cast<std::int32_t>(temperature)), true);
+}
+
+[[nodiscard]] bool read_actor(const std::span<const std::uint8_t> bytes,
+                              std::size_t& offset,
+                              WorldSaveActorState& actor) noexcept {
+    std::uint32_t x{};
+    std::uint32_t y{};
+    std::uint32_t velocity_y{};
+    std::uint32_t hit_x{};
+    std::uint32_t hit_y{};
+    return read_u32(bytes, offset, x) &&
+           read_u32(bytes, offset, y) &&
+           read_u32(bytes, offset, velocity_y) &&
+           read_u32(bytes, offset, actor.enabled) &&
+           read_u32(bytes, offset, actor.gold) &&
+           read_u32(bytes, offset, actor.iron) &&
+           read_u32(bytes, offset, actor.ammo) &&
+           read_u32(bytes, offset, actor.shot_timer) &&
+           read_u32(bytes, offset, actor.move_cooldown) &&
+           read_u32(bytes, offset, actor.grounded) &&
+           read_u32(bytes, offset, actor.health) &&
+           read_u32(bytes, offset, actor.oxygen) &&
+           read_u32(bytes, offset, hit_x) &&
+           read_u32(bytes, offset, hit_y) &&
+           read_u32(bytes, offset, actor.scene) &&
+           read_u32(bytes, offset, actor.exposure_ticks) &&
+           read_u32(bytes, offset, actor.aluminum) &&
+           read_u32(bytes, offset, actor.copper) &&
+           read_u32(bytes, offset, actor.unlocks) &&
+           read_u32(bytes, offset, actor.drill_level) &&
+           ((actor.x = static_cast<std::int32_t>(x)),
+            (actor.y = static_cast<std::int32_t>(y)),
+            (actor.velocity_y = static_cast<std::int32_t>(velocity_y)),
+            (actor.hit_x = static_cast<std::int32_t>(hit_x)),
+            (actor.hit_y = static_cast<std::int32_t>(hit_y)), true);
+}
+
+[[nodiscard]] bool actor_state_valid(const WorldSaveActorState& actor,
+                                     const std::uint32_t width,
+                                     const std::uint32_t height) noexcept {
+    constexpr std::uint32_t inventory_limit = 9999u;
+    return actor.enabled <= 1u && actor.grounded <= 1u &&
+           actor.gold <= inventory_limit && actor.iron <= inventory_limit &&
+           actor.ammo <= inventory_limit && actor.aluminum <= inventory_limit &&
+           actor.copper <= inventory_limit && actor.health <= 255u &&
+           actor.oxygen <= 255u && actor.scene < legacy_scene_count &&
+           (actor.unlocks & ~15u) == 0u && actor.drill_level <= 2u &&
+           (actor.enabled == 0u ||
+            (actor.x >= 0 && actor.y >= 0 &&
+             actor.x < static_cast<std::int32_t>(width) &&
+             actor.y < static_cast<std::int32_t>(height)));
 }
 
 [[nodiscard]] std::uint64_t hash64(const std::span<const std::uint8_t> bytes) noexcept {
@@ -178,7 +257,9 @@ void append_cell(std::vector<std::uint8_t>& bytes, const SceneCell& cell) {
            << "chunk_edge=" << metadata.chunk_edge << '\n'
            << "chunk_count=" << metadata.chunk_count << '\n'
            << "payload_bytes=" << metadata.payload_bytes << '\n'
-           << "payload_hash=" << metadata.payload_hash << '\n';
+           << "payload_hash=" << metadata.payload_hash << '\n'
+           << "owner_payload_bytes=" << metadata.owner_payload_bytes << '\n'
+           << "actor_owner=" << (metadata.owner_payload_bytes != 0u ? "present" : "absent") << '\n';
     stream.flush();
     if (!stream) {
         error = "failed while writing save manifest";
@@ -237,7 +318,6 @@ void append_cell(std::vector<std::uint8_t>& bytes, const SceneCell& cell) {
     std::uint32_t header_bytes{};
     std::uint32_t preset{};
     std::uint32_t scene{};
-    std::uint64_t reserved{};
     if (!read_u32(bytes, offset, metadata.format_version) ||
         !read_u32(bytes, offset, header_bytes) ||
         !read_u32(bytes, offset, metadata.width) ||
@@ -249,13 +329,21 @@ void append_cell(std::vector<std::uint8_t>& bytes, const SceneCell& cell) {
         !read_u64(bytes, offset, metadata.cell_count) ||
         !read_u64(bytes, offset, metadata.payload_bytes) ||
         !read_u64(bytes, offset, metadata.payload_hash) ||
-        !read_u64(bytes, offset, reserved)) {
+        !read_u64(bytes, offset, metadata.owner_payload_bytes)) {
         error = "save header is truncated";
         return false;
     }
-    if (metadata.format_version != world_save_format_version ||
+    if (metadata.format_version < world_save_min_format_version ||
+        metadata.format_version > world_save_format_version ||
         header_bytes != save_header_bytes || metadata.chunk_edge != world_save_chunk_edge) {
         error = "save format version is unsupported";
+        return false;
+    }
+    if ((metadata.format_version == 1u && metadata.owner_payload_bytes != 0u) ||
+        (metadata.owner_payload_bytes != 0u &&
+         metadata.owner_payload_bytes != owner_record_bytes) ||
+        metadata.owner_payload_bytes > metadata.payload_bytes) {
+        error = "save owner payload size is invalid";
         return false;
     }
     if (preset > static_cast<std::uint32_t>(WorldSizePreset::large) ||
@@ -284,6 +372,7 @@ void append_cell(std::vector<std::uint8_t>& bytes, const SceneCell& cell) {
                                      const std::uint32_t expected_height,
                                      const Scene expected_scene,
                                      const std::span<SceneCell> cells,
+                                     WorldSaveOwners& owners,
                                      WorldSaveMetadata& metadata,
                                      std::string& error) {
     std::vector<std::uint8_t> bytes;
@@ -299,6 +388,12 @@ void append_cell(std::vector<std::uint8_t>& bytes, const SceneCell& cell) {
     }
     if (cells.size() != metadata.cell_count) {
         error = "destination cell span does not match the save dimensions";
+        return false;
+    }
+    const auto cell_payload_end = bytes.size() -
+        static_cast<std::size_t>(metadata.owner_payload_bytes);
+    if (cell_payload_end < offset) {
+        error = "save owner payload overlaps the cell payload";
         return false;
     }
 
@@ -333,8 +428,8 @@ void append_cell(std::vector<std::uint8_t>& bytes, const SceneCell& cell) {
         const auto expected_count = expected_chunk_width * expected_chunk_height;
         if (chunk_x != expected_x || chunk_y != expected_y ||
             chunk_width != expected_chunk_width || chunk_height != expected_chunk_height ||
-            decoded_count != expected_count || offset > bytes.size() ||
-            bytes.size() - offset < payload_size) {
+            decoded_count != expected_count || offset > cell_payload_end ||
+            cell_payload_end - offset < payload_size) {
             error = "save chunk layout is invalid";
             return false;
         }
@@ -391,10 +486,41 @@ void append_cell(std::vector<std::uint8_t>& bytes, const SceneCell& cell) {
             source_index += chunk_width;
         }
     }
-    if (offset != bytes.size()) {
+    if (offset != cell_payload_end) {
+        error = "save cell payload contains trailing data";
+        return false;
+    }
+
+    WorldSaveOwners decoded_owners{};
+    if (metadata.owner_payload_bytes != 0u) {
+        if (bytes.size() - offset != owner_record_bytes ||
+            !std::equal(owner_magic.begin(), owner_magic.end(),
+                        bytes.begin() + static_cast<std::ptrdiff_t>(offset))) {
+            error = "save owner record magic or size is invalid";
+            return false;
+        }
+        offset += owner_magic.size();
+        std::uint32_t actor_version{};
+        std::uint32_t actor_bytes{};
+        if (!read_u32(bytes, offset, actor_version) ||
+            !read_u32(bytes, offset, actor_bytes) ||
+            actor_version != world_save_actor_version ||
+            actor_bytes != world_save_actor_bytes ||
+            !read_actor(bytes, offset, decoded_owners.actor) ||
+            offset != bytes.size()) {
+            error = "save actor owner record is invalid";
+            return false;
+        }
+        if (!actor_state_valid(decoded_owners.actor, metadata.width, metadata.height)) {
+            error = "save actor owner state is out of range";
+            return false;
+        }
+        decoded_owners.actor_present = true;
+    } else if (offset != bytes.size()) {
         error = "save contains trailing data";
         return false;
     }
+
     for (const auto& cell : decoded) {
         if (cell.material >= material_count) {
             error = "save contains an unknown material id";
@@ -402,6 +528,7 @@ void append_cell(std::vector<std::uint8_t>& bytes, const SceneCell& cell) {
         }
     }
     std::copy(decoded.begin(), decoded.end(), cells.begin());
+    owners = decoded_owners;
     return true;
 }
 
@@ -502,6 +629,7 @@ bool save_world(const std::filesystem::path& application_directory,
                 const WorldSaveMetadata& requested_metadata,
                 const std::string_view slot,
                 const std::span<const SceneCell> cells,
+                const WorldSaveOwners& owners,
                 std::string& error) {
     error.clear();
     WorldSaveMetadata metadata = requested_metadata;
@@ -511,6 +639,11 @@ bool save_world(const std::filesystem::path& application_directory,
     if (metadata.width == 0u || metadata.height == 0u || cells.size() != metadata.cell_count ||
         metadata.scene == Scene::count) {
         error = "world save metadata does not match the supplied cell span";
+        return false;
+    }
+    if (owners.actor_present &&
+        !actor_state_valid(owners.actor, metadata.width, metadata.height)) {
+        error = "world save actor owner state is out of range";
         return false;
     }
 
@@ -571,6 +704,15 @@ bool save_world(const std::filesystem::path& application_directory,
         }
     }
 
+    metadata.owner_payload_bytes = 0u;
+    if (owners.actor_present) {
+        body.insert(body.end(), owner_magic.begin(), owner_magic.end());
+        append_u32(body, world_save_actor_version);
+        append_u32(body, world_save_actor_bytes);
+        append_actor(body, owners.actor);
+        metadata.owner_payload_bytes = owner_record_bytes;
+    }
+
     metadata.payload_bytes = body.size();
     metadata.payload_hash = hash64(body);
     std::vector<std::uint8_t> header;
@@ -587,7 +729,7 @@ bool save_world(const std::filesystem::path& application_directory,
     append_u64(header, metadata.cell_count);
     append_u64(header, metadata.payload_bytes);
     append_u64(header, metadata.payload_hash);
-    append_u64(header, 0u);
+    append_u64(header, metadata.owner_payload_bytes);
     if (header.size() != save_header_bytes) {
         error = "internal world-save header size mismatch";
         return false;
@@ -609,6 +751,45 @@ bool save_world(const std::filesystem::path& application_directory,
     return write_manifest(directory, metadata, slot, error);
 }
 
+bool save_world(const std::filesystem::path& application_directory,
+                const WorldSaveMetadata& metadata,
+                const std::string_view slot,
+                const std::span<const SceneCell> cells,
+                std::string& error) {
+    return save_world(application_directory, metadata, slot, cells,
+                      WorldSaveOwners{}, error);
+}
+
+bool load_world(const std::filesystem::path& application_directory,
+                const WorldSizePreset expected_size,
+                const std::uint32_t expected_width,
+                const std::uint32_t expected_height,
+                const Scene expected_scene,
+                const std::string_view slot,
+                const std::span<SceneCell> cells,
+                WorldSaveOwners& owners,
+                WorldSaveMetadata& metadata,
+                std::string& error) {
+    error.clear();
+    const auto primary = world_save_path(
+        application_directory, expected_size, expected_scene, slot);
+    std::string primary_error;
+    if (decode_world_file(primary, expected_size, expected_width, expected_height,
+                          expected_scene, cells, owners, metadata, primary_error))
+        return true;
+
+    const auto backup = world_save_backup_path(
+        application_directory, expected_size, expected_scene, slot);
+    std::string backup_error;
+    if (decode_world_file(backup, expected_size, expected_width, expected_height,
+                          expected_scene, cells, owners, metadata, backup_error)) {
+        error = "primary save failed (" + primary_error + "); loaded backup";
+        return true;
+    }
+    error = primary_error + "; backup failed: " + backup_error;
+    return false;
+}
+
 bool load_world(const std::filesystem::path& application_directory,
                 const WorldSizePreset expected_size,
                 const std::uint32_t expected_width,
@@ -618,24 +799,10 @@ bool load_world(const std::filesystem::path& application_directory,
                 const std::span<SceneCell> cells,
                 WorldSaveMetadata& metadata,
                 std::string& error) {
-    error.clear();
-    const auto primary = world_save_path(
-        application_directory, expected_size, expected_scene, slot);
-    std::string primary_error;
-    if (decode_world_file(primary, expected_size, expected_width, expected_height,
-                          expected_scene, cells, metadata, primary_error))
-        return true;
-
-    const auto backup = world_save_backup_path(
-        application_directory, expected_size, expected_scene, slot);
-    std::string backup_error;
-    if (decode_world_file(backup, expected_size, expected_width, expected_height,
-                          expected_scene, cells, metadata, backup_error)) {
-        error = "primary save failed (" + primary_error + "); loaded backup";
-        return true;
-    }
-    error = primary_error + "; backup failed: " + backup_error;
-    return false;
+    WorldSaveOwners ignored{};
+    return load_world(application_directory, expected_size, expected_width,
+                      expected_height, expected_scene, slot, cells, ignored,
+                      metadata, error);
 }
 
 } // namespace sandhybrid

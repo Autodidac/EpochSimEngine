@@ -11,7 +11,11 @@ def require(path: str, token: str) -> None:
 
 
 for token in (
-    "world_save_format_version = 1u",
+    "world_save_format_version = 2u",
+    "world_save_min_format_version = 1u",
+    "world_save_actor_bytes = 80u",
+    "WorldSaveActorState",
+    "WorldSaveOwners",
     "world_save_chunk_edge = 64u",
     "world_save_backup_path",
     "normalize_world_slot",
@@ -19,6 +23,8 @@ for token in (
     require("include/sandhybrid/world_save.hpp", token)
 
 for token in (
+    "owner_record_bytes",
+    "actor_state_valid",
     "replace_atomically",
     "encoding_run_length",
     "save payload checksum failed",
