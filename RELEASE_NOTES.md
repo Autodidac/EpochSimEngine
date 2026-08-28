@@ -31,6 +31,10 @@ The complete vendored EpochGui dependency is synchronized from the canonical Git
 - SandHybrid-Windows-x64-current.zip.sha256
 - SandHybrid-Linux-x64-current.tar.gz
 - SandHybrid-Linux-x64-current.tar.gz.sha256
+- SandHybrid-Windows-x64-v2.5.25.zip
+- SandHybrid-Windows-x64-v2.5.25.zip.sha256
+- SandHybrid-Linux-x64-v2.5.25.tar.gz
+- SandHybrid-Linux-x64-v2.5.25.tar.gz.sha256
 - simengine-source.tar.gz
 - simengine-source.tar.gz.sha256
 
