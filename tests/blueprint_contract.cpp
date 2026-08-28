@@ -1,4 +1,5 @@
 #include "sandhybrid/blueprint.hpp"
+#include "sandhybrid/simulation_policy.hpp"
 
 #include <cstdint>
 #include <span>
@@ -43,8 +44,12 @@ int main() {
         static_cast<std::uint32_t>(Material::empty), 9u, -4, 0x11111111u};
     source[index(2u, 2u)] = {
         static_cast<std::uint32_t>(Material::stone), 11u, 40, 0x22222222u};
+    constexpr std::uint32_t half_water_aux =
+        0x00800000u |
+        ((static_cast<std::uint32_t>(Material::atmosphere) & 0x7fu) << 8u) |
+        sandhybrid::policy::encode_half_water_medium_temperature(20);
     source[index(3u, 2u)] = {
-        static_cast<std::uint32_t>(Material::water), 13u, 17, 0x33333333u};
+        static_cast<std::uint32_t>(Material::water), 13u, 17, half_water_aux};
 
     const auto captured = sandhybrid::capture_blueprint(
         source, width, height, SelectionBounds{2u, 1u, 3u, 2u}, "Pump");
@@ -79,6 +84,10 @@ int main() {
         destination[index(5u, 1u)].temperature != 31 ||
         destination[index(5u, 1u)].aux != 0x12345678u)
         return 5;
+    if (destination[index(4u, 2u)].age != 13u ||
+        destination[index(4u, 2u)].temperature != 17 ||
+        destination[index(4u, 2u)].aux != half_water_aux)
+        return 13;
 
     // An out-of-bounds paste must not partially write.
     const auto before_rejected = destination;

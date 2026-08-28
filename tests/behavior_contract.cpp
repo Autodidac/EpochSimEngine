@@ -182,6 +182,14 @@ static_assert(sandhybrid::policy::water_half_horizontal_passes ==
               sandhybrid::policy::water_full_horizontal_passes * 2u);
 static_assert(!sandhybrid::policy::half_water_stores_ambient_air_pressure);
 static_assert(sandhybrid::policy::canonical_air_state == 54u);
+static_assert(sandhybrid::policy::encode_half_water_medium_temperature(-100) == 1u);
+static_assert(sandhybrid::policy::encode_half_water_medium_temperature(20) == 121u);
+static_assert(sandhybrid::policy::encode_half_water_medium_temperature(154) == 255u);
+static_assert(sandhybrid::policy::encode_half_water_medium_temperature(999) == 255u);
+static_assert(sandhybrid::policy::decode_half_water_medium_temperature(0u) == 20);
+static_assert(sandhybrid::policy::decode_half_water_medium_temperature(121u) == 20);
+static_assert(sandhybrid::policy::decode_half_water_medium_temperature(255u) == 154);
+static_assert(sandhybrid::policy::merge_half_water_temperature(10, 50) == 30);
 
 static_assert(sandhybrid::policy::half_water_attraction_distance(2u, true));
 static_assert(sandhybrid::policy::half_water_attraction_distance(4u, true));

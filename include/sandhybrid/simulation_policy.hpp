@@ -43,6 +43,9 @@ inline constexpr bool half_water_stores_ambient_air_pressure = false;
 inline constexpr std::uint32_t half_water_attraction_min_cells = 2u;
 inline constexpr std::uint32_t half_water_attraction_max_cells = 4u;
 inline constexpr std::uint32_t half_water_rest_ticks = 12u;
+inline constexpr std::int32_t half_water_medium_temperature_min = -100;
+inline constexpr std::int32_t half_water_medium_temperature_max = 154;
+inline constexpr std::uint32_t half_water_medium_temperature_unset = 0u;
 inline constexpr std::uint32_t sunlight_update_interval = 4u;
 inline constexpr std::uint32_t day_cycle_steps = 21'600u; // six minutes at 60 simulation steps/s
 inline constexpr std::uint32_t vent_eruption_pressure = 176u;
@@ -74,6 +77,31 @@ inline constexpr std::uint32_t wet_density_bonus = 32u;
     const bool clear_path) noexcept {
     return clear_path && distance >= half_water_attraction_min_cells &&
            distance <= half_water_attraction_max_cells;
+}
+
+[[nodiscard]] constexpr std::uint32_t encode_half_water_medium_temperature(
+    const std::int32_t temperature) noexcept {
+    const auto bounded = temperature < half_water_medium_temperature_min
+        ? half_water_medium_temperature_min
+        : (temperature > half_water_medium_temperature_max
+               ? half_water_medium_temperature_max
+               : temperature);
+    return static_cast<std::uint32_t>(
+        bounded - half_water_medium_temperature_min + 1);
+}
+
+[[nodiscard]] constexpr std::int32_t decode_half_water_medium_temperature(
+    const std::uint32_t encoded) noexcept {
+    if (encoded == half_water_medium_temperature_unset) return 20;
+    const auto bounded = encoded > 255u ? 255u : encoded;
+    return static_cast<std::int32_t>(bounded - 1u) +
+           half_water_medium_temperature_min;
+}
+
+[[nodiscard]] constexpr std::int32_t merge_half_water_temperature(
+    const std::int32_t first,
+    const std::int32_t second) noexcept {
+    return (first + second) / 2;
 }
 
 [[nodiscard]] constexpr bool half_water_can_sleep(

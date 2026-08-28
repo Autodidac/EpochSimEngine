@@ -4503,6 +4503,45 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             }
 
             {
+                constexpr std::uint32_t half_medium_temperature_20 = 121u;
+                constexpr std::uint32_t half_atmosphere_aux =
+                    water_half_bit |
+                    ((material_id(Material::atmosphere) & 0x7fu) << 8u) |
+                    half_medium_temperature_20;
+                auto cells = acceptance_atmosphere_world();
+                seed_rect(cells, Material::stone, 88u, 101u, 8u, 1u);
+                cells[index_of(90u, 100u)] = SceneCell{
+                    .material = material_id(Material::water),
+                    .age = 0u,
+                    .temperature = 10,
+                    .aux = half_atmosphere_aux,
+                };
+                cells[index_of(91u, 100u)] = SceneCell{
+                    .material = material_id(Material::water),
+                    .age = 0u,
+                    .temperature = 50,
+                    .aux = half_atmosphere_aux,
+                };
+                upload_scene_cells(cells);
+                run_acceptance_horizontal_pass(0);
+                const auto result = download_scene_cells();
+                const auto& water = result[index_of(90u, 100u)];
+                const auto& atmosphere = result[index_of(91u, 100u)];
+                append("half_water_split_merge_heat_ledger",
+                       water.material == material_id(Material::water) &&
+                           (water.aux & water_half_bit) == 0u &&
+                           (water.aux & 0xffu) == 0u && water.temperature == 30 &&
+                           atmosphere.material == material_id(Material::atmosphere) &&
+                           (atmosphere.aux & 0xffu) == 54u &&
+                           atmosphere.temperature == 20,
+                       "water_temp=" + std::to_string(water.temperature) +
+                           " water_state=" + std::to_string(water.aux & 0xffu) +
+                           " medium=" + std::to_string(atmosphere.material) +
+                           " medium_temp=" + std::to_string(atmosphere.temperature) +
+                           " medium_state=" + std::to_string(atmosphere.aux & 0xffu));
+            }
+
+            {
                 auto cells = acceptance_atmosphere_world();
                 cells[index_of(100u, 80u)] = SceneCell{
                     .material = material_id(Material::water),
@@ -4560,20 +4599,38 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             }
 
             {
+                constexpr std::uint32_t half_medium_temperature_20 = 121u;
                 auto cells = acceptance_atmosphere_world();
                 seed_rect(cells, Material::stone, 104u, 161u, 8u, 1u);
                 seed_rect(cells, Material::water, 109u, 160u, 2u, 1u);
+                cells[index_of(109u, 160u)].temperature = 80;
+                cells[index_of(110u, 160u)].temperature = 80;
                 upload_scene_cells(cells);
                 run_acceptance_horizontal_pass(0);
                 const auto result = download_scene_cells();
                 const auto [units, halves] = water_half_units(result);
+                bool half_heat_exact = true;
+                std::uint32_t inspected_halves = 0u;
+                for (const auto& cell : result) {
+                    if (cell.material != material_id(Material::water) ||
+                        (cell.aux & water_half_bit) == 0u)
+                        continue;
+                    ++inspected_halves;
+                    half_heat_exact = half_heat_exact && cell.temperature == 80 &&
+                        (cell.aux & 0xffu) == half_medium_temperature_20 &&
+                        ((cell.aux >> 8u) & 0x7fu) ==
+                            material_id(Material::atmosphere);
+                }
                 append("supplied_ledge_creates_half_water",
                        units == 4u && halves == 2u &&
-                           count_material(result, Material::water) == 3u,
+                           count_material(result, Material::water) == 3u &&
+                           inspected_halves == 2u && half_heat_exact,
                        "half_units=" + std::to_string(units) +
                            " halves=" + std::to_string(halves) +
                            " water_cells=" +
-                           std::to_string(count_material(result, Material::water)));
+                           std::to_string(count_material(result, Material::water)) +
+                           " half_heat_exact=" +
+                           std::string{half_heat_exact ? "true" : "false"});
             }
 
             {

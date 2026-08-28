@@ -228,6 +228,12 @@ def main() -> int:
                   "waterHalfUnits(secondTrailing) == 0u"):
         if token not in move:
             errors.append(f"half-water fine-attraction/supply contract missing {token!r}")
+    for token in ("encodeHalfMediumTemperature", "halfMediumTemperature",
+                  "mergeHalfWaterTemperature", "mergeHalfMediumTemperature",
+                  "halfCell.temperature = source.temperature",
+                  "restoredMediumFrom(Cell source, uint material, uint volume, int temperature)"):
+        if token not in move:
+            errors.append(f"Half Water heat-ledger contract missing {token!r}")
     for token in ("bool settledHalfWater = halfWater && !moving",
                   "!settledFineMedium && !settledHalfWater",
                   "settledMedium || settledFineMedium || settledHalfWater",

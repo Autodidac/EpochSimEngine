@@ -190,6 +190,24 @@ def main() -> int:
 
     require(renderer, "std::array<std::int32_t, 7> phases", errors,
             "six-pass liquid equalization contract")
+    for token in (
+        "encodeHalfMediumTemperature",
+        "halfMediumTemperature",
+        "mergeHalfWaterTemperature",
+        "mergeHalfMediumTemperature",
+        "halfCell.temperature = source.temperature",
+        "restoredMediumFrom(Cell source, uint material, uint volume, int temperature)",
+    ):
+        require(move, token, errors, "Half Water heat-ledger contract")
+    for token in (
+        "half_water_medium_temperature_min",
+        "encode_half_water_medium_temperature",
+        "decode_half_water_medium_temperature",
+        "merge_half_water_temperature",
+    ):
+        require(simulation_policy, token, errors, "CPU Half Water heat-ledger contract")
+    require(renderer, 'append("half_water_split_merge_heat_ledger"', errors,
+            "production Half Water heat-ledger acceptance")
 
     for token in (
         "bool macroLiquid = fullLiquid && !liquidBoundaryFine;",

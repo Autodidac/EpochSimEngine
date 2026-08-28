@@ -35,6 +35,14 @@ int main() {
             cell = SceneCell{static_cast<std::uint32_t>(Material::water), x + y, 18, 96u};
         }
     }
+    constexpr std::uint32_t half_water_aux =
+        0x00800000u |
+        ((static_cast<std::uint32_t>(Material::atmosphere) & 0x7fu) << 8u) |
+        121u;
+    const auto half_water_index =
+        static_cast<std::size_t>(505u) * dimensions.width + 1140u;
+    first[half_water_index] = SceneCell{
+        static_cast<std::uint32_t>(Material::water), 37u, 73, half_water_aux};
 
     const auto suffix = std::to_string(
         std::chrono::steady_clock::now().time_since_epoch().count());
@@ -67,6 +75,10 @@ int main() {
             return left.material == right.material && left.age == right.age &&
                    left.temperature == right.temperature && left.aux == right.aux;
         })) return 10;
+    if (loaded[half_water_index].material != static_cast<std::uint32_t>(Material::water) ||
+        loaded[half_water_index].age != 37u ||
+        loaded[half_water_index].temperature != 73 ||
+        loaded[half_water_index].aux != half_water_aux) return 18;
 
     auto second = first;
     second.front().material = static_cast<std::uint32_t>(Material::stone);
@@ -82,6 +94,8 @@ int main() {
                     Scene::volcano, "slot 1", loaded, loaded_metadata, error)) return 12;
     if (error.find("loaded backup") == std::string::npos) return 13;
     if (loaded.front().material != first.front().material) return 14;
+    if (loaded[half_water_index].aux != half_water_aux ||
+        loaded[half_water_index].temperature != 73) return 19;
 
     auto sentinel = loaded;
     if (load_world(root, WorldSizePreset::compact, dimensions.width + 1u, dimensions.height,

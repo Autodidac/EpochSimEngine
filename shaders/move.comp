@@ -128,6 +128,8 @@ const uint AUX_HALF_MEDIUM_MATERIAL_SHIFT = 8u;
 const uint AUX_HALF_MEDIUM_MATERIAL_MASK = 0x00007f00u;
 const uint AUX_HALF_MEDIUM_VOLUME_SHIFT = 15u;
 const uint AUX_HALF_MEDIUM_VOLUME_MASK = 0x007f8000u;
+const int HALF_MEDIUM_TEMPERATURE_MIN = -100;
+const int HALF_MEDIUM_TEMPERATURE_MAX = 154;
 
 bool isStoredGasMaterial(uint material) {
     return material == MAT_SMOKE || material == MAT_STEAM || material == MAT_DIRTY_STEAM ||
@@ -158,12 +160,40 @@ void clearHalfMedium(inout Cell cell) {
     cell.aux &= ~(AUX_HALF_MEDIUM_MATERIAL_MASK | AUX_HALF_MEDIUM_VOLUME_MASK);
 }
 
-void setHalfMedium(inout Cell cell, uint material, uint volume) {
+uint encodeHalfMediumTemperature(int temperature) {
+    return uint(clamp(temperature, HALF_MEDIUM_TEMPERATURE_MIN,
+                      HALF_MEDIUM_TEMPERATURE_MAX) -
+                HALF_MEDIUM_TEMPERATURE_MIN + 1);
+}
+
+int halfMediumTemperature(Cell cell) {
+    uint encoded = stateValue(cell);
+    return encoded == 0u ? 20
+                         : int(encoded) - 1 + HALF_MEDIUM_TEMPERATURE_MIN;
+}
+
+int mergeHalfWaterTemperature(int first, int second) {
+    return (first + second) / 2;
+}
+
+int mergeHalfMediumTemperature(uint firstMaterial, uint firstVolume, int firstTemperature,
+                               uint secondMaterial, uint secondVolume, int secondTemperature) {
+    uint firstWeight = firstMaterial == MAT_EMPTY ? 0u : max(firstVolume, 1u);
+    uint secondWeight = secondMaterial == MAT_EMPTY ? 0u : max(secondVolume, 1u);
+    uint totalWeight = firstWeight + secondWeight;
+    if (totalWeight == 0u) return 20;
+    return (firstTemperature * int(firstWeight) +
+            secondTemperature * int(secondWeight)) / int(totalWeight);
+}
+
+void setHalfMedium(inout Cell cell, uint material, uint volume, int temperature) {
     clearHalfMedium(cell);
+    setStateValue(cell, 0u);
     if (material == MAT_EMPTY) return;
     // Balanced Air is an ambient marker, not hidden pressure inside Half Water.
-    // It restores to the canonical Air state when two halves consolidate.
+    // Its pressure restores canonically while this state byte preserves heat.
     if (volume == 0u && material != MAT_ATMOSPHERE) return;
+    setStateValue(cell, encodeHalfMediumTemperature(temperature));
     cell.aux |= ((material & 0x7fu) << AUX_HALF_MEDIUM_MATERIAL_SHIFT) |
                 ((min(volume, 255u) & 0xffu) << AUX_HALF_MEDIUM_VOLUME_SHIFT);
 }
@@ -174,13 +204,13 @@ uint representedGasVolume(Cell cell) {
     return volume == 0u ? 1u : volume;
 }
 
-Cell restoredMediumFrom(Cell source, uint material, uint volume) {
+Cell restoredMediumFrom(Cell source, uint material, uint volume, int temperature) {
     if (material == MAT_EMPTY) return Cell(MAT_EMPTY, 0u, 20, 0u);
     if (volume == 0u && material != MAT_ATMOSPHERE)
         return Cell(MAT_EMPTY, 0u, 20, 0u);
     source.material = material;
     source.age = 0u;
-    source.temperature = 20;
+    source.temperature = temperature;
     source.aux &= ~(AUX_WATER_HALF | AUX_MOVED | AUX_STATE_MASK |
                     AUX_HALF_MEDIUM_MATERIAL_MASK | AUX_HALF_MEDIUM_VOLUME_MASK);
     setStateValue(source, material == MAT_ATMOSPHERE && volume == 0u ? 54u : volume);
@@ -207,16 +237,25 @@ bool mergeHalfWaterPair(ivec2 keepPosition, ivec2 releasePosition, Cell keep, Ce
     if (!halfWaterMergeCompatible(keep, released)) return false;
     uint firstVolume = halfMediumVolume(keep);
     uint secondVolume = halfMediumVolume(released);
-    uint mediumMaterial = firstVolume != 0u ? halfMediumMaterial(keep)
-                                           : halfMediumMaterial(released);
+    uint firstMaterial = halfMediumMaterial(keep);
+    uint secondMaterial = halfMediumMaterial(released);
+    int firstMediumTemperature = halfMediumTemperature(keep);
+    int secondMediumTemperature = halfMediumTemperature(released);
+    uint mediumMaterial = firstVolume != 0u ? firstMaterial : secondMaterial;
     uint mediumVolume = firstVolume + secondVolume;
+    int mediumTemperature = mergeHalfMediumTemperature(
+        firstMaterial, firstVolume, firstMediumTemperature,
+        secondMaterial, secondVolume, secondMediumTemperature);
 
     setHalfWaterCell(keep, false);
     clearHalfMedium(keep);
+    setStateValue(keep, 0u);
+    keep.temperature = mergeHalfWaterTemperature(keep.temperature, released.temperature);
     keep.age = 0u;
     keep.aux |= AUX_MOVED;
     cells[moveIndex(keepPosition)] = keep;
-    cells[moveIndex(releasePosition)] = restoredMediumFrom(released, mediumMaterial, mediumVolume);
+    cells[moveIndex(releasePosition)] = restoredMediumFrom(
+        released, mediumMaterial, mediumVolume, mediumTemperature);
     markChunkDirty(keepPosition);
     markChunkDirty(releasePosition);
     return true;
@@ -230,13 +269,13 @@ void splitFullWaterPair(ivec2 sourcePosition, ivec2 targetPosition, Cell source,
     uint targetMediumVolume = mediumVolume - sourceMediumVolume;
 
     setHalfWaterCell(source, true);
-    setHalfMedium(source, mediumMaterial, sourceMediumVolume);
+    setHalfMedium(source, mediumMaterial, sourceMediumVolume, target.temperature);
     source.age = 0u;
     source.aux |= AUX_MOVED;
 
     Cell halfCell = source;
-    setHalfMedium(halfCell, mediumMaterial, targetMediumVolume);
-    halfCell.temperature = (source.temperature + target.temperature) / 2;
+    setHalfMedium(halfCell, mediumMaterial, targetMediumVolume, target.temperature);
+    halfCell.temperature = source.temperature;
     cells[moveIndex(sourcePosition)] = source;
     cells[moveIndex(targetPosition)] = halfCell;
     markChunkDirty(sourcePosition);

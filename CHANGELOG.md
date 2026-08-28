@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Conserved Half Water heat and displaced-medium ownership across ledge split, adjacent merge, exact saves/backups, and Blueprint transforms; both half-units retain source Water temperature, merged Water averages equal units, and restored Atmosphere/gas keeps its packed temperature and pressure/volume.
 - Updated the complete vendored EpochGui dependency to v0.89.27 at b23f283dd9b0d6021dccd8fbc2235306418aa66a from the checksum-verified Site mirror; all 10 upstream Windows tests pass.
 - Restricted Half Water ledge splitting to a terminal two-cell full-Water supply so deep reservoirs keep one full-Water identity instead of cascading into darker halves.
 - Replaced the isolated Waterworks Cloud bank with one continuous deck of complete aligned Cloud tiles across every traversable high-sky column at world Y `520..559`; sealed sidewalls remain hard containment, while Waterworks Steam feeds the shared one-for-one Cloud/rain loop.

@@ -329,7 +329,7 @@ Uniform aligned 8x8 material regions can move as exact 64-cell packets while the
 
 ## Half-volume fresh water
 
-Fresh water supports conserved darker half-cells only at a terminal two-cell supplied ledge: the lip hangs one half while its paired half drips. A deeper full-Water reservoir cannot cascade into halves, and pre-fall droplets cannot hop along water edges or crawl after falling. See `HALF_WATER.md`.
+Fresh water supports conserved darker half-cells only at a terminal two-cell supplied ledge: the lip hangs one half while its paired half drips. A deeper full-Water reservoir cannot cascade into halves, and pre-fall droplets cannot hop along water edges or crawl after falling. Both split halves retain the exact source Water temperature; merge averages those equal represented units and restores the displaced Atmosphere/gas with its packed temperature and pressure/volume instead of resetting heat. Save/load and Blueprint transforms preserve the fractional payload exactly. See `HALF_WATER.md`.
 
 
 ## v2.5.25 distributed World and persistent Fix29 hive recovery

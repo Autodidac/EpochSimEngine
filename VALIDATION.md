@@ -80,7 +80,7 @@ The executable allocates the selected resident World (Large is 10240x1440), runs
 - exact one-packet 8x8 Water and Hydrogen displacement;
 - blocked Water retains macro ownership for seven due opportunities and enters fine fallback on the eighth only after an open-boundary check;
 - enclosed Air remains tiled after the same classifier budget;
-- Half Water fall, clear-gap two-to-four-cell attraction, merge, terminal supplied-ledge split/hang/drip, and full-Water zero-jitter equilibrium;
+- Half Water fall, clear-gap two-to-four-cell attraction, merge, terminal supplied-ledge split/hang/drip, exact split/merge Water heat, displaced-medium temperature/pressure restoration, save/backup/Blueprint payload retention, and full-Water zero-jitter equilibrium;
 - a four-cell supplied full-Water reservoir remains four full cells with zero Half flags instead of cascading into darker halves;
 - paired cardinal Hydrogen/Oxygen synthesis into one Water-family cell plus one pressure-bearing Atmosphere cell;
 - Steam joining an explicit Cloud reservoir, then mature connected Cloud converting one-for-one into interval Water rain without direct Steam-to-rain;
@@ -109,7 +109,7 @@ The packet/performance follow-up adds successful-distance and bounded-dispatch g
 - `sandhybrid_behavior_contract` proves eight-step travel saturation, independent failed-attempt accumulation, success reset, and perimeter-conditional breakup.
 - `sandhybrid_section_scheduler_contract` proves clipped 4x4 dispatch dimensions and a fourfold Large cell-domain reduction.
 - Packaged Windows and Linux Vulkan acceptance proves `macro_bubble_eight_step_breakup` with Hydrogen `64`, Water `512`, progress `7` retained and progress `8` broken to fine; `macro_blocked_fine_fallback` reports exactly eight blocked attempts. Current-source acceptance additionally follows all three authored Waterworks Hydrogen packets through the production active window with the same seven-step retention/eighth-step breakup, exact Hydrogen conservation, and exact total Water-family conservation while four Water units become Steam at the powered source.
-- Serial native verification passes Windows Release `40/40` CTests and WSL Linux Release `32/32`. The complete standalone EpochGui v0.89.27 Windows suite passes `10/10`, including both optional modules. Interactive timestamp/FPS evidence remains required for performance mission closure.
+- Serial native verification passes Windows Release `40/40` CTests and WSL Linux Release `32/32`. The complete standalone EpochGui v0.89.27 Windows suite passes `10/10`, including both optional modules. The current Half Water ownership tree additionally passes `51/51` Compact production checks on both RTX 5080 and Linux llvmpipe, including exact split/merge heat and displaced-medium restoration. Interactive timestamp/FPS evidence remains required for performance mission closure.
 
 - `sandhybrid_input_routing_contract` proves `request_world_reset` raises only the reset epoch request and preserves simulation-camera and MAP center/zoom state.
 - `sandhybrid_ui_layout_contract` proves the new sidebar Camera Home hit region remains inside the sidebar and does not overlap camera-mode, MAP, or DEBUG controls.
