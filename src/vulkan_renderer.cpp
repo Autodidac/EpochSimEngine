@@ -5927,6 +5927,185 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             }
 
             {
+                const auto saved_step = simulation_step;
+
+                auto hot_water_cells = acceptance_atmosphere_world();
+                auto hot_water = make_fill_cell(
+                    material_id(Material::water),
+                    static_cast<std::uint32_t>(index_of(100u, 100u)));
+                hot_water.temperature = 125;
+                hot_water_cells[index_of(100u, 100u)] = hot_water;
+                upload_scene_cells(hot_water_cells);
+                run_acceptance_chemistry_pass();
+                const auto boiled = download_scene_cells();
+                const auto& carried_steam = boiled[index_of(100u, 100u)];
+
+                auto condense_cells = acceptance_atmosphere_world();
+                auto cooling_steam = make_fill_cell(
+                    material_id(Material::steam),
+                    static_cast<std::uint32_t>(index_of(100u, 100u)));
+                cooling_steam.age = 121u;
+                cooling_steam.temperature = 60;
+                condense_cells[index_of(100u, 100u)] = cooling_steam;
+                auto cloud_neighbor = make_fill_cell(
+                    material_id(Material::cloud),
+                    static_cast<std::uint32_t>(index_of(101u, 100u)));
+                cloud_neighbor.temperature = 12;
+                condense_cells[index_of(101u, 100u)] = cloud_neighbor;
+                upload_scene_cells(condense_cells);
+                run_acceptance_chemistry_pass();
+                const auto condensed = download_scene_cells();
+                const auto& carried_cloud = condensed[index_of(100u, 100u)];
+
+                std::uint32_t rain_x = 0u;
+                std::uint32_t rain_y = 0u;
+                bool rain_candidate_found = false;
+                constexpr std::uint32_t rain_step = 240u;
+                for (std::uint32_t y = 96u;
+                     y <= 120u && !rain_candidate_found; ++y) {
+                    for (std::uint32_t x = 96u; x <= 120u; ++x) {
+                        const auto candidate =
+                            static_cast<std::uint32_t>(index_of(x, y));
+                        if ((fill_hash(candidate ^ random_seed ^ rain_step ^
+                                       0xc10d5u) & 7u) == 0u) {
+                            rain_x = x;
+                            rain_y = y;
+                            rain_candidate_found = true;
+                            break;
+                        }
+                    }
+                }
+                auto rain_cells = acceptance_atmosphere_world();
+                if (rain_candidate_found) {
+                    for (std::uint32_t y = rain_y - 1u;
+                         y <= rain_y + 1u; ++y) {
+                        for (std::uint32_t x = rain_x - 1u;
+                             x <= rain_x + 1u; ++x) {
+                            auto cloud = make_fill_cell(
+                                material_id(Material::cloud),
+                                static_cast<std::uint32_t>(index_of(x, y)));
+                            cloud.age = 601u;
+                            cloud.temperature = 13;
+                            rain_cells[index_of(x, y)] = cloud;
+                        }
+                    }
+                }
+                simulation_step = rain_step;
+                upload_scene_cells(rain_cells);
+                run_acceptance_chemistry_pass();
+                const auto rained = download_scene_cells();
+                const auto& carried_rain =
+                    rained[index_of(rain_x, rain_y)];
+
+                auto extinguish_cells = acceptance_atmosphere_world();
+                extinguish_cells[index_of(100u, 100u)] = make_fill_cell(
+                    material_id(Material::fire),
+                    static_cast<std::uint32_t>(index_of(100u, 100u)));
+                extinguish_cells[index_of(101u, 100u)] = make_fill_cell(
+                    material_id(Material::water),
+                    static_cast<std::uint32_t>(index_of(101u, 100u)));
+                upload_scene_cells(extinguish_cells);
+                run_acceptance_chemistry_pass();
+                const auto extinguished = download_scene_cells();
+                const auto water_family_after_extinguish =
+                    count_material(extinguished, Material::water) +
+                    count_material(extinguished, Material::steam) +
+                    count_material(extinguished, Material::cloud);
+
+                auto cooling_cells = acceptance_atmosphere_world();
+                auto isolated_lava = make_fill_cell(
+                    material_id(Material::lava),
+                    static_cast<std::uint32_t>(index_of(100u, 100u)));
+                isolated_lava.temperature = 900;
+                cooling_cells[index_of(100u, 100u)] = isolated_lava;
+                cooling_cells[index_of(101u, 100u)] = make_fill_cell(
+                    material_id(Material::water),
+                    static_cast<std::uint32_t>(index_of(101u, 100u)));
+                upload_scene_cells(cooling_cells);
+                run_acceptance_chemistry_pass();
+                const auto cooled = download_scene_cells();
+                const auto& cooled_stone = cooled[index_of(100u, 100u)];
+                const auto cooled_rock_family =
+                    count_material(cooled, Material::stone) +
+                    count_material(cooled, Material::lava);
+                const auto cooled_water_family =
+                    count_material(cooled, Material::water) +
+                    count_material(cooled, Material::steam) +
+                    count_material(cooled, Material::cloud);
+
+                auto reheating_cells = acceptance_atmosphere_world();
+                auto reheated_stone = make_fill_cell(
+                    material_id(Material::stone),
+                    static_cast<std::uint32_t>(index_of(100u, 100u)));
+                reheated_stone.temperature = 950;
+                reheating_cells[index_of(100u, 100u)] = reheated_stone;
+                for (const auto& offset : std::array{
+                         std::pair{-1, 0}, std::pair{1, 0},
+                         std::pair{0, -1}, std::pair{0, 1}}) {
+                    reheating_cells[index_of(
+                        static_cast<std::uint32_t>(100 + offset.first),
+                        static_cast<std::uint32_t>(100 + offset.second))] =
+                        make_fill_cell(
+                            material_id(Material::lava),
+                            static_cast<std::uint32_t>(index_of(
+                                static_cast<std::uint32_t>(100 + offset.first),
+                                static_cast<std::uint32_t>(100 + offset.second))));
+                }
+                upload_scene_cells(reheating_cells);
+                run_acceptance_chemistry_pass();
+                const auto reheated = download_scene_cells();
+                const auto& reheated_lava = reheated[index_of(100u, 100u)];
+                const auto reheated_rock_family =
+                    count_material(reheated, Material::stone) +
+                    count_material(reheated, Material::lava);
+                simulation_step = saved_step;
+
+                append("water_weather_phase_temperature_ownership",
+                       carried_steam.material == material_id(Material::steam) &&
+                           carried_steam.temperature > 110 &&
+                           carried_cloud.material == material_id(Material::cloud) &&
+                           carried_cloud.temperature == 60 &&
+                           rain_candidate_found &&
+                           carried_rain.material == material_id(Material::water) &&
+                           carried_rain.temperature == 13,
+                       "steam_temp=" +
+                           std::to_string(carried_steam.temperature) +
+                           " cloud_temp=" +
+                           std::to_string(carried_cloud.temperature) +
+                           " rain_temp=" +
+                           std::to_string(carried_rain.temperature));
+                append("fire_extinguish_does_not_duplicate_water",
+                       extinguished[index_of(100u, 100u)].material ==
+                               material_id(Material::empty) &&
+                           water_family_after_extinguish == 1u,
+                       "fire_result=" +
+                           std::to_string(
+                               extinguished[index_of(100u, 100u)].material) +
+                           " water_family=" +
+                           std::to_string(water_family_after_extinguish));
+                append("renewable_lava_stone_family_balance",
+                       cooled_stone.material == material_id(Material::stone) &&
+                           cooled_stone.temperature > 20 &&
+                           cooled_rock_family == 1u &&
+                           cooled_water_family == 1u &&
+                           reheated_lava.material == material_id(Material::lava) &&
+                           reheated_lava.temperature >= 900 &&
+                           reheated_rock_family == 5u,
+                       "cooled_material=" +
+                           std::to_string(cooled_stone.material) +
+                           " cooled_temp=" +
+                           std::to_string(cooled_stone.temperature) +
+                           " cooled_families=" +
+                           std::to_string(cooled_rock_family) + "/" +
+                           std::to_string(cooled_water_family) +
+                           " reheated_material=" +
+                           std::to_string(reheated_lava.material) +
+                           " reheated_temp=" +
+                           std::to_string(reheated_lava.temperature) +
+                           " reheated_family=" +
+                           std::to_string(reheated_rock_family));
+            }
+            {
                 constexpr std::uint32_t charged_bit = 0x40000000u;
                 constexpr std::uint32_t wet_bit = 0x80000000u;
                 auto cells = acceptance_atmosphere_world();

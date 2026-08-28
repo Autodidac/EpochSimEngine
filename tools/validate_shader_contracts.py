@@ -313,6 +313,9 @@ def main() -> int:
         "closed_crop_stored_co2_debug_identity",
         "waterfall_dissolved_oxygen_closed_transaction",
         "waterfall_aeration_debug_identity",
+        "water_weather_phase_temperature_ownership",
+        "fire_extinguish_does_not_duplicate_water",
+        "renewable_lava_stone_family_balance",
     ):
         require(renderer, token, errors, "production weather/laser/ecology acceptance contract")
 
@@ -358,6 +361,14 @@ def main() -> int:
                 "conserved waterfall aeration chemistry contract")
     require(move, "!moveHasDissolvedWaterGas(a) && fullWaterSplitSupplied(left, 1)",
             errors, "dissolved Water cannot enter Half Water payload contract")
+    for token in (
+        "neighborCount(p, MAT_LAVA) >= 4u",
+        "Fire is energy, not a second hidden Water source",
+        "result.temperature = source.temperature",
+        "int carriedTemperature = max(result.temperature, 100)",
+    ):
+        require(chemistry, token, errors,
+                "renewable Water/weather and Lava/Stone phase ownership contract")
 
     if errors:
         print("current shader/interface contract validation failed:", file=sys.stderr)

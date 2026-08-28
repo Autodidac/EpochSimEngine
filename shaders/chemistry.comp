@@ -1577,6 +1577,17 @@ void main() {
         result = makeCell(MAT_WATER);
     }
 
+    // A surrounded hot Stone unit returns to the Lava family one-for-one.
+    // This executes before durable-structure early return so the renewable
+    // geologic loop cannot become permanently trapped as structural Stone.
+    if (source.material == MAT_STONE && neighborCount(p, MAT_LAVA) >= 4u &&
+        result.temperature >= 900) {
+        int reheatedTemperature = result.temperature;
+        result = makeCell(MAT_LAVA);
+        result.temperature = reheatedTemperature;
+        result.age = 0u;
+    }
+
     // Structure chemistry only reduces integrity. It cannot replace a wall with
     // saltwater, mud, ash, or another phase while the voxel remains structural.
     applyStructuralHazards(p, source, result, nearWater, nearSaltwater, nearLava, nearFire, nearAcid);
@@ -1616,7 +1627,9 @@ void main() {
     if (result.material == source.material && source.material == MAT_WATER &&
         (nearLava || nearFire || nearPoweredBoiler || hasNeighbor(p, MAT_EMBER) ||
          result.temperature >= 100)) {
+        int carriedTemperature = max(result.temperature, 100);
         result = makeCell(MAT_STEAM);
+        result.temperature = carriedTemperature;
     } else if (source.material == MAT_SALTWATER &&
                (nearLava || nearFire || result.temperature >= 102)) {
         // Evaporation concentrates brine. At saturation it leaves salt behind.
@@ -1625,7 +1638,9 @@ void main() {
         else setSalinity(result, concentration + 2u);
     } else if (source.material == MAT_DIRTY_WATER &&
                (nearLava || nearFire || result.temperature >= 100)) {
+        int carriedTemperature = max(result.temperature, 100);
         result = makeCell(MAT_DIRTY_STEAM);
+        result.temperature = carriedTemperature;
     } else if (source.material == MAT_LAVA) {
         uint connectedLava = lavaNeighborCount(p);
         bool isolated = connectedLava == 0u;
@@ -1637,11 +1652,16 @@ void main() {
         if (openAbove && pressure > 12u) pressure -= 12u;
         setStateValue(result, pressure);
         if (isolated && (nearWater || nearSaltwater)) {
+            int cooledTemperature = result.temperature;
             result = makeCell(MAT_STONE);
+            result.temperature = cooledTemperature;
         } else {
             result.temperature = max(result.temperature, connectedLava > 0u ? 1125 : 900);
-            if (isolated && source.age > 7200u && (randomValue & 1023u) == 0u)
+            if (isolated && source.age > 7200u && (randomValue & 1023u) == 0u) {
+                int cooledTemperature = result.temperature;
                 result = makeCell(MAT_STONE);
+                result.temperature = cooledTemperature;
+            }
         }
     } else if (source.material == MAT_MAGMA_VENT) {
         result.temperature = 1350;
@@ -1667,7 +1687,7 @@ void main() {
         if (joinsCloud || nucleatesCloud) {
             result = makeCell(MAT_CLOUD);
             if (dirtyVapor) result.aux |= AUX_WET;
-            result.temperature = min(source.temperature, 24);
+            result.temperature = source.temperature;
         }
     } else if (source.material == MAT_CLOUD) {
         uint connectedMass = 1u + neighborCount(p, MAT_CLOUD);
@@ -1675,7 +1695,7 @@ void main() {
         bool rainCell = (hash32(index ^ pc.seed ^ pc.step ^ 0xc10d5u) & 7u) == 0u;
         if (source.age > 600u && connectedMass >= 6u && rainInterval && rainCell) {
             result = makeCell((source.aux & AUX_WET) != 0u ? MAT_DIRTY_WATER : MAT_WATER);
-            result.temperature = max(source.temperature, 4);
+            result.temperature = source.temperature;
         }
 
     }
@@ -1683,7 +1703,9 @@ void main() {
     if (source.material == MAT_FIRE) {
         result.temperature = max(result.temperature, 620);
         if (nearWater || nearSaltwater) {
-            result = makeCell(MAT_STEAM);
+            // The adjacent Water cell owns its own one-for-one Steam phase
+            // transition. Fire is energy, not a second hidden Water source.
+            result = makeCell(MAT_EMPTY);
         } else if (source.age > 72u + (randomValue & 127u)) {
             result = makeCell((randomValue & 15u) == 0u ? MAT_EMBER : MAT_SMOKE);
         }
