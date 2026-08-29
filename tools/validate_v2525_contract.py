@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v2.5.25 distributed World, common terrain, and persistent Fix29 hive gate."""
+"""Validate the v2.5.26 distributed World, common terrain, and persistent Fix29 hive gate."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,21 +13,21 @@ def require(relative: str, *tokens: str) -> None:
     text = read(relative)
     missing = [token for token in tokens if token not in text]
     if missing:
-        raise SystemExit(f"{relative} missing v2.5.25 contract tokens: {missing}")
+        raise SystemExit(f"{relative} missing v2.5.26 contract tokens: {missing}")
 
 def reject(relative: str, *tokens: str) -> None:
     text = read(relative)
     found = [token for token in tokens if token in text]
     if found:
-        raise SystemExit(f"{relative} retains rejected v2.5.25 tokens: {found}")
+        raise SystemExit(f"{relative} retains rejected v2.5.26 tokens: {found}")
 
 
-require("CMakeLists.txt", "VERSION 2.5.25", "sandhybrid_v2525_source_contract")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.25",
-        "SandHybrid-Windows-x64-v2.5.25", "SandHybrid-Linux-x64-v2.5.25")
-require(".github/workflows/ci-release.yml", "refs/tags/v2.5.25",
-        "SandHybrid-Windows-x64-v2.5.25", "SandHybrid-Linux-x64-v2.5.25",
-        "gh release create v2.5.25", "group: sandhybrid-v2525-")
+require("CMakeLists.txt", "VERSION 2.5.26", "sandhybrid_v2525_source_contract")
+require("RELEASE_NOTES.md", "# SandHybrid v2.5.26",
+        "SandHybrid-Windows-x64-v2.5.26", "SandHybrid-Linux-x64-v2.5.26")
+require(".github/workflows/ci-release.yml", "refs/tags/v2.5.26",
+        "SandHybrid-Windows-x64-v2.5.26", "SandHybrid-Linux-x64-v2.5.26",
+        "gh release create v2.5.26", "group: sandhybrid-v2526-")
 require("include/sandhybrid/world_layout.hpp",
         "persistent_world_gap_slots =", "persistent_world_district_gap",
         "persistent_world_surface_y", "persistent_world_district_origin_y")
@@ -61,4 +61,4 @@ require("tests/input_routing_contract.cpp", "request_world_reset(reset_state)",
         "reset_state.map_zoom.load() != 9u")
 require("tests/ui_layout_contract.cpp", "layout.camera_home.position.x")
 
-print("v2.5.25 distributed World, common grass level, sparse startup, and persistent Fix29 hive contracts valid.")
+print("v2.5.26 distributed World, common grass level, sparse startup, and persistent Fix29 hive contracts valid.")

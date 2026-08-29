@@ -23,15 +23,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git archive --format=tar.gz --prefix=SandHybrid-v2.5.25/ --output="${RUNNER_TEMP}/SandHybrid-v2.5.25-source.tar.gz" HEAD
-          sha256sum "${RUNNER_TEMP}/SandHybrid-v2.5.25-source.tar.gz" > "${RUNNER_TEMP}/SandHybrid-v2.5.25-source.tar.gz.sha256"
+          git archive --format=tar.gz --prefix=SandHybrid-v2.5.26/ --output="${RUNNER_TEMP}/SandHybrid-v2.5.26-source.tar.gz" HEAD
+          sha256sum "${RUNNER_TEMP}/SandHybrid-v2.5.26-source.tar.gz" > "${RUNNER_TEMP}/SandHybrid-v2.5.26-source.tar.gz.sha256"
 
       - name: Upload source artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SandHybrid-v2.5.25-source
+          name: SandHybrid-v2.5.26-source
           path: |
-            ${{ runner.temp }}/SandHybrid-v2.5.25-source.tar.gz
-            ${{ runner.temp }}/SandHybrid-v2.5.25-source.tar.gz.sha256
+            ${{ runner.temp }}/SandHybrid-v2.5.26-source.tar.gz
+            ${{ runner.temp }}/SandHybrid-v2.5.26-source.tar.gz.sha256
           if-no-files-found: error
           retention-days: 1

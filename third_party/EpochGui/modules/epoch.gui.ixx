@@ -19,7 +19,7 @@ export namespace epochengine::gui_lib
     inline constexpr int version_major = 0;
     inline constexpr int version_minor = 89;
     inline constexpr int version_revision = 29;
-    inline constexpr std::string_view version_string = "0.89.29";
+    inline constexpr std::string_view version_string = "0.89.30";
 
     struct Vec2
     {
@@ -343,6 +343,43 @@ export namespace epochengine::gui_lib
         float gap{ 2.0f };
         float overflow_width{ 120.0f };
     };
+
+    struct ResponsiveTabWidthOptions
+    {
+        float requested_width{};
+        float measured_label_width{};
+        float minimum_hit_width{ 72.0f };
+        float horizontal_padding{ 24.0f };
+        float close_extent{};
+        float dirty_extent{};
+    };
+
+    [[nodiscard]] inline float resolve_responsive_tab_width(
+        const ResponsiveTabWidthOptions& options) noexcept
+    {
+        const float minimum = std::isfinite(options.minimum_hit_width)
+            ? (std::max)(1.0f, options.minimum_hit_width)
+            : 72.0f;
+        const float requested = std::isfinite(options.requested_width)
+            ? (std::max)(0.0f, options.requested_width)
+            : 0.0f;
+        const float label = std::isfinite(options.measured_label_width)
+            ? (std::max)(0.0f, options.measured_label_width)
+            : 0.0f;
+        const float padding = std::isfinite(options.horizontal_padding)
+            ? (std::max)(0.0f, options.horizontal_padding)
+            : 0.0f;
+        const float close = std::isfinite(options.close_extent)
+            ? (std::max)(0.0f, options.close_extent)
+            : 0.0f;
+        const float dirty = std::isfinite(options.dirty_extent)
+            ? (std::max)(0.0f, options.dirty_extent)
+            : 0.0f;
+        return (std::max)({
+            minimum,
+            requested,
+            label + padding + close + dirty});
+    }
 
     struct ResponsiveTabStripLayout
     {

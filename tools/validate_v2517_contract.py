@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the v2.5.25 packaged macro/Half Water/hive/cursor recovery gate."""
+"""Validate the v2.5.26 packaged macro/Half Water/hive/cursor recovery gate."""
 
 from pathlib import Path
 
@@ -21,19 +21,19 @@ def reject(path: str, token: str) -> None:
 
 
 # Stable visible publication and exact native package names.
-require("CMakeLists.txt", "VERSION 2.5.25")
+require("CMakeLists.txt", "VERSION 2.5.26")
 require("CHANGELOG.md", "## 2.5.17")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.25")
+require("RELEASE_NOTES.md", "# SandHybrid v2.5.26")
 for token in (
-    "SandHybrid-Windows-x64-v2.5.25",
-    "SandHybrid-Linux-x64-v2.5.25",
-    "refs/tags/v2.5.25",
-    "gh release create v2.5.25",
+    "SandHybrid-Windows-x64-v2.5.26",
+    "SandHybrid-Linux-x64-v2.5.26",
+    "refs/tags/v2.5.26",
+    "gh release create v2.5.26",
     "--verify-tag",
     "Expected two packages and two checksums",
 ):
     require(".github/workflows/ci-release.yml", token)
-reject(".github/workflows/ci-release.yml", "v2.5.25-test")
+reject(".github/workflows/ci-release.yml", "v2.5.26-test")
 reject(".github/workflows/ci-release.yml", "--prerelease")
 
 # The reserved Half Water bit cannot leak out of ordinary CPU full-Water constructors.
@@ -132,4 +132,4 @@ for token in (
 require("MISSION_LEDGER.md", "v2.5.17 publication record")
 require("VALIDATION.md", "--runtime-acceptance-report")
 
-print("v2.5.25 packaged macro, Half Water, hive, cursor, and stable release contracts valid.")
+print("v2.5.26 packaged macro, Half Water, hive, cursor, and stable release contracts valid.")

@@ -1,46 +1,36 @@
-# SandHybrid v2.5.25
+# SandHybrid v2.5.26
 
-Distributed persistent World, common terrain level, and durable photographed Fix29 hive recovery.
+Post-v2.5.25 weather, material, laser, hive, debug, Nuke, and frame-pacing correction for the SandHybrid example/runtime bundled with EpochSimEngine.
 
 ## Corrected behavior
 
-- The eight authored 640x360 districts are no longer packed into the middle of Large. They remain west-to-east but use the complete resident width: Large begins them at X `0, 1368, 2736, 4104, 5472, 6840, 8208, 9576`. Compact remains contiguous because it is exactly eight districts wide; Standard uses aligned intermediate gaps.
-- Every district translates its own authored terrain row onto one shared world grass line. In every 1440-cell preset the main grass surface is world Y `1040`, while the authored structures keep their scene-local height above and below that surface.
-- Persistent-world reset addressing is direct arithmetic instead of testing all eight districts for every one of 14,745,600 Large cells. The initial 4x4 active window intersects three authored districts instead of the old packed layout's four.
-- Sandbox and Ecosystem retain the photographed historical Fix29 hive cell-for-cell: shell `24 <= radius^2 < 88`, chamber `< 24`, queen centers `(512,234)` / `(512,232)`, right exit, canonical seeded Honey/Pollen contents, and nine complete aligned Wood support tiles.
-- Canonical hive Honey and Pollen are now fixed structural content during ordinary simulation. The exact placed body remains unchanged after 120 focused ticks instead of collapsing into the later C-shaped shell. Loaded and normalized hives use the same persistence rule.
-- One hundred district-aware SandHybrid bees retain foraging, feeding, pollen, queen, birth, migration, hazards, and return-home behavior; no SimpleSandSim bee runtime was imported.
-- Complete liquid/gas packets remain reversible metadata over canonical cells, move every two fixed ticks, and retain the eight-opportunity conditional fine-fallback contract. Half Water, paused editing, sidebar ownership, player recovery, machinery, atmosphere, and fixed-step presentation contracts remain intact.
-- Full Water now keeps one renderer identity and cannot cascade into Half Water from a deep reservoir; only a terminal two-cell supplied ledge creates the conserved hang/drip pair. Both halves retain source Water temperature, merged Water averages the two equal units, and the displaced Atmosphere/gas restores its packed temperature and pressure/volume; exact saves, backup recovery, and Blueprint transforms retain that payload.
-- Reset now authors one continuous weather-bearing deck of complete aligned Cloud tiles across every traversable high-sky column at world Y `520..559`; the sealed outer sidewall columns remain hard containment. Waterworks feeds that shared deck through its open catchment, powered boiler, and Steam riser, and mature Cloud rains one-for-one back into the finite Water family.
-- Inventory starts with actor weapon ownership while Editor remains independently available for live paint. Terminal laser damage transfers the exact struck material into matching inventory, releases the same unit into a deterministic adjacent clear cell when inventory is full, or retains the damaged source cell when neither transfer can commit; the gun never erases matter.
-- The persistent player is one shared 9x23-cell body, just under three complete tiles tall; collision, support, recovery, breathing, medium displacement, rendering, pickup exclusion, and laser origin all derive from those dimensions.
-- Exact World saves are now backward-compatible schema 2. The atomically checksummed primary/backup payload preserves every canonical cell plus the exact GPU actor owner, including position, inventory, health, Oxygen, weapon timers/hit state, progression, and drill level. Schema-1 cell-only saves still load deterministically without inventing actor ownership.
+- Preserves the photographed Fix29 Sandbox, Ecosystem, and tool-placed hive bodies immediately and after 120 fixed ticks, including the exact supported shell/content/perch and 100 live district-home SandHybrid bees.
+- Keeps recognizable base material colors in Debug and uses sparse state markers plus a complete damage outline; hidden/visible Debug collection remains byte-identical to production simulation.
+- Renames the former Ignite Air action to `NUKE FROM SPACE`, presents six warning-light frames, then performs one deterministic GPU Atmosphere-to-Fire edit without a full-world CPU readback.
+- Makes the player laser a world-to-world material transfer: it never creates Vacuum, never collects inventory, targets liquids and vegetation as well as solids, and retains the source when no deterministic body-clear gas swap can commit.
+- Prevents Acid adjacency and moist Waste from inventing Water-family units. Wet Waste becomes Fertilizer while the real Water owner remains; unsupported inorganic Acid dissolution remains unchanged until a paired Acid/solute owner exists.
+- Replaces synchronized bulk rain with sparse lower-edge Cloud precipitation staggered by eight-column band. Steam and Dirty Steam join or nucleate the continuous high-sky Cloud deck one-for-one, and every rain cell carries its source temperature.
+- Removes the observed presentation spikes: late fixed ticks no longer suppress requested frames, live MAP refresh copies one of 16 row bands, reset no longer exports a full-world PPM, and Nuke never downloads/floods the complete world on the CPU.
+- Keeps the proven software-Vulkan chemistry kernel byte-identical and applies the new conservative ownership rules in one shallow post-pass, avoiding the llvmpipe optimizer cliff.
+- Makes every incremental build deploy generated SPIR-V beside the executable so runtime tests cannot silently load an older shader.
 
 ## Release verification
 
-- The native window title identifies the exact build as `SandHybrid v2.5.25 - compact/standard/large` from initial shader startup onward; immutable package and source names carry the same version, while `current` updater aliases resolve to identical verified bytes.
-The native Windows and Linux Large Vulkan acceptance reports prove exact placed hive content both immediately and after 120 ticks, exact Sandbox/Ecosystem hives and 100 unique bee homes, common Y `1040` terrain for all eight districts, three-district startup footprint, a clear/supported/breathable 207-cell player body at `(4272,1111)`, consecutive macro Water movement, gas movement, enclosed-Air tiling, productive eighth-opportunity fallback, zero-jitter full Water, and conserved Half Water fall/merge/drip cases.
+The exact versioned Windows Release build passes all `43/43` CTests, including ten supported EpochGui v0.89.30 suites. The native Linux Release build passes all `33/33` CTests. Fresh Windows/RTX 5080 and Linux/llvmpipe runtime trees each pass all `63/63` production Vulkan checks, including macro-packet travel/breakup, zero-jitter Water and Half Water, H2/O2 synthesis, Atmosphere respiration, finite weather and rock loops, Acid/Waste ownership, balanced Volcano output, non-collecting laser transfer, Nuke, Debug byte identity, and exact immediate/delayed hives.
 
-The final corrective tree passes serial Windows Release `41/41` and native Linux Release `32/32` CTests; Windows includes all nine supported integrated EpochGui v0.89.29 tests, including HierarchyTree. Fresh installed Compact packages launch through their native wrappers and pass all `60/60` production Vulkan checks on Windows/RTX 5080 and Linux/llvmpipe, including byte-exact schema-2 cell/actor disk-to-GPU recovery, exact Half Water heat and zero-jitter full Water, the 638/640-column high-sky Cloud deck and cloud-first rain, zero reset-authored Volcano Smoke, balanced vent ejecta, all three non-destructive laser terminal paths, eight-step macro bubbles, experiments/magnetism, the 23-cell player, and immediate/delayed Fix29 hives. Broad visual traversal, sustained ecology/weather/machinery behavior, measured frame time, repeated finite-system/save-load cycles, and user observation of the final package remain active in `missioncache.md`; focused readback does not mark those missions COMPLETE.
+The final Linux llvmpipe gate completes in `8:42.79`, peaks at `3,114,352` KiB RSS, and uses zero swap. Broad packaged visual judgment, measured interactive frame-time capture, and repeated long finite-system/save-load cycles remain active in `missioncache.md`; deterministic readback does not mark those missions COMPLETE.
 
 ## Dependency snapshot
 
-The complete vendored EpochGui dependency is synchronized from the canonical GitHub-independent Site mirror to v0.89.29 at `8882503ac579add67456459986983ad7fd7c96db`. The immutable 111,063-byte source archive verifies SHA-256 `7dd5ea3ed165e3d0d175c31e8db29f5637ba66d4219745d3541805948dd39ac7`; all 53 upstream files are present, and the documented CMake 3.28/GNU module-compatibility integration is the only local boundary.
+The complete vendored EpochGui dependency is synchronized from the canonical GitHub-independent Site mirror to v0.89.30 at `b97167423373b9a7af3f821dcf91d8a71613dbf2`. The current 113,598-byte Site source alias verifies SHA-256 `c42bcdaa91953ef7b59a38453733431a5a73c5109df6ab151f6d78d68d734026` and matches the 53-file tagged tree. The documented CMake 3.28/GNU module-compatibility boundary remains the only integration delta.
 
 ## Stable release assets
 
-- SandHybrid-Windows-x64-current.zip
-- SandHybrid-Windows-x64-current.zip.sha256
-- SandHybrid-Linux-x64-current.tar.gz
-- SandHybrid-Linux-x64-current.tar.gz.sha256
-- SandHybrid-Windows-x64-v2.5.25.zip
-- SandHybrid-Windows-x64-v2.5.25.zip.sha256
-- SandHybrid-Linux-x64-v2.5.25.tar.gz
-- SandHybrid-Linux-x64-v2.5.25.tar.gz.sha256
-- SandHybrid-v2.5.25-source.tar.gz
-- SandHybrid-v2.5.25-source.tar.gz.sha256
-- simengine-source.tar.gz
-- simengine-source.tar.gz.sha256
+- SandHybrid-Windows-x64-v2.5.26.zip
+- SandHybrid-Windows-x64-v2.5.26.zip.sha256
+- SandHybrid-Linux-x64-v2.5.26.tar.gz
+- SandHybrid-Linux-x64-v2.5.26.tar.gz.sha256
+- SandHybrid-v2.5.26-source.tar.gz
+- SandHybrid-v2.5.26-source.tar.gz.sha256
 
-Exact byte sizes and SHA-256 values are published beside the finalized hosted artifacts after both native package/runtime gates pass. The normal stable Site release and committed-tree source update are authorized; GitHub tags, releases, and repository state remain untouched.
+Updater-facing aliases remain `SandHybrid-Windows-x64-current.zip`, `SandHybrid-Linux-x64-current.tar.gz`, and `simengine-source.tar.gz`; each must be byte-identical to its immutable v2.5.26 object and carry a matching checksum sidecar. The public release is a normal visible Site release. GitHub repository, tags, and releases remain outside this publication scope.

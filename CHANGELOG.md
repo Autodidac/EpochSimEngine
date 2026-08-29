@@ -1,6 +1,7 @@
 # Changelog
 
-## Unreleased
+## 2.5.26
+- Updated the complete canonical EpochGui dependency to v0.89.30 at `b97167423373b9a7af3f821dcf91d8a71613dbf2`, including its mandatory Input module and tenth supported Windows test.
 - Preserved the known-good software-Vulkan chemistry kernel and moved conservative Acid/Waste, fixed-hive, sparse-rain, and vapor/Cloud corrections into one shallow post-pass, avoiding the llvmpipe optimizer cliff while keeping all 63 production checks green on both RTX and llvmpipe.
 - Made incremental builds always deploy every generated shader beside the runtime, eliminating stale build-tree SPIR-V that previously hid source changes and produced misleading A/B results.
 - Renamed the former Ignite Air action to `NUKE FROM SPACE`, added a six-presented-frame warning flare, and moved the complete Atmosphere-to-Fire edit onto one deterministic GPU dispatch with no full-world CPU readback.
