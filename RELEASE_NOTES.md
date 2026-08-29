@@ -19,13 +19,14 @@ Distributed persistent World, common terrain level, and durable photographed Fix
 
 ## Release verification
 
+- The native window title identifies the exact build as `SandHybrid v2.5.25 - compact/standard/large` from initial shader startup onward; immutable package and source names carry the same version, while `current` updater aliases resolve to identical verified bytes.
 The native Windows and Linux Large Vulkan acceptance reports prove exact placed hive content both immediately and after 120 ticks, exact Sandbox/Ecosystem hives and 100 unique bee homes, common Y `1040` terrain for all eight districts, three-district startup footprint, a clear/supported/breathable 207-cell player body at `(4272,1111)`, consecutive macro Water movement, gas movement, enclosed-Air tiling, productive eighth-opportunity fallback, zero-jitter full Water, and conserved Half Water fall/merge/drip cases.
 
-The current corrective tree passes serial Windows Release 40/40 and native Linux Release 32/32 tests; standalone EpochGui v0.89.27 passes 10/10 upstream Windows tests. Rebuilt Compact executables pass all 52 production Vulkan checks on Windows/RTX 5080 and Linux/llvmpipe, including byte-exact schema-2 cell/actor disk-to-GPU recovery, the exact Half Water split/merge heat ledger, 80 C ledge pair, 638/640 traversable high-sky Cloud columns, zero reset-authored Volcano Smoke, balanced Lava-owned vent ejecta, all three non-destructive laser terminal paths, exact macro behavior, experiments, player scale, and immediate/delayed Fix29 hives. The preceding weather/laser fresh installed trees still audit at 58/57 files with 12 shaders, 20 headers, all 14 documents, native PE/ELF executables, and their own passing 50-check reports; fresh installed packages for the Half Water heat correction and archive/checksum evidence remain pending. Broad visual traversal, sustained ecology/weather/machinery behavior, measured frame time, repeated finite-system/save-load cycles, and user observation of the final package remain active in `missioncache.md`; focused readback does not mark those missions COMPLETE.
+The final corrective tree passes serial Windows Release `41/41` and native Linux Release `32/32` CTests; Windows includes all nine supported integrated EpochGui v0.89.29 tests, including HierarchyTree. Fresh installed Compact packages launch through their native wrappers and pass all `60/60` production Vulkan checks on Windows/RTX 5080 and Linux/llvmpipe, including byte-exact schema-2 cell/actor disk-to-GPU recovery, exact Half Water heat and zero-jitter full Water, the 638/640-column high-sky Cloud deck and cloud-first rain, zero reset-authored Volcano Smoke, balanced vent ejecta, all three non-destructive laser terminal paths, eight-step macro bubbles, experiments/magnetism, the 23-cell player, and immediate/delayed Fix29 hives. Broad visual traversal, sustained ecology/weather/machinery behavior, measured frame time, repeated finite-system/save-load cycles, and user observation of the final package remain active in `missioncache.md`; focused readback does not mark those missions COMPLETE.
 
 ## Dependency snapshot
 
-The complete vendored EpochGui dependency is synchronized from the canonical GitHub-independent Site mirror to v0.89.27 at `b23f283dd9b0d6021dccd8fbc2235306418aa66a`. The immutable 96,950-byte source archive verifies SHA-256 `842f9e6372a9742b1a0eaf72b4ac456a0d1f0a596888cac0b0dbbccbca3e01a0`; every non-CMake source file matches byte-for-byte, and the documented CMake integration is the only delta.
+The complete vendored EpochGui dependency is synchronized from the canonical GitHub-independent Site mirror to v0.89.29 at `8882503ac579add67456459986983ad7fd7c96db`. The immutable 111,063-byte source archive verifies SHA-256 `7dd5ea3ed165e3d0d175c31e8db29f5637ba66d4219745d3541805948dd39ac7`; all 53 upstream files are present, and the documented CMake 3.28/GNU module-compatibility integration is the only local boundary.
 
 ## Stable release assets
 
@@ -37,6 +38,8 @@ The complete vendored EpochGui dependency is synchronized from the canonical Git
 - SandHybrid-Windows-x64-v2.5.25.zip.sha256
 - SandHybrid-Linux-x64-v2.5.25.tar.gz
 - SandHybrid-Linux-x64-v2.5.25.tar.gz.sha256
+- SandHybrid-v2.5.25-source.tar.gz
+- SandHybrid-v2.5.25-source.tar.gz.sha256
 - simengine-source.tar.gz
 - simengine-source.tar.gz.sha256
 

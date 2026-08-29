@@ -2,7 +2,7 @@
 
 EpochGui is a portable C++23 GUI layout, input-adapter, raster-data, and geometry library used by EpochEngine and standalone applications.
 
-The current bundled and standalone source release is `v0.89.27`. EpochEngine
+The current bundled and standalone source release is `v0.89.29`. EpochEngine
 mirrors this tree under `Engine/dep/EpochGui`; hosted publication verifies that
 the standalone repository and bundled tree remain identical.
 
@@ -18,16 +18,47 @@ The core module provides:
 - Floating-window state and layout
 - Splitters and progress bars
 - Loading-screen layout
-- Selectable rows and segmented controls
+- Selectable rows, segmented controls, and responsive tab-strip planning that
+  preserves the active route behind a bounded overflow selector, plus
+  deterministic wrapped keyboard navigation that skips disabled routes
 - Popup placement and state
 - Docking, dock guides, context insertion grids, and dockable-window state
 - Panel-host state
 - Reusable node-graph, system, tile, and virtualized asset-grid workspaces
+- A reusable high-density hierarchy-tree controller with stable IDs,
+  ancestor-retaining filtering, range/toggle selection, keyboard traversal,
+  virtualized row planning, scroll-to-visible, locked/disabled rows, and
+  deterministic context-action routing
 - Text editing, selection, navigation, and scrolling
 
 ```cpp
 import epoch.gui;
 ```
+
+### `gui/hierarchy_tree.hpp`
+
+The renderer-neutral hierarchy controller is a public header/source API for
+dense trees such as outliners, GUI/component hierarchies, script browsers, and
+evidence explorers. It provides stable numeric identities, transactional tree
+replacement, deterministic ordering, expand/collapse state, ancestor-retaining
+filtering, single/toggle/range selection, keyboard traversal, virtualized row
+planning, scroll-to-visible calculations, locked and disabled row policy, and
+deterministic context-action routing.
+
+```cpp
+#include <gui/hierarchy_tree.hpp>
+
+namespace tree = epochengine::gui_lib::hierarchy_tree;
+
+tree::Controller hierarchy{};
+const tree::ReplaceResult admitted = hierarchy.replace_nodes(nodes);
+const tree::LayoutPlan visible = hierarchy.plan_rows(viewport);
+```
+
+EpochGui owns the portable state and calculations. A consuming application
+still supplies its domain nodes, draws the planned rows, feeds input commands,
+and executes accepted context routes. This standalone release does not claim
+that a particular EpochEngine editor surface has adopted the control yet.
 
 ### `epoch.gui.tile_workspace`
 

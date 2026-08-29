@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(EpochGui VERSION 0.89.27 LANGUAGES CXX)
+project(EpochGui VERSION 0.89.29 LANGUAGES CXX)
 
 option(EPOCHGUI_ENABLE_ROUNDED_RECT "Build the optional EpochGui rounded-rectangle geometry module." OFF)
 option(EPOCHGUI_ENABLE_INPUT "Build the optional EpochGui fallback input adapter module." OFF)
@@ -56,6 +56,7 @@ set(EPOCHGUI_PUBLIC_HEADERS
     "${EPOCHGUI_SOURCE_ROOT}/include/gui/dock_layout.hpp"
     "${EPOCHGUI_SOURCE_ROOT}/include/gui/floating_window.hpp"
     "${EPOCHGUI_SOURCE_ROOT}/include/gui/font.hpp"
+    "${EPOCHGUI_SOURCE_ROOT}/include/gui/hierarchy_tree.hpp"
     "${EPOCHGUI_SOURCE_ROOT}/include/gui/layout_primitives.hpp"
     "${EPOCHGUI_SOURCE_ROOT}/include/gui/node_graph_workspace.hpp"
     "${EPOCHGUI_SOURCE_ROOT}/include/gui/panel_host.hpp"
@@ -70,6 +71,7 @@ set(EPOCHGUI_SOURCES
     "${EPOCHGUI_SOURCE_ROOT}/src/epochgui/dockable_window.cpp"
     "${EPOCHGUI_SOURCE_ROOT}/src/epochgui/dock_layout.cpp"
     "${EPOCHGUI_SOURCE_ROOT}/src/epochgui/floating_window.cpp"
+    "${EPOCHGUI_SOURCE_ROOT}/src/epochgui/hierarchy_tree.cpp"
     "${EPOCHGUI_SOURCE_ROOT}/src/epochgui/image.cpp"
     "${EPOCHGUI_SOURCE_ROOT}/src/epochgui/node_graph_workspace.cpp"
     "${EPOCHGUI_SOURCE_ROOT}/src/epochgui/panel_host.cpp"
@@ -248,6 +250,19 @@ if(BUILD_TESTING AND EPOCHGUI_BUILD_MODULES)
         CXX_EXTENSIONS OFF
     )
     add_test(NAME EpochGui.AssetGrid COMMAND EpochGuiAssetGridTests)
+
+    add_executable(EpochGuiHierarchyTreeTests
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/hierarchy_tree_tests.cpp"
+    )
+    target_link_libraries(EpochGuiHierarchyTreeTests PRIVATE EpochGui)
+    target_compile_features(EpochGuiHierarchyTreeTests PRIVATE cxx_std_23)
+    set_target_properties(EpochGuiHierarchyTreeTests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+    )
+    add_test(NAME EpochGui.HierarchyTree COMMAND EpochGuiHierarchyTreeTests)
+
     if(EPOCHGUI_ENABLE_ROUNDED_RECT)
         add_executable(EpochGuiRoundedRectTests
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/rounded_rect_tests.cpp"

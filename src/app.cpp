@@ -303,7 +303,9 @@ void reset_active_camera_home(SharedState& state, const SimulationConfig& config
 
 int run_application(const ApplicationOptions& options) {
     std::fprintf(stderr, "[SandHybrid] Creating native window...\n");
-    NativeWindow window{"SandHybrid", 1280, 720};
+    const std::string application_title =
+        "SandHybrid v" + std::string{SANDHYBRID_VERSION_STRING};
+    NativeWindow window{application_title, 1280, 720};
     window.show_startup_message("Compiling Shaders...");
     std::fprintf(stderr, "[SandHybrid] Native window created.\n");
     SharedState shared_state{};
@@ -362,8 +364,8 @@ int run_application(const ApplicationOptions& options) {
     while (!shared_state.quit.load(std::memory_order_acquire) && window.poll(input)) {
         if (!ready_title_applied && renderer_ready.load(std::memory_order_acquire)) {
             window.show_startup_message("");
-            window.set_title("SandHybrid - " +
-      std::string{world_size_name(options.world_size)});
+            window.set_title(application_title + " - " +
+                             std::string{world_size_name(options.world_size)});
             ready_title_applied = true;
         }
         shared_state.window_width.store(input.width, std::memory_order_relaxed);

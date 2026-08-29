@@ -43,8 +43,8 @@ require(
 )
 require(
     "third_party/EpochGui/SNAPSHOT.md",
-    "b23f283dd9b0d6021dccd8fbc2235306418aa66a",
-    "v0.89.27",
+    "8882503ac579add67456459986983ad7fd7c96db",
+    "v0.89.29",
 )
 
 # The photographed historical compact hive is identical in shader reset/tool,

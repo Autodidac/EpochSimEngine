@@ -319,7 +319,7 @@ Each cell is 16 bytes: material ID, age, signed temperature, and packed material
 
 ## EpochGui snapshot
 
-The complete vendored EpochGui dependency is current at v0.89.27 / b23f283dd9b0d6021dccd8fbc2235306418aa66a from the canonical Site mirror. Exact archive provenance, SHA-256, and the cross-platform module compatibility policy are documented in `third_party/EpochGui/SNAPSHOT.md`; SandHybrid releases must update this full dependency rather than retaining a selected-header snapshot.
+The complete vendored EpochGui dependency is current at v0.89.29 / 8882503ac579add67456459986983ad7fd7c96db from the canonical Site mirror. Exact archive provenance, SHA-256, and the cross-platform module compatibility policy are documented in `third_party/EpochGui/SNAPSHOT.md`; SandHybrid releases must update this full dependency rather than retaining a selected-header snapshot.
 
 
 ## Hierarchical simulation
@@ -349,7 +349,7 @@ Half Water is the darker conserved one-unit state again, including the supplied 
 
 `IGNITE AIR` is in `ACTIONS` above `KEYMAP`. Settings provides 30/60/120/UNLIMITED presentation caps while simulation remains fixed at 60 Hz. Debug now uses bounded rotating-region samples, and the persistent World has a recoverable supported breathable player spawn.
 
-The generated, placeable, and loaded hive uses the photographed historical compact model (`24..87` shell, `<24` chamber, exit through `x=10`, seed `0xD17A5EED`) over nine complete Wood support tiles. EpochGui is synchronized from the GitHub-independent canonical Site mirror to the complete v0.89.27 / `b23f283` snapshot; no dirty local dependency tree is imported.
+The generated, placeable, and loaded hive uses the photographed historical compact model (`24..87` shell, `<24` chamber, exit through `x=10`, seed `0xD17A5EED`) over nine complete Wood support tiles. EpochGui is synchronized from the GitHub-independent canonical Site mirror to the complete v0.89.29 / `8882503` snapshot; no dirty local dependency tree is imported.
 
 The shipped executable can run the production Vulkan state/readback gate:
 

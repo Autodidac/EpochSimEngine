@@ -213,6 +213,7 @@ if(SANDHYBRID_BUILD_APP)
     set_target_properties(SandHybrid_Demo PROPERTIES OUTPUT_NAME sandhybrid)
     target_link_libraries(SandHybrid_Demo PRIVATE SandHybrid_VulkanRuntime)
     target_compile_definitions(SandHybrid_Demo PRIVATE
+        SANDHYBRID_VERSION_STRING="${PROJECT_VERSION}"
         $<$<PLATFORM_ID:Windows>:VK_USE_PLATFORM_WIN32_KHR>
         $<$<PLATFORM_ID:Linux>:VK_USE_PLATFORM_XCB_KHR>
     )

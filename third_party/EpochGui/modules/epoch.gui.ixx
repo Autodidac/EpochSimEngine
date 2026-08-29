@@ -18,8 +18,8 @@ export namespace epochengine::gui_lib
     inline constexpr std::string_view library_name = "EpochGui";
     inline constexpr int version_major = 0;
     inline constexpr int version_minor = 89;
-    inline constexpr int version_revision = 27;
-    inline constexpr std::string_view version_string = "0.89.27";
+    inline constexpr int version_revision = 29;
+    inline constexpr std::string_view version_string = "0.89.29";
 
     struct Vec2
     {
@@ -335,6 +335,230 @@ export namespace epochengine::gui_lib
         float dirty_extent{ 8.0f };
     };
 
+    struct ResponsiveTabStripOptions
+    {
+        std::span<const float> item_widths{};
+        std::size_t active_index{ (std::numeric_limits<std::size_t>::max)() };
+        float available_width{};
+        float gap{ 2.0f };
+        float overflow_width{ 120.0f };
+    };
+
+    struct ResponsiveTabStripLayout
+    {
+        std::vector<std::uint32_t> visible_indices{};
+        std::vector<std::uint32_t> overflow_indices{};
+        float visible_width{};
+        float overflow_width{};
+        bool overflowed{};
+        bool valid{};
+
+        [[nodiscard]] bool is_visible(std::size_t index) const noexcept
+        {
+            return std::find(visible_indices.begin(), visible_indices.end(), index)
+                != visible_indices.end();
+        }
+    };
+
+    enum class ResponsiveTabNavigationIntent : std::uint8_t
+    {
+        previous,
+        next,
+        first,
+        last
+    };
+
+    struct ResponsiveTabNavigationOptions
+    {
+        std::span<const std::uint8_t> enabled{};
+        std::size_t active_index{ (std::numeric_limits<std::size_t>::max)() };
+        ResponsiveTabNavigationIntent intent{ ResponsiveTabNavigationIntent::next };
+        bool wrap{ true };
+    };
+
+    [[nodiscard]] inline std::optional<std::size_t>
+        navigate_responsive_tab_strip(
+            const ResponsiveTabNavigationOptions& options) noexcept
+    {
+        if (options.enabled.empty())
+            return std::nullopt;
+        const auto enabled = [&](const std::size_t index) noexcept
+        {
+            return index < options.enabled.size() && options.enabled[index] != 0u;
+        };
+        if (options.intent == ResponsiveTabNavigationIntent::first)
+        {
+            for (std::size_t index = 0u; index < options.enabled.size(); ++index)
+                if (enabled(index)) return index;
+            return std::nullopt;
+        }
+        if (options.intent == ResponsiveTabNavigationIntent::last)
+        {
+            for (std::size_t index = options.enabled.size(); index > 0u; --index)
+                if (enabled(index - 1u)) return index - 1u;
+            return std::nullopt;
+        }
+
+        const bool forward =
+            options.intent == ResponsiveTabNavigationIntent::next;
+        std::size_t cursor = options.active_index < options.enabled.size()
+            ? options.active_index
+            : (forward ? options.enabled.size() - 1u : 0u);
+        for (std::size_t visited = 0u; visited < options.enabled.size(); ++visited)
+        {
+            if (forward)
+            {
+                if (cursor + 1u >= options.enabled.size())
+                {
+                    if (!options.wrap) return std::nullopt;
+                    cursor = 0u;
+                }
+                else ++cursor;
+            }
+            else if (cursor == 0u)
+            {
+                if (!options.wrap) return std::nullopt;
+                cursor = options.enabled.size() - 1u;
+            }
+            else --cursor;
+            if (enabled(cursor)) return cursor;
+        }
+        return std::nullopt;
+    }
+
+    struct BottomDockHeightOptions
+    {
+        float viewport_height{};
+        float toolbar_height{};
+        float splitter_height{ 7.0f };
+        float requested_fraction{ 0.24f };
+        float minimum_bottom_height{ 120.0f };
+        float minimum_center_height{ 240.0f };
+        float maximum_bottom_fraction{ 0.58f };
+        bool visible{ true };
+    };
+
+    struct BottomDockHeightLayout
+    {
+        float bottom_height{};
+        float center_height{};
+        float splitter_height{};
+        float normalized_fraction{};
+        bool visible{};
+        bool valid{};
+    };
+
+    [[nodiscard]] inline BottomDockHeightLayout
+        make_bottom_dock_height_layout(
+            const BottomDockHeightOptions& options) noexcept
+    {
+        BottomDockHeightLayout result{};
+        if (!std::isfinite(options.viewport_height)
+            || !std::isfinite(options.toolbar_height)
+            || !std::isfinite(options.splitter_height)
+            || !std::isfinite(options.requested_fraction)
+            || !std::isfinite(options.minimum_bottom_height)
+            || !std::isfinite(options.minimum_center_height)
+            || !std::isfinite(options.maximum_bottom_fraction)
+            || options.viewport_height < 0.0f
+            || options.toolbar_height < 0.0f)
+        {
+            return result;
+        }
+
+        result.visible = options.visible;
+        result.splitter_height = options.visible
+            ? (std::max)(0.0f, options.splitter_height)
+            : 0.0f;
+        const float available = (std::max)(
+            0.0f,
+            options.viewport_height - options.toolbar_height
+                - result.splitter_height);
+        if (!options.visible)
+        {
+            result.center_height = available;
+            result.valid = true;
+            return result;
+        }
+
+        const float minimumBottom = (std::min)(
+            available, (std::max)(0.0f, options.minimum_bottom_height));
+        const float minimumCenter = (std::min)(
+            available, (std::max)(0.0f, options.minimum_center_height));
+        const float maximumFraction = std::clamp(
+            options.maximum_bottom_fraction, 0.10f, 0.90f);
+        const float maximumBottom = (std::max)(
+            minimumBottom,
+            (std::min)(available - minimumCenter, available * maximumFraction));
+        const float requested = available * std::clamp(
+            options.requested_fraction, 0.0f, 1.0f);
+        result.bottom_height = std::clamp(
+            requested, minimumBottom, maximumBottom);
+        result.center_height = (std::max)(
+            0.0f, available - result.bottom_height);
+        result.normalized_fraction = available > 0.0f
+            ? result.bottom_height / available
+            : 0.0f;
+        result.valid = true;
+        return result;
+    }
+
+    enum class ChromeDensity : std::uint8_t
+    {
+        full,
+        compact,
+        minimal
+    };
+
+    struct ChromeBarItemOptions
+    {
+        float preferred_width{ 72.0f };
+        float compact_width{ 52.0f };
+        std::uint16_t priority{};
+        bool pinned{};
+        bool overflowable{ true };
+    };
+
+    struct ChromeBarZoneLayout
+    {
+        std::vector<Rect> item_bounds{};
+        std::vector<std::uint32_t> visible_indices{};
+        std::vector<std::uint32_t> overflow_indices{};
+        Rect overflow_button{};
+        float occupied_width{};
+        bool used_compact_widths{};
+        bool overflowed{};
+
+        [[nodiscard]] bool is_visible(std::size_t index) const noexcept
+        {
+            return index < item_bounds.size()
+                && item_bounds[index].size.x > 0.0f
+                && item_bounds[index].size.y > 0.0f;
+        }
+    };
+
+    struct ChromeBarOptions
+    {
+        Rect bounds{};
+        std::span<const ChromeBarItemOptions> left_items{};
+        std::span<const ChromeBarItemOptions> center_items{};
+        std::span<const ChromeBarItemOptions> right_items{};
+        float item_gap{ 4.0f };
+        float zone_gap{ 12.0f };
+        float overflow_width{ 82.0f };
+        float horizontal_padding{ 12.0f };
+    };
+
+    struct ChromeBarLayout
+    {
+        Rect bounds{};
+        ChromeBarZoneLayout left{};
+        ChromeBarZoneLayout center{};
+        ChromeBarZoneLayout right{};
+        ChromeDensity density{ ChromeDensity::full };
+        bool valid{};
+    };
+
     [[nodiscard]] inline std::string scoped_control_key(
         std::string_view host,
         std::string_view window,
@@ -375,6 +599,402 @@ export namespace epochengine::gui_lib
             labelWidth + padding * 2.0f + closeExtent + dirtyExtent,
             minimumWidth,
             maximumWidth);
+    }
+
+    [[nodiscard]] inline ResponsiveTabStripLayout
+        make_responsive_tab_strip_layout(
+            const ResponsiveTabStripOptions& options)
+    {
+        ResponsiveTabStripLayout result{};
+        if (options.item_widths.empty())
+            return result;
+
+        std::vector<float> widths{};
+        widths.reserve(options.item_widths.size());
+        for (const float requested : options.item_widths)
+        {
+            widths.push_back(std::isfinite(requested)
+                ? (std::max)(1.0f, requested)
+                : 1.0f);
+        }
+
+        const float gap = std::isfinite(options.gap)
+            ? (std::max)(0.0f, options.gap)
+            : 0.0f;
+        const float available = std::isfinite(options.available_width)
+            ? (std::max)(0.0f, options.available_width)
+            : 0.0f;
+        float completeWidth{};
+        for (std::size_t index = 0; index < widths.size(); ++index)
+        {
+            if (index > 0u)
+                completeWidth += gap;
+            completeWidth += widths[index];
+        }
+
+        result.valid = true;
+        if (available <= 0.0f || completeWidth <= available)
+        {
+            result.visible_indices.reserve(widths.size());
+            for (std::size_t index = 0; index < widths.size(); ++index)
+                result.visible_indices.push_back(static_cast<std::uint32_t>(index));
+            result.visible_width = completeWidth;
+            return result;
+        }
+
+        result.overflowed = true;
+        const float requestedOverflow = std::isfinite(options.overflow_width)
+            ? (std::max)(1.0f, options.overflow_width)
+            : 120.0f;
+        result.overflow_width = (std::min)(available, requestedOverflow);
+        const float overflowGap = available > result.overflow_width ? gap : 0.0f;
+        const float visibleBudget = (std::max)(
+            0.0f,
+            available - result.overflow_width - overflowGap);
+
+        auto width_with = [&](std::size_t index) noexcept
+        {
+            return result.visible_width
+                + (result.visible_indices.empty() ? 0.0f : gap)
+                + widths[index];
+        };
+        for (std::size_t index = 0; index < widths.size(); ++index)
+        {
+            if (width_with(index) > visibleBudget)
+                break;
+            result.visible_width = width_with(index);
+            result.visible_indices.push_back(static_cast<std::uint32_t>(index));
+        }
+
+        const bool activeValid = options.active_index < widths.size();
+        if (activeValid && !result.is_visible(options.active_index)
+            && widths[options.active_index] <= visibleBudget)
+        {
+            while (!result.visible_indices.empty()
+                && width_with(options.active_index) > visibleBudget)
+            {
+                const std::size_t removed = result.visible_indices.back();
+                result.visible_indices.pop_back();
+                result.visible_width -= widths[removed];
+                if (!result.visible_indices.empty())
+                    result.visible_width -= gap;
+            }
+            if (width_with(options.active_index) <= visibleBudget)
+            {
+                result.visible_width = width_with(options.active_index);
+                result.visible_indices.push_back(
+                    static_cast<std::uint32_t>(options.active_index));
+                std::sort(
+                    result.visible_indices.begin(),
+                    result.visible_indices.end());
+            }
+        }
+
+        result.overflow_indices.reserve(
+            widths.size() - result.visible_indices.size());
+        for (std::size_t index = 0; index < widths.size(); ++index)
+        {
+            if (!result.is_visible(index))
+                result.overflow_indices.push_back(static_cast<std::uint32_t>(index));
+        }
+        return result;
+    }
+
+    [[nodiscard]] inline ChromeBarLayout make_chrome_bar_layout(
+        const ChromeBarOptions& options)
+    {
+        ChromeBarLayout result{};
+        const auto finite_rect = [](Rect rect) noexcept
+        {
+            return std::isfinite(rect.position.x)
+                && std::isfinite(rect.position.y)
+                && std::isfinite(rect.size.x)
+                && std::isfinite(rect.size.y)
+                && rect.size.x > 0.0f
+                && rect.size.y > 0.0f;
+        };
+        if (!finite_rect(options.bounds))
+            return result;
+
+        const float padding = std::isfinite(options.horizontal_padding)
+            ? (std::max)(0.0f, options.horizontal_padding)
+            : 0.0f;
+        const float gap = std::isfinite(options.item_gap)
+            ? (std::max)(0.0f, options.item_gap)
+            : 0.0f;
+        const float zoneGap = std::isfinite(options.zone_gap)
+            ? (std::max)(0.0f, options.zone_gap)
+            : 0.0f;
+        const float overflowWidth = std::isfinite(options.overflow_width)
+            ? (std::max)(1.0f, options.overflow_width)
+            : 82.0f;
+        result.bounds = options.bounds;
+
+        const float contentLeft = options.bounds.position.x + padding;
+        const float contentRight = options.bounds.position.x
+            + options.bounds.size.x - padding;
+        const float contentWidth = contentRight - contentLeft;
+        if (contentWidth <= 0.0f)
+            return result;
+
+        struct PlannedZone
+        {
+            std::vector<float> widths{};
+            std::vector<std::uint32_t> visible{};
+            std::vector<std::uint32_t> overflow{};
+            float items_width{};
+            float overflow_width{};
+            float total_width{};
+            bool compact{};
+        };
+
+        const auto sane_width = [](float value, float fallback) noexcept
+        {
+            return std::isfinite(value)
+                ? (std::max)(1.0f, value)
+                : fallback;
+        };
+        const auto plan_zone = [&](
+            std::span<const ChromeBarItemOptions> items,
+            float requestedBudget) -> PlannedZone
+        {
+            PlannedZone plan{};
+            plan.widths.assign(items.size(), 0.0f);
+            const float budget = std::isfinite(requestedBudget)
+                ? (std::max)(0.0f, requestedBudget)
+                : 0.0f;
+            if (items.empty() || budget <= 0.0f)
+            {
+                for (std::size_t index = 0; index < items.size(); ++index)
+                {
+                    if (items[index].overflowable)
+                        plan.overflow.push_back(
+                            static_cast<std::uint32_t>(index));
+                }
+                if (!plan.overflow.empty())
+                {
+                    plan.overflow_width = (std::min)(budget, overflowWidth);
+                    plan.total_width = plan.overflow_width;
+                }
+                return plan;
+            }
+
+            const auto complete_width = [&](bool compact) noexcept
+            {
+                float width{};
+                for (std::size_t index = 0; index < items.size(); ++index)
+                {
+                    if (index > 0u)
+                        width += gap;
+                    const float preferred = sane_width(
+                        items[index].preferred_width, 72.0f);
+                    const float minimum = (std::min)(
+                        preferred,
+                        sane_width(items[index].compact_width, preferred));
+                    width += compact ? minimum : preferred;
+                }
+                return width;
+            };
+
+            const float preferredWidth = complete_width(false);
+            const float compactWidth = complete_width(true);
+            if (preferredWidth <= budget || compactWidth <= budget)
+            {
+                plan.compact = preferredWidth > budget;
+                plan.items_width = plan.compact
+                    ? compactWidth
+                    : preferredWidth;
+                plan.total_width = plan.items_width;
+                for (std::size_t index = 0; index < items.size(); ++index)
+                {
+                    const float preferred = sane_width(
+                        items[index].preferred_width, 72.0f);
+                    const float minimum = (std::min)(
+                        preferred,
+                        sane_width(items[index].compact_width, preferred));
+                    plan.widths[index] = plan.compact ? minimum : preferred;
+                    plan.visible.push_back(
+                        static_cast<std::uint32_t>(index));
+                }
+                return plan;
+            }
+
+            plan.compact = true;
+            std::vector<std::uint32_t> order{};
+            order.reserve(items.size());
+            for (std::size_t index = 0; index < items.size(); ++index)
+                order.push_back(static_cast<std::uint32_t>(index));
+            std::stable_sort(
+                order.begin(),
+                order.end(),
+                [&](std::uint32_t lhs, std::uint32_t rhs)
+                {
+                    if (items[lhs].pinned != items[rhs].pinned)
+                        return items[lhs].pinned;
+                    if (items[lhs].priority != items[rhs].priority)
+                        return items[lhs].priority < items[rhs].priority;
+                    return lhs < rhs;
+                });
+
+            const bool hasOverflowable = std::any_of(
+                items.begin(),
+                items.end(),
+                [](const ChromeBarItemOptions& item)
+                {
+                    return item.overflowable;
+                });
+            const float reservedOverflow = hasOverflowable
+                ? (std::min)(budget, overflowWidth)
+                : 0.0f;
+            const float selectionBudget = (std::max)(
+                0.0f,
+                budget - reservedOverflow
+                    - (reservedOverflow > 0.0f ? gap : 0.0f));
+            float selectedWidth{};
+            for (const std::uint32_t index : order)
+            {
+                const float preferred = sane_width(
+                    items[index].preferred_width, 72.0f);
+                const float minimum = (std::min)(
+                    preferred,
+                    sane_width(items[index].compact_width, preferred));
+                const float candidate = selectedWidth
+                    + (plan.visible.empty() ? 0.0f : gap)
+                    + minimum;
+                if (candidate <= selectionBudget)
+                {
+                    selectedWidth = candidate;
+                    plan.widths[index] = minimum;
+                    plan.visible.push_back(index);
+                }
+            }
+            std::sort(plan.visible.begin(), plan.visible.end());
+            for (std::size_t index = 0; index < items.size(); ++index)
+            {
+                if (std::find(
+                        plan.visible.begin(),
+                        plan.visible.end(),
+                        static_cast<std::uint32_t>(index))
+                    == plan.visible.end()
+                    && items[index].overflowable)
+                {
+                    plan.overflow.push_back(
+                        static_cast<std::uint32_t>(index));
+                }
+            }
+            plan.items_width = selectedWidth;
+            if (plan.overflow.empty())
+            {
+                plan.total_width = selectedWidth;
+            }
+            else
+            {
+                plan.overflow_width = reservedOverflow;
+                plan.total_width = selectedWidth
+                    + (selectedWidth > 0.0f && reservedOverflow > 0.0f
+                        ? gap
+                        : 0.0f)
+                    + reservedOverflow;
+            }
+            return plan;
+        };
+
+        const bool hasLeft = !options.left_items.empty();
+        const bool hasRight = !options.right_items.empty();
+        const float leftReserve = hasLeft
+            ? (std::min)(overflowWidth, contentWidth)
+            : 0.0f;
+        const float rightReserve = hasRight
+            ? (std::min)(overflowWidth, contentWidth)
+            : 0.0f;
+        const float centerBudget = (std::max)(
+            0.0f,
+            contentWidth - leftReserve - rightReserve
+                - (hasLeft ? zoneGap : 0.0f)
+                - (hasRight ? zoneGap : 0.0f));
+        const PlannedZone centerPlan = plan_zone(
+            options.center_items,
+            centerBudget);
+        const float centerX = contentLeft
+            + (std::max)(
+                0.0f,
+                (contentWidth - centerPlan.total_width) * 0.5f);
+        const float leftBudget = options.center_items.empty()
+            ? contentWidth * 0.55f
+            : (std::max)(0.0f, centerX - zoneGap - contentLeft);
+        const float rightStart = centerX + centerPlan.total_width;
+        const float rightBudget = options.center_items.empty()
+            ? (std::max)(0.0f, contentWidth - leftBudget - zoneGap)
+            : (std::max)(
+                0.0f,
+                contentRight - rightStart - zoneGap);
+        const PlannedZone leftPlan = plan_zone(
+            options.left_items,
+            leftBudget);
+        const PlannedZone rightPlan = plan_zone(
+            options.right_items,
+            rightBudget);
+
+        const auto place_zone = [&](
+            ChromeBarZoneLayout& target,
+            const PlannedZone& plan,
+            std::span<const ChromeBarItemOptions> items,
+            float x)
+        {
+            target.item_bounds.assign(items.size(), {});
+            target.visible_indices = plan.visible;
+            target.overflow_indices = plan.overflow;
+            target.occupied_width = plan.total_width;
+            target.used_compact_widths = plan.compact;
+            target.overflowed = !plan.overflow.empty();
+            float cursorX = x;
+            for (const std::uint32_t index : plan.visible)
+            {
+                target.item_bounds[index] = {
+                    { cursorX, options.bounds.position.y },
+                    { plan.widths[index], options.bounds.size.y }
+                };
+                cursorX += plan.widths[index] + gap;
+            }
+            if (plan.overflow_width > 0.0f)
+            {
+                cursorX = plan.visible.empty()
+                    ? x
+                    : x + plan.items_width + gap;
+                target.overflow_button = {
+                    { cursorX, options.bounds.position.y },
+                    { plan.overflow_width, options.bounds.size.y }
+                };
+            }
+        };
+
+        place_zone(
+            result.left,
+            leftPlan,
+            options.left_items,
+            contentLeft);
+        place_zone(
+            result.center,
+            centerPlan,
+            options.center_items,
+            centerX);
+        place_zone(
+            result.right,
+            rightPlan,
+            options.right_items,
+            contentRight - rightPlan.total_width);
+
+        const bool anyOverflow = result.left.overflowed
+            || result.center.overflowed
+            || result.right.overflowed;
+        const bool anyCompact = result.left.used_compact_widths
+            || result.center.used_compact_widths
+            || result.right.used_compact_widths;
+        result.density = anyOverflow
+            ? ChromeDensity::minimal
+            : anyCompact ? ChromeDensity::compact : ChromeDensity::full;
+        result.valid = true;
+        return result;
     }
 
     struct SliderLayoutOptions
