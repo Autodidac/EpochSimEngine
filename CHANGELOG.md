@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- Renamed the former Ignite Air action to `NUKE FROM SPACE`, added a six-presented-frame warning flare, and moved the complete Atmosphere-to-Fire edit onto one deterministic GPU dispatch with no full-world CPU readback.
+- Removed three frame-pacing spikes: late fixed ticks no longer suppress requested presentation, live MAP refresh copies one of 16 contiguous row bands instead of the entire 225 MiB Large field, and reset no longer performs an automatic full-world PPM export/readback.
+- Recovered tool/reset/load Fix29 hive ownership with the exact structural shell/content/perch and shared ordered 100-bee formation; tool placement and both World hives now pass immediate and 120-tick GPU readback.
+- Reworked Debug to preserve recognizable material color and show state with sparse corner/edge markers rather than dense full-tile color frames.
 - Removed unowned Water creation from Acid adjacency and moist-Waste chemistry; wet Waste now becomes Fertilizer while the existing Water owner remains, and unsupported inorganic dissolution waits for an explicit paired Acid/solute transaction.
 - Changed terminal laser damage to a world-only exact transfer into deterministic adjacent real gas. It now targets liquids and vegetation, never collects inventory or creates Vacuum, and retains the source when no transfer can commit.
 - Replaced synchronized bulk rain with fixed-tick Cloud-age precipitation staggered by eight-column band; each due Cloud converts one-for-one to equal-temperature Water-family material before generic sleeping shortcuts.

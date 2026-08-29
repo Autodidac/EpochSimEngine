@@ -318,6 +318,49 @@ inline constexpr std::uint32_t pre_pr19_hive_canonical_seed = 0xD17A5EEDu;
 inline constexpr std::int32_t fix29_hive_support_tile_size = 8;
 inline constexpr std::int32_t fix29_hive_support_width = 72;
 inline constexpr std::int32_t fix29_hive_support_height = 8;
+inline constexpr std::size_t fix29_bee_formation_count = 100u;
+
+inline constexpr std::array<std::uint16_t, fix29_bee_formation_count>
+    fix29_bee_formation_packed{{
+        4541u, 4542u, 4543u, 4545u, 4546u, 4547u, 4668u, 4669u, 4675u, 4676u,
+        4795u, 4805u, 4922u, 4923u, 4933u, 4934u, 5049u, 5050u, 5062u, 5063u,
+        5177u, 5191u, 5433u, 5447u, 5561u, 5575u, 5689u, 5703u, 8240u, 8241u,
+        8243u, 8269u, 8271u, 8272u, 8366u, 8367u, 8401u, 8402u, 8493u, 8494u,
+        8530u, 8531u, 8620u, 8627u, 8653u, 8660u, 8747u, 8748u, 8788u, 8789u,
+        9003u, 9012u, 9036u, 9045u, 9131u, 9173u, 9259u, 9269u, 9291u, 9301u,
+        9515u, 9516u, 9527u, 9545u, 9556u, 9557u, 9644u, 9645u, 9655u, 9657u,
+        9671u, 9673u, 9683u, 9684u, 9774u, 9783u, 9788u, 9796u, 9801u, 9810u,
+        9902u, 9903u, 9909u, 9910u, 9918u, 9922u, 9930u, 9931u, 9937u, 9938u,
+        10032u, 10033u, 10034u, 10036u, 10037u, 10059u, 10060u, 10062u,
+        10063u, 10064u}};
+
+[[nodiscard]] constexpr FormationOffset fix29_bee_formation_offset(
+    const std::size_t slot) noexcept {
+    const auto packed = fix29_bee_formation_packed[
+        (std::min)(slot, fix29_bee_formation_count - 1u)];
+    return {
+        static_cast<std::int8_t>(static_cast<std::int32_t>(packed & 127u) - 64),
+        static_cast<std::int8_t>(static_cast<std::int32_t>(packed >> 7u) - 64)};
+}
+
+[[nodiscard]] constexpr std::int32_t fix29_bee_formation_slot(
+    const std::int32_t offset_x, const std::int32_t offset_y) noexcept {
+    if (offset_x < -64 || offset_x > 63 || offset_y < -64 || offset_y > 63)
+        return -1;
+    const auto key = static_cast<std::uint16_t>(
+        ((offset_y + 64) << 7) | (offset_x + 64));
+    std::size_t low = 0u;
+    std::size_t high = fix29_bee_formation_count;
+    while (low < high) {
+        const auto middle = low + (high - low) / 2u;
+        if (fix29_bee_formation_packed[middle] < key) low = middle + 1u;
+        else high = middle;
+    }
+    return low < fix29_bee_formation_count &&
+                   fix29_bee_formation_packed[low] == key
+        ? static_cast<std::int32_t>(low)
+        : -1;
+}
 
 [[nodiscard]] constexpr std::uint32_t pre_pr19_hive_hash(
     std::uint32_t value) noexcept {

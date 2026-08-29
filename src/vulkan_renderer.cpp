@@ -422,8 +422,10 @@ struct VulkanRenderer::Impl final {
     bool debug_was_visible{};
     std::uint32_t debug_sample_frame{};
     std::uint32_t map_snapshot_step{};
+    std::uint32_t map_snapshot_slice{};
     bool map_was_visible{};
-    std::optional<std::uint32_t> pending_scene_export{};
+    std::uint32_t nuke_flash_frames_remaining{};
+    bool nuke_dispatch_pending{};
 #if SANDHYBRID_ENABLE_VALIDATION
     std::chrono::steady_clock::time_point next_conservation_log{};
 #endif
@@ -1772,29 +1774,6 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         startup_log("Filled connected region with Air: " + std::to_string(changed_count) + " cells.");
     }
 
-    void ignite_air_region() {
-        auto cells = download_scene_cells();
-        const auto air = static_cast<std::uint32_t>(Material::atmosphere);
-        const auto fire = static_cast<std::uint32_t>(Material::fire);
-        const auto iterator = std::find_if(cells.begin(), cells.end(), [air](const SceneCell& cell) {
-            return cell.material == air;
-        });
-        if (iterator == cells.end()) {
-            startup_log("Ignite Air found no Air cell.");
-            return;
-        }
-        const auto start = static_cast<std::uint32_t>(std::distance(cells.begin(), iterator));
-        auto changed = flood_replace_connected(cells, start, air, fire);
-        if (changed.empty()) {
-            startup_log("Ignite Air found no connected Air region.");
-            return;
-        }
-        const auto changed_count = changed.size();
-        upload_bounded_cells(cells, std::move(changed), "Ignite Air");
-        startup_log("Ignited upper-left connected Air region: " +
-                    std::to_string(changed_count) + " cells.");
-    }
-
     void place_selected_blueprint(SharedState& state) {
         const auto slot =
             state.selected_blueprint_slot.load(std::memory_order_relaxed) %
@@ -2075,6 +2054,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         simulation_step = 0u;
         debug_sample_frame = 0u;
         map_snapshot_step = 0u;
+        map_snapshot_slice = 0u;
         map_was_visible = false;
         needs_reset = false;
     }
@@ -2337,6 +2317,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         simulation_step = 0;
         debug_sample_frame = 0u;
         map_snapshot_step = 0u;
+        map_snapshot_slice = 0u;
         map_was_visible = false;
         needs_reset = false;
     }
@@ -2454,6 +2435,37 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         if (!erase && !paint) return;
         const auto [grid_x, grid_y] = grid_cursor(state);
         record_paint_at_grid(command_buffer, state, erase, paint, grid_x, grid_y);
+    }
+
+    void record_nuke_from_space(const VkCommandBuffer command_buffer) {
+        // The old action downloaded and flood-filled the complete resident
+        // world on the CPU. This deterministic GPU edit has no readback and
+        // touches each Atmosphere cell once after the staged light warning.
+        const SimulationPush push{
+            .width = config.grid_width,
+            .height = config.grid_height,
+            .step = simulation_step,
+            .seed = random_seed,
+            .material = static_cast<std::uint32_t>(Material::fire),
+            .active_mode = 2u,
+        };
+        bind_compute(command_buffer, paint_pipeline, current_set);
+        vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                           VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+        vkCmdDispatch(command_buffer,
+                      divide_round_up(config.grid_width, simulation_local_size),
+                      divide_round_up(config.grid_height, simulation_local_size), 1);
+        buffer_barrier(command_buffer, cell_buffers[current_set],
+                       VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
     }
 
 
@@ -2749,7 +2761,22 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
                            VK_PIPELINE_STAGE_TRANSFER_BIT,
                        VK_PIPELINE_STAGE_TRANSFER_BIT);
-        const VkBufferCopy copy{.size = map_snapshot_buffer.size};
+        // Refresh one contiguous row band per cadence instead of copying the
+        // 225 MiB Large resident field in one frame. Reset/load already seed a
+        // complete valid snapshot, so rolling bands only update live changes.
+        constexpr std::uint32_t slice_count = 16u;
+        const auto rows_per_slice = divide_round_up(config.grid_height, slice_count);
+        const auto first_row = map_snapshot_slice * rows_per_slice;
+        const auto row_count = (std::min)(rows_per_slice,
+            first_row < config.grid_height ? config.grid_height - first_row : 0u);
+        const VkDeviceSize byte_offset = static_cast<VkDeviceSize>(first_row) *
+            config.grid_width * sizeof(SceneCell);
+        const VkBufferCopy copy{
+            .srcOffset = byte_offset,
+            .dstOffset = byte_offset,
+            .size = static_cast<VkDeviceSize>(row_count) * config.grid_width *
+                    sizeof(SceneCell),
+        };
         vkCmdCopyBuffer(command_buffer, cell_buffers[current_set].handle,
                         map_snapshot_buffer.handle, 1, &copy);
         buffer_barrier(command_buffer, map_snapshot_buffer,
@@ -2763,6 +2790,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
         map_snapshot_step = simulation_step;
+        map_snapshot_slice = (map_snapshot_slice + 1u) % slice_count;
     }
 
     void record_designer_snapshot(const VkCommandBuffer command_buffer, SharedState& state) {
@@ -2877,7 +2905,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             ((state.designer_pane.load(std::memory_order_relaxed) & 1u) << 4u) |
             ((state.inventory_pane.load(std::memory_order_relaxed) & 1u) << 5u) |
             ((state.designer_zoom.load(std::memory_order_relaxed) & 0xffu) << 8u) |
-            ((state.designer_brush_radius.load(std::memory_order_relaxed) & 0xffu) << 16u);
+            ((state.designer_brush_radius.load(std::memory_order_relaxed) & 0xffu) << 16u) |
+            (((std::min)(nuke_flash_frames_remaining, 15u) & 0x0fu) << 28u);
         const auto selected_blueprint =
             state.selected_blueprint_slot.load(std::memory_order_relaxed) %
             blueprint_slot_count;
@@ -3022,8 +3051,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             else startup_log("Fill skipped until the initial scene exists.");
         }
         if (state.ignite_air.exchange(false, std::memory_order_acq_rel)) {
-            if (!needs_reset) ignite_air_region();
-            else startup_log("Ignite Air skipped until the initial scene exists.");
+            if (!needs_reset) {
+                nuke_flash_frames_remaining = 6u;
+                nuke_dispatch_pending = true;
+                startup_log("Nuke from Space warning flash staged before GPU detonation.");
+            } else {
+                startup_log("Nuke from Space skipped until the initial World exists.");
+            }
         }
         const bool reset_requested = needs_reset || state.reset.exchange(false, std::memory_order_acq_rel);
         bool image_loaded = false;
@@ -3093,12 +3127,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         bool reset_this_frame = image_loaded;
         if (reset_requested && !image_loaded) {
             record_reset(frame.command_buffer, selected_scene);
-            pending_scene_export = selected_scene;
             reset_actor = true;
             reset_this_frame = true;
         }
         if (policy::editor_mutation_allowed(paused, reset_this_frame))
             record_paint(frame.command_buffer, state);
+        if (!reset_this_frame && nuke_dispatch_pending &&
+            nuke_flash_frames_remaining == 0u) {
+            record_nuke_from_space(frame.command_buffer);
+            nuke_dispatch_pending = false;
+            startup_log("Nuke from Space committed as one GPU Atmosphere-to-Fire edit.");
+        }
 
         const bool debug_visible = state.debug_visualization.load(std::memory_order_relaxed);
         const bool step_once = state.single_step.exchange(false, std::memory_order_acq_rel);
@@ -3133,6 +3172,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             state.fire_tool_pressed.store(false, std::memory_order_release);
             state.deposit_resource_pressed.store(false, std::memory_order_release);
             state.blueprint_place_requested.store(false, std::memory_order_release);
+            nuke_flash_frames_remaining = 0u;
+            nuke_dispatch_pending = false;
         }
         if (paused) {
             // Do not queue one-shot actor/tool input for the first unpaused frame.
@@ -3216,11 +3257,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 startup_log("First frame presented.");
                 first_present_logged = true;
             }
-        }
-        if (pending_scene_export.has_value()) {
-            const auto scene_to_export = *pending_scene_export;
-            pending_scene_export.reset();
-            export_authored_scene_ppm(scene_to_export);
+            if (nuke_flash_frames_remaining != 0u)
+                --nuke_flash_frames_remaining;
         }
 
         frame_index = (frame_index + 1u) % static_cast<std::uint32_t>(frames.size());
@@ -4450,6 +4488,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 std::uint32_t delayed_shell = 0u;
                 std::uint32_t delayed_honey = 0u;
                 std::uint32_t delayed_pollen = 0u;
+                std::string delayed_mismatch_detail;
                 for (std::int32_t dy = -18; dy <= 11; ++dy) {
                     for (std::int32_t dx = -40; dx <= 31; ++dx) {
                         const auto part = classify_pre_pr19_hive_cell(
@@ -4490,7 +4529,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                             checked = false;
                             break;
                         }
-                        if (checked && !matches) ++delayed_mismatches;
+                        if (checked && !matches) {
+                            ++delayed_mismatches;
+                            if (delayed_mismatches <= 12u) {
+                                delayed_mismatch_detail +=
+                                    " [" + std::to_string(dx) + "," +
+                                    std::to_string(dy) + " expected=" +
+                                    std::to_string(static_cast<std::uint32_t>(part)) +
+                                    " actual=" + std::to_string(actual_cell.material) +
+                                    " aux=" + std::to_string(actual_cell.aux) + "]";
+                            }
+                        }
                     }
                 }
                 append("placed_fix29_hive_delayed_body_exact",
@@ -4504,7 +4553,43 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            " support=" + std::to_string(delayed_support) +
                            " shell=" + std::to_string(delayed_shell) +
                            " honey=" + std::to_string(delayed_honey) +
-                           " pollen=" + std::to_string(delayed_pollen));
+                           " pollen=" + std::to_string(delayed_pollen) +
+                           delayed_mismatch_detail);
+            }
+
+            {
+                constexpr std::uint32_t water_x = 72u;
+                constexpr std::uint32_t stone_x = 73u;
+                constexpr std::uint32_t probe_y = 72u;
+                auto cells = acceptance_atmosphere_world();
+                cells[index_of(water_x, probe_y)] = make_fill_cell(
+                    material_id(Material::water),
+                    static_cast<std::uint32_t>(index_of(water_x, probe_y)));
+                cells[index_of(stone_x, probe_y)] = make_fill_cell(
+                    material_id(Material::stone),
+                    static_cast<std::uint32_t>(index_of(stone_x, probe_y)));
+                const auto atmosphere_before = count_material(cells, Material::atmosphere);
+                upload_scene_cells(cells);
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    record_nuke_from_space(command_buffer);
+                });
+                const auto nuked = download_scene_cells();
+                append("nuke_from_space_gpu_exact_atmosphere_edit",
+                       count_material(nuked, Material::atmosphere) == 0u &&
+                           count_material(nuked, Material::fire) == atmosphere_before &&
+                           nuked[index_of(water_x, probe_y)].material ==
+                               material_id(Material::water) &&
+                           nuked[index_of(stone_x, probe_y)].material ==
+                               material_id(Material::stone),
+                       "atmosphere_before=" + std::to_string(atmosphere_before) +
+                           " atmosphere_after=" + std::to_string(
+                               count_material(nuked, Material::atmosphere)) +
+                           " fire=" + std::to_string(
+                               count_material(nuked, Material::fire)) +
+                           " water=" + std::to_string(
+                               nuked[index_of(water_x, probe_y)].material) +
+                           " stone=" + std::to_string(
+                               nuked[index_of(stone_x, probe_y)].material));
             }
 
             {
@@ -6754,23 +6839,21 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const auto before_draw = Clock::now();
             const bool simulation_due = before_draw >= next_simulation;
             const std::uint32_t simulation_ticks = simulation_due ? 1u : 0u;
-            bool simulation_overdue = false;
             if (simulation_due) {
                 next_simulation += simulation_interval;
                 constexpr std::uint32_t max_time_debt_ticks = 2u;
                 if (before_draw > next_simulation + simulation_interval * max_time_debt_ticks) {
                     // Discard stale wall-clock debt instead of creating a GPU catch-up spiral.
                     next_simulation = before_draw + simulation_interval;
-                } else {
-                    simulation_overdue = before_draw >= next_simulation;
                 }
             }
 
-            // Overdue fixed ticks get renderless submissions before presentation.
-            // Debug rendering therefore cannot change authoritative tick order/state.
+            // Always present requested frames. Fixed ticks still submit at most
+            // once and stale debt is shed, but a late tick no longer creates a
+            // visible skip/jitter cadence.
             const bool present_requested = active_limit != 0u ||
                 ((thirty_fps_divider++ & 1u) == 0u);
-            const bool present_frame = present_requested && !simulation_overdue;
+            const bool present_frame = present_requested;
             if (!draw_frame(state, simulation_ticks, present_frame)) {
                 recreate_swapchain(width, height);
             } else if (present_frame) {

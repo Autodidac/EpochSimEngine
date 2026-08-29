@@ -187,17 +187,27 @@ bool statPixel(ivec2 pixel, ivec2 origin, int scale, uint labelId, uint value) {
     return label || numberPixel(pixel, origin + ivec2(numberX, 0), scale, value);
 }
 
-vec3 debugStatColor(uint stat) {
-    if (stat <= 2u) return vec3(0.74, 0.94, 1.00);      // timing and cells
-    if (stat <= 4u) return vec3(1.00, 0.62, 0.18);      // fine movement
-    if (stat <= 6u) return vec3(1.00, 0.90, 0.28);      // colony
-    if (stat <= 8u) return vec3(0.52, 0.94, 0.58);      // tile activity
-    if (stat <= 12u) return vec3(1.00, 0.48, 0.82);     // actors and impulses
-    if (stat <= 21u) return vec3(0.50, 0.78, 1.00);     // hierarchy and chunks
-    if (stat == 22u) return vec3(0.56, 0.76, 1.00);     // gas tiles
-    if (stat == 23u) return vec3(0.26, 0.94, 1.00);     // liquid tiles
-    if (stat == 24u) return vec3(0.42, 1.00, 0.70);     // enclosed media
-    return vec3(1.00, 0.30, 0.74);                      // breakup to fine cells
+vec3 debugKeyColor(uint key);
+
+vec3 debugStatColor(uint row) {
+    const vec3 neutral = vec3(0.74, 0.86, 0.96);
+    const vec3 scope = vec3(0.38, 0.84, 0.94);
+    if (row <= 7u) return neutral;                        // dimensions / memory
+    if (row <= 13u) return scope;                         // active scope / material counts
+    if (row == 14u) return vec3(1.00, 0.62, 0.18);       // pair tests
+    if (row == 15u) return vec3(0.48, 0.58, 0.68);       // skipped work
+    if (row == 16u || row == 23u) return neutral;        // hierarchy totals
+    if (row == 17u || row == 24u) return debugKeyColor(1u); // active
+    if (row == 18u || row == 25u) return debugKeyColor(8u); // sleeping
+    if (row == 19u) return vec3(0.96, 0.36, 0.74);       // unclassified
+    if (row == 20u) return debugKeyColor(2u);             // fine ownership
+    if (row == 21u) return debugKeyColor(4u);             // macro ownership
+    if (row == 22u) return debugKeyColor(6u);             // settled
+    if (row == 26u) return vec3(0.92, 0.46, 0.20);       // dirty chunks
+    if (row <= 30u) return vec3(1.00, 0.66, 0.22);       // committed motion
+    if (row == 31u) return vec3(0.46, 0.88, 0.92);       // gas tiles
+    if (row == 32u) return vec3(0.28, 0.60, 0.94);       // liquid tiles
+    return vec3(0.94, 0.46, 0.76);                       // fine repair
 }
 
 vec3 debugKeyColor(uint key) {
@@ -211,6 +221,29 @@ vec3 debugKeyColor(uint key) {
     if (key == 7u) return vec3(0.20, 0.66, 0.62);       // enclosed medium
     if (key == 8u) return vec3(0.12, 0.18, 0.28);     // sleeping
     return vec3(0.68, 0.74, 0.82);                      // stable / candidate
+}
+
+// Debug state is an annotation over the authoritative material presentation.
+// Geometry, rather than a full-cell recolor, distinguishes hierarchy state.
+bool debugStateMarkerPixel(uint state, ivec2 local) {
+    bool top = local.y == 0;
+    bool bottom = local.y == 7;
+    bool left = local.x == 0;
+    bool right = local.x == 7;
+    bool topLeft = (top && local.x <= 2) || (left && local.y <= 2);
+    bool topRight = (top && local.x >= 5) || (right && local.y <= 2);
+    bool bottomLeft = (bottom && local.x <= 2) || (left && local.y >= 5);
+    bool bottomRight = (bottom && local.x >= 5) || (right && local.y >= 5);
+    if (state == 0u) return top || bottom || left || right;       // damaged
+    if (state == 1u) return topLeft;                              // active
+    if (state == 2u) return top && (local.x == 1 || local.x == 3 || local.x == 5); // fine
+    if (state == 3u) return bottomRight;                          // macro moved
+    if (state == 4u) return topRight;                             // bulk ready
+    if (state == 5u) return (left || right) && local.y >= 3 && local.y <= 4; // breakup
+    if (state == 6u) return bottom && local.x >= 2 && local.x <= 5; // settled
+    if (state == 7u) return topLeft || topRight || bottomLeft || bottomRight; // enclosed
+    if (state == 8u) return bottomLeft;                           // sleeping
+    return false;                                                // stable/candidate
 }
 
 bool borderPixel(uint x, uint y, uint left, uint top, uint right, uint bottom) {
@@ -268,7 +301,7 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
         if (statPixel(pixel, ivec2(int(panelLeft + 10u),
             int(statsTop + stat * rowHeight)), textScale, fixedLabels[stat], fixedValues[stat])) {
             textHit = true;
-            textColor = debugStatColor(stat > 2u ? stat - 3u : stat);
+            textColor = debugStatColor(stat);
         }
     }
 
@@ -357,6 +390,7 @@ uint designerBrushShape() { return (renderPc.designerFlags >> 1u) & 3u; }
 uint designerMode() { return (renderPc.designerFlags >> 3u) & 1u; }
 uint designerPane() { return (renderPc.designerFlags >> 4u) & 1u; }
 uint inventoryPane() { return (renderPc.designerFlags >> 5u) & 1u; }
+uint nukeFlashFrames() { return (renderPc.designerFlags >> 28u) & 15u; }
 uint designerZoom() { return max((renderPc.designerFlags >> 8u) & 255u, 1u); }
 uint designerBrushRadius() { return max((renderPc.designerFlags >> 16u) & 255u, 1u); }
 bool blueprintSlotOccupied(uint slot) {
@@ -1261,34 +1295,45 @@ void main() {
         uint cellPixelsY = renderPc.viewportHeight / max(renderPc.viewHeight, 1u);
         bool readableTileGrid = min(cellPixelsX, cellPixelsY) >= 1u;
         ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));
-        bool stateEdge = local.x == 0 || local.y == 0 || local.x == 7 || local.y == 7;
-        if (readableTileGrid && stateEdge) {
+        if (readableTileGrid) {
             TileState tile = tileAt(grid);
-            vec3 overlay = debugKeyColor(9u);
-            float alpha = 0.36;
+            uint state = 9u;
+            float alpha = 0.0;
             if (tileHas(tile, TILE_COLLAPSING) || tileHas(tile, TILE_DAMAGED)) {
-                overlay = debugKeyColor(0u); alpha = 0.86;
+                state = 0u; alpha = 0.72;
             } else if (tileHas(tile, TILE_FINE_ACTIVE)) {
-                overlay = debugKeyColor(2u); alpha = 0.72;
+                state = 2u; alpha = 0.56;
             } else if (tileHas(tile, TILE_MACRO_MOVED)) {
-                overlay = debugKeyColor(3u); alpha = 0.78;
+                state = 3u; alpha = 0.62;
             } else if (tileHas(tile, TILE_MEDIUM_BREAKUP) &&
                        !tileHas(tile, TILE_SLEEPING)) {
-                overlay = debugKeyColor(5u); alpha = 0.76;
+                state = 5u; alpha = 0.60;
             } else if (tileHas(tile, TILE_BULK_READY) || tileHas(tile, TILE_MACRO_MOVABLE)) {
-                overlay = debugKeyColor(4u); alpha = 0.68;
+                state = 4u; alpha = 0.52;
             } else if (tileHas(tile, TILE_SETTLED_MEDIUM)) {
-                overlay = debugKeyColor(6u); alpha = 0.58;
+                state = 6u; alpha = 0.44;
             } else if (tileHas(tile, TILE_MEDIUM_ENCLOSED)) {
-                overlay = debugKeyColor(7u); alpha = 0.56;
+                state = 7u; alpha = 0.42;
             } else if (tileHas(tile, TILE_SLEEPING)) {
-                overlay = debugKeyColor(8u); alpha = 0.48;
+                state = 8u; alpha = 0.28;
             } else if (tileHas(tile, TILE_ACTIVE)) {
-                overlay = debugKeyColor(1u); alpha = 0.60;
+                state = 1u; alpha = 0.46;
             }
-            float occupancy = clamp(float(tileOccupancy(tile)) / 64.0, 0.28, 1.0);
-            color.rgb = mix(color.rgb, overlay, alpha * occupancy);
+            if (debugStateMarkerPixel(state, local)) {
+                // Material color remains authoritative in Debug. State appears
+                // only as a sparse edge/corner annotation with bounded opacity.
+                float occupancy = clamp(float(tileOccupancy(tile)) / 64.0, 0.35, 1.0);
+                color.rgb = mix(color.rgb, debugKeyColor(state), alpha * occupancy);
+            }
         }
+
+        bool activeArea = sectionActiveAt(grid, renderPc.activeAreaX, renderPc.activeAreaY,
+                                          renderPc.activeScopeMode);
+        ivec2 activeLocal = ivec2(grid.x % ACTIVE_REGION_WIDTH_CELLS,
+                                  grid.y % ACTIVE_REGION_HEIGHT_CELLS);
+        bool activeBoundary = activeArea && (activeLocal.x == 0 || activeLocal.y == 0);
+        if (activeBoundary)
+            color.rgb = mix(color.rgb, vec3(0.18, 0.78, 0.86), 0.24);
     }
 
     if (mapSample && mapOverlayBorderPixel()) {
@@ -1389,6 +1434,22 @@ void main() {
             }
             if (cursorEdge) color.rgb = vec3(1.0) - color.rgb;
         }
+    }
+
+    uint nukeFrames = nukeFlashFrames();
+    if (!mapSample && nukeFrames != 0u) {
+        // Six deterministic presentation frames warn before the GPU edit.
+        // The overhead is fragment-only and has no simulation/readback work.
+        vec2 viewportUv = vec2(float(x - renderPc.viewportLeft) /
+                                   float(max(renderPc.viewportWidth, 1u)),
+                               float(y - renderPc.viewportTop) /
+                                   float(max(renderPc.viewportHeight, 1u)));
+        float sunDistance = length((viewportUv - vec2(0.5, 0.0)) * vec2(0.75, 1.0));
+        float flare = smoothstep(0.95, 0.0, sunDistance);
+        float strength = (0.12 + 0.07 * float(7u - min(nukeFrames, 6u))) +
+                         flare * 0.46;
+        color.rgb = mix(color.rgb, vec3(1.0, 0.88, 0.56),
+                        clamp(strength, 0.0, 0.78));
     }
 
     outColor = vec4(color.rgb, 1.0);

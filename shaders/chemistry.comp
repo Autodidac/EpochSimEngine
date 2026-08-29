@@ -1213,7 +1213,8 @@ void main() {
     }
     TileState tile = tiles[tileIndex(p, pc.width)];
     bool fixedHiveContent = isStructural(source) &&
-        (source.material == MAT_HONEY || source.material == MAT_POLLEN);
+        (source.material == MAT_BEEHIVE || source.material == MAT_HONEY ||
+         source.material == MAT_POLLEN);
     bool minorityStructural = isStructural(source) && tile.material != source.material;
     bool durableStructural = isStructural(source) && isBlockCapable(source.material);
     durableStructural = durableStructural || fixedHiveContent;

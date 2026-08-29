@@ -94,6 +94,20 @@ bool displacePaintMediumUpward(ivec2 p) {
 
 void main() {
     ivec2 local = ivec2(gl_GlobalInvocationID.xy);
+    if (pc.activeMode == 2u) {
+        // Nuke from Space is an explicit user edit. Execute it entirely on the
+        // GPU after the warning flash; no full-world CPU readback/flood fill.
+        ivec2 p = local;
+        if (!inside(p)) return;
+        if ((p.x & int(CHUNK_CELL_SIZE - 1u)) == 0 &&
+            (p.y & int(CHUNK_CELL_SIZE - 1u)) == 0)
+            markPaintChunkDirty(p);
+        uint index = indexOf(p);
+        Cell previous = cells[index];
+        if (previous.material == MAT_ATMOSPHERE)
+            cells[index] = makeCell(MAT_FIRE);
+        return;
+    }
     int diameter = int(pc.radius * 2u + 1u);
     if (local.x >= diameter || local.y >= diameter) return;
 
@@ -154,8 +168,8 @@ void main() {
     if (material == MAT_BEEHIVE) {
         uint prefab = beehivePrefabMaterial(center, delta, beehivePrefabEntropy(center, delta));
         if (prefab != MATERIAL_COUNT) {
-            bool fixedHiveContent = prefab == MAT_WOOD || prefab == MAT_HONEY ||
-                                    prefab == MAT_POLLEN;
+            bool fixedHiveContent = prefab == MAT_WOOD || prefab == MAT_BEEHIVE ||
+                                    prefab == MAT_HONEY || prefab == MAT_POLLEN;
             cell = fixedHiveContent ? makeStructuralCell(prefab, true) : makeCell(prefab);
         } else {
             colonySlot = beeFormationSlotFromOffset(delta);

@@ -63,7 +63,7 @@ This command builds the real application and all GLSL shaders, runs the static s
 
 - With `F3` counters visible, complete moving Water and gas tiles attempt exact packet movement every two fixed ticks; an exposed blocked packet receives eight due opportunities before a fresh perimeter check permits fine fallback, while enclosed Air remains tiled.
 - In the Ecosystem district, compare the suspended hive against the supplied historical photograph. The recovered Fix29 shell/chamber/right-exit cells, exact two-bit contents, nine-tile Wood perch, and compact three-lobe SandHybrid colony are authoritative; exact reset, placement, load normalization, queen/home metadata, delayed runtime state, and packaged visual observation must agree before the visual mission closes.
-- While `PAUSED`, paint, erase, fill, and Ignite Air, confirm each edit appears immediately while both RUNNING and PAUSED, and confirm clocks, actors, reactions, lighting, MAP refresh, and effects do not advance.
+- While `PAUSED`, paint, erase, fill, and trigger `NUKE FROM SPACE`; confirm each edit appears immediately while both RUNNING and PAUSED, the warning flare precedes detonation, and clocks, actors, reactions, lighting, MAP refresh, and effects do not advance.
 - Verify Inventory and Designer remain inside the sidebar at wide and compact sizes; each exposes `INVENTORY` and `BLUEPRINTS`, and Designer never replaces the world viewport.
 
 ## Packaged Vulkan state-readback command

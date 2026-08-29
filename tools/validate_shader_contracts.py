@@ -22,12 +22,15 @@ EXPECTED_STALE_ERRORS = {
     "medium presentation contract missing 'mediumCell ? 0.0 : 0.045'",
     "camera/pause input contract missing 'input.fill_modifier && primary_pressed'",
     "medium-preserving debug/interface contract missing 'mediumCell'",
+    "medium-preserving debug/interface contract missing 'stateEdge'",
     "v2.5.8 movement equilibrium contract missing 'source.material != MAT_HONEY && source.material != MAT_OIL'",
     "debug legend contract missing 'Legend order matches the state precedence'",
     "debug legend contract missing 'hierarchy state is an edge key'",
     "debug legend contract missing 'vec3(0.05, 0.78, 1.00)'",
     "debug legend contract missing 'vec3(0.025, 0.075, 0.22)'",
     "acid-to-dirty-solution contract missing",
+    "Air fill/ignition action contract missing 'Ignited upper-left connected Air region'",
+    "generated control label contract missing '\"IGNITE AIR\"'",
     "context-sensitive tool contract missing 'state.shotTimer = plasma ? 14u : 7u'",
     "transient medium-tile contract missing 'bool macroLiquid = fullLiquid && (moving || liquidEnclosed || macroCadenceCarry)'",
     "transient medium-tile contract missing 'bool macroGas = fullGas && (moving || gasEnclosed || macroCadenceCarry)'",
@@ -96,6 +99,7 @@ def main() -> int:
         return 1
 
     move = (SHADERS / "move.comp").read_text(encoding="utf-8")
+    paint = (SHADERS / "paint.comp").read_text(encoding="utf-8")
     actor = (SHADERS / "actor.comp").read_text(encoding="utf-8")
     actor_defs = (SHADERS / "actor.glsl").read_text(encoding="utf-8")
     tiles = (SHADERS / "tiles.comp").read_text(encoding="utf-8")
@@ -119,6 +123,7 @@ def main() -> int:
     materials = (SHADERS / "materials.glsl").read_text(encoding="utf-8")
     sunlight = (SHADERS / "sunlight.comp").read_text(encoding="utf-8")
     swarm = (SHADERS / "bee_swarm.glsl").read_text(encoding="utf-8")
+    generator = (ROOT / "tools/generate_ui_text.py").read_text(encoding="utf-8")
 
     errors: list[str] = []
     for token in (
@@ -284,8 +289,59 @@ def main() -> int:
             "district-aware bee home contract")
     require(ui_layout, "layout.previous_scene = {{0.0f, 0.0f}, {0.0f, 0.0f}}", errors,
             "no scene carousel contract")
-    require(fullscreen, "if (readableTileGrid && stateEdge)", errors,
-            "square edge-only debug contract")
+    for token in (
+        "bool debugStateMarkerPixel(uint state, ivec2 local)",
+        "textColor = debugStatColor(stat)",
+        "if (row == 17u || row == 24u) return debugKeyColor(1u)",
+        "if (row == 18u || row == 25u) return debugKeyColor(8u)",
+        "return false;                                                // stable/candidate",
+        "Material color remains authoritative in Debug",
+        "color.rgb = mix(color.rgb, debugKeyColor(state), alpha * occupancy)",
+        "bool activeBoundary = activeArea && (activeLocal.x == 0 || activeLocal.y == 0)",
+    ):
+        require(fullscreen, token, errors,
+                "material-preserving debug marker contract")
+    if "bool stateEdge = local.x == 0 || local.y == 0" in fullscreen:
+        errors.append("debug presentation reintroduced dense full-tile state frames")
+    for token in (
+        "if (debug_visible && run_simulation)",
+        "if (collect_debug_stats) reset_debug_stats(frame.command_buffer)",
+        "if (collect_debug_stats) {",
+    ):
+        require(renderer, token, errors,
+                "zero-cost hidden debug collection contract")
+    for token in (
+        "record_nuke_from_space(frame.command_buffer)",
+        "nuke_flash_frames_remaining = 6u",
+        "Nuke from Space committed as one GPU Atmosphere-to-Fire edit",
+        "nuke_from_space_gpu_exact_atmosphere_edit",
+        "map_snapshot_slice = (map_snapshot_slice + 1u) % slice_count",
+        "const bool present_frame = present_requested",
+    ):
+        require(renderer, token, errors,
+                "staged Nuke and smooth-frame contract")
+    for forbidden in (
+        "void ignite_air_region()",
+        "pending_scene_export",
+        "simulation_overdue",
+    ):
+        if forbidden in renderer:
+            errors.append(f"staged Nuke/performance contract retained {forbidden!r}")
+    for token in (
+        "if (pc.activeMode == 2u)",
+        "previous.material == MAT_ATMOSPHERE",
+        "no full-world CPU readback/flood fill",
+    ):
+        require(paint, token, errors,
+                "GPU Nuke edit contract")
+    for token in (
+        "uint nukeFlashFrames()",
+        "Six deterministic presentation frames warn before the GPU edit",
+    ):
+        require(fullscreen, token, errors,
+                "Nuke warning light contract")
+    require(generator, '"NUKE FROM SPACE"', errors,
+            "Nuke action label contract")
     require(fullscreen, "if (!mapSample && (x < renderPc.viewportLeft", errors,
             "MAP overlay must be classified before camera letterbox rejection")
     for token in (
@@ -324,6 +380,7 @@ def main() -> int:
             errors.append(
                 f"Acid/Waste no-invented-Water contract retained {forbidden!r}")
     for token in (
+        "source.material == MAT_BEEHIVE || source.material == MAT_HONEY",
         "bool cloudRainDue(ivec2 position, Cell cloud)",
         "Cloud age is authoritative fixed-tick state",
         "Scheduled precipitation owns its one-for-one Cloud -> Water transition",

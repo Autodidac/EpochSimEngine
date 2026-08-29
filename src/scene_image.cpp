@@ -138,13 +138,9 @@ void normalize_pre_pr19_hives_impl(std::vector<std::uint32_t>& materials,
             beehive_scene_queen_x, beehive_scene_queen_y, offset_x, offset_y);
     };
 
-    for (std::size_t index = 0u; index < materials.size(); ++index) {
-        const auto material = static_cast<Material>(materials[index]);
-        if (legacy_hive_material(material)) materials[index] = static_cast<std::uint32_t>(Material::empty);
-    }
 
-    for (std::int32_t offset_y = -16; offset_y <= 16; ++offset_y) {
-        for (std::int32_t offset_x = -16; offset_x <= 16; ++offset_x) {
+    for (std::int32_t offset_y = -29; offset_y <= 14; ++offset_y) {
+        for (std::int32_t offset_x = -40; offset_x <= 31; ++offset_x) {
             const auto x = beehive_queen_x + offset_x;
             const auto y = beehive_queen_y + offset_y;
             if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
@@ -153,7 +149,8 @@ void normalize_pre_pr19_hives_impl(std::vector<std::uint32_t>& materials,
             const auto index = static_cast<std::size_t>(y) * width +
                                static_cast<std::size_t>(x);
             const auto existing = static_cast<Material>(materials[index]);
-            if (legacy_hive_material(existing)) {
+            if (legacy_hive_material(existing) ||
+                existing == Material::bee) {
                 materials[index] = static_cast<std::uint32_t>(Material::empty);
             }
         }
@@ -174,10 +171,7 @@ void normalize_pre_pr19_hives_impl(std::vector<std::uint32_t>& materials,
                 continue;
             const auto index = static_cast<std::size_t>(y) * width +
                                static_cast<std::size_t>(x);
-            const auto existing = static_cast<Material>(materials[index]);
-            if (existing == Material::empty || legacy_hive_material(existing)) {
-                materials[index] = static_cast<std::uint32_t>(Material::wood);
-            }
+            materials[index] = static_cast<std::uint32_t>(Material::wood);
         }
     }
     for (std::int32_t offset_y = -11; offset_y <= 11; ++offset_y) {
@@ -192,12 +186,19 @@ void normalize_pre_pr19_hives_impl(std::vector<std::uint32_t>& materials,
             const auto material = pre_pr19_beehive_material(
                 offset_x, offset_y, hive_entropy(offset_x, offset_y));
             if (material == Material::count) continue;
-            const auto existing = static_cast<Material>(materials[index]);
-            // The body is authoritative over its aligned Wood perch. Preserve
-            // only a SandHybrid formation bee in an expected open cell.
-            if (material == Material::empty && existing == Material::bee) continue;
             materials[index] = static_cast<std::uint32_t>(material);
         }
+    }
+    for (std::size_t slot = 0u; slot < fix29_bee_formation_count; ++slot) {
+        const auto offset = fix29_bee_formation_offset(slot);
+        const auto x = beehive_queen_x + static_cast<std::int32_t>(offset.x);
+        const auto y = beehive_queen_y + static_cast<std::int32_t>(offset.y);
+        if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
+            y >= static_cast<std::int32_t>(height))
+            continue;
+        const auto index = static_cast<std::size_t>(y) * width +
+                           static_cast<std::size_t>(x);
+        materials[index] = static_cast<std::uint32_t>(Material::bee);
     }
 }
 
@@ -439,8 +440,8 @@ bool load_scene_ppm(const std::filesystem::path& path,
         }
     }
 
-    normalize_pre_pr19_hives(materials, width, height, 0u, 0u, scene);
     normalize_legacy_open_air(materials, width, height);
+    normalize_pre_pr19_hives(materials, width, height, 0u, 0u, scene);
     std::fill(counts.begin(), counts.end(), std::uint16_t{0});
     for (std::uint32_t y = 0u; y < height; ++y) {
         for (std::uint32_t x = 0u; x < width; ++x) {
@@ -468,6 +469,7 @@ bool load_scene_ppm(const std::filesystem::path& path,
                 const auto part = classify_pre_pr19_hive_cell(
                     dx, dy, fix29_hive_entropy(512, queen_y, dx, dy), 512, queen_y);
                 fixed_hive_content =
+                    (part == HivePart::shell && material == Material::beehive) ||
                     (part == HivePart::honey && material == Material::honey) ||
                     (part == HivePart::pollen && material == Material::pollen);
             }

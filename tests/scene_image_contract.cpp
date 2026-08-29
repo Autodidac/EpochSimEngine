@@ -130,7 +130,8 @@ int main() {
         std::uint32_t honey = 0u;
         std::uint32_t pollen = 0u;
         std::uint32_t chamber_empty = 0u;
-        for (std::int32_t dy = -18; dy <= 11; ++dy) {
+        std::uint32_t bees = 0u;
+        for (std::int32_t dy = -29; dy <= 14; ++dy) {
             for (std::int32_t dx = -40; dx <= 31; ++dx) {
                 const auto part = sandhybrid::classify_pre_pr19_hive_cell(
                     dx, dy, sandhybrid::fix29_hive_entropy(512, hive_queen_y, dx, dy),
@@ -163,13 +164,20 @@ int main() {
                 case sandhybrid::HivePart::empty:
                     break;
                 }
+                const auto formation_slot =
+                    sandhybrid::fix29_bee_formation_slot(dx, dy);
+                if (formation_slot >= 0) {
+                    if (part != sandhybrid::HivePart::empty) return false;
+                    expected = sandhybrid::Material::bee;
+                    ++bees;
+                }
                 const auto actual = static_cast<sandhybrid::Material>(cells[
                     static_cast<std::size_t>(hive_queen_y + dy) * canonical_width +
                     static_cast<std::size_t>(512 + dx)]);
                 if (actual != expected) return false;
             }
         }
-        return support == expected_support && shell == 193u &&
+        return support == expected_support && shell == 193u && bees == 100u &&
                honey == expected_honey && pollen == expected_pollen &&
                chamber_empty == expected_empty;
     };
@@ -186,11 +194,6 @@ int main() {
     constexpr std::uint32_t persistent_queen_y = 234u;
     std::vector<sandhybrid::SceneCell> persistent_source(
         static_cast<std::size_t>(persistent_width) * persistent_height);
-    persistent_source[persistent_queen_y * persistent_width + persistent_queen_x].material =
-        static_cast<std::uint32_t>(sandhybrid::Material::queen_bee);
-    for (const auto x : {470u, 471u, 552u, 553u})
-        persistent_source[persistent_queen_y * persistent_width + x].material =
-            static_cast<std::uint32_t>(sandhybrid::Material::bee);
     const auto persistent_path = root / "persistent-world.ppm";
     if (!sandhybrid::save_scene_ppm(persistent_path, persistent_width,
                                     persistent_height, persistent_source, error))
@@ -202,22 +205,78 @@ int main() {
                                     persistent_loaded, error))
         return 17;
     expected_slot = 0u;
-    for (const auto x : {470u, 471u, 552u, 553u}) {
-        const auto bee = persistent_loaded[
-            persistent_queen_y * persistent_width + x];
+    for (; expected_slot < sandhybrid::fix29_bee_formation_count;
+         ++expected_slot) {
+        const auto offset =
+            sandhybrid::fix29_bee_formation_offset(expected_slot);
+        const auto x = static_cast<std::uint32_t>(
+            static_cast<std::int32_t>(persistent_queen_x) + offset.x);
+        const auto y = static_cast<std::uint32_t>(
+            static_cast<std::int32_t>(persistent_queen_y) + offset.y);
+        const auto bee = persistent_loaded[y * persistent_width + x];
         const auto district = (bee.aux >> 20u) & 7u;
         const auto home_x = sandhybrid::persistent_world_district_origin_x(
             persistent_width, district) + (bee.aux & 127u) * 8u;
         const auto home_y = sandhybrid::persistent_world_district_origin_y(
             persistent_height, district) + ((bee.aux >> 7u) & 63u) * 8u;
         const auto slot = (bee.aux >> 13u) & 127u;
-        if ((bee.aux & (aux_bee_fed | aux_bee_swarm)) !=
+        if (bee.material != static_cast<std::uint32_t>(sandhybrid::Material::bee) ||
+            (bee.aux & (aux_bee_fed | aux_bee_swarm)) !=
                 (aux_bee_fed | aux_bee_swarm) ||
             (bee.aux & aux_water_half) != 0u || district != 0u ||
             home_x != persistent_queen_x || home_y != 232u ||
-            slot != expected_slot)
+            slot != expected_slot || (bee.age >> 16u) != bee_target_none)
             return 18;
-        ++expected_slot;
+    }
+
+    std::uint32_t total_bees = 0u;
+    for (const auto& cell : persistent_loaded)
+        total_bees += cell.material ==
+            static_cast<std::uint32_t>(sandhybrid::Material::bee) ? 1u : 0u;
+    const auto& loaded_shell = persistent_loaded[
+        (persistent_queen_y - 9u) * persistent_width + persistent_queen_x];
+    if (total_bees != sandhybrid::fix29_bee_formation_count ||
+        loaded_shell.material !=
+            static_cast<std::uint32_t>(sandhybrid::Material::beehive) ||
+        (loaded_shell.aux & (aux_structural | aux_supported)) !=
+            (aux_structural | aux_supported))
+        return 19;
+
+    // Normalizing one district must never erase or borrow the other hive.
+    constexpr std::uint32_t dual_width = canonical_width * 2u;
+    std::vector<std::uint32_t> dual(
+        static_cast<std::size_t>(dual_width) * canonical_height,
+        static_cast<std::uint32_t>(sandhybrid::Material::empty));
+    constexpr std::size_t foreign_hive_content =
+        static_cast<std::size_t>(64u) * dual_width + 64u;
+    dual[foreign_hive_content] =
+        static_cast<std::uint32_t>(sandhybrid::Material::honey);
+    sandhybrid::normalize_pre_pr19_hives(
+        dual, dual_width, canonical_height, 0u, 0u,
+        sandhybrid::Scene::sandbox);
+    sandhybrid::normalize_pre_pr19_hives(
+        dual, dual_width, canonical_height, canonical_width, 0u,
+        sandhybrid::Scene::ecosystem);
+    if (dual[234u * dual_width + 512u] !=
+            static_cast<std::uint32_t>(sandhybrid::Material::queen_bee) ||
+        dual[232u * dual_width + canonical_width + 512u] !=
+            static_cast<std::uint32_t>(sandhybrid::Material::queen_bee) ||
+        dual[foreign_hive_content] !=
+            static_cast<std::uint32_t>(sandhybrid::Material::honey))
+        return 20;
+    for (std::size_t slot = 0u;
+         slot < sandhybrid::fix29_bee_formation_count; ++slot) {
+        const auto offset = sandhybrid::fix29_bee_formation_offset(slot);
+        const auto sandbox_x = static_cast<std::uint32_t>(512 + offset.x);
+        const auto sandbox_y = static_cast<std::uint32_t>(234 + offset.y);
+        const auto ecosystem_x = static_cast<std::uint32_t>(
+            canonical_width + 512 + offset.x);
+        const auto ecosystem_y = static_cast<std::uint32_t>(232 + offset.y);
+        if (dual[sandbox_y * dual_width + sandbox_x] !=
+                static_cast<std::uint32_t>(sandhybrid::Material::bee) ||
+            dual[ecosystem_y * dual_width + ecosystem_x] !=
+                static_cast<std::uint32_t>(sandhybrid::Material::bee))
+            return 21;
     }
 
     std::filesystem::remove_all(root, cleanup_error);

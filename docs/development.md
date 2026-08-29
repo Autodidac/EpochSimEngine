@@ -12,7 +12,7 @@
 
 The native event thread owns Win32/XCB input and window events. A dedicated Vulkan thread owns fixed-rate simulation, compute dispatch, readback, and presentation. Canonical 16-byte cells are globally authoritative. Aligned tile and chunk metadata provide macro movement, stability, active-area rejection, and sleep without replacing cells.
 
-The runtime submits at most one complete 60 Hz tick per presented frame and discards stale debt. Debug collection is disabled when hidden and must remain read-only. MAP and explicit save/export readbacks may use bounded-cadence snapshots; normal fixed ticks may not copy the complete resident world.
+The runtime submits at most one complete 60 Hz tick per presented frame, discards stale debt, and never suppresses a requested presentation merely because the tick was late. Debug collection is disabled when hidden and must remain read-only. Live MAP refresh rolls across 16 contiguous resident row bands so no presented frame copies the complete Large field; explicit save/export may still copy its declared payload. Normal fixed ticks may not copy the complete resident world.
 
 ## Validation layers
 
