@@ -155,6 +155,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         chunks.comp
         copy_cells.comp
         chemistry.comp
+        conservation_corrections.comp
         macro_move.comp
         move.comp
         actor.comp
@@ -228,12 +229,16 @@ if(SANDHYBRID_BUILD_APP)
         target_link_libraries(SandHybrid_Demo PRIVATE ${XCB_LIBRARY} dl)
     endif()
 
-    add_dependencies(SandHybrid_Demo sandhybrid_shaders)
-    add_custom_command(TARGET SandHybrid_Demo POST_BUILD
+    add_custom_target(sandhybrid_runtime_shaders ALL
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:SandHybrid_Demo>/shaders"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${SANDHYBRID_SHADER_BINARIES}
                 "$<TARGET_FILE_DIR:SandHybrid_Demo>/shaders"
+        DEPENDS sandhybrid_shaders
+        VERBATIM
+    )
+    add_dependencies(SandHybrid_Demo sandhybrid_runtime_shaders)
+    add_custom_command(TARGET SandHybrid_Demo POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:SandHybrid_Demo>/scenes"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${CMAKE_CURRENT_SOURCE_DIR}/scenes/README.txt"

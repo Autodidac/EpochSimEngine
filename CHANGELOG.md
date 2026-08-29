@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Preserved the known-good software-Vulkan chemistry kernel and moved conservative Acid/Waste, fixed-hive, sparse-rain, and vapor/Cloud corrections into one shallow post-pass, avoiding the llvmpipe optimizer cliff while keeping all 63 production checks green on both RTX and llvmpipe.
+- Made incremental builds always deploy every generated shader beside the runtime, eliminating stale build-tree SPIR-V that previously hid source changes and produced misleading A/B results.
 - Renamed the former Ignite Air action to `NUKE FROM SPACE`, added a six-presented-frame warning flare, and moved the complete Atmosphere-to-Fire edit onto one deterministic GPU dispatch with no full-world CPU readback.
 - Removed three frame-pacing spikes: late fixed ticks no longer suppress requested presentation, live MAP refresh copies one of 16 contiguous row bands instead of the entire 225 MiB Large field, and reset no longer performs an automatic full-world PPM export/readback.
 - Recovered tool/reset/load Fix29 hive ownership with the exact structural shell/content/perch and shared ordered 100-bee formation; tool placement and both World hives now pass immediate and 120-tick GPU readback.

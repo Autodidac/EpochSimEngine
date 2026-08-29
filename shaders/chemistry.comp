@@ -1033,37 +1033,6 @@ bool activeStructuralProcess(uint material) {
            material == MAT_FACTORY_CORE || material == MAT_MAGMA_VENT;
 }
 
-bool cloudRainDue(ivec2 position, Cell cloud) {
-    if (cloud.material != MAT_CLOUD || cloud.age <= 600u ||
-        at(position + ivec2(0, 1)).material == MAT_CLOUD) {
-        return false;
-    }
-    const uint rainCycleTicks = 600u;
-    uint band = uint(max(position.x, 0)) / 8u;
-    uint rainCycle = cloud.age / rainCycleTicks;
-    // One lane per eight-column band keeps rainfall bounded. Rotate that lane
-    // deterministically each cycle without a seed-dependent CPU/GPU schedule.
-    uint lane = (band + rainCycle * 3u) & 7u;
-    uint localX = uint(max(position.x, 0)) & 7u;
-    bool rainLane = localX == lane;
-    // Cloud age is authoritative fixed-tick state, so precipitation cadence is
-    // independent of presentation, Debug, pause, or a CPU-side clock.
-    bool rainPhase = (cloud.age % rainCycleTicks) == (band % rainCycleTicks);
-    return rainLane && rainPhase;
-}
-
-bool weatherProcessDue(ivec2 position, Cell source) {
-    if (source.material == MAT_CLOUD) return cloudRainDue(position, source);
-    if (source.material != MAT_STEAM && source.material != MAT_DIRTY_STEAM)
-        return false;
-    bool dirtyVapor = source.material == MAT_DIRTY_STEAM;
-    bool joinsCloud = hasNeighbor(position, MAT_CLOUD) &&
-        (source.age > 120u || source.temperature < (dirtyVapor ? 70 : 75));
-    bool canNucleate = source.age > (dirtyVapor ? 2100u : 1800u) &&
-        (hasCold(position) || source.temperature < (dirtyVapor ? 32 : 34));
-    return joinsCloud || canNucleate;
-}
-
 bool sleepingStructuralNeighborhood(ivec2 position, Cell source) {
     if (!isStructural(source)) return false;
     if (activeStructuralProcess(source.material)) return false;
@@ -1156,19 +1125,7 @@ void main() {
         return;
     }
 
-    // Scheduled precipitation owns its one-for-one Cloud -> Water transition
-    // before generic sleeping shortcuts. The bottom-edge and one-lane schedule
-    // keep isolated upper Cloud and the rest of the continuous deck asleep.
-    if (cloudRainDue(p, source)) {
-        result = makeCell((source.aux & AUX_WET) != 0u
-                              ? MAT_DIRTY_WATER : MAT_WATER);
-        result.temperature = source.temperature;
-        commitResult(index, source, result);
-        return;
-    }
-
-    if (!activeStructuralProcess(source.material) &&
-        !weatherProcessDue(p, source) && sleepingChunkNeighborhood(p)) {
+    if (!activeStructuralProcess(source.material) && sleepingChunkNeighborhood(p)) {
         result.aux &= ~AUX_MOVED;
         nextCells[index] = result;
         return;
@@ -1213,8 +1170,7 @@ void main() {
     }
     TileState tile = tiles[tileIndex(p, pc.width)];
     bool fixedHiveContent = isStructural(source) &&
-        (source.material == MAT_BEEHIVE || source.material == MAT_HONEY ||
-         source.material == MAT_POLLEN);
+        (source.material == MAT_HONEY || source.material == MAT_POLLEN);
     bool minorityStructural = isStructural(source) && tile.material != source.material;
     bool durableStructural = isStructural(source) && isBlockCapable(source.material);
     durableStructural = durableStructural || fixedHiveContent;
@@ -1656,7 +1612,13 @@ void main() {
             result.temperature = source.temperature;
         }
     } else if (source.material == MAT_CLOUD) {
-        // Non-due Cloud remains a sleeping one-unit water-family owner.
+        uint connectedMass = 1u + neighborCount(p, MAT_CLOUD);
+        bool rainInterval = (pc.step % 240u) == 0u;
+        bool rainCell = (hash32(index ^ pc.seed ^ pc.step ^ 0xc10d5u) & 7u) == 0u;
+        if (source.age > 600u && connectedMass >= 6u && rainInterval && rainCell) {
+            result = makeCell((source.aux & AUX_WET) != 0u ? MAT_DIRTY_WATER : MAT_WATER);
+            result.temperature = source.temperature;
+        }
     }
 
     if (source.material == MAT_FIRE) {
@@ -2020,7 +1982,7 @@ void main() {
         else if (source.age > 7200u && (randomValue & 255u) == 0u) result = makeCell(MAT_WASTE);
     } else if (result.material == source.material && source.material == MAT_WASTE) {
         if (nearFire || nearLava) result = makeCell(MAT_SMOKE);
-        else if (hasAnyWater(p) && (randomValue & 255u) == 0u) result = makeCell(MAT_FERTILIZER);
+        else if (hasAnyWater(p) && (randomValue & 255u) == 0u) result = makeCell(MAT_DIRTY_WATER);
         else if (source.age > 5400u && (randomValue & 511u) == 0u) result = makeCell(MAT_DIRT);
     }
 
@@ -2059,13 +2021,14 @@ void main() {
     }
 
     if (result.material == source.material && nearAcid && !acidImmune(source.material) &&
-        (randomValue & 31u) == 0u && randomByte > acidResistance(source.material) &&
-        isOrganic(source.material)) {
-        // Organic decay has an explicit one-unit Waste owner. Inorganic
-        // dissolution needs an Acid/solute pair and therefore remains unchanged
-        // until that paired transaction exists; it may not manufacture Water,
-        // Dirty Water, Silt, or an unowned dissolved product.
-        result = makeCell(MAT_WASTE);
+        (randomValue & 31u) == 0u && randomByte > acidResistance(source.material)) {
+        // Silt belongs to sediment and dirty-water settling, not generic acid
+        // corrosion. Dissolved inorganic matter becomes dirty solution.
+        result = makeCell(isOrganic(source.material) ? MAT_WASTE : MAT_DIRTY_WATER);
+    }
+
+    if (source.material == MAT_ACID && (nearWater || nearSaltwater) && (randomValue & 511u) == 0u) {
+        result = makeCell(nearSaltwater ? MAT_SALTWATER : MAT_WATER);
     }
 
     if (storedInMachine) {

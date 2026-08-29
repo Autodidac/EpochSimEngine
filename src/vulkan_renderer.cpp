@@ -392,6 +392,7 @@ struct VulkanRenderer::Impl final {
     VkPipeline chunk_pipeline{};
     VkPipeline copy_cells_pipeline{};
     VkPipeline chemistry_pipeline{};
+    VkPipeline conservation_corrections_pipeline{};
     VkPipeline macro_movement_pipeline{};
     VkPipeline movement_pipeline{};
     VkPipeline actor_pipeline{};
@@ -505,6 +506,8 @@ save_slot(normalize_world_slot(requested_save_slot)) {
             if (chunk_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chunk_pipeline, nullptr);
             if (copy_cells_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, copy_cells_pipeline, nullptr);
             if (chemistry_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_pipeline, nullptr);
+            if (conservation_corrections_pipeline != VK_NULL_HANDLE)
+                vkDestroyPipeline(device, conservation_corrections_pipeline, nullptr);
             if (macro_movement_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, macro_movement_pipeline, nullptr);
             if (movement_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, movement_pipeline, nullptr);
             if (actor_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, actor_pipeline, nullptr);
@@ -1120,6 +1123,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         chunk_pipeline = create_compute_pipeline("chunks.comp.spv");
         copy_cells_pipeline = create_compute_pipeline("copy_cells.comp.spv");
         chemistry_pipeline = create_compute_pipeline("chemistry.comp.spv");
+        conservation_corrections_pipeline =
+            create_compute_pipeline("conservation_corrections.comp.spv");
         macro_movement_pipeline = create_compute_pipeline("macro_move.comp.spv");
         movement_pipeline = create_compute_pipeline("move.comp.spv");
         actor_pipeline = create_compute_pipeline("actor.comp.spv");
@@ -2571,6 +2576,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                       divide_round_up(active_dispatch.width, simulation_local_size),
                       divide_round_up(active_dispatch.height, simulation_local_size), 1);
         buffer_barrier(command_buffer, cell_buffers[next_set], VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        bind_compute(command_buffer, conservation_corrections_pipeline, current_set);
+        vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
+                           0, sizeof(simulation_push), &simulation_push);
+        vkCmdDispatch(command_buffer,
+                      divide_round_up(active_dispatch.width, simulation_local_size),
+                      divide_round_up(active_dispatch.height, simulation_local_size), 1);
+        buffer_barrier(command_buffer, cell_buffers[next_set], VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         buffer_barrier(command_buffer, cell_buffers[current_set],
@@ -3467,6 +3481,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                           divide_round_up(acceptance_width, simulation_local_size),
                           divide_round_up(acceptance_height, simulation_local_size), 1);
             buffer_barrier(command_buffer, cell_buffers[next_set],
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            bind_compute(command_buffer, conservation_corrections_pipeline, current_set);
+            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                               VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+            vkCmdDispatch(command_buffer,
+                          divide_round_up(acceptance_width, simulation_local_size),
+                          divide_round_up(acceptance_height, simulation_local_size), 1);
+            buffer_barrier(command_buffer, cell_buffers[next_set],
                            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -3685,6 +3710,18 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
             bind_compute(command_buffer, chemistry_pipeline, current_set);
+            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                               VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                               sizeof(simulation_push), &simulation_push);
+            vkCmdDispatch(command_buffer,
+                          divide_round_up(acceptance_width, simulation_local_size),
+                          divide_round_up(acceptance_height, simulation_local_size), 1);
+            buffer_barrier(command_buffer, cell_buffers[next_set],
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            bind_compute(command_buffer, conservation_corrections_pipeline, current_set);
             vkCmdPushConstants(command_buffer, compute_pipeline_layout,
                                VK_SHADER_STAGE_COMPUTE_BIT, 0,
                                sizeof(simulation_push), &simulation_push);

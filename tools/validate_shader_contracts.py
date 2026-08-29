@@ -28,7 +28,6 @@ EXPECTED_STALE_ERRORS = {
     "debug legend contract missing 'hierarchy state is an edge key'",
     "debug legend contract missing 'vec3(0.05, 0.78, 1.00)'",
     "debug legend contract missing 'vec3(0.025, 0.075, 0.22)'",
-    "acid-to-dirty-solution contract missing",
     "Air fill/ignition action contract missing 'Ignited upper-left connected Air region'",
     "generated control label contract missing '\"IGNITE AIR\"'",
     "context-sensitive tool contract missing 'state.shotTimer = plasma ? 14u : 7u'",
@@ -119,6 +118,8 @@ def main() -> int:
     macro_move = (SHADERS / "macro_move.comp").read_text(encoding="utf-8")
     reset = (SHADERS / "reset.comp").read_text(encoding="utf-8")
     chemistry = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
+    conservation_corrections = (SHADERS / "conservation_corrections.comp").read_text(
+        encoding="utf-8")
     copy_cells = (SHADERS / "copy_cells.comp").read_text(encoding="utf-8")
     materials = (SHADERS / "materials.glsl").read_text(encoding="utf-8")
     sunlight = (SHADERS / "sunlight.comp").read_text(encoding="utf-8")
@@ -365,30 +366,44 @@ def main() -> int:
     ):
         require(chemistry, token, errors, "conserved Volcano outlet contract")
     for token in (
-        "Water-family owner merely because a real Water cell is nearby",
-        "it may not manufacture Water",
-        "result = makeCell(MAT_FERTILIZER)",
+        "acidInventedWater",
+        "acidInventedSolution",
+        "source.material == MAT_WASTE && proposed.material == MAT_DIRTY_WATER",
+        "corrected = makeCell(MAT_FERTILIZER)",
+        "undoConvertedStat()",
     ):
-        require(chemistry, token, errors,
-                "Acid/Waste no-invented-Water contract")
-    for forbidden in (
-        "source.material == MAT_ACID && (nearWater || nearSaltwater)",
-        "hasAnyWater(p) && (randomValue & 255u) == 0u) result = makeCell(MAT_DIRTY_WATER)",
-        "result = makeCell(isOrganic(source.material) ? MAT_WASTE : MAT_SILT)",
-    ):
-        if forbidden in chemistry:
-            errors.append(
-                f"Acid/Waste no-invented-Water contract retained {forbidden!r}")
+        require(conservation_corrections, token, errors,
+                "Acid/Waste no-invented-Water correction contract")
     for token in (
-        "source.material == MAT_BEEHIVE || source.material == MAT_HONEY",
-        "bool cloudRainDue(ivec2 position, Cell cloud)",
-        "Cloud age is authoritative fixed-tick state",
-        "Scheduled precipitation owns its one-for-one Cloud -> Water transition",
-        "!weatherProcessDue(p, source) && sleepingChunkNeighborhood(p)",
-        "Non-due Cloud remains a sleeping one-unit water-family owner",
+        "source.material == MAT_BEEHIVE && isStructural(source)",
+        "Sparse Cloud ownership is scalar and deterministic",
+        "bool candidate = source.age > 600u",
+        "sourceAt(position + ivec2(0, 1)).material != MAT_CLOUD",
+        "proposed.material == MAT_WATER",
+        "source.material == MAT_STEAM || source.material == MAT_DIRTY_STEAM",
+        "corrected.temperature = source.temperature",
     ):
-        require(chemistry, token, errors,
-                "sleep-safe sparse weather lifecycle contract")
+        require(conservation_corrections, token, errors,
+                "software-Vulkan-safe hive/weather correction contract")
+    for token in (
+        "conservation_corrections_pipeline =",
+        "create_compute_pipeline(\"conservation_corrections.comp.spv\")",
+        "bind_compute(command_buffer, conservation_corrections_pipeline, current_set)",
+    ):
+        require(renderer, token, errors,
+                "conservative post-chemistry dispatch contract")
+    if renderer.count(
+            "bind_compute(command_buffer, conservation_corrections_pipeline, current_set)") != 3:
+        errors.append(
+            "conservative post-chemistry dispatch must cover production and both acceptance paths")
+    cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    for token in (
+        "add_custom_target(sandhybrid_runtime_shaders ALL",
+        "copy_if_different",
+        "add_dependencies(SandHybrid_Demo sandhybrid_runtime_shaders)",
+    ):
+        require(cmake, token, errors,
+                "incremental runtime shader deployment contract")
     for token in (
         "world_wide_high_sky_weather_inventory",
         "volcano_converts_owned_lava_without_overwriting_ambient",

@@ -1,0 +1,137 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "materials.glsl"
+#include "tiles.glsl"
+#include "chunks.glsl"
+#include "conservation.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
+layout(std430, binding = 1) buffer NextCells { Cell nextCells[]; };
+
+const ivec2 correctionNeighborOffsets[8] = ivec2[8](
+    ivec2(-1, -1), ivec2(0, -1), ivec2(1, -1), ivec2(-1, 0),
+    ivec2(1, 0), ivec2(-1, 1), ivec2(0, 1), ivec2(1, 1));
+
+Cell sourceAt(ivec2 position) {
+    return inside(position) ? cells[indexOf(position)] : makeCell(MAT_STONE);
+}
+
+bool sourceHasNeighbor(ivec2 position, uint material) {
+    for (uint i = 0u; i < 8u; ++i)
+        if (sourceAt(position + correctionNeighborOffsets[i]).material == material) return true;
+    return false;
+}
+
+bool sourceHasAnyWater(ivec2 position) {
+    for (uint i = 0u; i < 8u; ++i) {
+        uint material = sourceAt(position + correctionNeighborOffsets[i]).material;
+        if (material == MAT_WATER || material == MAT_DIRTY_WATER ||
+            material == MAT_SALTWATER) return true;
+    }
+    return false;
+}
+
+Cell advancedSource(Cell source) {
+    Cell restored = source;
+    restored.age = source.age + 1u;
+    restored.aux &= ~AUX_MOVED;
+    return restored;
+}
+
+void undoConvertedStat() {
+    atomicAdd(conservation[CONS_CONVERTED], 0xffffffffu);
+}
+
+void addConvertedStat() {
+    atomicAdd(conservation[CONS_CONVERTED], 1u);
+}
+
+void main() {
+    ivec2 position = ivec2(gl_GlobalInvocationID.xy) + activeDispatchCellOrigin(
+        pc.activeSectionX, pc.activeSectionY, pc.activeMode);
+    if (!inside(position) ||
+        !sectionActiveAt(position, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) return;
+
+    uint index = indexOf(position);
+    Cell source = cells[index];
+    Cell proposed = nextCells[index];
+    Cell corrected = proposed;
+
+    // The fine-authored Fix29 shell is canonical body content, not loose cargo.
+    if (source.material == MAT_BEEHIVE && isStructural(source)) {
+        corrected = source;
+        corrected.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
+        corrected.aux &= ~AUX_MOVED;
+        corrected.age = 0u;
+        if (isStructural(source) && !isStructural(proposed))
+            atomicAdd(conservation[CONS_BROKEN], 0xffffffffu);
+    }
+
+    // The legacy monolithic kernel retains its proven software-Vulkan shape;
+    // cancel the two formerly unowned Acid conversions transactionally here.
+    bool acidInventedWater = source.material == MAT_ACID &&
+        (proposed.material == MAT_WATER || proposed.material == MAT_SALTWATER);
+    uint reactionRandom = cellHash(position, source.age ^ source.aux);
+    bool acidInventedSolution = !isWaterBased(source.material) &&
+        source.material != MAT_CLOUD && !acidImmune(source.material) &&
+        !isOrganic(source.material) && proposed.material == MAT_DIRTY_WATER &&
+        sourceHasNeighbor(position, MAT_ACID) &&
+        (reactionRandom & 31u) == 0u &&
+        ((reactionRandom >> 8u) & 255u) > acidResistance(source.material);
+    if (acidInventedWater || acidInventedSolution) {
+        corrected = advancedSource(source);
+        undoConvertedStat();
+    } else if (source.material == MAT_WASTE && proposed.material == MAT_DIRTY_WATER &&
+               sourceHasAnyWater(position)) {
+        corrected = makeCell(MAT_FERTILIZER);
+        // Waste -> Dirty Water and Waste -> Fertilizer are both one conversion,
+        // so the existing conversion count already describes the final event.
+    }
+
+    // Sparse Cloud ownership is scalar and deterministic. Only the lower edge
+    // samples one neighbor, and this compact pass stays separate from the large
+    // chemistry selector so llvmpipe cannot expand its JIT call graph.
+    if (source.material == MAT_CLOUD) {
+        const uint rainCycleTicks = 600u;
+        uint band = uint(max(position.x, 0)) >> 3u;
+        uint cycle = source.age / rainCycleTicks;
+        uint lane = (band + cycle * 3u) & 7u;
+        bool candidate = source.age > 600u &&
+            (uint(max(position.x, 0)) & 7u) == lane &&
+            (source.age % rainCycleTicks) == (band % rainCycleTicks) &&
+            sourceAt(position + ivec2(0, 1)).material != MAT_CLOUD;
+        bool oldRain = proposed.material == MAT_WATER ||
+            proposed.material == MAT_DIRTY_WATER;
+        if (candidate) {
+            corrected = makeCell((source.aux & AUX_WET) != 0u
+                                     ? MAT_DIRTY_WATER : MAT_WATER);
+            corrected.temperature = source.temperature;
+            if (!oldRain) addConvertedStat();
+        } else if (oldRain) {
+            corrected = advancedSource(source);
+            undoConvertedStat();
+        }
+    }
+
+    // Sleeping vapor still participates in the same one-for-one Cloud phase
+    // transition without forcing the monolithic kernel's sleep selector open.
+    if ((source.material == MAT_STEAM || source.material == MAT_DIRTY_STEAM) &&
+        proposed.material == source.material) {
+        bool dirtyVapor = source.material == MAT_DIRTY_STEAM;
+        bool joinsCloud = sourceHasNeighbor(position, MAT_CLOUD) &&
+            (source.age > 120u || proposed.temperature < (dirtyVapor ? 70 : 75));
+        bool nucleatesCloud = source.age > (dirtyVapor ? 2100u : 1800u) &&
+            (sourceHasNeighbor(position, MAT_ICE) || sourceHasNeighbor(position, MAT_SNOW) ||
+             proposed.temperature < (dirtyVapor ? 32 : 34)) &&
+            (cellHash(position, source.age ^ source.aux) & 255u) == 0u;
+        if (joinsCloud || nucleatesCloud) {
+            corrected = makeCell(MAT_CLOUD);
+            if (dirtyVapor) corrected.aux |= AUX_WET;
+            corrected.temperature = source.temperature;
+            addConvertedStat();
+        }
+    }
+
+    nextCells[index] = corrected;
+}
