@@ -55,7 +55,7 @@ This command builds the real application and all GLSL shaders, runs the static s
 - A complete mouse down/up pair received within one native poll still produces exactly one `primary_pressed` or `secondary_pressed` edge.
 - Character primary action drills ordinary terrain even while plasma ammunition is carried. Plasma is consumed only when the first ray hit is a hostile target.
 - Every stable terrain pixel requires two ordinary laser hits: 255 integrity with 144 damage per hit.
-- A terminal laser hit is an exact material transaction: matching inventory receives one unit when it has capacity; otherwise one deterministic adjacent actor-clear cell receives the same material; if both paths are blocked, the damaged source cell remains. The gun never deletes matter.
+- A terminal laser hit is an exact world-only transaction: one deterministic adjacent actor-clear real-gas cell receives the struck material and its gas replaces the source. Empty/Vacuum, liquids, and the pickup volume are not destinations; if no transaction commits, the source remains. The gun never deletes matter or changes inventory.
 - At 32 remaining pixels the region stays coherent; at 31 remaining pixels all survivors release in the same simulation pass.
 - Ambient empty cells restore oxygen and never cause passive health loss. Health damage requires prolonged zero-oxygen exposure inside a concentrated toxic pocket.
 - Authored terrain remains stable, while deliberate sand/silt/cargo samples remain loose and simulated.

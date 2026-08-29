@@ -14,13 +14,13 @@ The World is a finite closed material system except for explicit user edits and 
 - Editor owns direct world mutation. Inventory owns player mining/deposit when no Blueprint is active.
 - `H` and Camera Home restore the current camera; Reset preserves camera and MAP state.
 - Paused mode freezes simulation, actors, clocks, MAP refresh, and effects while authorized editing remains live.
-- The player laser damages and transfers material; it is never an eraser.
+- The player laser damages material and transfers a terminal fragment to a deterministic adjacent real-gas world cell. It never erases, collects inventory, or creates Vacuum; a blocked hit retains its exact source.
 
 The in-app KEYMAP is authoritative for the complete current bindings.
 
 ## World and weather
 
-Every district shares one aligned grass surface. The high sky contains one continuous conserved Cloud deck. Steam joins Cloud one-for-one; mature Cloud may return equal Water-family units as rain. Volcano, Waterworks, experiments, and terrain are examples of the same material APIs rather than separate scripted worlds.
+Every district shares one aligned grass surface. The high sky contains one continuous conserved Cloud deck. Steam joins Cloud one-for-one; mature Cloud returns staggered equal-temperature Water-family units as rain without waking the whole deck at once. Acid, corrosion, ecology, weather, and phase rules may change a material only through a declared source/sink transaction. Volcano, Waterworks, experiments, and terrain are examples of the same material APIs rather than separate scripted worlds.
 
 ## Saves and runtime checks
 

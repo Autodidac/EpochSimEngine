@@ -129,9 +129,11 @@ bool groundedAt(ivec2 center) {
 }
 
 bool toolTransparent(uint material) {
-    return material == MAT_EMPTY || isGas(material) || isLiquid(material) ||
-           material == MAT_BEE || material == MAT_POLLEN || material == MAT_FLOWER ||
-           material == MAT_GRASS || material == MAT_ANT || material == MAT_PLANT_STEM;
+    // Rays cross open/gaseous space and living swarm agents. Liquids, terrain,
+    // vegetation, cargo, and structures are physical targets rather than
+    // decorative holes in the world.
+    return material == MAT_EMPTY || isGas(material) ||
+           material == MAT_BEE || material == MAT_ANT;
 }
 
 void updateUnlocks(inout ActorState state) {
@@ -175,10 +177,10 @@ void collectResources(inout ActorState state) {
     updateUnlocks(state);
 }
 
-bool insideActorBody(ActorState state, ivec2 p) {
+bool insideActorPickup(ActorState state, ivec2 p) {
     ivec2 delta = p - ivec2(state.x, state.y);
-    return abs(delta.x) <= ACTOR_HALF_WIDTH &&
-           delta.y >= ACTOR_TOP_OFFSET && delta.y <= 0;
+    return abs(delta.x) <= ACTOR_HALF_WIDTH + 1 &&
+           delta.y >= ACTOR_TOP_OFFSET && delta.y <= 1;
 }
 
 bool releaseDamagedFragment(ActorState state, ivec2 sourcePosition,
@@ -195,11 +197,13 @@ bool releaseDamagedFragment(ActorState state, ivec2 sourcePosition,
         sourcePosition + ivec2(away, 0));
     for (uint targetIndex = 0u; targetIndex < 5u; ++targetIndex) {
         ivec2 targetPosition = targets[targetIndex];
-        if (!actorInside(targetPosition) || insideActorBody(state, targetPosition))
+        if (!actorInside(targetPosition) || insideActorPickup(state, targetPosition))
             continue;
         Cell target = actorAt(targetPosition);
-        if (target.material != MAT_EMPTY && !isCellGas(target) &&
-            !isCellLiquid(target)) continue;
+        // A terminal hit is an exact world-to-world swap with real gas. Empty
+        // would leave visible Vacuum at the source and liquid would corrupt a
+        // second material owner. If no gas destination exists, retain source.
+        if (!isCellGas(target)) continue;
         cells[actorIndex(sourcePosition)] = target;
         cells[actorIndex(targetPosition)] = fragment;
         markActorChunkDirty(sourcePosition);
@@ -235,14 +239,11 @@ void damageCell(inout ActorState state, ivec2 p, uint damage) {
             fragment.aux |= AUX_MOVED;
             fragment.age = 0u;
             setStateValue(fragment, 1u);
-            if (tryStoreResource(state, fragment.material)) {
-                recordConservation(cell, fragment);
-                cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
-            } else if (releaseDamagedFragment(state, p, fragment)) {
+            if (releaseDamagedFragment(state, p, fragment)) {
                 recordConservation(cell, fragment);
             }
-            // If neither inventory nor a body-clear destination accepts the
-            // unit, retain the exact pre-hit structural cell. A terminal tool
+            // If no body-clear gas destination accepts the unit, retain the
+            // exact pre-hit structural cell. A terminal tool
             // action may not destroy or temporarily unown represented matter.
         } else {
             setStateValue(cell, health - damage);
@@ -259,11 +260,8 @@ void damageCell(inout ActorState state, ivec2 p, uint damage) {
         fragment.age = 0u;
         fragment.aux |= AUX_MOVED;
         setStateValue(fragment, 1u);
-        if (tryStoreResource(state, fragment.material))
-            cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
-        else
-            releaseDamagedFragment(state, p, fragment);
-        // A blocked non-inventory material remains byte-identical at source.
+        releaseDamagedFragment(state, p, fragment);
+        // A blocked material remains byte-identical at source.
     } else {
         setStateValue(cell, looseHealth - damage);
         cell.age = 0u;

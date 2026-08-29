@@ -1,13 +1,14 @@
-# SandHybrid library
+# EpochSimEngine library
 
-`SandHybrid` is the reusable C++23 static library. It owns platform-neutral scene image I/O, active-region scheduling, material and simulation policy headers, and the stable public entry point `sandhybrid/library.hpp`.
+`EpochSimEngine` is the reusable C++23 simulation library. `SandHybrid` is its bundled example/runtime and the compatibility package identity retained for existing consumers.
 
 Native startup, window creation, event polling, Vulkan presentation, shader packaging, and the demo executable are outside the core target and outside the installed core header set.
 
 ## Target graph
 
-- `SandHybrid::SandHybrid` — platform-neutral static library and installed package target.
-- `SandHybrid::VulkanRuntime` — optional in-tree Vulkan simulation/presentation target.
+- `EpochSimEngine::EpochSimEngine` — canonical platform-neutral library target.
+- `EpochSimEngine::VulkanRuntime` — canonical optional Vulkan runtime target.
+- `SandHybrid::SandHybrid` and `SandHybrid::VulkanRuntime` — compatibility aliases.
 - `SandHybrid_Demo` — native Win32 or XCB host executable; output name `sandhybrid`.
 
 The compatibility build-tree alias `Autodidac::SandHybrid` remains available.
@@ -29,9 +30,9 @@ This path does not configure EpochGui, find Vulkan, compile shaders, include nat
 ## Downstream use
 
 ```cmake
-find_package(SandHybrid CONFIG REQUIRED)
+find_package(EpochSimEngine CONFIG REQUIRED)
 
-target_link_libraries(my_simulation PRIVATE SandHybrid::SandHybrid)
+target_link_libraries(my_simulation PRIVATE EpochSimEngine::EpochSimEngine)
 target_compile_features(my_simulation PRIVATE cxx_std_23)
 ```
 
@@ -70,4 +71,4 @@ These APIs are deterministic and covered by Windows/Linux contracts. The Vulkan 
 
 ## v2.5.6 runtime controls
 
-Right-click exclusively pans: dragging moves the current camera and holding it near a viewport edge performs gated edge panning. `WASD PAN` routes keys to the simulation camera; MAP uses its own camera and a slow full-world snapshot without changing simulation LOD or active-region scheduling. In the persistent World, MINE uses left click and BUILD places the selected resource from the sidebar Inventory pane with left click. Terminal laser damage is an exact material transfer into inventory, an adjacent loose cell, or retained source state; it is never deletion. Hold `F` and left-click the simulation to fill; pressing `F` alone does nothing. Simulation pause keeps those direct editor mutations live while clocks, actors, reactions, MAP refresh, and effects remain frozen. World `RESET` preserves both cameras; `H` and the sidebar `H CAM HOME` button explicitly restore the active simulation or MAP view.
+Right-click exclusively pans: dragging moves the current camera and holding it near a viewport edge performs gated edge panning. `WASD PAN` routes keys to the simulation camera; MAP uses its own camera and a slow full-world snapshot without changing simulation LOD or active-region scheduling. In the persistent World, MINE uses left click and BUILD places the selected resource from the sidebar Inventory pane with left click. Terminal laser damage is an exact world-to-world transfer into an adjacent body-clear gas cell, or it retains the source when no such destination exists. It never deletes matter or collects inventory. Hold `F` and left-click the simulation to fill; pressing `F` alone does nothing. Simulation pause keeps those direct editor mutations live while clocks, actors, reactions, MAP refresh, and effects remain frozen. World `RESET` preserves both cameras; `H` and the sidebar `H CAM HOME` button explicitly restore the active simulation or MAP view.

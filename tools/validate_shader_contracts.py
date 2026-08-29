@@ -27,6 +27,7 @@ EXPECTED_STALE_ERRORS = {
     "debug legend contract missing 'hierarchy state is an edge key'",
     "debug legend contract missing 'vec3(0.05, 0.78, 1.00)'",
     "debug legend contract missing 'vec3(0.025, 0.075, 0.22)'",
+    "acid-to-dirty-solution contract missing",
     "context-sensitive tool contract missing 'state.shotTimer = plasma ? 14u : 7u'",
     "transient medium-tile contract missing 'bool macroLiquid = fullLiquid && (moving || liquidEnclosed || macroCadenceCarry)'",
     "transient medium-tile contract missing 'bool macroGas = fullGas && (moving || gasEnclosed || macroCadenceCarry)'",
@@ -55,6 +56,8 @@ EXPECTED_STALE_ERRORS = {
     "v2.4.8 debug readability contract missing 'keyColorMap'",
     "click-confirmed Fill input contract missing 'const bool fill_click = editor_workspace && input.fill_modifier && primary_pressed'",
     "click-confirmed Fill input contract missing 'if (fill_click) shared_state.fill_region.store(true'",
+    "legacy project branding remains in CMakeLists.txt: 'EpochSimEngine'",
+    "legacy project branding remains in README.md: 'EpochSimEngine'",
 }
 
 def require(text: str, token: str, errors: list[str], contract: str) -> None:
@@ -288,7 +291,8 @@ def main() -> int:
     for token in (
         "bool tryStoreResource(inout ActorState state, uint material)",
         "bool releaseDamagedFragment(ActorState state",
-        "retain the exact pre-hit structural cell",
+        "if (!isCellGas(target)) continue",
+        "exact pre-hit structural cell",
         "releaseDamagedFragment(state, p, fragment)",
     ):
         require(actor, token, errors, "conserved player-laser transfer contract")
@@ -305,11 +309,37 @@ def main() -> int:
     ):
         require(chemistry, token, errors, "conserved Volcano outlet contract")
     for token in (
+        "Water-family owner merely because a real Water cell is nearby",
+        "it may not manufacture Water",
+        "result = makeCell(MAT_FERTILIZER)",
+    ):
+        require(chemistry, token, errors,
+                "Acid/Waste no-invented-Water contract")
+    for forbidden in (
+        "source.material == MAT_ACID && (nearWater || nearSaltwater)",
+        "hasAnyWater(p) && (randomValue & 255u) == 0u) result = makeCell(MAT_DIRTY_WATER)",
+        "result = makeCell(isOrganic(source.material) ? MAT_WASTE : MAT_SILT)",
+    ):
+        if forbidden in chemistry:
+            errors.append(
+                f"Acid/Waste no-invented-Water contract retained {forbidden!r}")
+    for token in (
+        "bool cloudRainDue(ivec2 position, Cell cloud)",
+        "Cloud age is authoritative fixed-tick state",
+        "Scheduled precipitation owns its one-for-one Cloud -> Water transition",
+        "!weatherProcessDue(p, source) && sleepingChunkNeighborhood(p)",
+        "Non-due Cloud remains a sleeping one-unit water-family owner",
+    ):
+        require(chemistry, token, errors,
+                "sleep-safe sparse weather lifecycle contract")
+    for token in (
         "world_wide_high_sky_weather_inventory",
         "volcano_converts_owned_lava_without_overwriting_ambient",
-        "inventory_player_laser_conserves_mined_resource",
-        "full_inventory_laser_releases_exact_loose_fragment",
-        "blocked_full_inventory_laser_retains_exact_world_unit",
+        "acid_and_moist_waste_never_manufacture_water",
+        "player_laser_world_transfer_conserves_without_collection",
+        "player_laser_releases_exact_loose_fragment",
+        "player_laser_targets_liquids_and_vegetation",
+        "blocked_player_laser_retains_exact_world_unit",
         "packed_atmosphere_respiration_conserves_pressure",
         "closed_crop_visible_co2_water_biomass",
         "closed_crop_stored_co2_debug_identity",

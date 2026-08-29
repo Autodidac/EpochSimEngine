@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Removed unowned Water creation from Acid adjacency and moist-Waste chemistry; wet Waste now becomes Fertilizer while the existing Water owner remains, and unsupported inorganic dissolution waits for an explicit paired Acid/solute transaction.
+- Changed terminal laser damage to a world-only exact transfer into deterministic adjacent real gas. It now targets liquids and vegetation, never collects inventory or creates Vacuum, and retains the source when no transfer can commit.
+- Replaced synchronized bulk rain with fixed-tick Cloud-age precipitation staggered by eight-column band; each due Cloud converts one-for-one to equal-temperature Water-family material before generic sleeping shortcuts.
 - Upgraded exact persistent-World saves to backward-compatible schema 2: the checksummed atomic payload now preserves the same 20-word actor owner used by the GPU alongside every canonical cell, including inventory, position, health, Oxygen, weapon state, progression, and tool level; schema-1 cell-only saves remain readable without fabricating ownership.
 - Conserved Half Water heat and displaced-medium ownership across ledge split, adjacent merge, exact saves/backups, and Blueprint transforms; both half-units retain source Water temperature, merged Water averages equal units, and restored Atmosphere/gas keeps its packed temperature and pressure/volume.
 - Updated the complete vendored EpochGui dependency to v0.89.27 at b23f283dd9b0d6021dccd8fbc2235306418aa66a from the checksum-verified Site mirror; all 10 upstream Windows tests pass.
