@@ -1,6 +1,7 @@
 @PACKAGE_INIT@
 
-include("${CMAKE_CURRENT_LIST_DIR}/SandHybridTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../SandHybrid/SandHybridTargets.cmake")
+
 if(TARGET SandHybrid::SandHybrid AND NOT TARGET EpochSimEngine::EpochSimEngine)
     add_library(EpochSimEngine::EpochSimEngine INTERFACE IMPORTED)
     set_property(TARGET EpochSimEngine::EpochSimEngine PROPERTY
@@ -11,4 +12,5 @@ if(TARGET SandHybrid::VulkanRuntime AND NOT TARGET EpochSimEngine::VulkanRuntime
     set_property(TARGET EpochSimEngine::VulkanRuntime PROPERTY
         INTERFACE_LINK_LIBRARIES SandHybrid::VulkanRuntime)
 endif()
-check_required_components(SandHybrid)
+
+check_required_components(EpochSimEngine)

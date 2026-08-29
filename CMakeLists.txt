@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SandHybrid VERSION 2.5.25 LANGUAGES CXX)
+project(EpochSimEngine VERSION 2.5.25 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -54,6 +54,7 @@ add_library(SandHybrid STATIC
     src/section_scheduler.cpp
 )
 add_library(SandHybrid::SandHybrid ALIAS SandHybrid)
+add_library(EpochSimEngine::EpochSimEngine ALIAS SandHybrid)
 add_library(Autodidac::SandHybrid ALIAS SandHybrid)
 set_target_properties(SandHybrid PROPERTIES
     EXPORT_NAME SandHybrid
@@ -116,6 +117,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
 
     add_library(SandHybrid_VulkanRuntime STATIC src/vulkan_renderer.cpp)
     add_library(SandHybrid::VulkanRuntime ALIAS SandHybrid_VulkanRuntime)
+    add_library(EpochSimEngine::VulkanRuntime ALIAS SandHybrid_VulkanRuntime)
     target_include_directories(SandHybrid_VulkanRuntime SYSTEM PRIVATE ${Vulkan_INCLUDE_DIRS})
     target_link_libraries(SandHybrid_VulkanRuntime PUBLIC
         SandHybrid
@@ -291,6 +293,17 @@ write_basic_package_version_file(
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY SameMajorVersion
 )
+set(EPOCHSIMENGINE_CMAKE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/EpochSimEngine")
+configure_package_config_file(
+    cmake/EpochSimEngineConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/EpochSimEngineConfig.cmake"
+    INSTALL_DESTINATION "${EPOCHSIMENGINE_CMAKE_INSTALL_DIR}"
+)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/EpochSimEngineConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
 install(EXPORT SandHybridTargets
     FILE SandHybridTargets.cmake
     NAMESPACE SandHybrid::
@@ -301,6 +314,13 @@ install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/SandHybridConfigVersion.cmake"
     DESTINATION "${SANDHYBRID_CMAKE_INSTALL_DIR}"
 )
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/EpochSimEngineConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/EpochSimEngineConfigVersion.cmake"
+    DESTINATION "${EPOCHSIMENGINE_CMAKE_INSTALL_DIR}"
+)
+install(FILES README.md LICENSE CHANGELOG.md DESTINATION .)
+install(FILES docs/library.md docs/sandhybrid.md docs/development.md DESTINATION docs)
 
 if(BUILD_TESTING)
     find_package(Python3 COMPONENTS Interpreter QUIET)

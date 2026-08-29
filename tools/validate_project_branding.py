@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enforce SandHybrid as the only project-owned product identity.
+"""Enforce EpochSimEngine library and SandHybrid example identities.
 
 External integration names such as EpochGui, EpochEngine, and the external
 ``epochengine::gui_lib`` namespace remain valid. Historical release prose and
@@ -41,14 +41,11 @@ EXCLUDED_FILES = {
     Path("tools/validate_project_branding.py"),
 }
 
-# Construct retired names in pieces so the policy file does not violate itself.
 RETIRED_PATTERNS = (
-    ("retired repository/product name", re.compile(r"\b" + "Epoch" + "SimEngine" + r"\b", re.IGNORECASE)),
     ("retired sand project name", re.compile(r"\b" + "Epoch" + r"Sand(?:_Cpp23_Vulkan)?\b", re.IGNORECASE)),
     ("retired FastFreddy name", re.compile(r"\b" + "Fast" + r"Freddy(?:Testbed)?\b", re.IGNORECASE)),
     ("retired fastfreddy identifier", re.compile(r"\b" + "fast" + r"freddy(?:testbed)?\b", re.IGNORECASE)),
     ("retired Vulkan Sand name", re.compile(r"\bVulkan[_ -]?Sand\b", re.IGNORECASE)),
-    ("retired epochsim identifier", re.compile(r"\bepoch[_-]?sim(?:engine)?\b", re.IGNORECASE)),
 )
 
 REPOSITORY_HOST_LITERAL = "github.com/Autodidac/" + "Epoch" + "SimEngine"
@@ -71,7 +68,7 @@ def project_files() -> list[Path]:
 
 def remove_host_only_exception(text: str) -> str:
     # The GitHub repository host has not yet been renamed. A literal URL is not
-    # product branding and is explicitly separate from MC-083 acceptance.
+    # repository routing and is explicitly separate from MC-083 acceptance.
     return text.replace("https://" + REPOSITORY_HOST_LITERAL, "https://<repository-host>").replace(
         REPOSITORY_HOST_LITERAL, "<repository-host>"
     )
@@ -98,10 +95,12 @@ def main() -> int:
                 )
 
     cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
-    if not re.search(r"\bproject\s*\(\s*SandHybrid\b", cmake):
-        violations.append("CMakeLists.txt: project() must use SandHybrid")
+    if not re.search(r"\bproject\s*\(\s*EpochSimEngine\b", cmake):
+        violations.append("CMakeLists.txt: project() must use EpochSimEngine")
     if not re.search(r"\badd_library\s*\(\s*SandHybrid\b", cmake):
-        violations.append("CMakeLists.txt: reusable core target SandHybrid is missing")
+        violations.append("CMakeLists.txt: compatibility core target SandHybrid is missing")
+    if "EpochSimEngine::EpochSimEngine ALIAS SandHybrid" not in cmake:
+        violations.append("CMakeLists.txt: canonical EpochSimEngine library alias is missing")
 
     public_headers = list((ROOT / "include" / "sandhybrid").glob("*.hpp"))
     if not public_headers:
@@ -117,7 +116,7 @@ def main() -> int:
         )
         return 1
 
-    print(f"SandHybrid branding contract passed across {len(files)} project text files.")
+    print(f"EpochSimEngine library / SandHybrid example branding passed across {len(files)} project text files.")
     return 0
 
 

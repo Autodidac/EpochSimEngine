@@ -154,14 +154,6 @@ jobs:
         if: runner.os == 'Linux'
         run: cmake --install build/ci --prefix dist/${{ matrix.artifact }}
 
-      - name: Add package documentation
-        shell: bash
-        run: |
-          cp README.md LICENSE LIBRARY.md REWRITE_PLAN.md missioncache.md CHANGELOG.md \
-            MISSION_LEDGER.md HIERARCHICAL_SIMULATION.md HALF_WATER.md MAP_VIEW.md \
-            SCENE_LAYOUT.md SAVE_LAYOUT.md RELEASE_NOTES.md VALIDATION.md \
-            "dist/${{ matrix.artifact }}/"
-
       - name: Archive Windows package
         if: runner.os == 'Windows'
         shell: pwsh

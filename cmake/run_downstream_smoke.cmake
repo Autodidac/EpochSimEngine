@@ -1,5 +1,5 @@
 if(NOT DEFINED SANDHYBRID_SOURCE_DIR OR NOT DEFINED SANDHYBRID_BINARY_DIR)
-    message(FATAL_ERROR "SandHybrid source and binary directories are required.")
+    message(FATAL_ERROR "EpochSimEngine source and binary directories are required.")
 endif()
 
 if(NOT DEFINED SANDHYBRID_CONFIG OR SANDHYBRID_CONFIG STREQUAL "")
@@ -15,7 +15,7 @@ execute_process(
             --config "${SANDHYBRID_CONFIG}" --prefix "${prefix}"
     RESULT_VARIABLE install_result)
 if(NOT install_result EQUAL 0)
-    message(FATAL_ERROR "Installing the SandHybrid package failed: ${install_result}")
+    message(FATAL_ERROR "Installing the EpochSimEngine package failed: ${install_result}")
 endif()
 
 foreach(runtime_header IN ITEMS app.hpp shared_state.hpp ui_layout.hpp ui_text_data.hpp
@@ -47,7 +47,7 @@ endif()
 
 execute_process(COMMAND ${configure_command} RESULT_VARIABLE configure_result)
 if(NOT configure_result EQUAL 0)
-    message(FATAL_ERROR "Configuring the downstream SandHybrid consumer failed: ${configure_result}")
+    message(FATAL_ERROR "Configuring the downstream EpochSimEngine consumer failed: ${configure_result}")
 endif()
 
 execute_process(
@@ -55,5 +55,5 @@ execute_process(
             --config "${SANDHYBRID_CONFIG}" --parallel
     RESULT_VARIABLE build_result)
 if(NOT build_result EQUAL 0)
-    message(FATAL_ERROR "Building the downstream SandHybrid consumer failed: ${build_result}")
+    message(FATAL_ERROR "Building the downstream EpochSimEngine consumer failed: ${build_result}")
 endif()

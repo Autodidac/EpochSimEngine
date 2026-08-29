@@ -1,8 +1,12 @@
 cmake_minimum_required(VERSION 3.28)
-project(SandHybridDownstreamConsumer LANGUAGES CXX)
+project(EpochSimEngineDownstreamConsumer LANGUAGES CXX)
 
-find_package(SandHybrid CONFIG REQUIRED)
+find_package(EpochSimEngine CONFIG REQUIRED)
 
-add_executable(sandhybrid_downstream_consumer main.cpp)
-target_link_libraries(sandhybrid_downstream_consumer PRIVATE SandHybrid::SandHybrid)
-target_compile_features(sandhybrid_downstream_consumer PRIVATE cxx_std_23)
+add_executable(epochsimengine_downstream_consumer main.cpp)
+target_link_libraries(epochsimengine_downstream_consumer PRIVATE EpochSimEngine::EpochSimEngine)
+target_compile_features(epochsimengine_downstream_consumer PRIVATE cxx_std_23)
+
+add_executable(sandhybrid_compat_downstream_consumer main.cpp)
+target_link_libraries(sandhybrid_compat_downstream_consumer PRIVATE SandHybrid::SandHybrid)
+target_compile_features(sandhybrid_compat_downstream_consumer PRIVATE cxx_std_23)
