@@ -44,8 +44,9 @@ renderer = read("src/vulkan_renderer.cpp")
 if renderer.count(
         "bind_compute(command_buffer, conservation_corrections_pipeline, current_set)") != 3:
     raise SystemExit("conservation correction is not dispatched in all three required paths")
-require("MISSION_LEDGER.md", "Stage 5 dependency/version candidate",
-        "43/43", "33/33", "63/63", "3,114,352")
+require("MISSION_LEDGER.md", "Stage 5 dependency/version/package candidate",
+        "43/43", "33/33", "63/63", "3,118,248",
+        "53 Windows / 52 Linux")
 require("AGENTS.md", "dedicated shallow correction post-pass",
         "Incremental builds must deploy every generated shader")
 require(".github/workflows/ci-release.yml", "refs/tags/v2.5.26",

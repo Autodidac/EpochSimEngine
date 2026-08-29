@@ -18,7 +18,7 @@ Post-v2.5.25 weather, material, laser, hive, debug, Nuke, and frame-pacing corre
 
 The exact versioned Windows Release build passes all `43/43` CTests, including ten supported EpochGui v0.89.30 suites. The native Linux Release build passes all `33/33` CTests. Fresh Windows/RTX 5080 and Linux/llvmpipe runtime trees each pass all `63/63` production Vulkan checks, including macro-packet travel/breakup, zero-jitter Water and Half Water, H2/O2 synthesis, Atmosphere respiration, finite weather and rock loops, Acid/Waste ownership, balanced Volcano output, non-collecting laser transfer, Nuke, Debug byte identity, and exact immediate/delayed hives.
 
-The final Linux llvmpipe gate completes in `8:42.79`, peaks at `3,114,352` KiB RSS, and uses zero swap. Broad packaged visual judgment, measured interactive frame-time capture, and repeated long finite-system/save-load cycles remain active in `missioncache.md`; deterministic readback does not mark those missions COMPLETE.
+The final installed-package Linux llvmpipe gate completes in `8:24.79`, peaks at `3,118,248` KiB RSS, and uses zero swap. Package audits verify native PE/ELF binaries, 14 deployed shaders byte-identical to the generated Release shaders, 20 public headers, and only three consolidated lowercase documents. Broad packaged visual judgment, measured interactive frame-time capture, and repeated long finite-system/save-load cycles remain active in `missioncache.md`; deterministic readback does not mark those missions COMPLETE.
 
 ## Dependency snapshot
 
