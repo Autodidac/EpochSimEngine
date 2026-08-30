@@ -227,22 +227,21 @@ vec3 debugKeyColor(uint key) {
 // Geometry, rather than a full-cell recolor, distinguishes hierarchy state.
 bool debugStateMarkerPixel(uint state, ivec2 local) {
     bool top = local.y == 0;
-    bool bottom = local.y == 7;
     bool left = local.x == 0;
     bool right = local.x == 7;
     bool topLeft = (top && local.x <= 2) || (left && local.y <= 2);
     bool topRight = (top && local.x >= 5) || (right && local.y <= 2);
-    bool bottomLeft = (bottom && local.x <= 2) || (left && local.y >= 5);
-    bool bottomRight = (bottom && local.x >= 5) || (right && local.y >= 5);
-    if (state == 0u) return top || bottom || left || right;       // damaged
+    bool lowerLeft = left && local.y >= 5;
+    bool lowerRight = right && local.y >= 5;
+    if (state == 0u) return top || left || right;                 // damaged
     if (state == 1u) return topLeft;                              // active
     if (state == 2u) return top && (local.x == 1 || local.x == 3 || local.x == 5); // fine
-    if (state == 3u) return bottomRight;                          // macro moved
+    if (state == 3u) return lowerRight;                           // macro moved
     if (state == 4u) return topRight;                             // bulk ready
     if (state == 5u) return (left || right) && local.y >= 3 && local.y <= 4; // breakup
-    if (state == 6u) return bottom && local.x >= 2 && local.x <= 5; // settled
-    if (state == 7u) return topLeft || topRight || bottomLeft || bottomRight; // enclosed
-    if (state == 8u) return bottomLeft;                           // sleeping
+    if (state == 6u) return top && local.x >= 2 && local.x <= 5;  // settled
+    if (state == 7u) return topLeft || topRight || lowerLeft || lowerRight; // enclosed
+    if (state == 8u) return lowerLeft;                            // sleeping
     return false;                                                // stable/candidate
 }
 
@@ -346,7 +345,11 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
             uint swatchTop = keyY + 4u;
             if (swatchTop + swatchSize < cardBottom && x >= keyLeft + 4u &&
                 x < keyLeft + 4u + swatchSize && y >= swatchTop && y < swatchTop + swatchSize) {
-                color = debugKeyColor(key);
+                ivec2 markerLocal = ivec2(
+                    int((x - keyLeft - 4u) * 8u / swatchSize),
+                    int((y - swatchTop) * 8u / swatchSize));
+                color = debugStateMarkerPixel(key, markerLocal)
+                    ? debugKeyColor(key) : vec3(0.055, 0.075, 0.095);
                 if (borderPixel(x, y, keyLeft + 4u, swatchTop,
                                 keyLeft + 4u + swatchSize, swatchTop + swatchSize))
                     color = vec3(0.92);
@@ -1449,9 +1452,9 @@ void main() {
             vec3(0.98, 0.74, 0.31),
             vec3(0.94, 0.65, 0.24));
         const float warningBase[6] = float[6](
-            0.72, 0.58, 0.46, 0.35, 0.26, 0.18);
+            0.94, 0.66, 0.49, 0.36, 0.26, 0.18);
         const float warningFlare[6] = float[6](
-            0.24, 0.31, 0.37, 0.42, 0.47, 0.52);
+            0.05, 0.25, 0.35, 0.42, 0.47, 0.52);
         uint stageIndex = min(nukeStage, 6u) - 1u;
         vec2 viewportUv = vec2(float(x - renderPc.viewportLeft) /
                                    float(max(renderPc.viewportWidth, 1u)),
@@ -1462,7 +1465,7 @@ void main() {
         float strength = warningBase[stageIndex] +
                          flare * warningFlare[stageIndex];
         color.rgb = mix(color.rgb, warningColors[stageIndex],
-                        clamp(strength, 0.0, 0.92));
+                        clamp(strength, 0.0, 0.985));
     }
 
     outColor = vec4(color.rgb, 1.0);

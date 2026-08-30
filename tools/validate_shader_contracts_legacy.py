@@ -580,7 +580,7 @@ def main() -> int:
     generator_text = (ROOT / "tools/generate_ui_text.py").read_text(encoding="utf-8")
     if "COLOR KEY" not in generator_text:
         errors.append("debug color-key text is missing")
-    for token in ("SCOPE CELLS", "NONEMPTY CELLS", "TOTAL TILES", "UNCLASSIFIED", "TOTAL CHUNKS"):
+    for token in ("SAMPLED CELLS", "MATERIAL CELLS", "SAMPLED TILES", "UNCLASSIFIED", "SAMPLED CHUNKS"):
         if token not in generator_text:
             errors.append(f"complete debug hierarchy label missing {token!r}")
     for token in ("debugStats[STAT_TOTAL_TILES]", "debugStats[STAT_TOTAL_CHUNKS]",
@@ -1000,7 +1000,7 @@ def main() -> int:
     for token in ("Functional industrial line", "material = MAT_CONVEYOR", "material = MAT_SLUICE_BOX", "material = MAT_WATER"):
         if token not in reset: errors.append(f"engineering industry scene contract missing {token!r}")
     labels = (ROOT / "tools/generate_ui_text.py").read_text(encoding="utf-8")
-    for token in ("RESIDENT MB", "STRUCT FAIL", "CONVEYOR", "MACHINE IN", "MACHINE OUT", "VOLCANO LAVA", "VOLCANO GAS", "GAS EDGE", "REACTIONS"):
+    for token in ("CELL MEMORY MB", "STRUCT FAIL", "CONVEYOR", "MACHINE IN", "MACHINE OUT", "VOLCANO LAVA", "VOLCANO GAS", "GAS EDGE", "REACTIONS"):
         if token not in labels: errors.append(f"activity debug label missing {token!r}")
     for token in ("vec3(1.00, 0.08, 0.72)", "vec3(0.025, 0.075, 0.22)", "debugStats[STAT_STRUCTURAL_COLLAPSES]", "debugStats[STAT_CONVEYOR_MOVES]", "debugStats[STAT_MACHINE_INPUTS]", "debugStats[STAT_MACHINE_OUTPUTS]", "debugStats[STAT_VOLCANO_LAVA_OUTPUTS]", "debugStats[STAT_VOLCANO_GAS_OUTPUTS]"):
         if token not in renderer: errors.append(f"resource-first debug contract missing {token!r}")

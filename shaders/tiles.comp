@@ -150,6 +150,7 @@ void main() {
     uint minimumAge = 0xffffffffu;
     uint liquidMinimumAge = 0xffffffffu;
     bool hot = false;
+    bool alwaysActiveThermal = false;
     bool moving = false;
     bool reacting = false;
     bool activeContent = false;
@@ -248,7 +249,12 @@ void main() {
                                    cell.material == MAT_ASSEMBLER || cell.material == MAT_SLUICE_BOX ||
                                    cell.material == MAT_INSECT_HABITAT || cell.material == MAT_FACTORY_CORE ||
                                    cell.material == MAT_MAGMA_VENT;
-            activeContent = activeContent || agent || activeLoose || fluid || activeStructure;
+            bool thermalOwner = cell.material == MAT_FIRE ||
+                                cell.material == MAT_EMBER ||
+                                cell.material == MAT_LAVA;
+            alwaysActiveThermal = alwaysActiveThermal || thermalOwner;
+            activeContent = activeContent || agent || activeLoose || fluid ||
+                            activeStructure || thermalOwner;
             otherDynamicContent = otherDynamicContent || agent || activeLoose ||
                                   activeStructure;
             bool startupDynamic = cell.age < 8u &&
@@ -342,7 +348,8 @@ void main() {
     // Block-capable solids may use tile metadata for cohesion, support, sleep,
     // and debug state, but they never become whole-tile movement packets.
     bool bulkReadySolid = fullRegion && isBlockCapable(dominant) && !hot && !reacting;
-    bool macroLava = fullRegion && dominant == MAT_LAVA && !structuralTile;
+    bool macroLava = fullRegion && dominant == MAT_LAVA && !structuralTile &&
+                     !alwaysActiveThermal;
     bool macroMovable = (macroLiquid || macroGas || macroPowder || macroLava) &&
                         !structuralTile && !activeAgent &&
                         ((!hot && !reacting) || macroLava);
@@ -412,7 +419,8 @@ void main() {
     bool fineFallbackMedium = boundaryFineMedium && !settledFineMedium;
     bool fineActive = represented != 0u && (!macroMovable || fineFallbackMedium) &&
             !settledFineMedium && !settledHalfWater &&
-            (collapsing || activeAgent || moving || reacting || hot || mediumBreakup ||
+            (collapsing || activeAgent || moving || reacting || hot ||
+                       alwaysActiveThermal || mediumBreakup ||
                        productiveMediumMove || !uniformMaterial ||
                        represented < TILE_CELL_COUNT);
 
@@ -445,7 +453,8 @@ void main() {
     if (boundaryFineMedium) flags |= TILE_MEDIUM_BREAKUP;
 
     bool sleepingTerrain = terrainStable && (!damaged || durableStructuralTile) &&
-                           !moving && !hot && !reacting && !activeAgent && !activeContent;
+                           !moving && !hot && !reacting && !alwaysActiveThermal &&
+                           !activeAgent && !activeContent;
     bool sleepingAtmosphere = represented == 0u;
     bool sleeping = sleepingTerrain || sleepingAtmosphere ||
                     settledMedium || settledFineMedium || settledHalfWater;

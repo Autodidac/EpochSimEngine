@@ -4102,9 +4102,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 -> std::optional<ScheduledRainCandidate> {
                 constexpr std::uint32_t weather_cycle_ticks = 7200u;
                 constexpr std::uint32_t rain_start_tick = 4800u;
-                constexpr std::uint32_t rain_duration_ticks = 900u;
-                constexpr std::uint32_t emission_cadence = 240u;
-                constexpr std::uint32_t sector_width = 128u;
+                constexpr std::uint32_t rain_duration_ticks = 600u;
+                constexpr std::uint32_t emission_cadence = 360u;
+                constexpr std::uint32_t sector_width = 256u;
                 for (std::uint32_t step = rain_start_tick;
                      step < rain_start_tick + rain_duration_ticks; ++step) {
                     const auto rain_tick = step - rain_start_tick;
@@ -6215,7 +6215,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 constexpr std::uint32_t rain_y = 100u;
                 constexpr std::uint32_t rain_age = 700u;
                 const auto rain_candidate =
-                    find_scheduled_rain_candidate(2u, 189u);
+                    find_scheduled_rain_candidate(2u, 253u);
                 const auto rain_x = rain_candidate ? rain_candidate->x : 2u;
                 const auto rain_step = rain_candidate ? rain_candidate->step : 0u;
                 auto rain_cells = acceptance_atmosphere_world();
@@ -6304,7 +6304,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 }
                 upload_scene_cells(cells, true);
                 const auto before = download_scene_cells();
-                for (std::uint32_t pass = 0u; pass < 7u; ++pass)
+                for (std::uint32_t pass = 0u; pass < 16u; ++pass)
                     run_acceptance_rainfall_pass();
                 const auto after = download_scene_cells();
                 simulation_step = saved_step;
@@ -6347,6 +6347,114 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            std::to_string(count_material(after, Material::water)) +
                            " vacuum=" +
                            std::to_string(count_material(after, Material::empty)));
+            }
+
+            {
+                const auto saved_step = simulation_step;
+                constexpr std::uint32_t water_x = 100u;
+                constexpr std::uint32_t water_y = 100u;
+                auto cells = acceptance_atmosphere_world();
+                auto water = make_fill_cell(
+                    material_id(Material::water),
+                    static_cast<std::uint32_t>(index_of(water_x, water_y)));
+                water.temperature = 47;
+                cells[index_of(water_x, water_y)] = water;
+                cells[index_of(water_x, water_y + 1u)] = make_fill_cell(
+                    material_id(Material::dirt),
+                    static_cast<std::uint32_t>(index_of(water_x, water_y + 1u)));
+                cells[index_of(water_x, water_y + 2u)] = make_fill_cell(
+                    material_id(Material::stone),
+                    static_cast<std::uint32_t>(index_of(water_x, water_y + 2u)));
+                std::uint32_t percolation_step = 0u;
+                for (std::uint32_t candidate = 0u; candidate < 65536u; ++candidate) {
+                    const auto roll = fill_hash(
+                        water_x * 73856093u ^ water_y * 19349663u ^
+                        candidate * 83492791u ^ random_seed ^ 0x57u);
+                    if ((roll & 255u) == 0u) {
+                        percolation_step = candidate;
+                        break;
+                    }
+                }
+                upload_scene_cells(cells);
+                simulation_step = percolation_step;
+                run_acceptance_tile_pass();
+                run_acceptance_fine_pass(0, 0);
+                const auto result = download_scene_cells();
+                simulation_step = saved_step;
+                constexpr std::uint32_t wet_bit = 0x80000000u;
+                const auto& wet_earth = result[index_of(water_x, water_y)];
+                const auto& descended_water = result[index_of(water_x, water_y + 1u)];
+                append("water_percolates_as_exact_owner_until_stone",
+                       wet_earth.material == material_id(Material::dirt) &&
+                           (wet_earth.aux & wet_bit) != 0u &&
+                           descended_water.material == material_id(Material::water) &&
+                           descended_water.temperature == 47 &&
+                           result[index_of(water_x, water_y + 2u)].material ==
+                               material_id(Material::stone) &&
+                           count_material(result, Material::water) == 1u &&
+                           count_material(result, Material::dirt) == 1u &&
+                           count_material(result, Material::empty) == 0u,
+                       "step=" + std::to_string(percolation_step) +
+                           " earth=" + std::to_string(wet_earth.material) +
+                           "/" + std::to_string(wet_earth.aux) +
+                           " water=" + std::to_string(descended_water.material) +
+                           "/" + std::to_string(descended_water.temperature));
+            }
+            {
+                constexpr std::uint32_t grass_x = 120u;
+                constexpr std::uint32_t grass_top = 96u;
+                auto cells = acceptance_atmosphere_world();
+                for (std::uint32_t y = grass_top; y < grass_top + 8u; ++y) {
+                    cells[index_of(grass_x, y)] = make_fill_cell(
+                        material_id(Material::grass),
+                        static_cast<std::uint32_t>(index_of(grass_x, y)));
+                }
+                upload_scene_cells(cells);
+                run_acceptance_chemistry_pass();
+                const auto result = download_scene_cells();
+                std::uint32_t shallow_grass = 0u;
+                std::uint32_t buried_dirt = 0u;
+                for (std::uint32_t y = grass_top; y < grass_top + 8u; ++y) {
+                    const auto material = result[index_of(grass_x, y)].material;
+                    if (material == material_id(Material::grass)) ++shallow_grass;
+                    if (material == material_id(Material::dirt)) ++buried_dirt;
+                }
+                append("grass_is_three_cell_skylight_skin",
+                       shallow_grass == 3u && buried_dirt == 5u,
+                       "grass=" + std::to_string(shallow_grass) +
+                           " buried_dirt=" + std::to_string(buried_dirt));
+            }
+            {
+                constexpr std::uint32_t thermal_y = 80u;
+                constexpr std::uint32_t fire_x = 64u;
+                constexpr std::uint32_t ember_x = 80u;
+                constexpr std::uint32_t lava_x = 96u;
+                auto cells = acceptance_atmosphere_world();
+                seed_rect(cells, Material::fire, fire_x, thermal_y, 8u, 8u);
+                seed_rect(cells, Material::ember, ember_x, thermal_y, 8u, 8u);
+                seed_rect(cells, Material::lava, lava_x, thermal_y, 8u, 8u);
+                upload_scene_cells(cells);
+                run_acceptance_tile_pass();
+                const auto states = download_tile_states();
+                const auto columns = divide_round_up(config.grid_width, 8u);
+                constexpr std::uint32_t active_flag = 0x00000008u;
+                constexpr std::uint32_t sleeping_flag = 0x00000004u;
+                constexpr std::uint32_t fine_flag = 0x00020000u;
+                const auto active_thermal = [&](const std::uint32_t x) {
+                    const auto flags = states[(thermal_y / 8u) * columns + x / 8u].flags;
+                    return (flags & active_flag) != 0u &&
+                           (flags & fine_flag) != 0u &&
+                           (flags & sleeping_flag) == 0u;
+                };
+                const bool fire_active = active_thermal(fire_x);
+                const bool ember_active = active_thermal(ember_x);
+                const bool lava_active = active_thermal(lava_x);
+                append("fire_ember_lava_are_always_active_thermal_owners",
+                       fire_active && ember_active && lava_active,
+                       "fire/ember/lava=" +
+                           std::to_string(fire_active ? 1u : 0u) + "/" +
+                           std::to_string(ember_active ? 1u : 0u) + "/" +
+                           std::to_string(lava_active ? 1u : 0u));
             }
 
             {
@@ -6527,7 +6635,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 constexpr std::uint32_t rain_y = 100u;
                 constexpr std::uint32_t rain_age = 700u;
                 const auto rain_candidate =
-                    find_scheduled_rain_candidate(2u, 189u);
+                    find_scheduled_rain_candidate(2u, 253u);
                 const auto rain_x = rain_candidate ? rain_candidate->x : 2u;
                 const auto rain_step = rain_candidate ? rain_candidate->step : 0u;
                 auto rain_cells = acceptance_atmosphere_world();
@@ -6843,6 +6951,89 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            " world_gold=" + std::to_string(
                                count_material(result, Material::gold)) +
                            " fragment=" + std::to_string(fragment.material));
+            }
+            {
+                auto moving_shield_actor = actor;
+                moving_shield_actor.gold = 5u;
+                moving_shield_actor.shot_timer = 0u;
+                const auto target_x = static_cast<std::uint32_t>(
+                    moving_shield_actor.x + 28);
+                const auto moving_x = target_x - 12u;
+                const auto target_y = static_cast<std::uint32_t>(
+                    moving_shield_actor.y + player_tool_origin_offset_cells);
+                auto cells = acceptance_atmosphere_world();
+                auto moving_sand = make_fill_cell(
+                    material_id(Material::sand),
+                    static_cast<std::uint32_t>(index_of(moving_x, target_y)));
+                moving_sand.aux |= fill_aux_moved;
+                cells[index_of(moving_x, target_y)] = moving_sand;
+                cells[index_of(target_x, target_y)] = make_fill_cell(
+                    material_id(Material::gold),
+                    static_cast<std::uint32_t>(index_of(target_x, target_y)));
+                upload_scene_cells(cells);
+                upload_actor_state(moving_shield_actor);
+                fire_acceptance_laser(target_x, target_y);
+                auto rearmed = download_actor_state();
+                rearmed.shot_timer = 0u;
+                upload_actor_state(rearmed);
+                fire_acceptance_laser(target_x, target_y);
+                const auto result_actor = download_actor_state();
+                const auto result = download_scene_cells();
+                append("player_laser_ignores_moving_cells",
+                       result_actor.gold == moving_shield_actor.gold &&
+                           result[index_of(moving_x, target_y)].material ==
+                               material_id(Material::sand) &&
+                           result[index_of(target_x, target_y)].material ==
+                               material_id(Material::atmosphere) &&
+                           result[index_of(target_x, target_y - 1u)].material ==
+                               material_id(Material::gold) &&
+                           count_material(result, Material::gold) == 1u,
+                       "inventory=" + std::to_string(result_actor.gold) +
+                           " moving=" + std::to_string(
+                               result[index_of(moving_x, target_y)].material) +
+                           " target=" + std::to_string(
+                               result[index_of(target_x, target_y)].material));
+            }
+            {
+                auto underside_actor = actor;
+                underside_actor.x = 124;
+                underside_actor.y = 150;
+                underside_actor.gold = 9u;
+                underside_actor.shot_timer = 0u;
+                constexpr std::uint32_t target_x = 124u;
+                constexpr std::uint32_t target_y = 110u;
+                auto cells = acceptance_atmosphere_world();
+                cells[index_of(target_x, target_y - 1u)] = make_fill_cell(
+                    material_id(Material::stone),
+                    static_cast<std::uint32_t>(index_of(target_x, target_y - 1u)));
+                cells[index_of(target_x, target_y)] = make_fill_cell(
+                    material_id(Material::gold),
+                    static_cast<std::uint32_t>(index_of(target_x, target_y)));
+                // Make the struck owner terminal on the first pulse while the
+                // solid immediately above survives that same radius-one hit.
+                // This isolates the underside-release direction instead of
+                // letting a second pulse open the preferred upward slot first.
+                cells[index_of(target_x, target_y)].aux =
+                    (cells[index_of(target_x, target_y)].aux & ~fill_aux_state_mask) | 1u;
+                upload_scene_cells(cells);
+                upload_actor_state(underside_actor);
+                fire_acceptance_laser(target_x, target_y);
+                const auto result_actor = download_actor_state();
+                const auto result = download_scene_cells();
+                append("player_laser_accepts_exposed_undersides",
+                       result_actor.gold == underside_actor.gold &&
+                           result[index_of(target_x, target_y - 1u)].material ==
+                               material_id(Material::stone) &&
+                           result[index_of(target_x, target_y)].material ==
+                               material_id(Material::atmosphere) &&
+                           result[index_of(target_x, target_y + 1u)].material ==
+                               material_id(Material::gold) &&
+                           count_material(result, Material::gold) == 1u,
+                       "inventory=" + std::to_string(result_actor.gold) +
+                           " source=" + std::to_string(
+                               result[index_of(target_x, target_y)].material) +
+                           " below=" + std::to_string(
+                               result[index_of(target_x, target_y + 1u)].material));
             }
             {
                 auto full_actor = actor;

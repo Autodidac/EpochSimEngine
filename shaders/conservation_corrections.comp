@@ -33,6 +33,19 @@ bool sourceHasAnyWater(ivec2 position) {
     return false;
 }
 
+bool openSkylightMedium(uint material) {
+    return material == MAT_EMPTY || isGas(material);
+}
+
+bool shallowSkylightSurface(ivec2 position) {
+    for (int distance = 1; distance <= 3; ++distance) {
+        uint material = sourceAt(position + ivec2(0, -distance)).material;
+        if (openSkylightMedium(material)) return true;
+        if (material != MAT_GRASS && material != MAT_DIRT) return false;
+    }
+    return false;
+}
+
 Cell advancedSource(Cell source) {
     Cell restored = source;
     restored.age = source.age + 1u;
@@ -97,9 +110,9 @@ void main() {
     if (source.material == MAT_CLOUD) {
         const uint weatherCycleTicks = 7200u;
         const uint rainStartTick = 4800u;
-        const uint rainDurationTicks = 900u;
-        const uint emissionCadence = 240u;
-        const uint sectorWidth = 128u;
+        const uint rainDurationTicks = 600u;
+        const uint emissionCadence = 360u;
+        const uint sectorWidth = 256u;
         uint weatherTick = pc.step % weatherCycleTicks;
         uint sector = uint(max(position.x, 0)) / sectorWidth;
         uint rainTick = weatherTick >= rainStartTick
@@ -138,6 +151,27 @@ void main() {
     if (isTrackedRain(source))
         atomicCompSwap(rainColumns[uint(position.x)], 0u,
                        uint(position.y) + 1u);
+
+    // Grass is a shallow skin, not a full authored 8x8 dirt substitute. The
+    // correction stays shallow and deterministic so the proven chemistry
+    // kernel remains unchanged. Wet earth may regrow only within three cells
+    // of an open sky column; buried Grass immediately returns to Dirt.
+    if (corrected.material == source.material) {
+        bool shallowSurface = shallowSkylightSurface(position);
+        if (source.material == MAT_GRASS && !shallowSurface) {
+            corrected = makeCell(MAT_DIRT);
+            corrected.aux = source.aux & ~AUX_WET;
+            corrected.temperature = source.temperature;
+            addConvertedStat();
+        } else if (source.material == MAT_DIRT && shallowSurface &&
+                   sourceHasAnyWater(position) && source.age > 1200u &&
+                   (reactionRandom & 1023u) == 0u) {
+            corrected = makeCell(MAT_GRASS);
+            corrected.aux = source.aux & ~AUX_WET;
+            corrected.temperature = source.temperature;
+            addConvertedStat();
+        }
+    }
 
     // Sleeping vapor still participates in the same one-for-one Cloud phase
     // transition without forcing the monolithic kernel's sleep selector open.

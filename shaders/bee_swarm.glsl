@@ -213,9 +213,9 @@ ivec2 beeBiohazardTargetOffset(uint slot, uint step) {
     // Stable one-to-one slot ownership keeps the photographed compact composite
     // readable. Real foragers still leave through their explicit flower target
     // and return through pollen/honey lifecycle targets.
-    ivec2 anchor = beeFormationOffset(slot);
-    ivec2 flutter = beeRotateOffset(ivec2(1, 0), step / 8u + slot * 5u);
-    return anchor + flutter;
+    // Resting owners do not orbit their assigned pixel: a universal one-cell
+    // flutter made all 100 canonical bees look like an amorphous swarm.
+    return beeFormationOffset(slot);
 }
 
 ivec2 beeSwarmTarget(uint aux, uint step, uint width, uint height) {

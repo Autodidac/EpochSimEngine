@@ -435,6 +435,34 @@ bool isStructural(Cell cell) {
     return (cell.aux & AUX_STRUCTURAL) != 0u;
 }
 
+bool isPermeableEarth(Cell cell) {
+    return cell.material == MAT_GRASS || cell.material == MAT_DIRT ||
+           cell.material == MAT_SAND || cell.material == MAT_SILT ||
+           cell.material == MAT_MUD;
+}
+
+bool percolateWaterIntoEarth(ivec2 waterPosition, ivec2 earthPosition,
+                             Cell water, Cell earth, uint randomValue) {
+    if ((water.material != MAT_WATER && water.material != MAT_DIRTY_WATER) ||
+        isHalfWaterCell(water) || !isPermeableEarth(earth) ||
+        ((water.aux | earth.aux) & AUX_MOVED) != 0u ||
+        (randomValue & 255u) != 0u) return false;
+
+    // This is an exact swap, not hidden absorption: the Water owner advances
+    // one cell while the displaced earth remains represented above it. Wet is
+    // only contact metadata. Stone is deliberately absent from permeable earth.
+    earth.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
+    earth.aux |= AUX_WET | AUX_MOVED;
+    earth.age = 0u;
+    water.aux |= AUX_MOVED;
+    water.age = 0u;
+    cells[moveIndex(waterPosition)] = earth;
+    cells[moveIndex(earthPosition)] = water;
+    markChunkDirty(waterPosition);
+    markChunkDirty(earthPosition);
+    return true;
+}
+
 bool isLooseSolid(Cell cell) {
     return isBlockCapable(cell.material) && !isStructural(cell) &&
  !isCellLiquid(cell) && !isCellGas(cell);
@@ -904,9 +932,10 @@ bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint r
     int sourceDistance = sourceDelta.x * sourceDelta.x + sourceDelta.y * sourceDelta.y;
     int targetDistance = targetDelta.x * targetDelta.x + targetDelta.y * targetDelta.y;
     if (targetDistance < sourceDistance) return true;
+    if (sourceDistance == 0) return false;
 
-    // Dense agents circulate around the moving hidden-mask target instead of
-    // deadlocking behind one another. This remains bounded target motion, not wandering.
+    // Owners blocked away from their stable slot may take a bounded sidestep
+    // around another bee. An owner already on its slot never wanders.
     ivec2 stepDelta = targetPosition - sourcePosition;
     uint slot = beeFormationSlotFromAux(bee.aux, movePc.width, movePc.height);
     bool clockwise = ((slot * 17u + 3u) & 1u) == 0u;
@@ -1230,6 +1259,11 @@ void processVertical(ivec2 top, ivec2 bottom) {
     releaseCollapsingStructural(top);
     releaseCollapsingStructural(bottom);
     if (isTrackedRainCell(moveAt(top)) || isTrackedRainCell(moveAt(bottom))) return;
+    Cell percolatingWater = moveAt(top);
+    Cell permeableEarth = moveAt(bottom);
+    uint percolationRandom = moveHash(top, uint(movePc.phase) + 0x57u);
+    if (percolateWaterIntoEarth(top, bottom, percolatingWater,
+                               permeableEarth, percolationRandom)) return;
     if (pairSleeping(top, bottom)) return;
     diffuseSalinityPair(top, bottom);
     Cell a = moveAt(top);

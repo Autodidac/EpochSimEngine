@@ -43,9 +43,9 @@ void advanceRainColumn(uint x) {
         return;
     }
 
-    // Thirty cells per second at the fixed 60 Hz cadence. This is independent
+    // Fifteen cells per second at the fixed 60 Hz cadence. This is independent
     // of presentation rate and applies only to already-emitted rain.
-    if (((pc.step + x) & 1u) != 0u) return;
+    if (((pc.step + x) & 3u) != 0u) return;
 
     ivec2 targetPosition = sourcePosition + ivec2(0, 1);
     if (!inside(targetPosition)) {

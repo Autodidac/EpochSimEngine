@@ -31,7 +31,8 @@ if points:
     lower_right = sum(x > 10 and y > 0 for x, y in points)
     if central < 14 or min(upper, lower_left, lower_right) < 18:
         errors.append("swarm no longer has a central ring and three distinct curved lobes")
-for token in ("beeBiohazardTargetOffset", "ivec2 anchor = beeFormationOffset(slot)",
+for token in ("beeBiohazardTargetOffset", "return beeFormationOffset(slot)",
+              "if (sourceDistance == 0) return false;",
               "if (boundedSidestep) return true;", "preserveAgentAge", "activeAgentPair"):
     if token not in swarm + move:
         errors.append(f"bee movement contract missing {token!r}")

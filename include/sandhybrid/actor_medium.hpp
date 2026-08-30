@@ -210,8 +210,8 @@ struct FormationOffset final {
     constexpr std::array<FormationOffset, 12> formation{{
         {0, -4}, {1, -3}, {2, -2}, {4, 0}, {3, 1}, {2, 2},
         {0, 4}, {-1, 3}, {-2, 2}, {-4, 0}, {-3, -1}, {-2, -2}}};
-    const auto phase = static_cast<std::size_t>((tick / 120u) % formation.size());
-    return formation[(index + phase) % formation.size()];
+    static_cast<void>(tick);
+    return formation[index % formation.size()];
 }
 
 enum class AntIntent : std::uint8_t {
@@ -333,6 +333,11 @@ inline constexpr std::array<std::uint16_t, fix29_bee_formation_count>
         9902u, 9903u, 9909u, 9910u, 9918u, 9922u, 9930u, 9931u, 9937u, 9938u,
         10032u, 10033u, 10034u, 10036u, 10037u, 10059u, 10060u, 10062u,
         10063u, 10064u}};
+
+[[nodiscard]] constexpr bool fix29_bee_forager_slot(
+    const std::size_t slot) noexcept {
+    return ((slot * 37u + 11u) % 10u) == 0u;
+}
 
 [[nodiscard]] constexpr FormationOffset fix29_bee_formation_offset(
     const std::size_t slot) noexcept {

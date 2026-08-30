@@ -300,6 +300,7 @@ def main() -> int:
         "return false;                                                // stable/candidate",
         "Material color remains authoritative in Debug",
         "color.rgb = mix(color.rgb, debugKeyColor(state), alpha * occupancy)",
+        "color = debugStateMarkerPixel(key, markerLocal)",
         "bool activeBoundary = activeArea && (activeLocal.x == 0 || activeLocal.y == 0)",
     ):
         require(fullscreen, token, errors,
@@ -352,6 +353,9 @@ def main() -> int:
     for token in (
         "bool tryStoreResource(inout ActorState state, uint material)",
         "bool releaseDamagedFragment(ActorState state",
+        "bool toolTransparent(Cell cell)",
+        "(cell.aux & AUX_MOVED) != 0u",
+        "sourcePosition + impactNormal",
         "if (!stableLaserMedium(target.material)) continue",
         "exact pre-hit structural cell",
         "releaseDamagedFragment(state, p, fragment)",
@@ -382,6 +386,9 @@ def main() -> int:
         "source.material == MAT_BEEHIVE && isStructural(source)",
         "const uint weatherCycleTicks = 7200u",
         "const uint rainStartTick = 4800u",
+        "const uint rainDurationTicks = 600u",
+        "const uint emissionCadence = 360u",
+        "const uint sectorWidth = 256u",
         "bool rainScheduled =",
         "atomicCompSwap(rainColumns[uint(position.x)]",
         "corrected.aux |= AUX_RAIN_DROP",
@@ -394,12 +401,30 @@ def main() -> int:
     for token in (
         "layout(std430, binding = 10) buffer RainColumns",
         "if (pc.activeMode == 2u)",
-        "if (((pc.step + x) & 1u) != 0u) return",
+        "if (((pc.step + x) & 3u) != 0u) return",
         "source.aux &= ~AUX_RAIN_DROP",
         "cells[targetIndex] = source",
     ):
         require(rainfall, token, errors,
                 "scheduled off-window rain ownership contract")
+    for source, tokens, description in (
+        (swarm, ("return beeFormationOffset(slot)",),
+         "stable idle biohazard-slot contract"),
+        (move, ("if (sourceDistance == 0) return false",
+                "bool percolateWaterIntoEarth",
+                "This is an exact swap, not hidden absorption"),
+         "stable bee and conserved percolation contract"),
+        (tiles, ("bool alwaysActiveThermal = false",
+                 "cell.material == MAT_FIRE ||",
+                 "cell.material == MAT_EMBER ||",
+                 "cell.material == MAT_LAVA"),
+         "always-active thermal-owner contract"),
+        (conservation_corrections, ("bool shallowSkylightSurface",
+                                    "source.material == MAT_GRASS && !shallowSurface"),
+         "shallow Grass correction contract"),
+    ):
+        for token in tokens:
+            require(source, token, errors, description)
     for token in (
         "conservation_corrections_pipeline =",
         "create_compute_pipeline(\"conservation_corrections.comp.spv\")",
@@ -427,6 +452,8 @@ def main() -> int:
         "volcano_converts_owned_lava_without_overwriting_ambient",
         "acid_and_moist_waste_never_manufacture_water",
         "player_laser_world_transfer_conserves_without_collection",
+        "player_laser_ignores_moving_cells",
+        "player_laser_accepts_exposed_undersides",
         "player_laser_releases_exact_loose_fragment",
         "player_laser_targets_condensed_weather_and_life",
         "laser_fragment_survives_normal_pickup_without_vacuum",
@@ -438,13 +465,17 @@ def main() -> int:
         "waterfall_aeration_debug_identity",
         "water_weather_phase_temperature_ownership",
         "scheduled_rain_continues_off_window_without_pool_disturbance",
+        "water_percolates_as_exact_owner_until_stone",
+        "grass_is_three_cell_skylight_skin",
+        "fire_ember_lava_are_always_active_thermal_owners",
         "fire_extinguish_does_not_duplicate_water",
         "renewable_lava_stone_family_balance",
     ):
         require(renderer, token, errors, "production weather/laser/ecology acceptance contract")
     for token in (
         "bool stableLaserMedium(uint material)",
-        "return material == MAT_EMPTY || stableLaserMedium(material)",
+        "return cell.material == MAT_EMPTY || stableLaserMedium(cell.material)",
+        "(cell.aux & AUX_MOVED) != 0u",
         "(resourceCell.aux & AUX_BEE_POLLEN) != 0u",
         "void markLaserFragmentWorldOnly(inout Cell fragment)",
         "if (!stableLaserMedium(target.material)) continue",

@@ -37,7 +37,13 @@ int main() {
 
     const auto formation_a = sandhybrid::biohazard_formation_offset(0u, 0u);
     const auto formation_b = sandhybrid::biohazard_formation_offset(0u, 120u);
-    if (formation_a == formation_b) return 11;
+    if (formation_a != formation_b) return 11;
+    std::uint32_t forager_slots = 0u;
+    for (std::size_t slot = 0u;
+         slot < sandhybrid::fix29_bee_formation_count; ++slot) {
+        if (sandhybrid::fix29_bee_forager_slot(slot)) ++forager_slots;
+    }
+    if (forager_slots != 10u) return 36;
 
     if (sandhybrid::choose_ant_intent({.hazard = true}) !=
         sandhybrid::AntIntent::avoid_hazard) return 12;

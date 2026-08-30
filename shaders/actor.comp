@@ -136,11 +136,12 @@ bool stableLaserMedium(uint material) {
            material == MAT_CARBON_DIOXIDE || material == MAT_HYDROGEN;
 }
 
-bool toolTransparent(uint material) {
+bool toolTransparent(Cell cell) {
     // The ray may cross true Vacuum and the ordinary atmospheric transport
-    // medium. Every other material owner is a physical target, including
-    // liquids, Cloud, weather products, vegetation, cargo, and non-player life.
-    return material == MAT_EMPTY || stableLaserMedium(material);
+    // medium. A cell already transferred this tick is also transparent: moving
+    // powder, liquid, gas, debris, and life may not shield a stationary owner.
+    return cell.material == MAT_EMPTY || stableLaserMedium(cell.material) ||
+           (cell.aux & AUX_MOVED) != 0u;
 }
 
 void updateUnlocks(inout ActorState state) {
@@ -211,17 +212,24 @@ bool insideActorPickup(ActorState state, ivec2 p) {
 
 bool releaseDamagedFragment(ActorState state, ivec2 sourcePosition,
                             Cell fragment) {
-    int away = sourcePosition.x >= state.x ? 1 : -1;
+    ivec2 toolOrigin = ivec2(state.x, state.y + ACTOR_TOOL_ORIGIN_OFFSET);
+    ivec2 towardTool = toolOrigin - sourcePosition;
+    ivec2 impactNormal = abs(towardTool.x) >= abs(towardTool.y)
+        ? ivec2(towardTool.x >= 0 ? 1 : -1, 0)
+        : ivec2(0, towardTool.y >= 0 ? 1 : -1);
+    ivec2 tangent = ivec2(-impactNormal.y, impactNormal.x);
     // Prefer cells that the current radius-one burst already visited. This
-    // prevents a conserved fragment from being hit a second time in the same
-    // click after it leaves the structural source.
-    ivec2 targets[5] = ivec2[5](
+    // prevents a conserved fragment from being hit again in the same click.
+    // The impact-relative normal also gives exposed undersides a destination
+    // below the struck owner instead of searching only above and sideways.
+    ivec2 targets[6] = ivec2[6](
         sourcePosition + ivec2(0, -1),
-        sourcePosition + ivec2(away, -1),
-        sourcePosition + ivec2(-away, -1),
-        sourcePosition + ivec2(-away, 0),
-        sourcePosition + ivec2(away, 0));
-    for (uint targetIndex = 0u; targetIndex < 5u; ++targetIndex) {
+        sourcePosition + impactNormal,
+        sourcePosition + impactNormal + tangent,
+        sourcePosition + impactNormal - tangent,
+        sourcePosition + tangent,
+        sourcePosition - tangent);
+    for (uint targetIndex = 0u; targetIndex < 6u; ++targetIndex) {
         ivec2 targetPosition = targets[targetIndex];
         if (!actorInside(targetPosition) || insideActorPickup(state, targetPosition))
             continue;
@@ -244,7 +252,7 @@ void damageCell(inout ActorState state, ivec2 p, uint damage) {
     if (!actorInside(p)) return;
     uint index = actorIndex(p);
     Cell cell = cells[index];
-    if (toolTransparent(cell.material)) return;
+    if (toolTransparent(cell)) return;
     markActorChunkDirty(p);
 
     if (cell.material == MAT_BEETLE) {
@@ -317,7 +325,7 @@ void fireTool(inout ActorState state) {
         ivec2 p = ivec2(round(origin + direction * distanceAlongRay));
         if (!actorInside(p)) break;
         Cell candidate = actorAt(p);
-        if (!toolTransparent(candidate.material)) {
+        if (!toolTransparent(candidate)) {
             hit = p;
             hitMaterial = candidate.material;
             found = true;

@@ -26,8 +26,8 @@ uint fixedTextChar(uint id, uint index) {
     return (word >> ((byteIndex & 3u) * 8u)) & 255u;
 }
 
-const uint MATERIAL_TEXT_OFFSETS_BASE = 596u;
-const uint MATERIAL_TEXT_WORDS_BASE = 665u;
+const uint MATERIAL_TEXT_OFFSETS_BASE = 602u;
+const uint MATERIAL_TEXT_WORDS_BASE = 671u;
 const uint MATERIAL_TEXT_COUNT = 68u;
 
 uint materialTextLength(uint id) {
@@ -47,8 +47,8 @@ uint materialTextChar(uint id, uint index) {
     return (word >> ((byteIndex & 3u) * 8u)) & 255u;
 }
 
-const uint GROUP_TEXT_OFFSETS_BASE = 775u;
-const uint GROUP_TEXT_WORDS_BASE = 784u;
+const uint GROUP_TEXT_OFFSETS_BASE = 781u;
+const uint GROUP_TEXT_WORDS_BASE = 790u;
 const uint GROUP_TEXT_COUNT = 8u;
 
 uint groupTextLength(uint id) {
@@ -68,8 +68,8 @@ uint groupTextChar(uint id, uint index) {
     return (word >> ((byteIndex & 3u) * 8u)) & 255u;
 }
 
-const uint SCENE_TEXT_OFFSETS_BASE = 798u;
-const uint SCENE_TEXT_WORDS_BASE = 808u;
+const uint SCENE_TEXT_OFFSETS_BASE = 804u;
+const uint SCENE_TEXT_WORDS_BASE = 814u;
 const uint SCENE_TEXT_COUNT = 9u;
 
 uint sceneTextLength(uint id) {
@@ -89,8 +89,8 @@ uint sceneTextChar(uint id, uint index) {
     return (word >> ((byteIndex & 3u) * 8u)) & 255u;
 }
 
-const uint PHASE_TEXT_OFFSETS_BASE = 830u;
-const uint PHASE_TEXT_WORDS_BASE = 840u;
+const uint PHASE_TEXT_OFFSETS_BASE = 836u;
+const uint PHASE_TEXT_WORDS_BASE = 846u;
 const uint PHASE_TEXT_COUNT = 9u;
 
 uint phaseTextLength(uint id) {
@@ -110,8 +110,8 @@ uint phaseTextChar(uint id, uint index) {
     return (word >> ((byteIndex & 3u) * 8u)) & 255u;
 }
 
-const uint GROUP_MATERIAL_BASE = 860u;
-const uint GROUP_MATERIAL_COUNTS_BASE = 852u;
+const uint GROUP_MATERIAL_BASE = 866u;
+const uint GROUP_MATERIAL_COUNTS_BASE = 858u;
 const uint GROUP_COUNT = 8u;
 const uint GROUP_MATERIAL_SLOTS = 10u;
 
@@ -124,8 +124,8 @@ uint groupMaterial(uint group, uint slot) {
     return uiTextStorage[GROUP_MATERIAL_BASE + group * GROUP_MATERIAL_SLOTS + slot];
 }
 
-const uint CARD_TEXT_OFFSETS_BASE = 940u;
-const uint CARD_TEXT_WORDS_BASE = 1621u;
+const uint CARD_TEXT_OFFSETS_BASE = 946u;
+const uint CARD_TEXT_WORDS_BASE = 1627u;
 const uint CARD_MATERIAL_COUNT = 68u;
 const uint CARD_LINE_COUNT = 10u;
 
