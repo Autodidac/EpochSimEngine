@@ -8,6 +8,9 @@ const uint AUX_WET = 0x80000000u;
 const uint AUX_CHARGED = 0x40000000u;
 const uint AUX_BEE_POLLEN = 0x20000000u;
 const uint AUX_BEE_FED = 0x10000000u;
+// On Water-family cells this material-specific bit records one already-emitted
+// falling rain owner. It is not a Cloud animation or a generic liquid flag.
+const uint AUX_RAIN_DROP = AUX_BEE_FED;
 const uint AUX_PLANT_STEM = 0x08000000u;
 const uint AUX_STRUCTURAL = 0x04000000u;
 const uint AUX_SUPPORTED = 0x02000000u;
@@ -31,6 +34,11 @@ struct Cell {
 
 bool isHalfWater(Cell cell) {
     return cell.material == MAT_WATER && (cell.aux & AUX_WATER_HALF) != 0u;
+}
+
+bool isTrackedRain(Cell cell) {
+    return (cell.material == MAT_WATER || cell.material == MAT_DIRTY_WATER) &&
+           (cell.aux & AUX_RAIN_DROP) != 0u;
 }
 
 uint waterHalfUnits(Cell cell) {

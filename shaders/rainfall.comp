@@ -1,0 +1,89 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "materials.glsl"
+#include "tiles.glsl"
+#include "chunks.glsl"
+
+layout(local_size_x = 64) in;
+layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
+layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
+layout(std430, binding = 10) buffer RainColumns { uint rainColumns[]; };
+
+bool rainPassable(Cell cell) {
+    return isCellGas(cell) && cell.material != MAT_CLOUD;
+}
+
+void markRainChunkDirty(ivec2 position) {
+    atomicOr(chunks[chunkIndex(position, pc.width)].flags,
+             CHUNK_DIRTY | CHUNK_ACTIVE | CHUNK_FINE_ACTIVE);
+}
+
+void rebuildRainTracker() {
+    ivec2 position = ivec2(gl_GlobalInvocationID.xy);
+    if (!inside(position)) return;
+    Cell cell = cells[indexOf(position)];
+    if (isTrackedRain(cell))
+        atomicCompSwap(rainColumns[uint(position.x)], 0u,
+                       uint(position.y) + 1u);
+}
+
+void advanceRainColumn(uint x) {
+    uint encodedY = rainColumns[x];
+    if (encodedY == 0u) return;
+    uint y = encodedY - 1u;
+    if (y >= pc.height) {
+        rainColumns[x] = 0u;
+        return;
+    }
+    ivec2 sourcePosition = ivec2(int(x), int(y));
+    uint sourceIndex = indexOf(sourcePosition);
+    Cell source = cells[sourceIndex];
+    if (!isTrackedRain(source)) {
+        rainColumns[x] = 0u;
+        return;
+    }
+
+    // Thirty cells per second at the fixed 60 Hz cadence. This is independent
+    // of presentation rate and applies only to already-emitted rain.
+    if (((pc.step + x) & 1u) != 0u) return;
+
+    ivec2 targetPosition = sourcePosition + ivec2(0, 1);
+    if (!inside(targetPosition)) {
+        source.aux &= ~AUX_RAIN_DROP;
+        source.aux |= AUX_MOVED;
+        cells[sourceIndex] = source;
+        rainColumns[x] = 0u;
+        markRainChunkDirty(sourcePosition);
+        return;
+    }
+
+    uint targetIndex = indexOf(targetPosition);
+    Cell target = cells[targetIndex];
+    if (rainPassable(target)) {
+        source.age += 1u;
+        source.aux |= AUX_MOVED | AUX_RAIN_DROP;
+        cells[sourceIndex] = target;
+        cells[targetIndex] = source;
+        rainColumns[x] = uint(targetPosition.y) + 1u;
+        markRainChunkDirty(sourcePosition);
+        markRainChunkDirty(targetPosition);
+        return;
+    }
+
+    // Landing relinquishes only the derived rain ownership. AUX_MOVED holds the
+    // new Water owner still for this tick so it cannot shove a settled pool.
+    source.aux &= ~AUX_RAIN_DROP;
+    source.aux |= AUX_MOVED;
+    cells[sourceIndex] = source;
+    rainColumns[x] = 0u;
+    markRainChunkDirty(sourcePosition);
+}
+
+void main() {
+    if (pc.activeMode == 2u) {
+        rebuildRainTracker();
+        return;
+    }
+    uint x = gl_GlobalInvocationID.x;
+    if (x < pc.width) advanceRainColumn(x);
+}

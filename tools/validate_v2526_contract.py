@@ -25,6 +25,7 @@ def reject(relative: str, *tokens: str) -> None:
 
 
 require("CMakeLists.txt", "VERSION 2.5.26", "conservation_corrections.comp",
+        "rainfall.comp",
         "sandhybrid_runtime_shaders ALL", "sandhybrid_v2526_source_contract")
 require("RELEASE_NOTES.md", "# SandHybrid v2.5.26",
         "SandHybrid-Windows-x64-v2.5.26.zip",
@@ -39,7 +40,12 @@ require("third_party/EpochGui/CMakeLists.txt", "project(EpochGui VERSION 0.89.30
         "add_test(NAME EpochGui.Input")
 require("shaders/conservation_corrections.comp", "acidInventedWater",
         "acidInventedSolution", "source.material == MAT_BEEHIVE",
-        "Sparse Cloud ownership is scalar and deterministic")
+        "const uint weatherCycleTicks = 7200u", "bool rainScheduled =",
+        "corrected.aux |= AUX_RAIN_DROP")
+require("shaders/rainfall.comp", "layout(std430, binding = 10) buffer RainColumns",
+        "if (pc.activeMode == 2u)", "source.aux &= ~AUX_RAIN_DROP")
+require("src/vulkan_renderer.cpp", "create_compute_pipeline(\"rainfall.comp.spv\")",
+        "divide_round_up(config.grid_width, 64u), 1, 1")
 renderer = read("src/vulkan_renderer.cpp")
 if renderer.count(
         "bind_compute(command_buffer, conservation_corrections_pipeline, current_set)") != 3:

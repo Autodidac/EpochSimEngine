@@ -58,6 +58,7 @@ EXPECTED_STALE_ERRORS = {
     "v2.4.8 debug readability contract missing 'keyColorMap'",
     "click-confirmed Fill input contract missing 'const bool fill_click = editor_workspace && input.fill_modifier && primary_pressed'",
     "click-confirmed Fill input contract missing 'if (fill_click) shared_state.fill_region.store(true'",
+    "renderer UI text descriptor contract missing '.descriptorCount = 20'",
     "legacy project branding remains in CMakeLists.txt: 'EpochSimEngine'",
     "legacy project branding remains in README.md: 'EpochSimEngine'",
 }
@@ -106,6 +107,7 @@ def main() -> int:
     terrain_glsl = (SHADERS / "terrain_generation.glsl").read_text(encoding="utf-8")
     terrain_hpp = (ROOT / "include/sandhybrid/terrain_generation.hpp").read_text(encoding="utf-8")
     fullscreen = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
+    rainfall = (SHADERS / "rainfall.comp").read_text(encoding="utf-8")
     renderer = (ROOT / "src/vulkan_renderer.cpp").read_text(encoding="utf-8")
     app = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
     input_routing = (ROOT / "include/sandhybrid/input_routing.hpp").read_text(encoding="utf-8")
@@ -313,7 +315,7 @@ def main() -> int:
                 "zero-cost hidden debug collection contract")
     for token in (
         "record_nuke_from_space(frame.command_buffer)",
-        "nuke_flash_frames_remaining = 6u",
+        "nuke_warning_stage_count * nuke_presentations_per_stage",
         "Nuke from Space committed as one GPU Atmosphere-to-Fire edit",
         "nuke_from_space_gpu_exact_atmosphere_edit",
         "map_snapshot_slice = (map_snapshot_slice + 1u) % slice_count",
@@ -337,7 +339,9 @@ def main() -> int:
                 "GPU Nuke edit contract")
     for token in (
         "uint nukeFlashFrames()",
-        "Six deterministic presentation frames warn before the GPU edit",
+        "Six precomputed light states are each held for eight presentations",
+        "const vec3 warningColors[6]",
+        "const float warningBase[6]",
     ):
         require(fullscreen, token, errors,
                 "Nuke warning light contract")
@@ -348,7 +352,7 @@ def main() -> int:
     for token in (
         "bool tryStoreResource(inout ActorState state, uint material)",
         "bool releaseDamagedFragment(ActorState state",
-        "if (!isCellGas(target)) continue",
+        "if (!stableLaserMedium(target.material)) continue",
         "exact pre-hit structural cell",
         "releaseDamagedFragment(state, p, fragment)",
     ):
@@ -376,19 +380,32 @@ def main() -> int:
                 "Acid/Waste no-invented-Water correction contract")
     for token in (
         "source.material == MAT_BEEHIVE && isStructural(source)",
-        "Sparse Cloud ownership is scalar and deterministic",
-        "bool candidate = source.age > 600u",
+        "const uint weatherCycleTicks = 7200u",
+        "const uint rainStartTick = 4800u",
+        "bool rainScheduled =",
+        "atomicCompSwap(rainColumns[uint(position.x)]",
+        "corrected.aux |= AUX_RAIN_DROP",
         "sourceAt(position + ivec2(0, 1)).material != MAT_CLOUD",
-        "proposed.material == MAT_WATER",
         "source.material == MAT_STEAM || source.material == MAT_DIRTY_STEAM",
         "corrected.temperature = source.temperature",
     ):
         require(conservation_corrections, token, errors,
                 "software-Vulkan-safe hive/weather correction contract")
     for token in (
+        "layout(std430, binding = 10) buffer RainColumns",
+        "if (pc.activeMode == 2u)",
+        "if (((pc.step + x) & 1u) != 0u) return",
+        "source.aux &= ~AUX_RAIN_DROP",
+        "cells[targetIndex] = source",
+    ):
+        require(rainfall, token, errors,
+                "scheduled off-window rain ownership contract")
+    for token in (
         "conservation_corrections_pipeline =",
         "create_compute_pipeline(\"conservation_corrections.comp.spv\")",
         "bind_compute(command_buffer, conservation_corrections_pipeline, current_set)",
+        "create_compute_pipeline(\"rainfall.comp.spv\")",
+        "bind_compute(command_buffer, rainfall_pipeline, current_set)",
     ):
         require(renderer, token, errors,
                 "conservative post-chemistry dispatch contract")
@@ -399,6 +416,7 @@ def main() -> int:
     cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
     for token in (
         "add_custom_target(sandhybrid_runtime_shaders ALL",
+        "rainfall.comp",
         "copy_if_different",
         "add_dependencies(SandHybrid_Demo sandhybrid_runtime_shaders)",
     ):
@@ -410,7 +428,8 @@ def main() -> int:
         "acid_and_moist_waste_never_manufacture_water",
         "player_laser_world_transfer_conserves_without_collection",
         "player_laser_releases_exact_loose_fragment",
-        "player_laser_targets_liquids_and_vegetation",
+        "player_laser_targets_condensed_weather_and_life",
+        "laser_fragment_survives_normal_pickup_without_vacuum",
         "blocked_player_laser_retains_exact_world_unit",
         "packed_atmosphere_respiration_conserves_pressure",
         "closed_crop_visible_co2_water_biomass",
@@ -418,10 +437,22 @@ def main() -> int:
         "waterfall_dissolved_oxygen_closed_transaction",
         "waterfall_aeration_debug_identity",
         "water_weather_phase_temperature_ownership",
+        "scheduled_rain_continues_off_window_without_pool_disturbance",
         "fire_extinguish_does_not_duplicate_water",
         "renewable_lava_stone_family_balance",
     ):
         require(renderer, token, errors, "production weather/laser/ecology acceptance contract")
+    for token in (
+        "bool stableLaserMedium(uint material)",
+        "return material == MAT_EMPTY || stableLaserMedium(material)",
+        "(resourceCell.aux & AUX_BEE_POLLEN) != 0u",
+        "void markLaserFragmentWorldOnly(inout Cell fragment)",
+        "if (!stableLaserMedium(target.material)) continue",
+    ):
+        require(actor, token, errors,
+                "post-movement laser world-only/no-Vacuum contract")
+    if "material == MAT_EMPTY || isGas(material)" in actor:
+        errors.append("laser ray transparency still skips every gas-like material")
 
     for token in (
         "expanded_cell_dispatch(",

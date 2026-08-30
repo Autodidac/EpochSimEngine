@@ -8,6 +8,7 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 1) buffer NextCells { Cell nextCells[]; };
+layout(std430, binding = 10) buffer RainColumns { uint rainColumns[]; };
 
 const ivec2 correctionNeighborOffsets[8] = ivec2[8](
     ivec2(-1, -1), ivec2(0, -1), ivec2(1, -1), ivec2(-1, 0),
@@ -89,23 +90,40 @@ void main() {
         // so the existing conversion count already describes the final event.
     }
 
-    // Sparse Cloud ownership is scalar and deterministic. Only the lower edge
-    // samples one neighbor, and this compact pass stays separate from the large
-    // chemistry selector so llvmpipe cannot expand its JIT call graph.
+    // The weather schedule exclusively owns precipitation. Dry periods never
+    // animate Cloud. During the bounded rain interval, sectors emit one lower-
+    // edge owner at staggered phases into a per-column tracker; the separate
+    // narrow rainfall pass then carries only already-falling Water off-window.
     if (source.material == MAT_CLOUD) {
-        const uint rainCycleTicks = 600u;
-        uint band = uint(max(position.x, 0)) >> 3u;
-        uint cycle = source.age / rainCycleTicks;
-        uint lane = (band + cycle * 3u) & 7u;
-        bool candidate = source.age > 600u &&
-            (uint(max(position.x, 0)) & 7u) == lane &&
-            (source.age % rainCycleTicks) == (band % rainCycleTicks) &&
+        const uint weatherCycleTicks = 7200u;
+        const uint rainStartTick = 4800u;
+        const uint rainDurationTicks = 900u;
+        const uint emissionCadence = 240u;
+        const uint sectorWidth = 128u;
+        uint weatherTick = pc.step % weatherCycleTicks;
+        uint sector = uint(max(position.x, 0)) / sectorWidth;
+        uint rainTick = weatherTick >= rainStartTick
+            ? weatherTick - rainStartTick : 0u;
+        uint sectorPhase = (sector * 37u) % emissionCadence;
+        uint eventIndex = rainTick / emissionCadence;
+        uint lane = hash32(sector ^ eventIndex * 0x9e3779b9u ^
+                           (pc.step / weatherCycleTicks) * 0x85ebca6bu) %
+                    sectorWidth;
+        bool rainScheduled = weatherTick >= rainStartTick &&
+            weatherTick < rainStartTick + rainDurationTicks;
+        bool candidate = rainScheduled && source.age > 600u &&
+            (rainTick % emissionCadence) == sectorPhase &&
+            (uint(max(position.x, 0)) % sectorWidth) == lane &&
             sourceAt(position + ivec2(0, 1)).material != MAT_CLOUD;
         bool oldRain = proposed.material == MAT_WATER ||
             proposed.material == MAT_DIRTY_WATER;
-        if (candidate) {
+        bool ownsColumn = candidate &&
+            atomicCompSwap(rainColumns[uint(position.x)], 0u,
+                           uint(position.y) + 1u) == 0u;
+        if (ownsColumn) {
             corrected = makeCell((source.aux & AUX_WET) != 0u
                                      ? MAT_DIRTY_WATER : MAT_WATER);
+            corrected.aux |= AUX_RAIN_DROP;
             corrected.temperature = source.temperature;
             if (!oldRain) addConvertedStat();
         } else if (oldRain) {
@@ -113,6 +131,13 @@ void main() {
             undoConvertedStat();
         }
     }
+
+    // Exact save/load may restore an in-flight tagged Water owner before its
+    // derived column tracker is rebuilt. Re-register it when its active region
+    // next participates, without changing the canonical cell.
+    if (isTrackedRain(source))
+        atomicCompSwap(rainColumns[uint(position.x)], 0u,
+                       uint(position.y) + 1u);
 
     // Sleeping vapor still participates in the same one-for-one Cloud phase
     // transition without forcing the monolithic kernel's sleep selector open.

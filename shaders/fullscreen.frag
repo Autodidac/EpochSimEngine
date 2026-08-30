@@ -1436,20 +1436,33 @@ void main() {
         }
     }
 
-    uint nukeFrames = nukeFlashFrames();
-    if (!mapSample && nukeFrames != 0u) {
-        // Six deterministic presentation frames warn before the GPU edit.
-        // The overhead is fragment-only and has no simulation/readback work.
+    uint nukeStage = nukeFlashFrames();
+    if (!mapSample && nukeStage != 0u) {
+        // Six precomputed light states are each held for eight presentations.
+        // The bounded cue is readable without simulation work, CPU readback,
+        // wall-clock animation, or a single-frame luminance jump.
+        const vec3 warningColors[6] = vec3[6](
+            vec3(1.00, 0.98, 0.92),
+            vec3(1.00, 0.93, 0.72),
+            vec3(1.00, 0.88, 0.56),
+            vec3(1.00, 0.82, 0.42),
+            vec3(0.98, 0.74, 0.31),
+            vec3(0.94, 0.65, 0.24));
+        const float warningBase[6] = float[6](
+            0.72, 0.58, 0.46, 0.35, 0.26, 0.18);
+        const float warningFlare[6] = float[6](
+            0.24, 0.31, 0.37, 0.42, 0.47, 0.52);
+        uint stageIndex = min(nukeStage, 6u) - 1u;
         vec2 viewportUv = vec2(float(x - renderPc.viewportLeft) /
                                    float(max(renderPc.viewportWidth, 1u)),
                                float(y - renderPc.viewportTop) /
                                    float(max(renderPc.viewportHeight, 1u)));
         float sunDistance = length((viewportUv - vec2(0.5, 0.0)) * vec2(0.75, 1.0));
         float flare = smoothstep(0.95, 0.0, sunDistance);
-        float strength = (0.12 + 0.07 * float(7u - min(nukeFrames, 6u))) +
-                         flare * 0.46;
-        color.rgb = mix(color.rgb, vec3(1.0, 0.88, 0.56),
-                        clamp(strength, 0.0, 0.78));
+        float strength = warningBase[stageIndex] +
+                         flare * warningFlare[stageIndex];
+        color.rgb = mix(color.rgb, warningColors[stageIndex],
+                        clamp(strength, 0.0, 0.92));
     }
 
     outColor = vec4(color.rgb, 1.0);

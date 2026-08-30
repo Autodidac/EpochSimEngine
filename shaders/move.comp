@@ -19,6 +19,7 @@ const uint AUX_WET = 0x80000000u;
 const uint AUX_CHARGED = 0x40000000u;
 const uint AUX_BEE_POLLEN = 0x20000000u;
 const uint AUX_BEE_FED = 0x10000000u;
+const uint AUX_RAIN_DROP = AUX_BEE_FED;
 const uint AUX_BEE_SWARM = 0x08000000u;
 const uint AUX_STRUCTURAL = 0x04000000u;
 const uint AUX_SUPPORTED = 0x02000000u;
@@ -112,6 +113,11 @@ void setStateValue(inout Cell cell, uint value) {
 
 bool isHalfWaterCell(Cell cell) {
     return cell.material == MAT_WATER && (cell.aux & AUX_WATER_HALF) != 0u;
+}
+
+bool isTrackedRainCell(Cell cell) {
+    return (cell.material == MAT_WATER || cell.material == MAT_DIRTY_WATER) &&
+           (cell.aux & AUX_RAIN_DROP) != 0u;
 }
 
 bool moveHasDissolvedWaterGas(Cell cell) {
@@ -1223,6 +1229,7 @@ bool pairSleeping(ivec2 a, ivec2 b) {
 void processVertical(ivec2 top, ivec2 bottom) {
     releaseCollapsingStructural(top);
     releaseCollapsingStructural(bottom);
+    if (isTrackedRainCell(moveAt(top)) || isTrackedRainCell(moveAt(bottom))) return;
     if (pairSleeping(top, bottom)) return;
     diffuseSalinityPair(top, bottom);
     Cell a = moveAt(top);
@@ -1325,6 +1332,8 @@ void processVertical(ivec2 top, ivec2 bottom) {
 void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
     releaseCollapsingStructural(sourcePosition);
     releaseCollapsingStructural(targetPosition);
+    if (isTrackedRainCell(moveAt(sourcePosition)) ||
+        isTrackedRainCell(moveAt(targetPosition))) return;
     if (pairSleeping(sourcePosition, targetPosition)) return;
     Cell source = moveAt(sourcePosition);
     Cell target = moveAt(targetPosition);
@@ -1418,6 +1427,7 @@ void processDiagonal(ivec2 sourcePosition, ivec2 targetPosition, bool upward) {
 void processHorizontal(ivec2 left, ivec2 right) {
     releaseCollapsingStructural(left);
     releaseCollapsingStructural(right);
+    if (isTrackedRainCell(moveAt(left)) || isTrackedRainCell(moveAt(right))) return;
     if (pairSleeping(left, right)) return;
     diffuseSalinityPair(left, right);
     Cell a = moveAt(left);

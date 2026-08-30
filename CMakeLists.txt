@@ -156,6 +156,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         copy_cells.comp
         chemistry.comp
         conservation_corrections.comp
+        rainfall.comp
         macro_move.comp
         move.comp
         actor.comp

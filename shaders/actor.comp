@@ -128,12 +128,19 @@ bool groundedAt(ivec2 center) {
     return false;
 }
 
+bool stableLaserMedium(uint material) {
+    // Only canonical breathable/component gas can receive a terminal fragment.
+    // Cloud, vapor, smoke, Fire, Radiation, and Lightning are visible material
+    // owners and must not masquerade as an open transfer destination.
+    return material == MAT_ATMOSPHERE || material == MAT_OXYGEN ||
+           material == MAT_CARBON_DIOXIDE || material == MAT_HYDROGEN;
+}
+
 bool toolTransparent(uint material) {
-    // Rays cross open/gaseous space and living swarm agents. Liquids, terrain,
-    // vegetation, cargo, and structures are physical targets rather than
-    // decorative holes in the world.
-    return material == MAT_EMPTY || isGas(material) ||
-           material == MAT_BEE || material == MAT_ANT;
+    // The ray may cross true Vacuum and the ordinary atmospheric transport
+    // medium. Every other material owner is a physical target, including
+    // liquids, Cloud, weather products, vegetation, cargo, and non-player life.
+    return material == MAT_EMPTY || stableLaserMedium(material);
 }
 
 void updateUnlocks(inout ActorState state) {
@@ -160,6 +167,20 @@ bool tryStoreResource(inout ActorState state, uint material) {
     return true;
 }
 
+bool isInventoryResource(uint material) {
+    return material == MAT_GOLD || material == MAT_IRON ||
+           material == MAT_IRON_ORE || material == MAT_STEEL ||
+           material == MAT_COPPER || material == MAT_ALUMINUM ||
+           material == MAT_ALUMINUM_SHAVINGS || material == MAT_PLASMA_AMMO;
+}
+
+void markLaserFragmentWorldOnly(inout Cell fragment) {
+    // AUX_BEE_POLLEN is outside every constructor/random payload for these
+    // mineral/cargo materials and survives normal fine movement.
+    if (isInventoryResource(fragment.material))
+        fragment.aux |= AUX_BEE_POLLEN;
+}
+
 void collectResources(inout ActorState state) {
     ivec2 center = ivec2(state.x, state.y);
     for (int y = ACTOR_TOP_OFFSET; y <= 1; ++y) {
@@ -168,7 +189,12 @@ void collectResources(inout ActorState state) {
             if (!actorInside(p)) continue;
             uint index = actorIndex(p);
             Cell resourceCell = cells[index];
+            // AUX_BEE_POLLEN is material-specific. On storable mineral/cargo
+            // cells it is reserved as persistent world-only laser provenance,
+            // preventing a later normal actor tick from turning the released
+            // fragment into inventory plus Empty/Vacuum.
             if (isStructural(resourceCell) ||
+                (resourceCell.aux & AUX_BEE_POLLEN) != 0u ||
                 !tryStoreResource(state, resourceCell.material)) continue;
             cells[index] = Cell(MAT_EMPTY, 0u, 20, 0u);
             markActorChunkDirty(p);
@@ -200,10 +226,11 @@ bool releaseDamagedFragment(ActorState state, ivec2 sourcePosition,
         if (!actorInside(targetPosition) || insideActorPickup(state, targetPosition))
             continue;
         Cell target = actorAt(targetPosition);
-        // A terminal hit is an exact world-to-world swap with real gas. Empty
-        // would leave visible Vacuum at the source and liquid would corrupt a
-        // second material owner. If no gas destination exists, retain source.
-        if (!isCellGas(target)) continue;
+        // A terminal hit is an exact world-to-world swap with canonical real
+        // gas. Empty would leave visible Vacuum at the source; transient
+        // weather/plasma gas is itself a physical material owner. If no stable
+        // destination exists, retain the exact source.
+        if (!stableLaserMedium(target.material)) continue;
         cells[actorIndex(sourcePosition)] = target;
         cells[actorIndex(targetPosition)] = fragment;
         markActorChunkDirty(sourcePosition);
@@ -237,6 +264,7 @@ void damageCell(inout ActorState state, ivec2 p, uint damage) {
             Cell fragment = cell;
             fragment.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
             fragment.aux |= AUX_MOVED;
+            markLaserFragmentWorldOnly(fragment);
             fragment.age = 0u;
             setStateValue(fragment, 1u);
             if (releaseDamagedFragment(state, p, fragment)) {
@@ -259,6 +287,7 @@ void damageCell(inout ActorState state, ivec2 p, uint damage) {
         Cell fragment = cell;
         fragment.age = 0u;
         fragment.aux |= AUX_MOVED;
+        markLaserFragmentWorldOnly(fragment);
         setStateValue(fragment, 1u);
         releaseDamagedFragment(state, p, fragment);
         // A blocked material remains byte-identical at source.
