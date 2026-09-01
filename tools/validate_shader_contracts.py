@@ -385,6 +385,17 @@ def main() -> int:
     require(fullscreen, "if (!mapSample && (x < renderPc.viewportLeft", errors,
             "MAP overlay must be classified before camera letterbox rejection")
     for token in (
+        "0x0035ffffu",
+        "FIX29_REFERENCE_TONE_BIT0_ROWS",
+        "FIX29_REFERENCE_TONE_BIT1_ROWS",
+        "FIX29_REFERENCE_TONE_BIT2_ROWS",
+        "FIX29_REFERENCE_PALETTE[8]",
+        "color.rgb = FIX29_REFERENCE_PALETTE[referenceHive - 1]",
+        "Palette values are linearized",
+    ):
+        require(fullscreen, token, errors,
+                "photographed Fix29 hive silhouette/palette contract")
+    for token in (
         "bool tryStoreResource(inout ActorState state, uint material)",
         "bool releaseDamagedFragment(ActorState state",
         "bool toolTransparent(Cell cell)",

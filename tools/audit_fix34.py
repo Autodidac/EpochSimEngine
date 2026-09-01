@@ -160,8 +160,9 @@ for token in ("fixedHiveContent", "Historical Fix29 shell",
     if token not in materials:
         errors.append(f"Fix29 visible hive palette missing {token!r}")
 for token in ("fixedHiveComposite", "illumination = max(illumination, 0.90)",
-              "FIX29_REFERENCE_BODY_ROWS[25]", "FIX29_REFERENCE_GOLD_ROWS[25]",
-              "FIX29_REFERENCE_YELLOW_ROWS[25]", "FIX29_REFERENCE_DARK_ROWS[25]",
+              "FIX29_REFERENCE_BODY_ROWS[25]", "FIX29_REFERENCE_TONE_BIT0_ROWS[25]",
+              "FIX29_REFERENCE_TONE_BIT1_ROWS[25]", "FIX29_REFERENCE_TONE_BIT2_ROWS[25]",
+              "FIX29_REFERENCE_PALETTE[8]",
               "fixedHiveReferenceBody",
               "fixedHiveReferenceAtQueen", "renderPc.selectedScene",
               "Classify it before rejecting", "if (!mapSample &&"):

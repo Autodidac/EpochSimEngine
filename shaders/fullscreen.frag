@@ -561,27 +561,40 @@ vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
 const uint FIX29_REFERENCE_BODY_ROWS[25] = uint[](
     0x00000200u, 0x00010280u, 0x00014a88u, 0x0001dfd8u, 0x0001fff8u,
     0x0005fdf8u, 0x0007fd7cu, 0x0007ff7cu, 0x003ebf7eu, 0x000e9ffeu,
-    0x000ebffeu, 0x000b7fffu, 0x003bffffu, 0x0015ffffu, 0x0005ffffu,
+    0x000ebffeu, 0x000b7fffu, 0x003bffffu, 0x0035ffffu, 0x0005ffffu,
     0x000fffffu, 0x000fffffu, 0x000ffff6u, 0x000ffff6u, 0x000afff6u,
     0x0002fff0u, 0x0002ff60u, 0x0000bd60u, 0x00003d20u, 0x00001500u
 );
-const uint FIX29_REFERENCE_GOLD_ROWS[25] = uint[](
-    0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0x00000e00u, 0x000008c0u,
-    0x000002c0u, 0x00000200u, 0x00000a00u, 0x00009bc0u, 0x00001520u,
-    0x00000700u, 0x00001800u, 0x00002c00u, 0x00000400u, 0u,
-    0u, 0u, 0u, 0u, 0u
+const uint FIX29_REFERENCE_TONE_BIT0_ROWS[25] = uint[](
+    0u, 0x00010280u, 0x00014888u, 0x00019b98u, 0x0001ddd8u,
+    0x0001b9b8u, 0x0005dd5cu, 0x0003b338u, 0x001c915cu, 0x000a933au,
+    0x00089d1cu, 0x000b3dbbu, 0x0011c69du, 0x0001603bu, 0x0005caddu,
+    0x000f9c79u, 0x000de5dcu, 0x000b93b2u, 0x0008ffd6u, 0x0002bbb0u,
+    0x0002bbb0u, 0x0000b960u, 0x00001d00u, 0x00003d20u, 0u
 );
-const uint FIX29_REFERENCE_YELLOW_ROWS[25] = uint[](
-    0u, 0u, 0u, 0u, 0u, 0u, 0u, 0x00000200u, 0u, 0x00001000u,
-    0u, 0x00000c80u, 0x00000400u, 0x00004020u, 0x00000ac0u,
-    0x00000800u, 0x00002000u, 0x00001000u, 0u, 0u,
-    0u, 0u, 0u, 0u, 0u
+const uint FIX29_REFERENCE_TONE_BIT1_ROWS[25] = uint[](
+    0u, 0x00010000u, 0x00014808u, 0x0001de00u, 0x0000ff20u,
+    0x00007d80u, 0x00003d40u, 0x00001760u, 0x001c0f70u, 0x000e1ff8u,
+    0x000a2ffcu, 0x000b0ffeu, 0x00015f7cu, 0x0005dbffu, 0x0005ffffu,
+    0x0005ef9fu, 0x0003f80eu, 0x0001fe06u, 0x0000c606u, 0x00007f80u,
+    0x00003f00u, 0x00003d60u, 0x00000d20u, 0x00000500u, 0u
 );
-const uint FIX29_REFERENCE_DARK_ROWS[25] = uint[](
-    0u, 0u, 0u, 0u, 0u, 0u, 0u, 0x00000800u, 0x00200000u, 0u,
-    0x00040000u, 0u, 0x002a0000u, 0x00100000u, 0u,
-    0u, 0x00000001u, 0u, 0x00050000u, 0x00080006u,
-    0u, 0x00024200u, 0x00008040u, 0u, 0x00001500u
+const uint FIX29_REFERENCE_TONE_BIT2_ROWS[25] = uint[](
+    0x00000200u, 0x00000280u, 0x00000280u, 0x000001d8u, 0x000100d8u,
+    0x00058078u, 0x0007c03cu, 0x0007e21cu, 0x0002be0eu, 0x000098c6u,
+    0x000092c2u, 0x00007e81u, 0x00003fe3u, 0x0000ffe0u, 0x00001fe0u,
+    0x00003fe0u, 0x000c3ff0u, 0x000e3df0u, 0x000a3df0u, 0x00028070u,
+    0x0002c060u, 0x00008000u, 0x00003000u, 0x00001000u, 0u
+);
+const vec3 FIX29_REFERENCE_PALETTE[8] = vec3[](
+    vec3(0.076819, 0.075106, 0.059199),
+    vec3(0.335589, 0.240551, 0.069939),
+    vec3(0.601874, 0.356975, 0.080099),
+    vec3(0.606786, 0.404312, 0.080220),
+    vec3(0.642577, 0.390150, 0.078396),
+    vec3(0.647848, 0.442140, 0.079800),
+    vec3(0.916244, 0.578691, 0.062858),
+    vec3(0.974910, 0.789138, 0.078862)
 );
 
 int fixedHiveReferenceAtQueen(ivec2 grid, ivec2 queen) {
@@ -595,10 +608,10 @@ int fixedHiveReferenceAtQueen(ivec2 grid, ivec2 queen) {
     if (cellAt(queen).material != MAT_QUEEN_BEE) return -1;
     uint bit = 1u << uint(reference.x);
     if ((FIX29_REFERENCE_BODY_ROWS[reference.y] & bit) == 0u) return 0;
-    if ((FIX29_REFERENCE_DARK_ROWS[reference.y] & bit) != 0u) return 4;
-    if ((FIX29_REFERENCE_YELLOW_ROWS[reference.y] & bit) != 0u) return 3;
-    if ((FIX29_REFERENCE_GOLD_ROWS[reference.y] & bit) != 0u) return 2;
-    return 1;
+    uint tone = (FIX29_REFERENCE_TONE_BIT0_ROWS[reference.y] & bit) != 0u ? 1u : 0u;
+    tone += (FIX29_REFERENCE_TONE_BIT1_ROWS[reference.y] & bit) != 0u ? 2u : 0u;
+    tone += (FIX29_REFERENCE_TONE_BIT2_ROWS[reference.y] & bit) != 0u ? 4u : 0u;
+    return int(tone) + 1;
 }
 
 int fixedHiveReferenceBody(ivec2 grid) {
@@ -1383,19 +1396,10 @@ void main() {
     vec4 color = worldColor(displayCell, grid);
     color.rgb = applyWorldLighting(color.rgb, displayCell, grid, mapSample);
     if (referenceHive > 0) {
-        // Palette classes are part of the photographed cell mask, not an
-        // animated effect. A small stable per-cell variation preserves the
-        // fibrous paper texture without rounding the silhouette back into a disk.
-        float paper = float(hash32(uint(grid.x) * 2654435761u ^ uint(grid.y)) & 7u) / 7.0;
-        if (referenceHive == 4)
-            color.rgb = vec3(0.03434, 0.04231, 0.05613);
-        else if (referenceHive == 3)
-            color.rgb = vec3(0.98225, 0.80695, 0.08022);
-        else if (referenceHive == 2)
-            color.rgb = vec3(0.93869, 0.57112, 0.05951);
-        else
-            color.rgb = mix(vec3(0.55201, 0.29177, 0.03955),
-                            vec3(0.72306, 0.48515, 0.09531), paper);
+        // The tone index is sampled from the photographed native cell, not
+        // regenerated from a new random hash. Palette values are linearized
+        // for the sRGB swapchain so the July mustard/comb colors survive.
+        color.rgb = FIX29_REFERENCE_PALETTE[referenceHive - 1];
         color.a = 1.0;
     }
 
