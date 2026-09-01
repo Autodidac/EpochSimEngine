@@ -21,6 +21,7 @@ Chemistry keeps its software-Vulkan-safe monolithic kernel shallow. Conservation
 - C++ unit/contract tests cover the platform-neutral library and CPU policies.
 - Shader validators cover interfaces, invariants, and generated UI/material contracts.
 - Production Vulkan acceptance reads back actual GPU state on Windows and Linux.
+- The repeated finite-ledger gate runs twelve production-shader and public schema-2 save/load cycles in an isolated temporary fixture; it is separate from the fast state report and must agree on Windows and Linux.
 - Package audits verify native binaries, shaders, public headers, documentation, paths, and checksums.
 - Manual packaged observation covers visuals, input ownership, frame pacing, and long finite cycles.
 
@@ -33,7 +34,7 @@ cmake --build build/windows --config Release
 ctest --test-dir build/windows -C Release --output-on-failure
 ```
 
-Linux Release and llvmpipe acceptance run serially when WSL/compiler ownership is coordinated.
+Linux Release and llvmpipe acceptance run serially when WSL/compiler ownership is coordinated. Never overlap the fast production report, repeated finite-ledger report, compiler, or another GPU/runtime process in that lane.
 
 ## Documentation policy
 

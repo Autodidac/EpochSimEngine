@@ -127,6 +127,9 @@ def main() -> int:
     sunlight = (SHADERS / "sunlight.comp").read_text(encoding="utf-8")
     swarm = (SHADERS / "bee_swarm.glsl").read_text(encoding="utf-8")
     generator = (ROOT / "tools/generate_ui_text.py").read_text(encoding="utf-8")
+    main_cpp = (ROOT / "src/main.cpp").read_text(encoding="utf-8")
+    validation_doc = (ROOT / "VALIDATION.md").read_text(encoding="utf-8")
+    runtime_doc = (ROOT / "docs/sandhybrid.md").read_text(encoding="utf-8")
 
     errors: list[str] = []
     for token in (
@@ -591,6 +594,34 @@ def main() -> int:
     ):
         require(chemistry, token, errors,
                 "renewable Water/weather and Lava/Stone phase ownership contract")
+
+    for token in (
+        "--long-cycle-acceptance-report",
+        "options.long_cycle_acceptance_report",
+    ):
+        require(main_cpp, token, errors,
+                "separate repeated finite-ledger CLI contract")
+    for token in (
+        "int run_long_cycle_acceptance()",
+        "constexpr std::uint32_t requested_cycles = 12u;",
+        "download_scene_cell_prefix(fixture_cell_count)",
+        'report_path.stem().string() + "-save-fixture"',
+        "completed_cycles == requested_cycles",
+        '"  \\"requested_cycles\\": "',
+        '"  \\"completed_cycles\\": "',
+    ):
+        require(renderer, token, errors,
+                "repeated finite-ledger runtime contract")
+    require(renderer, "for (std::uint32_t tick = 0u; tick < 384u; ++tick)",
+            errors, "bounded three-cycle hive acceptance contract")
+    if "tick < 1'800u" in renderer:
+        errors.append("hive acceptance reintroduced the redundant 1,800-tick window")
+    for document, description in (
+        (validation_doc, "validation guide"),
+        (runtime_doc, "runtime guide"),
+    ):
+        require(document, "--long-cycle-acceptance-report", errors,
+                f"{description} repeated-cycle command contract")
 
     if errors:
         print("current shader/interface contract validation failed:", file=sys.stderr)

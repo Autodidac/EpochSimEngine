@@ -335,6 +335,7 @@ int run_application(const ApplicationOptions& options) {
         .max_frames_per_second = 120u,
         .world_size = options.world_size,
         .runtime_acceptance_report = options.runtime_acceptance_report,
+        .long_cycle_acceptance_report = options.long_cycle_acceptance_report,
         .interactive_acceptance_report = options.interactive_acceptance_report,
     };
     reset_camera_home(shared_state, simulation_config);

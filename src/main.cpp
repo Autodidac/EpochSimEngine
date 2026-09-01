@@ -9,7 +9,7 @@ namespace {
 
 void print_usage() {
     std::fprintf(stderr,
-        "Usage: sandhybrid [--world-size SIZE] [--save-slot NAME] [--runtime-acceptance-report FILE] [--interactive-acceptance-report FILE]\n"
+        "Usage: sandhybrid [--world-size SIZE] [--save-slot NAME] [--runtime-acceptance-report FILE] [--long-cycle-acceptance-report FILE] [--interactive-acceptance-report FILE]\n"
         "World sizes: compact, standard, large\n"
         "Aliases: small=compact, medium=standard\n"
         "Save slots are portable named folders; the default is quick.\n");
@@ -90,6 +90,25 @@ int main(const int argc, char** argv) {
             }
             continue;
         }
+        if (argument == "--long-cycle-acceptance-report") {
+            if (index + 1 >= argc) {
+                std::fprintf(stderr, "[SandHybrid] --long-cycle-acceptance-report requires a path.\n");
+                print_usage();
+                return 2;
+            }
+            options.long_cycle_acceptance_report = argv[++index];
+            continue;
+        }
+        constexpr std::string_view long_cycle_prefix{"--long-cycle-acceptance-report="};
+        if (argument.starts_with(long_cycle_prefix)) {
+            options.long_cycle_acceptance_report =
+                argument.substr(long_cycle_prefix.size());
+            if (options.long_cycle_acceptance_report.empty()) {
+                std::fprintf(stderr, "[SandHybrid] --long-cycle-acceptance-report requires a path.\n");
+                return 2;
+            }
+            continue;
+        }
         if (argument == "--interactive-acceptance-report") {
             if (index + 1 >= argc) {
                 std::fprintf(stderr, "[SandHybrid] --interactive-acceptance-report requires a path.\n");
@@ -111,6 +130,16 @@ int main(const int argc, char** argv) {
         std::fprintf(stderr, "[SandHybrid] Unknown option: %.*s\n",
                      static_cast<int>(argument.size()), argument.data());
         print_usage();
+        return 2;
+    }
+
+    const auto acceptance_modes =
+        static_cast<unsigned>(!options.runtime_acceptance_report.empty()) +
+        static_cast<unsigned>(!options.long_cycle_acceptance_report.empty()) +
+        static_cast<unsigned>(!options.interactive_acceptance_report.empty());
+    if (acceptance_modes > 1u) {
+        std::fprintf(stderr,
+                     "[SandHybrid] Select only one acceptance-report mode per process.\n");
         return 2;
     }
 

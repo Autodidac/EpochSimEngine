@@ -1588,9 +1588,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         return executable_directory() / "scenes";
     }
 
-    [[nodiscard]] std::vector<SceneCell> download_scene_cells() {
-        std::vector<SceneCell> cells(
-            static_cast<std::size_t>(config.grid_width) * config.grid_height);
+    [[nodiscard]] std::vector<SceneCell> download_scene_cell_prefix(
+        const std::size_t cell_count) {
+        const auto resident_cell_count =
+            static_cast<std::size_t>(config.grid_width) * config.grid_height;
+        if (cell_count > resident_cell_count)
+            throw std::runtime_error("Scene prefix readback exceeds resident cell count.");
+        std::vector<SceneCell> cells(cell_count);
+        const auto readback_bytes = cells.size() * sizeof(SceneCell);
         immediate_submit([&](const VkCommandBuffer command_buffer) {
             buffer_barrier(command_buffer, cell_buffers[current_set],
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
@@ -1604,7 +1609,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_ACCESS_TRANSFER_WRITE_BIT,
                            VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
                            VK_PIPELINE_STAGE_TRANSFER_BIT);
-            const VkBufferCopy copy{.size = scene_staging_buffer.size};
+            const VkBufferCopy copy{.size = readback_bytes};
             vkCmdCopyBuffer(command_buffer, cell_buffers[current_set].handle,
                             scene_staging_buffer.handle, 1, &copy);
             buffer_barrier(command_buffer, scene_staging_buffer,
@@ -1613,11 +1618,16 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         });
         void* mapped = nullptr;
         check_vk(vkMapMemory(device, scene_staging_buffer.memory, 0,
-                             scene_staging_buffer.size, 0, &mapped),
+                             readback_bytes, 0, &mapped),
                  "vkMapMemory(fill readback)");
-        std::memcpy(cells.data(), mapped, cells.size() * sizeof(SceneCell));
+        std::memcpy(cells.data(), mapped, readback_bytes);
         vkUnmapMemory(device, scene_staging_buffer.memory);
         return cells;
+    }
+
+    [[nodiscard]] std::vector<SceneCell> download_scene_cells() {
+        return download_scene_cell_prefix(
+            static_cast<std::size_t>(config.grid_width) * config.grid_height);
     }
 
     [[nodiscard]] std::vector<SceneCell> download_map_snapshot_cells() {
@@ -2025,7 +2035,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_TRANSFER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-            if (config.runtime_acceptance_report.empty()) {
+            if (config.runtime_acceptance_report.empty() &&
+                config.long_cycle_acceptance_report.empty()) {
                 const SimulationPush sunlight_push{
                     .width = config.grid_width,
                     .height = config.grid_height,
@@ -2191,6 +2202,56 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         map_snapshot_slice = 0u;
         map_was_visible = false;
         needs_reset = false;
+    }
+
+    void upload_acceptance_cell_prefix(const std::span<const SceneCell> cells) {
+        if (cells.empty() || cells.size_bytes() > scene_staging_buffer.size)
+            throw std::runtime_error("Acceptance fixture produced an invalid cell prefix.");
+        void* mapped = nullptr;
+        check_vk(vkMapMemory(device, scene_staging_buffer.memory, 0,
+                             cells.size_bytes(), 0, &mapped),
+                 "vkMapMemory(acceptance prefix upload)");
+        std::memcpy(mapped, cells.data(), cells.size_bytes());
+        vkUnmapMemory(device, scene_staging_buffer.memory);
+
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
+            buffer_barrier(command_buffer, scene_staging_buffer,
+                           VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT |
+                               VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT);
+            const VkBufferCopy copy{.size = cells.size_bytes()};
+            for (const auto& destination : cell_buffers) {
+                vkCmdCopyBuffer(command_buffer, scene_staging_buffer.handle,
+                                destination.handle, 1, &copy);
+                buffer_barrier(command_buffer, destination,
+                               VK_ACCESS_TRANSFER_WRITE_BIT,
+                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            }
+            vkCmdFillBuffer(command_buffer, rainfall_buffer.handle, 0,
+                            rainfall_buffer.size, 0u);
+            vkCmdFillBuffer(command_buffer, tile_buffer.handle, 0,
+                            tile_buffer.size, 0u);
+            vkCmdFillBuffer(command_buffer, chunk_buffer.handle, 0,
+                            chunk_buffer.size, 0u);
+            vkCmdFillBuffer(command_buffer, conservation_buffer.handle, 0,
+                            conservation_buffer.size, 0u);
+            for (const auto* buffer :
+                 std::array{&rainfall_buffer, &tile_buffer, &chunk_buffer,
+                            &conservation_buffer}) {
+                buffer_barrier(command_buffer, *buffer,
+                               VK_ACCESS_TRANSFER_WRITE_BIT,
+                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            }
+        });
+        current_set = 0u;
     }
 
     [[nodiscard]] std::uint32_t authored_map_origin_x() const noexcept {
@@ -5396,7 +5457,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         {-1, -1}, {0, -1}, {1, -1}, {-1, 0},
                         {1, 0}, {-1, 1}, {0, 1}, {1, 1}}};
                 const auto find_birth_candidate =
-                    [&](const std::vector<SceneCell>& cells) {
+                    [&](const std::vector<SceneCell>& candidate_cells) {
                         for (std::int32_t dy = -2; dy <= 2; ++dy) {
                             for (std::int32_t dx = -2; dx <= 2; ++dx) {
                                 const auto distance = dx * dx + dy * dy;
@@ -5405,13 +5466,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                     static_cast<std::int32_t>(queen_x) + dx);
                                 const auto y = static_cast<std::uint32_t>(
                                     static_cast<std::int32_t>(queen_y) + dy);
-                                if (cells[index_of(x, y)].material !=
+                                if (candidate_cells[index_of(x, y)].material !=
                                     material_id(Material::empty))
                                     continue;
                                 bool food_neighbor = false;
                                 bool nest_frontier = false;
                                 for (const auto& [nx, ny] : bee_neighbors) {
-                                    const auto material = cells[index_of(
+                                    const auto material = candidate_cells[index_of(
                                         static_cast<std::uint32_t>(
                                             static_cast<std::int32_t>(x) + nx),
                                         static_cast<std::uint32_t>(
@@ -5428,7 +5489,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                 for (std::int32_t oy = -6; oy <= 6; ++oy) {
                                     for (std::int32_t ox = -6; ox <= 6; ++ox) {
                                         if (ox * ox + oy * oy > 36) continue;
-                                        const auto nearby_material = cells[index_of(
+                                        const auto nearby_material = candidate_cells[index_of(
                                             static_cast<std::uint32_t>(
                                                 static_cast<std::int32_t>(x) + ox),
                                             static_cast<std::uint32_t>(
@@ -5617,11 +5678,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
                     if (replacement_born) {
                         // Observe the complete animated chamber -> exit ->
-                        // outside-lane -> missing-slot return. The canonical
-                        // swarm intentionally schedules each owner at one
-                        // quarter cadence, so the former 320-tick window ended
-                        // at the approach waypoint rather than at the slot.
-                        for (std::uint32_t tick = 0u; tick < 1'800u; ++tick)
+                        // outside-lane -> missing-slot return. A replacement
+                        // advances every fixed tick, unlike the established
+                        // colony's quarter cadence. The route is under 128
+                        // cardinal steps; 384 complete production ticks retain
+                        // threefold margin plus the correction tick that clears
+                        // its reserved newborn target after reaching the slot.
+                        for (std::uint32_t tick = 0u; tick < 384u; ++tick)
                             run_acceptance_focused_tick(
                                 active_section_x, active_section_y, true);
                     }
@@ -8519,8 +8582,421 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     (passed ? "passed: " : "failed: ") + report_path.string());
         return passed ? 0 : 3;
     }
+    [[nodiscard]] int run_long_cycle_acceptance() {
+        startup_log("Running repeated finite-ledger and save-cycle acceptance...");
+        constexpr std::uint32_t requested_cycles = 12u;
+        constexpr std::uint32_t fixture_rows = 192u;
+        constexpr std::uint32_t water_half_bit = 0x00800000u;
+        constexpr std::uint32_t half_medium_temperature_20 = 121u;
+        constexpr std::uint32_t weather_cycle_ticks = 7200u;
+        constexpr std::uint32_t rain_start_tick = 4800u;
+        constexpr std::uint32_t rain_duration_ticks = 600u;
+        constexpr std::uint32_t emission_cadence = 360u;
+        constexpr std::uint32_t sector_width = 256u;
+
+        const std::filesystem::path report_path{
+            config.long_cycle_acceptance_report};
+        if (!report_path.parent_path().empty()) {
+            std::error_code directory_error;
+            std::filesystem::create_directories(report_path.parent_path(),
+                                                directory_error);
+            if (directory_error) {
+                throw std::runtime_error(
+                    "Unable to create long-cycle report directory: " +
+                    directory_error.message());
+            }
+        }
+        const auto report_parent = report_path.parent_path().empty()
+            ? std::filesystem::current_path()
+            : report_path.parent_path();
+        const auto save_root = report_parent /
+            (report_path.stem().string() + "-save-fixture");
+        struct CleanupDirectory final {
+            std::filesystem::path path;
+            ~CleanupDirectory() {
+                std::error_code ignored;
+                std::filesystem::remove_all(path, ignored);
+            }
+        } cleanup{save_root};
+        std::error_code initial_cleanup_error;
+        std::filesystem::remove_all(save_root, initial_cleanup_error);
+
+        struct RestoreStep final {
+            std::uint32_t& step;
+            std::uint32_t saved;
+            ~RestoreStep() { step = saved; }
+        } restore_step{simulation_step, simulation_step};
+
+        const auto material_id = [](const Material material) {
+            return static_cast<std::uint32_t>(material);
+        };
+        const auto index_of = [&](const std::uint32_t x,
+                                  const std::uint32_t y) {
+            return static_cast<std::size_t>(y) * config.grid_width + x;
+        };
+        const auto fixture_cell_count =
+            static_cast<std::size_t>(config.grid_width) * fixture_rows;
+        const auto make_atmosphere_fixture = [&]() {
+            std::vector<SceneCell> cells(fixture_cell_count);
+            for (std::size_t index = 0u; index < cells.size(); ++index) {
+                cells[index] = make_fill_cell(
+                    material_id(Material::atmosphere),
+                    static_cast<std::uint32_t>(index));
+            }
+            return cells;
+        };
+        const auto count_material = [&](const std::vector<SceneCell>& cells,
+                                        const Material material) {
+            return static_cast<std::uint32_t>(std::count_if(
+                cells.begin(), cells.end(), [&](const SceneCell& cell) {
+                    return cell.material == material_id(material);
+                }));
+        };
+        const auto water_family = [&](const std::vector<SceneCell>& cells) {
+            return count_material(cells, Material::water) +
+                count_material(cells, Material::dirty_water) +
+                count_material(cells, Material::steam) +
+                count_material(cells, Material::dirty_steam) +
+                count_material(cells, Material::cloud);
+        };
+        const auto rock_family = [&](const std::vector<SceneCell>& cells) {
+            return count_material(cells, Material::stone) +
+                count_material(cells, Material::lava);
+        };
+        const auto water_half_units = [&](const std::vector<SceneCell>& cells) {
+            std::pair<std::uint32_t, std::uint32_t> result{};
+            for (const auto& cell : cells) {
+                if (cell.material != material_id(Material::water)) continue;
+                const bool half = (cell.aux & water_half_bit) != 0u;
+                result.first += half ? 1u : 2u;
+                result.second += half ? 1u : 0u;
+            }
+            return result;
+        };
+        const auto scheduled_rain_candidate = [&]()
+            -> std::optional<std::pair<std::uint32_t, std::uint32_t>> {
+            for (std::uint32_t step = rain_start_tick;
+                 step < rain_start_tick + rain_duration_ticks; ++step) {
+                const auto rain_tick = step - rain_start_tick;
+                for (std::uint32_t x = 2u; x < 190u; ++x) {
+                    const auto sector = x / sector_width;
+                    const auto sector_phase =
+                        (sector * 37u) % emission_cadence;
+                    if ((rain_tick % emission_cadence) != sector_phase) continue;
+                    const auto event_index = rain_tick / emission_cadence;
+                    const auto lane = fill_hash(
+                        sector ^ event_index * 0x9e3779b9u ^
+                        (step / weather_cycle_ticks) * 0x85ebca6bu) %
+                        sector_width;
+                    if ((x % sector_width) == lane)
+                        return std::pair{x, step};
+                }
+            }
+            return std::nullopt;
+        }();
+
+        const WorldSaveActorState actor{
+            .x = 32,
+            .y = 32,
+            .velocity_y = 0,
+            .enabled = 1u,
+            .gold = 17u,
+            .iron = 23u,
+            .ammo = 91u,
+            .shot_timer = 0u,
+            .move_cooldown = 0u,
+            .grounded = 1u,
+            .health = 201u,
+            .oxygen = 187u,
+            .hit_x = -1,
+            .hit_y = -1,
+            .scene = static_cast<std::uint32_t>(world_scene),
+            .exposure_ticks = 3u,
+            .aluminum = 5u,
+            .copper = 6u,
+            .unlocks = 15u,
+            .drill_level = 2u,
+        };
+        const WorldSaveOwners owners{.actor_present = true, .actor = actor};
+        const WorldSaveMetadata metadata{
+            .world_size = config.world_size,
+            .width = config.grid_width,
+            .height = fixture_rows,
+            .scene = world_scene,
+        };
+
+        std::vector<RuntimeAcceptanceCheck> cycles;
+        std::optional<std::vector<SceneCell>> baseline_cells;
+        std::optional<WorldSaveActorState> baseline_actor;
+        std::uint32_t completed_cycles = 0u;
+        for (std::uint32_t cycle = 0u; cycle < requested_cycles; ++cycle) {
+            bool passed = scheduled_rain_candidate.has_value();
+            std::string failure;
+            const auto fail = [&](const std::string_view reason) {
+                if (passed) failure = reason;
+                passed = false;
+            };
+
+            auto halves = make_atmosphere_fixture();
+            for (std::uint32_t x = 88u; x < 96u; ++x)
+                halves[index_of(x, 101u)] = make_fill_cell(
+                    material_id(Material::stone),
+                    static_cast<std::uint32_t>(index_of(x, 101u)));
+            const auto half_aux = water_half_bit |
+                ((material_id(Material::atmosphere) & 0x7fu) << 8u) |
+                half_medium_temperature_20;
+            halves[index_of(90u, 100u)] = SceneCell{
+                .material = material_id(Material::water), .age = 0u,
+                .temperature = 10, .aux = half_aux};
+            halves[index_of(91u, 100u)] = SceneCell{
+                .material = material_id(Material::water), .age = 0u,
+                .temperature = 50, .aux = half_aux};
+            halves[index_of(120u, 100u)] = SceneCell{
+                .material = material_id(Material::water), .age = 37u,
+                .temperature = 73, .aux = half_aux};
+            halves[index_of(120u, 101u)] = make_fill_cell(
+                material_id(Material::stone),
+                static_cast<std::uint32_t>(index_of(120u, 101u)));
+            simulation_step = 100u;
+            upload_acceptance_cell_prefix(halves);
+            run_acceptance_horizontal_pass(0);
+            const auto merged = download_scene_cell_prefix(fixture_cell_count);
+            const auto [half_units, half_cells] = water_half_units(merged);
+            const auto& merged_water = merged[index_of(90u, 100u)];
+            const auto& restored_air = merged[index_of(91u, 100u)];
+            const auto& stored_half = merged[index_of(120u, 100u)];
+            if (half_units != 3u || half_cells != 1u ||
+                merged_water.material != material_id(Material::water) ||
+                (merged_water.aux & water_half_bit) != 0u ||
+                merged_water.temperature != 30 ||
+                restored_air.material != material_id(Material::atmosphere) ||
+                (restored_air.aux & 0xffu) != 54u ||
+                restored_air.temperature != 20 ||
+                stored_half.material != material_id(Material::water) ||
+                stored_half.temperature != 73 || stored_half.aux != half_aux ||
+                count_material(merged, Material::empty) != 0u)
+                fail("Half Water/displaced-Atmosphere ledger drift");
+
+            auto boiling = make_atmosphere_fixture();
+            auto hot_water = make_fill_cell(
+                material_id(Material::water),
+                static_cast<std::uint32_t>(index_of(100u, 100u)));
+            hot_water.temperature = 125;
+            boiling[index_of(100u, 100u)] = hot_water;
+            simulation_step = 120u;
+            upload_acceptance_cell_prefix(boiling);
+            run_acceptance_chemistry_pass();
+            const auto boiled = download_scene_cell_prefix(fixture_cell_count);
+            const auto carried_steam = boiled[index_of(100u, 100u)];
+            if (carried_steam.material != material_id(Material::steam) ||
+                carried_steam.temperature <= 110 || water_family(boiled) != 1u ||
+                count_material(boiled, Material::empty) != 0u)
+                fail("Water-to-Steam ledger drift");
+
+            auto condensing = make_atmosphere_fixture();
+            auto cooling_steam = carried_steam;
+            cooling_steam.age = 121u;
+            cooling_steam.temperature = 60;
+            condensing[index_of(100u, 100u)] = cooling_steam;
+            auto cloud_neighbor = make_fill_cell(
+                material_id(Material::cloud),
+                static_cast<std::uint32_t>(index_of(101u, 100u)));
+            cloud_neighbor.temperature = 12;
+            condensing[index_of(101u, 100u)] = cloud_neighbor;
+            simulation_step = 240u;
+            upload_acceptance_cell_prefix(condensing);
+            run_acceptance_chemistry_pass();
+            const auto condensed = download_scene_cell_prefix(fixture_cell_count);
+            const auto carried_cloud = condensed[index_of(100u, 100u)];
+            if (carried_cloud.material != material_id(Material::cloud) ||
+                carried_cloud.temperature != 60 || water_family(condensed) != 2u ||
+                count_material(condensed, Material::empty) != 0u)
+                fail("Steam-to-Cloud ledger drift");
+
+            auto raining = make_atmosphere_fixture();
+            std::uint32_t rain_x = 2u;
+            std::uint32_t rain_step = 0u;
+            if (scheduled_rain_candidate) {
+                rain_x = scheduled_rain_candidate->first;
+                rain_step = scheduled_rain_candidate->second;
+                for (std::uint32_t y = 79u; y <= 80u; ++y) {
+                    for (std::uint32_t x = rain_x - 1u;
+                         x <= rain_x + 1u; ++x) {
+                        auto cloud = make_fill_cell(
+                            material_id(Material::cloud),
+                            static_cast<std::uint32_t>(index_of(x, y)));
+                        cloud.age = 700u;
+                        cloud.temperature = 13;
+                        raining[index_of(x, y)] = cloud;
+                    }
+                }
+            }
+            simulation_step = rain_step;
+            upload_acceptance_cell_prefix(raining);
+            run_acceptance_chemistry_pass();
+            const auto rained = download_scene_cell_prefix(fixture_cell_count);
+            const auto carried_rain = rained[index_of(rain_x, 80u)];
+            if (!scheduled_rain_candidate ||
+                carried_rain.material != material_id(Material::water) ||
+                carried_rain.temperature != 13 || water_family(rained) != 6u ||
+                count_material(rained, Material::empty) != 0u)
+                fail("Cloud-to-rain ledger drift");
+
+            auto cooling = make_atmosphere_fixture();
+            auto isolated_lava = make_fill_cell(
+                material_id(Material::lava),
+                static_cast<std::uint32_t>(index_of(100u, 100u)));
+            isolated_lava.temperature = 900;
+            cooling[index_of(100u, 100u)] = isolated_lava;
+            cooling[index_of(101u, 100u)] = make_fill_cell(
+                material_id(Material::water),
+                static_cast<std::uint32_t>(index_of(101u, 100u)));
+            simulation_step = 360u;
+            upload_acceptance_cell_prefix(cooling);
+            run_acceptance_chemistry_pass();
+            const auto cooled = download_scene_cell_prefix(fixture_cell_count);
+            const auto cooled_stone = cooled[index_of(100u, 100u)];
+            if (cooled_stone.material != material_id(Material::stone) ||
+                cooled_stone.temperature < 800 || rock_family(cooled) != 1u ||
+                water_family(cooled) != 1u ||
+                count_material(cooled, Material::empty) != 0u)
+                fail("Lava-to-Stone ledger drift");
+
+            auto reheating = make_atmosphere_fixture();
+            auto hot_stone = make_fill_cell(
+                material_id(Material::stone),
+                static_cast<std::uint32_t>(index_of(100u, 100u)));
+            hot_stone.temperature = 950;
+            reheating[index_of(100u, 100u)] = hot_stone;
+            for (const auto& offset : std::array{
+                     std::pair{-1, 0}, std::pair{1, 0},
+                     std::pair{0, -1}, std::pair{0, 1}}) {
+                const auto x = static_cast<std::uint32_t>(100 + offset.first);
+                const auto y = static_cast<std::uint32_t>(100 + offset.second);
+                reheating[index_of(x, y)] = make_fill_cell(
+                    material_id(Material::lava),
+                    static_cast<std::uint32_t>(index_of(x, y)));
+            }
+            simulation_step = 480u;
+            upload_acceptance_cell_prefix(reheating);
+            run_acceptance_chemistry_pass();
+            const auto reheated = download_scene_cell_prefix(fixture_cell_count);
+            const auto reheated_lava = reheated[index_of(100u, 100u)];
+            if (reheated_lava.material != material_id(Material::lava) ||
+                reheated_lava.temperature < 900 || rock_family(reheated) != 5u ||
+                count_material(reheated, Material::empty) != 0u)
+                fail("Stone-to-Lava ledger drift");
+
+            auto serialized = make_atmosphere_fixture();
+            serialized[index_of(10u, 10u)] = merged_water;
+            serialized[index_of(11u, 10u)] = restored_air;
+            serialized[index_of(12u, 10u)] = stored_half;
+            serialized[index_of(13u, 10u)] = carried_steam;
+            serialized[index_of(14u, 10u)] = carried_cloud;
+            serialized[index_of(15u, 10u)] = carried_rain;
+            serialized[index_of(16u, 10u)] = cooled_stone;
+            serialized[index_of(17u, 10u)] = cooled[index_of(101u, 100u)];
+            serialized[index_of(20u, 10u)] = reheated_lava;
+            serialized[index_of(19u, 10u)] = reheated[index_of(99u, 100u)];
+            serialized[index_of(21u, 10u)] = reheated[index_of(101u, 100u)];
+            serialized[index_of(20u, 9u)] = reheated[index_of(100u, 99u)];
+            serialized[index_of(20u, 11u)] = reheated[index_of(100u, 101u)];
+
+            std::string save_error;
+            const bool save_ok = save_world(save_root, metadata, "cycle",
+                                            serialized, owners, save_error);
+            std::vector<SceneCell> loaded(serialized.size());
+            WorldSaveOwners loaded_owners{};
+            WorldSaveMetadata loaded_metadata{};
+            std::string load_error;
+            const bool load_ok = save_ok && load_world(
+                save_root, config.world_size, config.grid_width, fixture_rows,
+                world_scene, "cycle", loaded, loaded_owners, loaded_metadata,
+                load_error);
+            const bool exact_round_trip = load_ok &&
+                std::memcmp(serialized.data(), loaded.data(),
+                            serialized.size() * sizeof(SceneCell)) == 0 &&
+                loaded_owners.actor_present &&
+                std::memcmp(&actor, &loaded_owners.actor, sizeof(actor)) == 0 &&
+                loaded_metadata.format_version == world_save_format_version &&
+                loaded_metadata.owner_payload_bytes ==
+                    world_save_actor_bytes + 16u;
+            if (!exact_round_trip) fail("schema-2 save/load byte drift");
+            if (exact_round_trip && baseline_cells) {
+                if (std::memcmp(baseline_cells->data(), loaded.data(),
+                                loaded.size() * sizeof(SceneCell)) != 0 ||
+                    !baseline_actor ||
+                    std::memcmp(&*baseline_actor, &loaded_owners.actor,
+                                sizeof(actor)) != 0)
+                    fail("cross-cycle accepted-state byte drift");
+            }
+            if (exact_round_trip && !baseline_cells) {
+                baseline_cells = loaded;
+                baseline_actor = loaded_owners.actor;
+            }
+
+            const auto details =
+                "cycle=" + std::to_string(cycle + 1u) +
+                " half_units=" + std::to_string(half_units) +
+                " half_cells=" + std::to_string(half_cells) +
+                " steam_temp=" + std::to_string(carried_steam.temperature) +
+                " cloud_temp=" + std::to_string(carried_cloud.temperature) +
+                " rain_temp=" + std::to_string(carried_rain.temperature) +
+                " cooled_temp=" + std::to_string(cooled_stone.temperature) +
+                " reheated_temp=" + std::to_string(reheated_lava.temperature) +
+                " save=" + std::to_string(save_ok ? 1u : 0u) +
+                " load=" + std::to_string(load_ok ? 1u : 0u) +
+                (failure.empty() ? "" : " failure=" + failure) +
+                (save_error.empty() ? "" : " save_error=" + save_error) +
+                (load_error.empty() ? "" : " load_error=" + load_error);
+            startup_log(std::string{passed ? "PASS " : "FAIL "} +
+                        "finite_cycle_" + std::to_string(cycle + 1u) +
+                        ": " + details);
+            cycles.push_back({"finite_cycle_" + std::to_string(cycle + 1u),
+                              passed, details});
+            if (!passed) break;
+            ++completed_cycles;
+        }
+
+        const bool passed = completed_cycles == requested_cycles;
+        std::ofstream report{report_path, std::ios::binary | std::ios::trunc};
+        if (!report)
+            throw std::runtime_error("Unable to open long-cycle report: " +
+                                     report_path.string());
+        report << "{\n  \"schema\": 1,\n"
+               << "  \"backend\": \"vulkan\",\n"
+               << "  \"requested_cycles\": " << requested_cycles << ",\n"
+               << "  \"completed_cycles\": " << completed_cycles << ",\n"
+               << "  \"fixture_width\": " << config.grid_width << ",\n"
+               << "  \"fixture_height\": " << fixture_rows << ",\n"
+               << "  \"passed\": " << (passed ? "true" : "false") << ",\n"
+               << "  \"cycles\": [\n";
+        for (std::size_t index = 0u; index < cycles.size(); ++index) {
+            const auto& cycle = cycles[index];
+            report << "    {\"name\": \"" << json_escape(cycle.name)
+                   << "\", \"passed\": "
+                   << (cycle.passed ? "true" : "false")
+                   << ", \"details\": \"" << json_escape(cycle.details)
+                   << "\"}" << (index + 1u == cycles.size() ? "\n" : ",\n");
+        }
+        report << "  ]\n}\n";
+        if (!report)
+            throw std::runtime_error("Unable to write long-cycle report: " +
+                                     report_path.string());
+        startup_log(std::string{"Repeated finite-ledger acceptance "} +
+                    (passed ? "passed: " : "failed: ") + report_path.string());
+        return passed ? 0 : 4;
+    }
+
     void run(const std::atomic_bool& stop_requested, SharedState& state) {
         startup_log("Entering render loop...");
+        if (!config.long_cycle_acceptance_report.empty()) {
+            const auto exit_code = run_long_cycle_acceptance();
+            state.runtime_acceptance_exit_code.store(exit_code,
+                                                     std::memory_order_release);
+            state.quit.store(true, std::memory_order_release);
+            return;
+        }
         if (!config.runtime_acceptance_report.empty()) {
             const auto exit_code = run_runtime_acceptance(state);
             state.runtime_acceptance_exit_code.store(exit_code, std::memory_order_release);

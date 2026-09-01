@@ -18,6 +18,7 @@ struct SimulationConfig final {
     std::uint32_t max_frames_per_second{120};
     WorldSizePreset world_size{WorldSizePreset::large};
     std::string runtime_acceptance_report{};
+    std::string long_cycle_acceptance_report{};
     std::string interactive_acceptance_report{};
 };
 

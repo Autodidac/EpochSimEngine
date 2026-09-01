@@ -33,6 +33,14 @@ The packaged executable can run the focused production Vulkan gate:
 sandhybrid --world-size compact --runtime-acceptance-report runtime-acceptance.json
 ```
 
+The separate repeated finite-ledger gate reuses the production chemistry, correction, movement, and schema-2 save/load paths for twelve deterministic cycles:
+
+```text
+sandhybrid --world-size compact --long-cycle-acceptance-report long-cycle-acceptance.json
+```
+
+Each cycle checks Half Water ownership and heat, Water-to-Steam-to-Cloud-to-rain material and temperature ownership, Lava-to-Stone-to-Lava material and heat ownership, exact actor serialization, zero Empty/Vacuum creation, and byte-identical repeatability. Its temporary save fixture is isolated beside the report and removed on both success and failure. Run it once per native installed package; it is intentionally separate from the fast state report.
+
 It can also run a presented-frame acceptance pass from the installed `bin` directory:
 
 ```text
@@ -41,4 +49,4 @@ sandhybrid --world-size compact --interactive-acceptance-report interactive-acce
 
 The interactive pass measures adjacent normal/REGION Debug presentation, then captures normal World, REGION Debug, WORLD TOTALS, MAP, Inventory, Designer, a close canonical Ecosystem hive, the brightest high-sky Nuke warning, and the resulting bounded high-sky edit. The sibling `<report-name>-frames` directory contains the real Vulkan swapchain BMPs. Hardware Vulkan enforces frame-time and Debug-overhead gates; CPU software Vulkan records the same pages and visual states without pretending its timing is an interactive hardware result.
 
-Focused and interactive checks never substitute for long-cycle conservation or explicit visual acceptance.
+Focused, repeated-cycle, and interactive checks cover different risks. None substitutes for explicit packaged visual acceptance or broader cross-district ecology and machinery observation.

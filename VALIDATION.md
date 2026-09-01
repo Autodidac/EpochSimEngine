@@ -100,6 +100,18 @@ The executable allocates the selected resident World (Large is 10240x1440), runs
 
 This focused gate does not close broader cross-district traversal, multi-interval weather/ecology cycles, all machinery, repeated long-running save/reload conservation, installed-package lifecycle repetition, measured interactive Debug overhead, or final installed Windows/Linux visual review of the photographed hive and distributed scenery.
 
+## Repeated finite-ledger and save-cycle command
+
+Run this separately from the focused state report, from a fresh native package:
+
+```text
+sandhybrid --world-size compact --long-cycle-acceptance-report long-cycle-acceptance.json
+```
+
+The gate executes twelve deterministic cycles through the production chemistry, conservative correction, movement, and public schema-2 save/load paths. Every cycle must retain exactly three Half-Water units with one tagged stationary half, merge the other two halves into 30 C full Water while restoring the displaced Atmosphere owner, preserve Water-family count and temperature through 120 C Steam, 60 C Cloud, and 13 C scheduled rain fixtures, preserve rock-family count and heat through 880 C Stone and 951 C reheated Lava, round-trip the exact 20-word actor owner, create no Empty/Vacuum owner, and reproduce the first accepted cycle byte-for-byte. It exits on the first drift and records requested/completed counts and per-ledger diagnostics in the JSON report.
+
+The gate owns a report-specific temporary save directory beside the report and removes it on both success and failure; it never accesses a normal save slot. Run one serialized process per platform. A passing focused report does not substitute for this repeated gate, and this repeated gate does not substitute for broad installed visual, interactive frame-time, or cross-district ecology/machinery acceptance.
+
 ## Installed interactive presentation command
 
 Run this from the `bin` directory of a fresh native install:
