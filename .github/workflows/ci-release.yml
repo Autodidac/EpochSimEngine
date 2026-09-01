@@ -170,7 +170,11 @@ jobs:
           $archive = 'dist/${{ matrix.artifact }}.zip'
           $checksum = "$archive.sha256"
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
-          "$hash  $([System.IO.Path]::GetFileName($archive))" | Set-Content -NoNewline -LiteralPath $checksum
+          $line = "$hash  $([System.IO.Path]::GetFileName($archive))`n"
+          [System.IO.File]::WriteAllText(
+            $checksum,
+            $line,
+            [System.Text.UTF8Encoding]::new($false))
 
       - name: Generate Linux SHA-256
         if: runner.os == 'Linux'

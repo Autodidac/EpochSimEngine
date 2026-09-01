@@ -4,7 +4,7 @@ Post-v2.5.25 weather, material, laser, hive, debug, Nuke, and frame-pacing corre
 
 ## Corrected behavior
 
-- Preserves the photographed Fix29 Sandbox, Ecosystem, and tool-placed hive bodies immediately and after 120 fixed ticks, including the exact supported shell/content/perch and 100 live district-home SandHybrid bees.
+- Preserves the photographed saturated-golden, no-perch Fix29 Sandbox, Ecosystem, and tool-placed hive bodies immediately and after 120 fixed ticks, including the exact shell/chamber/queen/right-exit contents and 60 live district-home SandHybrid bees in three outward-open 20-bee lobes.
 - Keeps recognizable base material colors in Debug and uses sparse state markers plus a complete damage outline; hidden/visible Debug collection remains byte-identical to production simulation.
 - Renames the former Ignite Air action to `NUKE FROM SPACE`, presents six warning-light frames, then performs one deterministic GPU Atmosphere-to-Fire edit without a full-world CPU readback.
 - Makes the player laser a world-to-world material transfer: it never creates Vacuum, never collects inventory, targets liquids and vegetation as well as solids, and retains the source when no deterministic body-clear gas swap can commit.
