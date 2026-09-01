@@ -925,11 +925,14 @@ ivec2 beeMovementTarget(Cell bee) {
 
 bool beeMoveAllowed(Cell bee, ivec2 sourcePosition, ivec2 targetPosition, uint randomValue) {
     if ((bee.aux & AUX_MOVED) != 0u) return false;
+    // Authored SandHybrid colonies have one movement owner: bee_move.comp.
+    // Letting the generic fine pass move the same bee immediately beforehand
+    // made newborns oscillate at an otherwise empty route waypoint and could
+    // never complete the exact 60-slot formation after a hazard replacement.
+    if ((bee.aux & BEE_AUX_SWARM) != 0u) return false;
     bool sourceHazard = adjacentHazard(sourcePosition);
     bool targetHazard = adjacentHazard(targetPosition);
     if (sourceHazard != targetHazard) return sourceHazard;
-    if ((bee.aux & BEE_AUX_SWARM) == 0u) return false;
-
     ivec2 destination = beeMovementTarget(bee);
     ivec2 sourceDelta = sourcePosition - destination;
     ivec2 targetDelta = targetPosition - destination;

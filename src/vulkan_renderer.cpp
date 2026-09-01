@@ -5381,9 +5381,466 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                std::to_string(pollen_deposited ? 1u : 0u) +
                            " feeding_site=" +
                                std::to_string(feeding_site_found ? 1u : 0u) +
-                           " honey_fed=" +
-                               std::to_string(honey_fed ? 1u : 0u) +
-                           " final_bees=" + std::to_string(final_bee_count));
+                            " honey_fed=" +
+                                std::to_string(honey_fed ? 1u : 0u) +
+                            " final_bees=" + std::to_string(final_bee_count));
+
+                // Close the lifecycle boundary that the frozen general chemistry
+                // kernel cannot own: one hazard death must recover to exactly 60,
+                // fill the actual missing current-format slot, and never admit a
+                // 61st legacy newborn. Repeat from three distinct formation
+                // owners so this is a result test rather than one lucky seed.
+                const auto saved_lifecycle_step = simulation_step;
+                constexpr std::array<std::pair<std::int32_t, std::int32_t>, 8>
+                    bee_neighbors{{
+                        {-1, -1}, {0, -1}, {1, -1}, {-1, 0},
+                        {1, 0}, {-1, 1}, {0, 1}, {1, 1}}};
+                const auto find_birth_candidate =
+                    [&](const std::vector<SceneCell>& cells) {
+                        for (std::int32_t dy = -2; dy <= 2; ++dy) {
+                            for (std::int32_t dx = -2; dx <= 2; ++dx) {
+                                const auto distance = dx * dx + dy * dy;
+                                if (distance == 0 || distance > 6) continue;
+                                const auto x = static_cast<std::uint32_t>(
+                                    static_cast<std::int32_t>(queen_x) + dx);
+                                const auto y = static_cast<std::uint32_t>(
+                                    static_cast<std::int32_t>(queen_y) + dy);
+                                if (cells[index_of(x, y)].material !=
+                                    material_id(Material::empty))
+                                    continue;
+                                bool food_neighbor = false;
+                                bool nest_frontier = false;
+                                for (const auto& [nx, ny] : bee_neighbors) {
+                                    const auto material = cells[index_of(
+                                        static_cast<std::uint32_t>(
+                                            static_cast<std::int32_t>(x) + nx),
+                                        static_cast<std::uint32_t>(
+                                            static_cast<std::int32_t>(y) + ny))].material;
+                                    food_neighbor = food_neighbor ||
+                                        material == material_id(Material::honey) ||
+                                        material == material_id(Material::pollen);
+                                    nest_frontier = nest_frontier ||
+                                        material == material_id(Material::queen_bee) ||
+                                        material == material_id(Material::beehive);
+                                }
+                                std::uint32_t nearby_bees = 0u;
+                                std::uint32_t nearby_hive = 0u;
+                                for (std::int32_t oy = -6; oy <= 6; ++oy) {
+                                    for (std::int32_t ox = -6; ox <= 6; ++ox) {
+                                        if (ox * ox + oy * oy > 36) continue;
+                                        const auto nearby_material = cells[index_of(
+                                            static_cast<std::uint32_t>(
+                                                static_cast<std::int32_t>(x) + ox),
+                                            static_cast<std::uint32_t>(
+                                                static_cast<std::int32_t>(y) + oy))].material;
+                                        nearby_bees += nearby_material ==
+                                            material_id(Material::bee) ? 1u : 0u;
+                                        nearby_hive += ox * ox + oy * oy <= 25 &&
+                                            nearby_material == material_id(Material::beehive)
+                                            ? 1u : 0u;
+                                    }
+                                }
+                                if (nest_frontier && food_neighbor && nearby_bees < 4u &&
+                                    nearby_hive < 36u)
+                                    return std::pair{x, y};
+                            }
+                        }
+                        return std::pair{config.grid_width, config.grid_height};
+                    };
+                const auto find_birth_step =
+                    [&]() {
+                        std::uint32_t step = 0u;
+                        bool found = false;
+                        for (std::uint32_t candidate = 0u;
+                             candidate < 1'048'576u && !found; ++candidate) {
+                            if (((candidate + index_of(
+                                      static_cast<std::uint32_t>(queen_x),
+                                      static_cast<std::uint32_t>(queen_y))) &
+                                 4095u) == 0u) {
+                                step = candidate;
+                                found = true;
+                            }
+                        }
+                        return std::pair{step, found};
+                    };
+
+                bool replacement_cycles_passed = true;
+                std::array<bool, fix29_bee_formation_count> removed_slots{};
+                std::string replacement_detail;
+                for (std::uint32_t cycle = 0u; cycle < 3u; ++cycle) {
+                    auto hazard_cells = result;
+                    std::size_t removed_slot = fix29_bee_formation_count;
+                    std::uint32_t fire_x = config.grid_width;
+                    std::uint32_t fire_y = config.grid_height;
+                    for (std::size_t slot = 0u;
+                         slot < fix29_bee_formation_count &&
+                         removed_slot == fix29_bee_formation_count; ++slot) {
+                        if (removed_slots[slot]) continue;
+                        const auto offset = fix29_bee_formation_offset(slot);
+                        const auto bee_x = static_cast<std::uint32_t>(
+                            static_cast<std::int32_t>(queen_x) + offset.x);
+                        const auto bee_y = static_cast<std::uint32_t>(
+                            static_cast<std::int32_t>(queen_y) + offset.y);
+                        for (const auto& [dx, dy] : bee_neighbors) {
+                            const auto candidate_x = static_cast<std::uint32_t>(
+                                static_cast<std::int32_t>(bee_x) + dx);
+                            const auto candidate_y = static_cast<std::uint32_t>(
+                                static_cast<std::int32_t>(bee_y) + dy);
+                            if (hazard_cells[index_of(candidate_x, candidate_y)].material !=
+                                material_id(Material::atmosphere))
+                                continue;
+                            std::uint32_t adjacent_bees = 0u;
+                            for (const auto& [nx, ny] : bee_neighbors) {
+                                adjacent_bees += hazard_cells[index_of(
+                                    static_cast<std::uint32_t>(
+                                        static_cast<std::int32_t>(candidate_x) + nx),
+                                    static_cast<std::uint32_t>(
+                                        static_cast<std::int32_t>(candidate_y) + ny))].material ==
+                                    material_id(Material::bee) ? 1u : 0u;
+                            }
+                            if (adjacent_bees == 1u) {
+                                removed_slot = slot;
+                                fire_x = candidate_x;
+                                fire_y = candidate_y;
+                                break;
+                            }
+                        }
+                    }
+
+                    bool cycle_passed =
+                        removed_slot < fix29_bee_formation_count;
+                    if (cycle_passed) {
+                        removed_slots[removed_slot] = true;
+                        hazard_cells[index_of(fire_x, fire_y)] = make_fill_cell(
+                            material_id(Material::fire),
+                            static_cast<std::uint32_t>(index_of(fire_x, fire_y)));
+                        upload_scene_cells(hazard_cells);
+                        run_acceptance_tile_pass(
+                            active_section_x, active_section_y, true);
+                        run_acceptance_chemistry_pass(
+                            active_section_x, active_section_y, true);
+                    }
+                    const auto hazarded = cycle_passed
+                        ? download_scene_cells() : std::vector<SceneCell>{};
+                    const auto removed_offset = cycle_passed
+                        ? fix29_bee_formation_offset(removed_slot)
+                        : FormationOffset{};
+                    const auto removed_x = cycle_passed
+                        ? static_cast<std::uint32_t>(
+                            static_cast<std::int32_t>(queen_x) + removed_offset.x)
+                        : 0u;
+                    const auto removed_y = cycle_passed
+                        ? static_cast<std::uint32_t>(
+                            static_cast<std::int32_t>(queen_y) + removed_offset.y)
+                        : 0u;
+                    const bool hazard_death = cycle_passed &&
+                        count_material(hazarded, Material::bee) ==
+                            fix29_bee_formation_count - 1u &&
+                        hazarded[index_of(removed_x, removed_y)].material ==
+                            material_id(Material::ash);
+
+                    auto replacement_cells = hazard_death ? hazarded : result;
+                    if (hazard_death) {
+                        replacement_cells[index_of(fire_x, fire_y)] =
+                            make_fill_cell(
+                                material_id(Material::atmosphere),
+                                static_cast<std::uint32_t>(
+                                    index_of(fire_x, fire_y)));
+                        replacement_cells[index_of(removed_x, removed_y)] =
+                            make_fill_cell(
+                                material_id(Material::atmosphere),
+                                static_cast<std::uint32_t>(
+                                    index_of(removed_x, removed_y)));
+                    }
+                    const auto [birth_x, birth_y] =
+                        find_birth_candidate(replacement_cells);
+                    const bool birth_site_found =
+                        birth_x < config.grid_width && birth_y < config.grid_height;
+                    if (birth_site_found) {
+                        replacement_cells[index_of(birth_x, birth_y)] =
+                            make_fill_cell(
+                                material_id(Material::empty),
+                                static_cast<std::uint32_t>(
+                                    index_of(birth_x, birth_y)));
+                    }
+                    const auto [birth_step, birth_step_found] =
+                        birth_site_found
+                        ? find_birth_step()
+                        : std::pair{0u, false};
+                    const auto district_origin_x =
+                        static_cast<std::uint32_t>(queen_x - 512);
+                    const auto district_origin_y =
+                        static_cast<std::uint32_t>(queen_y - 234);
+                    std::uint32_t classified_bees = 0u;
+                    if (hazard_death && birth_site_found && birth_step_found) {
+                        upload_scene_cells(replacement_cells);
+                        run_acceptance_tile_pass(
+                            active_section_x, active_section_y, true);
+                        const auto classified_tiles = download_tile_states();
+                        const auto classified_tile_columns =
+                            (config.grid_width + 7u) / 8u;
+                        for (std::uint32_t tile_y = district_origin_y / 8u;
+                             tile_y <= (district_origin_y + 359u) / 8u;
+                             ++tile_y) {
+                            for (std::uint32_t tile_x = district_origin_x / 8u;
+                                 tile_x <= (district_origin_x + 639u) / 8u;
+                                 ++tile_x) {
+                                classified_bees +=
+                                    (classified_tiles[tile_y * classified_tile_columns + tile_x]
+                                         .occupancy >> 25u) & 127u;
+                            }
+                        }
+                        simulation_step = birth_step;
+                        run_acceptance_chemistry_pass(
+                            active_section_x, active_section_y, true);
+                    }
+                    const auto born = hazard_death && birth_site_found &&
+                                      birth_step_found
+                        ? download_scene_cells() : std::vector<SceneCell>{};
+                    const auto& newborn = birth_site_found && !born.empty()
+                        ? born[index_of(birth_x, birth_y)]
+                        : result[index_of(queen_x, queen_y)];
+                    const auto born_bee_count = born.empty()
+                        ? 0u : count_material(born, Material::bee);
+                    const bool replacement_born =
+                        !born.empty() &&
+                        count_material(born, Material::bee) ==
+                            fix29_bee_formation_count &&
+                        newborn.material == material_id(Material::bee) &&
+                        ((newborn.aux >> 13u) & 127u) == removed_slot &&
+                        (newborn.aux & 127u) ==
+                            static_cast<std::uint32_t>(queen_x -
+                                static_cast<std::int32_t>(district_origin_x)) / 8u &&
+                        ((newborn.aux >> 7u) & 63u) ==
+                            static_cast<std::uint32_t>(queen_y -
+                                static_cast<std::int32_t>(district_origin_y)) / 8u;
+
+                    if (replacement_born) {
+                        // Observe the complete animated chamber -> exit ->
+                        // outside-lane -> missing-slot return. The canonical
+                        // swarm intentionally schedules each owner at one
+                        // quarter cadence, so the former 320-tick window ended
+                        // at the approach waypoint rather than at the slot.
+                        for (std::uint32_t tick = 0u; tick < 1'800u; ++tick)
+                            run_acceptance_focused_tick(
+                                active_section_x, active_section_y, true);
+                    }
+                    const auto settled = replacement_born
+                        ? download_scene_cells() : std::vector<SceneCell>{};
+                    std::uint32_t formation_mismatches = 0u;
+                    std::int32_t replacement_x = -1;
+                    std::int32_t replacement_y = -1;
+                    std::uint32_t replacement_age = 0u;
+                    std::uint32_t replacement_aux = 0u;
+                    std::array<std::int32_t, fix29_bee_formation_count>
+                        bee_position_x{};
+                    std::array<std::int32_t, fix29_bee_formation_count>
+                        bee_position_y{};
+                    bee_position_x.fill(-1);
+                    bee_position_y.fill(-1);
+                    for (std::uint32_t y = 0u; y < config.grid_height; ++y) {
+                        for (std::uint32_t x = 0u; x < config.grid_width; ++x) {
+                            const auto& bee = settled[index_of(x, y)];
+                            if (bee.material != material_id(Material::bee))
+                                continue;
+                            const auto slot = (bee.aux >> 13u) & 127u;
+                            if (slot < fix29_bee_formation_count) {
+                                bee_position_x[slot] = static_cast<std::int32_t>(x);
+                                bee_position_y[slot] = static_cast<std::int32_t>(y);
+                            }
+                            if (slot == removed_slot) {
+                                replacement_x = static_cast<std::int32_t>(x);
+                                replacement_y = static_cast<std::int32_t>(y);
+                                replacement_age = bee.age;
+                                replacement_aux = bee.aux;
+                            }
+                        }
+                    }
+                    std::string mismatch_detail;
+                    for (std::size_t slot = 0u;
+                         slot < fix29_bee_formation_count; ++slot) {
+                        const auto offset = fix29_bee_formation_offset(slot);
+                        const auto& bee = settled[index_of(
+                            static_cast<std::uint32_t>(
+                                static_cast<std::int32_t>(queen_x) + offset.x),
+                            static_cast<std::uint32_t>(
+                                static_cast<std::int32_t>(queen_y) + offset.y))];
+                        if (bee.material != material_id(Material::bee) ||
+                            ((bee.aux >> 13u) & 127u) != slot) {
+                            ++formation_mismatches;
+                            if (formation_mismatches <= 8u) {
+                                mismatch_detail += " s" + std::to_string(slot) +
+                                    "@" + std::to_string(bee_position_x[slot]) +
+                                    "," + std::to_string(bee_position_y[slot]);
+                            }
+                        }
+                    }
+                    const bool exact_formation = replacement_born &&
+                        count_material(settled, Material::bee) ==
+                            fix29_bee_formation_count &&
+                        formation_mismatches == 0u;
+
+                    auto capped_cells = exact_formation ? settled : result;
+                    const auto [cap_x, cap_y] =
+                        find_birth_candidate(capped_cells);
+                    const bool cap_site_found =
+                        cap_x < config.grid_width && cap_y < config.grid_height;
+                    if (cap_site_found) {
+                        capped_cells[index_of(cap_x, cap_y)] = make_fill_cell(
+                            material_id(Material::empty),
+                            static_cast<std::uint32_t>(index_of(cap_x, cap_y)));
+                    }
+                    const auto [cap_step, cap_step_found] = cap_site_found
+                        ? find_birth_step()
+                        : std::pair{0u, false};
+                    if (exact_formation && cap_site_found && cap_step_found) {
+                        upload_scene_cells(capped_cells);
+                        run_acceptance_tile_pass(
+                            active_section_x, active_section_y, true);
+                        simulation_step = cap_step;
+                        run_acceptance_chemistry_pass(
+                            active_section_x, active_section_y, true);
+                    }
+                    const auto capped = exact_formation && cap_site_found &&
+                                        cap_step_found
+                        ? download_scene_cells() : std::vector<SceneCell>{};
+                    const bool cap_held = !capped.empty() &&
+                        count_material(capped, Material::bee) ==
+                            fix29_bee_formation_count &&
+                        capped[index_of(cap_x, cap_y)].material !=
+                            material_id(Material::bee);
+                    cycle_passed = hazard_death && replacement_born &&
+                        exact_formation && cap_held;
+                    replacement_cycles_passed =
+                        replacement_cycles_passed && cycle_passed;
+                    replacement_detail +=
+                        " cycle" + std::to_string(cycle) +
+                        "[slot=" + std::to_string(removed_slot) +
+                        " hazard=" + std::to_string(hazard_death ? 1u : 0u) +
+                        " site=" + std::to_string(birth_site_found ? 1u : 0u) +
+                        " xy=" + std::to_string(birth_x) + "," +
+                            std::to_string(birth_y) +
+                        " step=" + std::to_string(birth_step_found ? birth_step : 0u) +
+                        " classified=" + std::to_string(classified_bees) +
+                        " total=" + std::to_string(born_bee_count) +
+                        " material=" + std::to_string(newborn.material) +
+                        " packed_slot=" +
+                            std::to_string((newborn.aux >> 13u) & 127u) +
+                        " born=" + std::to_string(replacement_born ? 1u : 0u) +
+                        " settled_xy=" + std::to_string(replacement_x) + "," +
+                            std::to_string(replacement_y) +
+                        " settled_target=" + std::to_string(
+                            fix29_bee_target_from_age(replacement_age)) +
+                        " settled_timer=" + std::to_string(
+                            fix29_bee_timer_from_age(replacement_age)) +
+                        " settled_aux=" + std::to_string(replacement_aux) +
+                        " mismatches=" + std::to_string(formation_mismatches) +
+                            mismatch_detail +
+                        " exact=" + std::to_string(exact_formation ? 1u : 0u) +
+                        " cap=" + std::to_string(cap_held ? 1u : 0u) + "]";
+                }
+                simulation_step = saved_lifecycle_step;
+                append("bee_hazard_replacement_and_strict_60_cap",
+                       replacement_cycles_passed, replacement_detail);
+
+                // Bee respiration is an actual packed-Atmosphere transaction:
+                // exactly one Oxygen unit becomes one stored CO2 unit while
+                // represented pressure remains 54.
+                auto respiration_cells = result;
+                std::uint32_t respiration_x = config.grid_width;
+                std::uint32_t respiration_y = config.grid_height;
+                for (std::size_t slot = 0u;
+                     slot < fix29_bee_formation_count &&
+                     respiration_x == config.grid_width; ++slot) {
+                    const auto offset = fix29_bee_formation_offset(slot);
+                    const auto bee_x = static_cast<std::uint32_t>(
+                        static_cast<std::int32_t>(queen_x) + offset.x);
+                    const auto bee_y = static_cast<std::uint32_t>(
+                        static_cast<std::int32_t>(queen_y) + offset.y);
+                    for (const auto& [dx, dy] : bee_neighbors) {
+                        const auto x = static_cast<std::uint32_t>(
+                            static_cast<std::int32_t>(bee_x) + dx);
+                        const auto y = static_cast<std::uint32_t>(
+                            static_cast<std::int32_t>(bee_y) + dy);
+                        if (respiration_cells[index_of(x, y)].material !=
+                            material_id(Material::atmosphere))
+                            continue;
+                        std::uint32_t adjacent_life = 0u;
+                        for (const auto& [nx, ny] : bee_neighbors) {
+                            const auto material = respiration_cells[index_of(
+                                static_cast<std::uint32_t>(
+                                    static_cast<std::int32_t>(x) + nx),
+                                static_cast<std::uint32_t>(
+                                    static_cast<std::int32_t>(y) + ny))].material;
+                            adjacent_life +=
+                                material == material_id(Material::bee) ||
+                                material == material_id(Material::queen_bee) ? 1u : 0u;
+                        }
+                        if (adjacent_life == 1u) {
+                            respiration_x = x;
+                            respiration_y = y;
+                            break;
+                        }
+                    }
+                }
+                bool bee_respiration_step_found = false;
+                std::uint32_t bee_respiration_step = 0u;
+                if (respiration_x < config.grid_width) {
+                    respiration_cells[index_of(respiration_x, respiration_y)] =
+                        SceneCell{
+                            .material = material_id(Material::atmosphere),
+                            .age = 0u,
+                            .temperature = 20,
+                            .aux = 54u,
+                        };
+                    for (std::uint32_t candidate = 0u;
+                         candidate < 2'097'152u &&
+                         !bee_respiration_step_found; ++candidate) {
+                        const auto random_value = fill_hash(
+                            respiration_x * 73856093u ^
+                            respiration_y * 19349663u ^
+                            candidate * 83492791u ^ random_seed ^ 54u);
+                        const auto bee_roll =
+                            fill_hash(random_value ^ 0xb33a71u) & 0x0003ffffu;
+                        if (bee_roll == 0u) {
+                            bee_respiration_step = candidate;
+                            bee_respiration_step_found = true;
+                        }
+                    }
+                }
+                if (bee_respiration_step_found) {
+                    upload_scene_cells(respiration_cells);
+                    simulation_step = bee_respiration_step;
+                    run_acceptance_chemistry_pass(
+                        active_section_x, active_section_y, true);
+                }
+                const auto respired = bee_respiration_step_found
+                    ? download_scene_cells() : std::vector<SceneCell>{};
+                simulation_step = saved_lifecycle_step;
+                const auto& carrier = !respired.empty()
+                    ? respired[index_of(respiration_x, respiration_y)]
+                    : result[index_of(queen_x, queen_y)];
+                const auto stored_material =
+                    (carrier.aux & 0x00007f00u) >> 8u;
+                const auto stored_volume =
+                    (carrier.aux & 0x007f8000u) >> 15u;
+                const auto oxygen_volume = carrier.aux & 255u;
+                append("bee_respiration_conserves_packed_atmosphere",
+                       bee_respiration_step_found &&
+                           carrier.material == material_id(Material::atmosphere) &&
+                           oxygen_volume == 53u &&
+                           stored_material ==
+                               material_id(Material::carbon_dioxide) &&
+                           stored_volume == 1u &&
+                           oxygen_volume + stored_volume == 54u,
+                       "step_found=" +
+                           std::to_string(bee_respiration_step_found ? 1u : 0u) +
+                           " step=" + std::to_string(bee_respiration_step) +
+                           " oxygen=" + std::to_string(oxygen_volume) +
+                           " stored_material=" +
+                               std::to_string(stored_material) +
+                           " stored_volume=" +
+                               std::to_string(stored_volume));
             }
 
             {

@@ -391,6 +391,18 @@ def main() -> int:
                 "Acid/Waste no-invented-Water correction contract")
     for token in (
         "source.material == MAT_BEEHIVE && isStructural(source)",
+        '#include "bee_swarm.glsl"',
+        "correctionCurrentBirthCandidate",
+        "source.material == MAT_EMPTY &&",
+        "proposed.material == MAT_BEE || currentBirthProposal",
+        "correctionDistrictBeePopulation",
+        "correctionStationaryBeeCount",
+        "storedHome / int(TILE_SIZE)",
+        "correctionBirthOwner",
+        "(pc.step + indexOf(queenPosition)) & 4095u",
+        "districtBees < BEE_COLONY_MAX",
+        "stationaryBees == districtBees",
+        "corrected.aux = beePackMetadata",
         "const uint weatherCycleTicks = 7200u",
         "const uint rainStartTick = 4800u",
         "const uint rainDurationTicks = 600u",
@@ -404,7 +416,7 @@ def main() -> int:
         "corrected.temperature = source.temperature",
     ):
         require(conservation_corrections, token, errors,
-                "software-Vulkan-safe hive/weather correction contract")
+                "software-Vulkan-safe hive/lifecycle/weather correction contract")
     for token in (
         "layout(std430, binding = 10) buffer RainColumns",
         "if (pc.activeMode == 2u)",

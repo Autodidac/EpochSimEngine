@@ -652,9 +652,11 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
     }
     case MAT_BEEHIVE: {
         bool comb = ((position.x + (position.y & 1)) % 4) == 0;
-        // Historical Fix29 shell: saturated ochre after linear-to-sRGB output,
-        // not the washed-out cream used by the generic authored palette.
-        color = vec4(comb ? 0.54 : 0.60, comb ? 0.30 : 0.34, 0.03, 1.0); break;
+        // Historical Fix29 shell: static straw-gold comb. These are the
+        // photographed material values with the old time pulse removed, so
+        // the unsupported wasp nest keeps its bright woven identity without
+        // pretending that stable structural cells are moving.
+        color = vec4(comb ? 0.62 : 0.66, comb ? 0.37 : 0.42, 0.08, 1.0); break;
     }
     case MAT_DIRTY_STEAM: color = vec4(0.43, 0.47 + variation, 0.48, 0.68); break;
     case MAT_DIRTY_WATER: color = vec4(0.16, 0.30 + variation, 0.31, 0.94); break;

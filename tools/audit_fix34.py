@@ -81,16 +81,31 @@ for token in ("beeUsesPersistentWorldHome(uint width, uint height)", "district <
     if token not in swarm:
         errors.append(f"persistent bee-home contract missing {token!r}")
 for token in ("BEE_TIMER_BITS = 14u", "BEE_TARGET_NONE = 0x3ffffu",
+              "BEE_TARGET_NEWBORN = 0x3fffeu",
               "age >> BEE_TIMER_BITS", "min(timer, BEE_TIMER_MAX)"):
     if token not in swarm:
         errors.append(f"large-World bee target packing missing {token!r}")
 corrections = (root / "shaders" / "conservation_corrections.comp").read_text()
 for token in ("CORRECTION_BEE_TIMER_BITS = 14u",
               "CORRECTION_BEE_TARGET_NONE = 0x3ffffu",
+              "CORRECTION_BEE_TARGET_NEWBORN = 0x3fffeu",
               "correctionNearestBeeTile", "correctionBeeIsForager",
               "timer >= 1200u", "CORRECTION_BEE_AUX_POLLEN",
               "TILE_HAS_FLOWER", "TILE_HAS_HONEY",
-              "correctionBeeBesideTarget", "corrected.age = correctionBeePackAge"):
+              "correctionBeeBesideTarget", "corrected.age = correctionBeePackAge",
+              '#include "bee_swarm.glsl"',
+              "correctionDistrictBeePopulation",
+              "correctionStationaryBeeCount",
+              "storedHome / int(TILE_SIZE)",
+              "correctionCurrentBirthCandidate",
+              "correctionBirthOwner",
+              "(pc.step + indexOf(queenPosition)) & 4095u",
+              "districtBees < BEE_COLONY_MAX",
+              "stationaryBees == districtBees",
+              "missingSlot < BEE_FORMATION_COUNT",
+              "beeNewbornHomeTimer(queenPosition), BEE_TARGET_NEWBORN",
+              "target == CORRECTION_BEE_TARGET_NEWBORN",
+              "correctionBeeExactHome"):
     if token not in corrections:
         errors.append(f"current authored-bee lifecycle correction missing {token!r}")
 for source_name, source in (("chemistry", chemistry), ("movement", move)):
@@ -100,14 +115,26 @@ for token in ("BEE_FORMATION_COUNT = 100u", "BEE_TARGET_NONE = 0xffffu"):
     if token not in legacy_swarm:
         errors.append(f"frozen general-kernel swarm boundary missing {token!r}")
 for token in ('#include "bee_swarm.glsl"', "beeMoveExactHome", "tileQueenPosition",
-              "beeBiohazardTargetOffset", "tryBeeMove", "atomicCompSwap",
+              "beeBiohazardTargetOffset", "home + ivec2(11, 0)",
+              "targetTile == BEE_TARGET_NEWBORN",
+              "beeNewbornTransitTarget", "const int outsideLaneX = 23",
+              "approachY = settled.y < 0 ? -24 : 16",
+              "local.y == approachY && local.x != settled.x",
+              "!newbornTransit && ((slot + pc.step) & 3u) != 0u",
+              "tryBeeMove", "atomicCompSwap",
               "atomicAnd(cells[index].aux, ~AUX_MOVED)"):
     if token not in bee_move:
         errors.append(f"dedicated current bee movement missing {token!r}")
+for token in ("cells[indexOf(candidate)].material != MAT_QUEEN_BEE",
+              "for (int dy = -2; dy <= 7; ++dy)"):
+    if token not in bee_move:
+        errors.append(f"canonical-cell Queen-home scan missing {token!r}")
 for token in ("bee_movement_pipeline", 'create_compute_pipeline("bee_move.comp.spv")',
               "bind_compute(command_buffer, bee_movement_pipeline, current_set)"):
     if token not in renderer:
         errors.append(f"dedicated bee movement dispatch missing {token!r}")
+if "if ((bee.aux & BEE_AUX_SWARM) != 0u) return false;" not in move:
+    errors.append("generic fine movement still contends with dedicated authored-bee movement")
 if "BEE_PERSISTENT_HOME_BIT" in swarm:
     errors.append("persistent bee metadata collides with reserved Half Water state")
 for token in ("shapePhase", "beeHaloTargetOffset", "beeCloudTargetOffset",
@@ -129,10 +156,11 @@ for token in ("Three complete authored Hydrogen packets", "bubbleRow = maximumBr
     if token not in reset:
         errors.append(f"normal-World Waterworks packet fixture missing {token!r}")
 for token in ("fixedHiveContent", "Historical Fix29 shell",
-              "vec4(comb ? 0.54 : 0.60"):
+              "vec4(comb ? 0.62 : 0.66"):
     if token not in materials:
         errors.append(f"Fix29 visible hive palette missing {token!r}")
 for token in ("fixedHiveComposite", "illumination = max(illumination, 0.90)",
+              "fix29HiveFibre", "immediateHive >= 2u",
               "Classify it before rejecting", "if (!mapSample &&"):
     if token not in fullscreen:
         errors.append(f"Fix29 shadow-readable presentation missing {token!r}")

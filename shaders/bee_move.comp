@@ -22,13 +22,58 @@ bool beeMoveTargetValid(uint index, uint requiredFlags) {
 
 ivec2 beeMoveExactHome(Cell bee) {
     ivec2 approximate = beeHomeCenterFromAux(bee.aux, pc.width, pc.height);
-    uint homeTile = tileIndex(approximate, pc.width);
-    return beeMoveTargetValid(homeTile, TILE_HAS_QUEEN)
-        ? tileQueenPosition(homeTile, pc.width, tiles[homeTile])
-        : approximate;
+    if (beeTargetTileFromAge(bee.age) == BEE_TARGET_NEWBORN)
+        return beeNewbornExactHome(bee.age, approximate);
+    ivec2 exact = approximate;
+    int bestDistance = 0x3fffffff;
+    for (int dy = -2; dy <= 7; ++dy) {
+        for (int dx = -2; dx <= 7; ++dx) {
+            ivec2 candidate = approximate + ivec2(dx, dy);
+            if (!inside(candidate) ||
+                cells[indexOf(candidate)].material != MAT_QUEEN_BEE) continue;
+            int distance = dx * dx + dy * dy;
+            if (distance < bestDistance) {
+                exact = candidate;
+                bestDistance = distance;
+            }
+        }
+    }
+    return exact;
 }
 
-ivec2 beeMoveDestination(Cell bee) {
+ivec2 beeNewbornTransitTarget(ivec2 position, ivec2 home, uint slot) {
+    ivec2 local = position - home;
+    ivec2 settled = beeFormationOffset(slot);
+
+    // Leave through the historical right-hand tunnel, then stay outside both
+    // the body and the occupied three-lobe symbol. Upper-lobe births approach
+    // along the clear row above the top edge at y=-24; lower-lobe births
+    // approach from y=16.
+    // This prevents a new
+    // owner from endlessly pressing into the already occupied inner ring.
+    if (local.x <= 10 && abs(local.y) <= 10) return home + ivec2(11, 0);
+    // x=23 is outside the r^2<88 body and the max-x=20 formation, while also
+    // avoiding an aligned 8-cell ownership boundary for the canonical hives.
+    // Crossing that boundary at x=24 let hierarchy metadata strand a newborn
+    // even though every adjacent canonical cell was Atmosphere.
+    const int outsideLaneX = 23;
+    if (local.x < outsideLaneX && local.y == 0)
+        return home + ivec2(outsideLaneX, 0);
+    int approachY = settled.y < 0 ? -24 : 16;
+    if (local.x == outsideLaneX && local.y != approachY)
+        return home + ivec2(outsideLaneX, approachY);
+    if (local.y == approachY && local.x != settled.x)
+        return home + ivec2(settled.x, approachY);
+    if (local.x == settled.x)
+        return home + settled;
+    // Recover a displaced newborn to the clear outside lane before resuming
+    // the deterministic staged route.
+    if (local.x != outsideLaneX)
+        return home + ivec2(outsideLaneX, local.y);
+    return home + settled;
+}
+
+ivec2 beeMoveDestination(ivec2 position, Cell bee) {
     uint slot = beeFormationSlotFromAux(bee.aux, pc.width, pc.height);
     ivec2 home = beeMoveExactHome(bee);
     uint targetTile = beeTargetTileFromAge(bee.age);
@@ -44,6 +89,11 @@ ivec2 beeMoveDestination(Cell bee) {
         ivec2 queen = tileQueenPosition(targetTile, pc.width, tiles[targetTile]);
         return queen + beeRotateOffset(beeFormationOffset(slot) / 2, pc.step / 8u);
     }
+    // Only an explicitly marked replacement is routed through the photographed
+    // right-hand x=1..10, |y|<=1 exit. Position alone cannot identify a birth:
+    // six valid lower-lobe slots are deliberately close to the hive body.
+    if (targetTile == BEE_TARGET_NEWBORN)
+        return beeNewbornTransitTarget(position, home, slot);
     if ((bee.aux & BEE_AUX_POLLEN) != 0u)
         return home + beeLandingOffset(slot);
     if ((bee.aux & BEE_AUX_FED) == 0u) {
@@ -108,12 +158,17 @@ void main() {
     if (bee.material != MAT_BEE || (bee.aux & BEE_AUX_SWARM) == 0u) return;
 
     uint slot = beeFormationSlotFromAux(bee.aux, pc.width, pc.height);
-    if (((slot + pc.step) & 3u) != 0u) {
+    bool newbornTransit = beeTargetTileFromAge(bee.age) == BEE_TARGET_NEWBORN;
+    // A replacement owns a single bounded route and cannot contend with any
+    // other replacement while the strict cap is below 60. Advance that route
+    // every fixed tick; established owners retain the staggered quarter-rate
+    // cadence that keeps the resting symbol and ordinary foraging lightweight.
+    if (!newbornTransit && ((slot + pc.step) & 3u) != 0u) {
         atomicAnd(cells[index].aux, ~AUX_MOVED);
         return;
     }
 
-    ivec2 destination = beeMoveDestination(bee);
+    ivec2 destination = beeMoveDestination(position, bee);
     ivec2 delta = destination - position;
     if (all(equal(delta, ivec2(0)))) {
         atomicAnd(cells[index].aux, ~AUX_MOVED);

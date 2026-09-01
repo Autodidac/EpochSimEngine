@@ -326,6 +326,8 @@ inline constexpr std::uint32_t fix29_bee_timer_mask =
     (1u << fix29_bee_timer_bits) - 1u;
 inline constexpr std::uint32_t fix29_bee_target_none =
     (1u << (32u - fix29_bee_timer_bits)) - 1u;
+inline constexpr std::uint32_t fix29_bee_target_newborn =
+    fix29_bee_target_none - 1u;
 inline constexpr std::int32_t fix29_bee_formation_min_x = -20;
 inline constexpr std::int32_t fix29_bee_formation_max_x = 20;
 inline constexpr std::int32_t fix29_bee_formation_min_y = -22;

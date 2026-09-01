@@ -3,6 +3,7 @@
 #include "materials.glsl"
 #include "tiles.glsl"
 #include "chunks.glsl"
+#include "bee_swarm.glsl"
 #include "conservation.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
@@ -13,6 +14,7 @@ layout(std430, binding = 10) buffer RainColumns { uint rainColumns[]; };
 
 const uint CORRECTION_BEE_TIMER_BITS = 14u;
 const uint CORRECTION_BEE_TIMER_MAX = 0x3fffu;
+const uint CORRECTION_BEE_TARGET_NEWBORN = 0x3fffeu;
 const uint CORRECTION_BEE_TARGET_NONE = 0x3ffffu;
 const uint CORRECTION_BEE_AUX_POLLEN = 0x20000000u;
 const uint CORRECTION_BEE_AUX_FED = 0x10000000u;
@@ -74,6 +76,25 @@ bool correctionBeeIsForager(uint aux) {
     return ((slot * 37u + 11u) % 10u) == 0u;
 }
 
+ivec2 correctionBeeExactHome(Cell bee) {
+    ivec2 approximate = beeHomeCenterFromAux(bee.aux, pc.width, pc.height);
+    ivec2 exact = approximate;
+    int bestDistance = 0x3fffffff;
+    for (int dy = -2; dy <= 7; ++dy) {
+        for (int dx = -2; dx <= 7; ++dx) {
+            ivec2 candidate = approximate + ivec2(dx, dy);
+            if (!inside(candidate) ||
+                sourceAt(candidate).material != MAT_QUEEN_BEE) continue;
+            int distance = dx * dx + dy * dy;
+            if (distance < bestDistance) {
+                exact = candidate;
+                bestDistance = distance;
+            }
+        }
+    }
+    return exact;
+}
+
 uint correctionNearestBeeTile(ivec2 position, uint required, uint forbidden,
                               int maximumTileDistance) {
     uint columns = (pc.width + 7u) / 8u;
@@ -120,6 +141,121 @@ bool sourceHasAnyWater(ivec2 position) {
     return false;
 }
 
+ivec2 correctionNearestQueen(ivec2 position, out bool found) {
+    ivec2 nearest = position;
+    int bestDistance = 0x3fffffff;
+    uint bestIndex = 0xffffffffu;
+    found = false;
+    for (int dy = -5; dy <= 5; ++dy) {
+        for (int dx = -5; dx <= 5; ++dx) {
+            ivec2 candidate = position + ivec2(dx, dy);
+            if (!inside(candidate) || sourceAt(candidate).material != MAT_QUEEN_BEE)
+                continue;
+            int distance = dx * dx + dy * dy;
+            uint candidateIndex = indexOf(candidate);
+            if (distance < bestDistance ||
+                (distance == bestDistance && candidateIndex < bestIndex)) {
+                found = true;
+                nearest = candidate;
+                bestDistance = distance;
+                bestIndex = candidateIndex;
+            }
+        }
+    }
+    return nearest;
+}
+
+ivec2 correctionBeeDistrictOrigin(ivec2 homeCenter) {
+    if (beeUsesPersistentWorldHome(pc.width, pc.height)) {
+        uint district = 0u;
+        ivec2 districtLocal = ivec2(0);
+        if (beePersistentAddress(homeCenter, pc.width, pc.height,
+                                 district, districtLocal))
+            return beePersistentDistrictOrigin(pc.width, pc.height, district);
+    }
+    return beeAuthoredWorldOrigin(pc.width, pc.height);
+}
+
+uint correctionDistrictBeePopulation(ivec2 homeCenter) {
+    ivec2 origin = correctionBeeDistrictOrigin(homeCenter);
+    ivec2 firstTile = max(origin / int(TILE_SIZE), ivec2(0));
+    ivec2 finalCell = min(origin + BEE_AUTHORED_WORLD_CELLS - ivec2(1),
+                          ivec2(int(pc.width) - 1, int(pc.height) - 1));
+    ivec2 finalTile = finalCell / int(TILE_SIZE);
+    uint columns = tileColumns(pc.width);
+    uint count = 0u;
+    for (int tileY = firstTile.y; tileY <= finalTile.y; ++tileY) {
+        for (int tileX = firstTile.x; tileX <= finalTile.x; ++tileX)
+            count += tileBeeCount(tiles[uint(tileY) * columns + uint(tileX)]);
+    }
+    return count;
+}
+
+uint correctionStationaryBeeCount(ivec2 homeCenter, out uint firstMissingSlot) {
+    uint count = 0u;
+    firstMissingSlot = BEE_FORMATION_COUNT;
+    for (uint slot = 0u; slot < BEE_FORMATION_COUNT; ++slot) {
+        Cell bee = sourceAt(homeCenter + beeFormationOffset(slot));
+        ivec2 storedHome = beeHomeCenterFromAux(bee.aux, pc.width, pc.height);
+        bool exact = bee.material == MAT_BEE &&
+            (bee.aux & BEE_AUX_SWARM) != 0u &&
+            beeFormationSlotFromAux(bee.aux, pc.width, pc.height) == slot &&
+            all(equal(storedHome / int(TILE_SIZE),
+                      homeCenter / int(TILE_SIZE)));
+        if (exact) ++count;
+        else if (firstMissingSlot == BEE_FORMATION_COUNT)
+            firstMissingSlot = slot;
+    }
+    return count;
+}
+
+uint correctionCountWithin(ivec2 position, uint material, int radius) {
+    uint count = 0u;
+    for (int dy = -radius; dy <= radius; ++dy) {
+        for (int dx = -radius; dx <= radius; ++dx) {
+            if (dx * dx + dy * dy <= radius * radius &&
+                sourceAt(position + ivec2(dx, dy)).material == material)
+                ++count;
+        }
+    }
+    return count;
+}
+
+bool correctionCurrentBirthCandidate(ivec2 position,
+                                     out ivec2 queenPosition) {
+    bool queenFound = false;
+    queenPosition = correctionNearestQueen(position, queenFound);
+    ivec2 queenOffset = queenPosition - position;
+    int queenDistance = queenOffset.x * queenOffset.x +
+        queenOffset.y * queenOffset.y;
+    bool nestFrontier = sourceHasNeighbor(position, MAT_QUEEN_BEE) ||
+        sourceHasNeighbor(position, MAT_BEEHIVE);
+    bool foodFrontier = sourceHasNeighbor(position, MAT_HONEY) ||
+        sourceHasNeighbor(position, MAT_POLLEN);
+    bool chemistryAvailable = nextCells[indexOf(position)].material == MAT_EMPTY ||
+        nextCells[indexOf(position)].material == MAT_BEE;
+    return sourceAt(position).material == MAT_EMPTY && queenFound &&
+        queenDistance > 0 && queenDistance <= 6 && nestFrontier && foodFrontier &&
+        chemistryAvailable && correctionCountWithin(position, MAT_BEE, 6) < 4u &&
+        ((pc.step + indexOf(queenPosition)) & 4095u) == 0u;
+}
+
+uint correctionBirthOwner(ivec2 queenPosition) {
+    uint owner = 0xffffffffu;
+    for (int dy = -3; dy <= 3; ++dy) {
+        for (int dx = -3; dx <= 3; ++dx) {
+            ivec2 candidate = queenPosition + ivec2(dx, dy);
+            if (!inside(candidate)) continue;
+            uint candidateIndex = indexOf(candidate);
+            ivec2 candidateQueen = ivec2(0);
+            if (correctionCurrentBirthCandidate(candidate, candidateQueen) &&
+                all(equal(candidateQueen, queenPosition)))
+                owner = min(owner, candidateIndex);
+        }
+    }
+    return owner;
+}
+
 bool openSkylightMedium(uint material) {
     return material == MAT_EMPTY || isGas(material);
 }
@@ -159,6 +295,47 @@ void main() {
     Cell proposed = nextCells[index];
     Cell corrected = proposed;
 
+    // The frozen chemistry kernel retains its historical 100-owner constants so
+    // software Vulkan keeps the proven control-flow shape. Admit its proposed
+    // newborn only through the current 60-owner contract. One deterministic
+    // candidate fills the first genuinely missing formation slot, and only after
+    // every surviving colony member has returned to its exact home slot. A
+    // forager temporarily away from the hive therefore never looks like a death.
+    ivec2 currentBirthQueen = ivec2(0);
+    bool currentBirthProposal = source.material == MAT_EMPTY &&
+        correctionCurrentBirthCandidate(position, currentBirthQueen);
+    if (source.material == MAT_EMPTY &&
+        (proposed.material == MAT_BEE || currentBirthProposal)) {
+        bool queenFound = currentBirthProposal;
+        ivec2 queenPosition = currentBirthProposal
+            ? currentBirthQueen : correctionNearestQueen(position, queenFound);
+        uint missingSlot = BEE_FORMATION_COUNT;
+        uint stationaryBees = queenFound
+            ? correctionStationaryBeeCount(queenPosition, missingSlot) : 0u;
+        uint districtBees = queenFound
+            ? correctionDistrictBeePopulation(queenPosition) : BEE_COLONY_MAX;
+        uint birthOwner = queenFound
+            ? correctionBirthOwner(queenPosition) : 0xffffffffu;
+        bool acceptedBirth = queenFound &&
+            districtBees < BEE_COLONY_MAX &&
+            stationaryBees == districtBees &&
+            missingSlot < BEE_FORMATION_COUNT &&
+            index == birthOwner;
+        if (acceptedBirth) {
+            corrected = makeCell(MAT_BEE);
+            corrected.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
+            corrected.aux &= ~(BEE_AUX_QUEEN | BEE_AUX_POLLEN |
+                               BEE_AUX_MIGRATING);
+            corrected.aux = beePackMetadata(
+                corrected.aux, queenPosition, missingSlot, pc.width, pc.height);
+            corrected.age = beePackAge(
+                beeNewbornHomeTimer(queenPosition), BEE_TARGET_NEWBORN);
+        } else {
+            corrected = advancedSource(source);
+            undoConvertedStat();
+        }
+    }
+
     // Keep the proven monolithic chemistry kernel's control-flow shape for
     // software Vulkan, but own the complete current 14-bit-timer/18-bit-target
     // lifecycle for authored bees here. The frozen kernel still owns hazards
@@ -168,14 +345,36 @@ void main() {
         (source.aux & CORRECTION_BEE_AUX_SWARM) != 0u &&
         (source.aux & CORRECTION_BEE_AUX_MIGRATING) == 0u) {
         corrected = source;
-        uint timer = min(correctionBeeTimer(source.age) + 1u,
-                         CORRECTION_BEE_TIMER_MAX);
         uint target = correctionBeeTarget(source.age);
+        uint timer = target == CORRECTION_BEE_TARGET_NEWBORN
+            ? correctionBeeTimer(source.age)
+            : min(correctionBeeTimer(source.age) + 1u,
+                  CORRECTION_BEE_TIMER_MAX);
         bool carryingPollen = (source.aux & CORRECTION_BEE_AUX_POLLEN) != 0u;
         bool fed = (source.aux & CORRECTION_BEE_AUX_FED) != 0u;
         corrected.age = correctionBeePackAge(timer, target);
 
-        if (fed && !carryingPollen && target == CORRECTION_BEE_TARGET_NONE &&
+        // Birth is an explicit lifecycle state, not a position guess. Several
+        // legitimate lower-lobe slots sit inside the same 21x21 neighborhood
+        // as the chamber; treating every bee there as a newborn dragged those
+        // established owners through the exit on every reset. A new owner keeps
+        // this reserved target only while it traverses the photographed
+        // right-hand exit. Once outside, normal slot/forager ownership resumes.
+        bool newbornTransit = target == CORRECTION_BEE_TARGET_NEWBORN;
+        if (newbornTransit) {
+            ivec2 home = correctionBeeExactHome(source);
+            ivec2 settled = home + beeFormationOffset(
+                correctionBeeSlot(source.aux));
+            if (all(equal(position, settled))) {
+                target = CORRECTION_BEE_TARGET_NONE;
+                timer = 0u;
+                newbornTransit = false;
+                corrected.age = correctionBeePackAge(timer, target);
+            }
+        }
+
+        if (!newbornTransit && fed && !carryingPollen &&
+            target == CORRECTION_BEE_TARGET_NONE &&
             correctionBeeIsForager(source.aux) &&
             timer >= 1200u + ((correctionBeeSlot(source.aux) * 29u) % 600u)) {
             target = correctionNearestBeeTile(
@@ -189,7 +388,8 @@ void main() {
             }
         }
 
-        if (fed && !carryingPollen && target != CORRECTION_BEE_TARGET_NONE) {
+        if (!newbornTransit && fed && !carryingPollen &&
+            target != CORRECTION_BEE_TARGET_NONE) {
             if (!correctionTargetHasFlags(target, TILE_HAS_FLOWER,
                                           TILE_BEE_HAZARD)) {
                 target = CORRECTION_BEE_TARGET_NONE;
@@ -206,7 +406,7 @@ void main() {
             }
         }
 
-        if (carryingPollen &&
+        if (!newbornTransit && carryingPollen &&
             (sourceHasNeighbor(position, MAT_QUEEN_BEE) ||
              sourceHasNeighbor(position, MAT_BEEHIVE))) {
             corrected.aux &= ~(CORRECTION_BEE_AUX_POLLEN |
@@ -219,7 +419,7 @@ void main() {
             corrected.age = correctionBeePackAge(timer, target);
         }
 
-        if (!carryingPollen && !fed) {
+        if (!newbornTransit && !carryingPollen && !fed) {
             if (!correctionTargetHasFlags(target, TILE_HAS_HONEY,
                                           TILE_BEE_HAZARD)) {
                 target = correctionNearestBeeTile(

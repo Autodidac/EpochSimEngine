@@ -553,6 +553,50 @@ vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
     return base;
 }
 
+// The historical Fix29 capture reads as a woven wasp nest rather than a
+// perfect material circle: sparse static fibres protrude from its outer shell.
+// Keep those fibres presentation-only so the canonical body/chamber cells,
+// conservation accounting, save payload, and delayed repair stay exact. The
+// early hash gates keep the extra neighborhood reads bounded, and the immediate
+// enclosure rejection prevents fibres from filling the chamber or right exit.
+bool fix29HiveFibre(ivec2 grid, Cell medium, out vec3 fibreColor) {
+    if (medium.material != MAT_ATMOSPHERE && medium.material != MAT_EMPTY) return false;
+
+    uint columnHash = hash32(uint(grid.x) * 0x9e3779b9u ^ 0xd17a5eedu);
+    uint rowHash = hash32(uint(grid.y) * 0x85ebca6bu ^ 0xd17a5eedu);
+    bool verticalFibre = (columnHash & 1u) == 0u;
+    bool hangingFibre = (columnHash & 15u) == 0u;
+    bool horizontalFibre = (rowHash & 3u) == 0u;
+    if (!verticalFibre && !hangingFibre && !horizontalFibre) return false;
+
+    uint immediateHive = 0u;
+    immediateHive += cellAt(grid + ivec2(-1, 0)).material == MAT_BEEHIVE ? 1u : 0u;
+    immediateHive += cellAt(grid + ivec2(1, 0)).material == MAT_BEEHIVE ? 1u : 0u;
+    immediateHive += cellAt(grid + ivec2(0, -1)).material == MAT_BEEHIVE ? 1u : 0u;
+    immediateHive += cellAt(grid + ivec2(0, 1)).material == MAT_BEEHIVE ? 1u : 0u;
+    if (immediateHive >= 2u) return false;
+
+    if (verticalFibre &&
+        (cellAt(grid + ivec2(0, -1)).material == MAT_BEEHIVE ||
+         cellAt(grid + ivec2(0, 1)).material == MAT_BEEHIVE)) {
+        fibreColor = vec3(0.63, 0.39, 0.07);
+        return true;
+    }
+    if (hangingFibre &&
+        (cellAt(grid + ivec2(0, -2)).material == MAT_BEEHIVE ||
+         cellAt(grid + ivec2(0, 2)).material == MAT_BEEHIVE)) {
+        fibreColor = vec3(0.60, 0.36, 0.06);
+        return true;
+    }
+    if (horizontalFibre &&
+        (cellAt(grid + ivec2(-1, 0)).material == MAT_BEEHIVE ||
+         cellAt(grid + ivec2(1, 0)).material == MAT_BEEHIVE)) {
+        fibreColor = vec3(0.61, 0.37, 0.065);
+        return true;
+    }
+    return false;
+}
+
 vec4 worldColor(Cell cell, ivec2 grid) {
     vec4 base = materialColor(cell.material, cell.age, cell.aux, grid);
     base = applyMaterialAppearance(cell, grid, renderPc.worldTime, base);
@@ -1291,8 +1335,17 @@ void main() {
                       sampleY * sampleViewHeight / sampleHeight);
     ivec2 grid = ivec2(int(gridX), int(gridY));
     Cell cell = cellAt(grid);
+    vec3 hiveFibreColor = vec3(0.0);
+    bool hiveFibre = renderPc.debugMode == 0u &&
+        fix29HiveFibre(grid, cell, hiveFibreColor);
     vec4 color = worldColor(cell, grid);
     color.rgb = applyWorldLighting(color.rgb, cell, grid, mapSample);
+    if (hiveFibre) {
+        // Match the minimum illumination applied to the authoritative hive
+        // composite so the fibres remain one coherent straw-gold body.
+        color.rgb = hiveFibreColor * 0.90;
+        color.a = 1.0;
+    }
 
     if (mapSample) {
         bool activeArea = sectionActiveAt(grid, renderPc.activeAreaX, renderPc.activeAreaY,

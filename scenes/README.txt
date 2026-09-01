@@ -1,21 +1,25 @@
-SandHybrid scene images
+SandHybrid persistent World and legacy scene images
 
-Each scene is stored as a binary PPM (P6) image for the editable 640x360 authored footprint.
-The authored footprint is horizontally centered in the third resident camera row at world Y=720, where the crystal marker sits, and the default camera starts there. The two complete 640x360 rows above remain empty sky.
+The normal runtime owns one connected persistent World containing the eight former
+640x360 scenes as west-to-east districts in one canonical resident cell field.
+There is no selectable scene carousel. Reset, simulation, weather, hierarchy,
+actors, MAP, tools, and exact saves operate on that single World.
 
-F5 or the SAVE button writes only the current authored footprint. F9 or LOAD reads the selected scene image, places it at the same crystal-row origin, and rebuilds the shared world outside it:
+The P6 PPM files in this directory are compatibility and authoring inputs. A
+legacy 640x360 image is mapped only into its matching World district during
+migration; it is never a second live world and current SAVE does not export a
+full-world PPM. Exact runtime SAVE/LOAD uses checksummed schema-2 world saves and
+retains every canonical cell plus the complete actor owner. Schema-1 cell-only
+saves remain readable through the documented migration path.
 
-- two complete resident rows of empty sky above the scene;
-- one 8-cell Stone foundation at the authored-zone bottom;
-- one lower resident footprint containing Sand, Soil, Silt, Mud, and Stone;
-- one 8-cell Stone cap above the world-bottom Lava;
-- one 16-cell/two-brick Lava band;
-- one 8-cell Stone bottom shell and 8-cell Stone side shells.
+material_key.txt and material_key.ppm define the stable RGB import palette. Exact
+key colors round-trip losslessly and nearby colors map to the nearest material.
+Boundary-connected legacy Empty sky migrates to balanced Atmosphere while sealed
+vacuum pockets remain Empty. Hive normalization reconstructs the current
+saturated-golden, no-perch Fix29 body and its district-local queen/home metadata;
+legacy PPM pixels do not authorize the superseded Wood perch or 100-bee colony.
 
-This keeps procedural scenes and loaded saved counterparts identical outside the editable image. The common geology and world shell are intentionally not duplicated inside every PPM.
-
-Missing built-in scene images are generated automatically the first time the procedural fallback is reset.
-
-material_key.txt and material_key.ppm are generated beside the scenes. Their stable RGB swatches closely match the visible simulation cells, so the PPM can be edited by eye in ordinary Paint. Exact key colors are lossless; nearby colors map to the nearest material.
-
-Structural rule: a structural material needs at least 32 represented pixels of the same material in its aligned 8x8 region. Below 32 it becomes loose and crumbles. Regions from 32 through 51 remain structurally weak; 52 or more receive full structural durability.
+Generated terrain, authored structures, and starting liquid/gas volumes enter the
+resident World as complete aligned 8x8 ownership candidates. Fine-authored actors,
+vegetation, smoke, loose process cargo, and the cell-resolution hive remain fine.
+Canonical cells are always authoritative; tile/chunk state is reversible metadata.

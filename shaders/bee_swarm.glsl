@@ -5,6 +5,7 @@ const uint BEE_FORMATION_COUNT = 60u;
 const uint BEE_COLONY_MAX = 60u;
 const uint BEE_TIMER_BITS = 14u;
 const uint BEE_TIMER_MAX = 0x3fffu;
+const uint BEE_TARGET_NEWBORN = 0x3fffeu;
 const uint BEE_TARGET_NONE = 0x3ffffu;
 const uint BEE_AUX_QUEEN = 0x40000000u;
 const uint BEE_AUX_POLLEN = 0x20000000u;
@@ -180,6 +181,19 @@ uint beeTargetTileFromAge(uint age) { return age >> BEE_TIMER_BITS; }
 uint beePackAge(uint timer, uint targetTile) {
     return min(timer, BEE_TIMER_MAX) |
            (min(targetTile, BEE_TARGET_NONE) << BEE_TIMER_BITS);
+}
+
+// A replacement bee must retain the Queen's exact intra-tile position while
+// it owns the reserved newborn route. Persistent metadata intentionally stores
+// only the home tile, so the otherwise-unused newborn timer carries the exact
+// 3-bit x/y remainder until the bee reaches its assigned formation cell.
+uint beeNewbornHomeTimer(ivec2 homeCenter) {
+    return uint(homeCenter.x & 7) | (uint(homeCenter.y & 7) << 3u);
+}
+
+ivec2 beeNewbornExactHome(uint age, ivec2 alignedHome) {
+    uint packed = beeTimerFromAge(age);
+    return alignedHome + ivec2(int(packed & 7u), int((packed >> 3u) & 7u));
 }
 
 bool beeIsForager(uint aux, uint width, uint height) {
