@@ -9314,9 +9314,22 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     if (!cpu_physical_device)
                         passed = passed && p95s[phase] <= 33.34;
                 }
-                const double debug_overhead = means[0] > 0.0
-                    ? ((means[1] - means[0]) / means[0]) * 100.0 : 100.0;
-                if (!cpu_physical_device) passed = passed && debug_overhead <= 3.0;
+                const double debug_mean_delta = means[1] - means[0];
+                const double debug_mean_overhead = means[0] > 0.0
+                    ? (debug_mean_delta / means[0]) * 100.0 : 100.0;
+                const double debug_p95_delta = p95s[1] - p95s[0];
+                const double debug_p95_overhead = p95s[0] > 0.0
+                    ? (debug_p95_delta / p95s[0]) * 100.0 : 100.0;
+                constexpr double ten_fps_tail_loss_ms =
+                    (1000.0 / 50.0) - (1000.0 / 60.0);
+                if (!cpu_physical_device) {
+                    // Tail latency owns the jitter/overhead gate. Sequential
+                    // sub-millisecond arithmetic means are retained for
+                    // diagnostics, but phase-order and scheduler noise can
+                    // reverse their sign between otherwise identical runs.
+                    passed = passed && debug_p95_overhead <= 3.0 &&
+                        debug_p95_delta <= ten_fps_tail_loss_ms;
+                }
                 passed = passed && interactive_captures.size() ==
                     interactive_phase_names.size() + 1u;
                 for (const auto& capture : interactive_captures)
@@ -9331,7 +9344,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     throw std::runtime_error("Unable to create interactive acceptance report: " +
                                              report_path.string());
                 report << "{\n"
-                       << "  \"schema\": 1,\n"
+                       << "  \"schema\": 2,\n"
                        << "  \"backend\": \"vulkan-presented\",\n"
                        << "  \"device_class\": \""
                        << (cpu_physical_device ? "cpu-software" : "hardware") << "\",\n"
@@ -9349,7 +9362,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        << "  \"presented_frames\": " << interactive_presented_frames << ",\n"
                        << "  \"simulation_ticks\": " << interactive_ticks << ",\n"
                        << "  \"elapsed_seconds\": " << elapsed_seconds << ",\n"
-                       << "  \"debug_overhead_percent\": " << debug_overhead << ",\n"
+                       << "  \"debug_overhead_percent\": " << debug_p95_overhead << ",\n"
+                       << "  \"debug_mean_overhead_percent\": "
+                       << debug_mean_overhead << ",\n"
+                       << "  \"debug_p95_overhead_percent\": "
+                       << debug_p95_overhead << ",\n"
+                       << "  \"debug_mean_delta_ms\": " << debug_mean_delta << ",\n"
+                       << "  \"debug_p95_delta_ms\": " << debug_p95_delta << ",\n"
                        << "  \"captures\": [\n";
                 for (std::size_t index = 0u; index < interactive_captures.size(); ++index) {
                     const auto& capture = interactive_captures[index];

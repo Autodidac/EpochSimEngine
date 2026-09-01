@@ -239,6 +239,19 @@ def main() -> int:
                 "production Half Water integer medium-owner acceptance")
 
     for token in (
+        "const double debug_mean_overhead",
+        "const double debug_p95_overhead",
+        "debug_p95_overhead <= 3.0",
+        "debug_p95_delta <= ten_fps_tail_loss_ms",
+        '\"schema\\\": 2',
+        '\"debug_mean_overhead_percent\\\"',
+        '\"debug_p95_overhead_percent\\\"',
+        '\"debug_p95_delta_ms\\\"',
+    ):
+        require(renderer, token, errors,
+                "interactive Debug tail-latency acceptance")
+
+    for token in (
         "bool macroLiquid = fullLiquid && !liquidBoundaryFine;",
         "bool macroGas = fullGas && !gasBoundaryFine;",
         "mediumTravelSteps >= TILE_MEDIUM_PROGRESS_LIMIT",
