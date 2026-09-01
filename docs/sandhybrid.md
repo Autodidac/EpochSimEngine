@@ -15,7 +15,7 @@ The World is a finite closed material system except for explicit user edits and 
 - `H` and Camera Home restore the current camera; Reset preserves camera and MAP state.
 - Paused mode freezes simulation, actors, clocks, MAP refresh, and effects while authorized editing remains live.
 - The player laser damages material and transfers a terminal fragment to a deterministic adjacent real-gas world cell. It never erases, collects inventory, or creates Vacuum; a blocked hit retains its exact source.
-- `NUKE FROM SPACE` shows a short warning flare, then applies one GPU Atmosphere-to-Fire world edit. It remains an explicit user edit while paused and performs no synchronous world readback.
+- `NUKE FROM SPACE` shows a bright staged flare in the high sky above the continuous Cloud deck, then applies one GPU edit to only that upper Atmosphere region. Breathable Atmosphere below the deck remains intact. The action remains live while paused and performs no synchronous world readback.
 
 The in-app KEYMAP is authoritative for the complete current bindings.
 

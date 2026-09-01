@@ -412,6 +412,7 @@ uint designerMode() { return (renderPc.designerFlags >> 3u) & 1u; }
 uint designerPane() { return (renderPc.designerFlags >> 4u) & 1u; }
 uint inventoryPane() { return (renderPc.designerFlags >> 5u) & 1u; }
 uint nukeFlashFrames() { return (renderPc.designerFlags >> 28u) & 15u; }
+const int NUKE_HIGH_SKY_BOTTOM_Y = 536;
 uint designerZoom() { return max((renderPc.designerFlags >> 8u) & 255u, 1u); }
 uint designerBrushRadius() { return max((renderPc.designerFlags >> 16u) & 255u, 1u); }
 bool blueprintSlotOccupied(uint slot) {
@@ -1317,7 +1318,11 @@ void main() {
         uint cellPixelsY = renderPc.viewportHeight / max(renderPc.viewHeight, 1u);
         bool readableTileGrid = min(cellPixelsX, cellPixelsY) >= 1u;
         ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));
-        if (readableTileGrid) {
+        // Every hierarchy glyph lives on a tile edge. Avoid the tile-buffer
+        // lookup and state classifier for the 42/64 interior fragments that
+        // can never draw a marker.
+        bool markerCandidate = local.y == 0 || local.x == 0 || local.x == 7;
+        if (readableTileGrid && markerCandidate) {
             TileState tile = tileAt(grid);
             uint state = 9u;
             float alpha = 0.0;
@@ -1453,10 +1458,10 @@ void main() {
     }
 
     uint nukeStage = nukeFlashFrames();
-    if (!mapSample && nukeStage != 0u) {
+    if (!mapSample && nukeStage != 0u && grid.y < NUKE_HIGH_SKY_BOTTOM_Y) {
         // Six precomputed light states are each held for eight presentations.
-        // The bounded cue is readable without simulation work, CPU readback,
-        // wall-clock animation, or a single-frame luminance jump.
+        // The cue occupies the same high sky that will burn, above the Cloud
+        // deck, without bleaching the breathable world below it.
         const vec3 warningColors[6] = vec3[6](
             vec3(1.00, 0.98, 0.92),
             vec3(1.00, 0.93, 0.72),
@@ -1469,12 +1474,9 @@ void main() {
         const float warningFlare[6] = float[6](
             0.05, 0.25, 0.35, 0.42, 0.47, 0.52);
         uint stageIndex = min(nukeStage, 6u) - 1u;
-        vec2 viewportUv = vec2(float(x - renderPc.viewportLeft) /
-                                   float(max(renderPc.viewportWidth, 1u)),
-                               float(y - renderPc.viewportTop) /
-                                   float(max(renderPc.viewportHeight, 1u)));
-        float sunDistance = length((viewportUv - vec2(0.5, 0.0)) * vec2(0.75, 1.0));
-        float flare = smoothstep(0.95, 0.0, sunDistance);
+        const float eventCenterY = 472.0;
+        float bandDistance = abs(float(grid.y) - eventCenterY) / 96.0;
+        float flare = smoothstep(1.0, 0.0, bandDistance);
         float strength = warningBase[stageIndex] +
                          flare * warningFlare[stageIndex];
         color.rgb = mix(color.rgb, warningColors[stageIndex],

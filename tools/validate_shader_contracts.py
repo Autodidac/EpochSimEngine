@@ -317,11 +317,11 @@ def main() -> int:
         require(renderer, token, errors,
                 "zero-cost hidden debug collection contract")
     for token in (
-        "record_nuke_from_space(frame.command_buffer, state)",
-        "cannot combine new Fire cells with stale Atmosphere tile metadata",
+        "record_nuke_from_space(frame.command_buffer)",
+        "cannot combine new Fire with stale Atmosphere ownership",
         "nuke_warning_stage_count * nuke_presentations_per_stage",
-        "Nuke from Space committed as one GPU Atmosphere-to-Fire edit",
-        "nuke_from_space_gpu_exact_atmosphere_edit",
+        "Nuke from Space committed one GPU high-sky Atmosphere-to-Fire edit above Cloud",
+        "nuke_from_space_gpu_high_sky_edit",
         "authored_structures_start_without_false_damage_or_bulk_state",
         "map_snapshot_slice = (map_snapshot_slice + 1u) % slice_count",
         "constexpr std::uint32_t slice_count = 64u",
@@ -340,7 +340,7 @@ def main() -> int:
     for token in (
         "if (pc.activeMode == 2u)",
         "previous.material == MAT_ATMOSPHERE",
-        "no full-world CPU readback/flood fill",
+        "continuous Cloud deck is the",
     ):
         require(paint, token, errors,
                 "GPU Nuke edit contract")
@@ -349,6 +349,7 @@ def main() -> int:
         "Six precomputed light states are each held for eight presentations",
         "const vec3 warningColors[6]",
         "const float warningBase[6]",
+        "grid.y < NUKE_HIGH_SKY_BOTTOM_Y",
     ):
         require(fullscreen, token, errors,
                 "Nuke warning light contract")

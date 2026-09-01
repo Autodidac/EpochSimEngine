@@ -9,7 +9,7 @@ namespace {
 
 void print_usage() {
     std::fprintf(stderr,
-        "Usage: sandhybrid [--world-size SIZE] [--save-slot NAME] [--runtime-acceptance-report FILE]\n"
+        "Usage: sandhybrid [--world-size SIZE] [--save-slot NAME] [--runtime-acceptance-report FILE] [--interactive-acceptance-report FILE]\n"
         "World sizes: compact, standard, large\n"
         "Aliases: small=compact, medium=standard\n"
         "Save slots are portable named folders; the default is quick.\n");
@@ -86,6 +86,24 @@ int main(const int argc, char** argv) {
             options.runtime_acceptance_report = argument.substr(acceptance_prefix.size());
             if (options.runtime_acceptance_report.empty()) {
                 std::fprintf(stderr, "[SandHybrid] --runtime-acceptance-report requires a path.\n");
+                return 2;
+            }
+            continue;
+        }
+        if (argument == "--interactive-acceptance-report") {
+            if (index + 1 >= argc) {
+                std::fprintf(stderr, "[SandHybrid] --interactive-acceptance-report requires a path.\n");
+                print_usage();
+                return 2;
+            }
+            options.interactive_acceptance_report = argv[++index];
+            continue;
+        }
+        constexpr std::string_view interactive_prefix{"--interactive-acceptance-report="};
+        if (argument.starts_with(interactive_prefix)) {
+            options.interactive_acceptance_report = argument.substr(interactive_prefix.size());
+            if (options.interactive_acceptance_report.empty()) {
+                std::fprintf(stderr, "[SandHybrid] --interactive-acceptance-report requires a path.\n");
                 return 2;
             }
             continue;

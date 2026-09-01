@@ -95,10 +95,12 @@ bool displacePaintMediumUpward(ivec2 p) {
 void main() {
     ivec2 local = ivec2(gl_GlobalInvocationID.xy);
     if (pc.activeMode == 2u) {
-        // Nuke from Space is an explicit user edit. Execute it entirely on the
-        // GPU after the warning flash; no full-world CPU readback/flood fill.
-        ivec2 p = local;
-        if (!inside(p)) return;
+        // Nuke from Space recovers the accepted upper-left connected-Air
+        // behavior without a CPU flood: the continuous Cloud deck is the
+        // boundary, so only the bounded high sky dispatched above it may burn.
+        ivec2 p = ivec2(pc.brushX, pc.brushY) + local;
+        if (!inside(p) || local.x >= int(pc.radius) ||
+            local.y >= int(pc.reserved)) return;
         if ((p.x & int(CHUNK_CELL_SIZE - 1u)) == 0 &&
             (p.y & int(CHUNK_CELL_SIZE - 1u)) == 0)
             markPaintChunkDirty(p);

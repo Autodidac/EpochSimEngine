@@ -49,6 +49,11 @@ constexpr std::uint32_t simulation_local_size = 16;
 constexpr std::uint32_t sunlight_local_size = 64;
 constexpr std::uint32_t debug_stats_local_size = 256;
 constexpr std::uint32_t debug_stat_word_count = 128;
+constexpr std::uint32_t nuke_high_sky_bottom_y =
+    persistent_world_weather_cloud_tile_y;
+
+static_assert(nuke_high_sky_bottom_y == 536u);
+static_assert(nuke_high_sky_bottom_y % authored_scene_foundation_cells == 0u);
 
 
 [[noreturn]] void throw_vk(const char* operation, const VkResult result) {
@@ -1210,6 +1215,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     }
 
     VkPresentModeKHR choose_present_mode(const std::vector<VkPresentModeKHR>& modes) const {
+        // Mailbox decouples queueing from the compositor's FIFO wait without
+        // tearing.  The fixed 60 Hz simulation and CPU presentation limiter
+        // still own cadence; FIFO is the portable fallback.
+        const auto mailbox = std::ranges::find(modes, VK_PRESENT_MODE_MAILBOX_KHR);
+        if (mailbox != modes.end()) return VK_PRESENT_MODE_MAILBOX_KHR;
         const auto fifo = std::ranges::find(modes, VK_PRESENT_MODE_FIFO_KHR);
         return fifo != modes.end() ? VK_PRESENT_MODE_FIFO_KHR : modes.front();
     }
@@ -2505,25 +2515,32 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         record_paint_at_grid(command_buffer, state, erase, paint, grid_x, grid_y);
     }
 
-    void record_nuke_from_space(const VkCommandBuffer command_buffer,
-                                const SharedState& state) {
+    void record_nuke_from_space(const VkCommandBuffer command_buffer) {
         // The old action downloaded and flood-filled the complete resident
-        // world on the CPU. This deterministic GPU edit has no readback and
-        // touches each Atmosphere cell once after the staged light warning.
+        // world on the CPU from the upper-left Atmosphere owner. The continuous
+        // Cloud deck was the physical boundary the user accepted: only the
+        // connected high sky above it burned. Preserve that topology without a
+        // readback by dispatching only the aligned rows above the deck center.
+        const auto high_sky_bottom =
+            (std::min)(config.grid_height, nuke_high_sky_bottom_y);
         const SimulationPush push{
             .width = config.grid_width,
             .height = config.grid_height,
             .step = simulation_step,
             .seed = random_seed,
+            .brush_x = 0,
+            .brush_y = 0,
+            .radius = config.grid_width,
             .material = static_cast<std::uint32_t>(Material::fire),
             .active_mode = 2u,
+            .reserved = high_sky_bottom,
         };
         bind_compute(command_buffer, paint_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout,
                            VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
         vkCmdDispatch(command_buffer,
                       divide_round_up(config.grid_width, simulation_local_size),
-                      divide_round_up(config.grid_height, simulation_local_size), 1);
+                      divide_round_up(high_sky_bottom, simulation_local_size), 1);
         buffer_barrier(command_buffer, cell_buffers[current_set],
                        VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
@@ -2536,46 +2553,44 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
-        // Nuke remains one material-edit dispatch. Reclassify only the bounded
-        // active window immediately so PAUSED and the next presented frame
-        // cannot combine new Fire cells with stale Atmosphere tile metadata.
-        const auto active_section_x =
-            state.active_window_origin_x.load(std::memory_order_relaxed);
-        const auto active_section_y =
-            state.active_window_origin_y.load(std::memory_order_relaxed);
-        const auto active_dispatch = active_cell_dispatch(
-            config.grid_width, config.grid_height,
-            {active_section_x, active_section_y});
+        // Nuke remains one material-edit dispatch. Reclassify exactly the
+        // high-sky tile/chunk rows immediately so PAUSED and the next presented
+        // frame cannot combine new Fire with stale Atmosphere ownership.
         const SimulationPush hierarchy_push{
             .width = config.grid_width,
             .height = config.grid_height,
             .step = simulation_step,
             .seed = random_seed,
-            .active_section_x = active_section_x,
-            .active_section_y = active_section_y,
-            .active_mode = 1u,
             .reserved = policy::macro_packet_step_due(simulation_step) ? 2u : 0u,
         };
+        const auto high_sky_tile_columns =
+            divide_round_up(config.grid_width, authored_scene_foundation_cells);
+        const auto high_sky_tile_rows =
+            divide_round_up(high_sky_bottom, authored_scene_foundation_cells);
         bind_compute(command_buffer, tile_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout,
                            VK_SHADER_STAGE_COMPUTE_BIT, 0,
                            sizeof(hierarchy_push), &hierarchy_push);
         vkCmdDispatch(command_buffer,
-                      divide_round_up(divide_round_up(active_dispatch.width, 8u), 8u),
-                      divide_round_up(divide_round_up(active_dispatch.height, 8u), 8u), 1);
+                      divide_round_up(high_sky_tile_columns, 8u),
+                      divide_round_up(high_sky_tile_rows, 8u), 1);
         buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
+        const auto high_sky_chunk_columns =
+            divide_round_up(config.grid_width, 64u);
+        const auto high_sky_chunk_rows =
+            divide_round_up(high_sky_bottom, 64u);
         bind_compute(command_buffer, chunk_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout,
                            VK_SHADER_STAGE_COMPUTE_BIT, 0,
                            sizeof(hierarchy_push), &hierarchy_push);
         vkCmdDispatch(command_buffer,
-                      divide_round_up(divide_round_up(config.grid_width, 64u), 8u),
-                      divide_round_up(divide_round_up(config.grid_height, 64u), 8u), 1);
+                      divide_round_up(high_sky_chunk_columns, 8u),
+                      divide_round_up(high_sky_chunk_rows, 8u), 1);
         buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -3311,9 +3326,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             record_paint(frame.command_buffer, state);
         if (!reset_this_frame && nuke_dispatch_pending &&
             nuke_flash_frames_remaining == 0u) {
-            record_nuke_from_space(frame.command_buffer, state);
+            record_nuke_from_space(frame.command_buffer);
             nuke_dispatch_pending = false;
-            startup_log("Nuke from Space committed as one GPU Atmosphere-to-Fire edit.");
+            startup_log(
+                "Nuke from Space committed one GPU high-sky Atmosphere-to-Fire edit above Cloud.");
         }
 
         const bool debug_visible = state.debug_visualization.load(std::memory_order_relaxed);
@@ -4869,20 +4885,28 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 cells[index_of(stone_x, probe_y)] = make_fill_cell(
                     material_id(Material::stone),
                     static_cast<std::uint32_t>(index_of(stone_x, probe_y)));
+                constexpr std::uint32_t below_sky_x = 74u;
+                constexpr std::uint32_t cloud_x = 75u;
+                const auto below_sky_y =
+                    (std::min)(config.grid_height - 1u, nuke_high_sky_bottom_y + 8u);
+                const auto cloud_y = nuke_high_sky_bottom_y - 1u;
+                cells[index_of(cloud_x, cloud_y)] = make_fill_cell(
+                    material_id(Material::cloud),
+                    static_cast<std::uint32_t>(index_of(cloud_x, cloud_y)));
                 const auto atmosphere_before = count_material(cells, Material::atmosphere);
+                const auto expected_high_sky_fire =
+                    static_cast<std::uint64_t>(config.grid_width) *
+                        nuke_high_sky_bottom_y -
+                    3u;
                 upload_scene_cells(cells);
                 immediate_submit([&](const VkCommandBuffer command_buffer) {
-                    record_nuke_from_space(command_buffer, state);
+                    record_nuke_from_space(command_buffer);
                 });
                 const auto nuked = download_scene_cells();
                 const auto nuke_tiles = download_tile_states();
                 const auto tile_columns = divide_round_up(config.grid_width, 8u);
-                const auto nuke_dispatch = active_cell_dispatch(
-                    config.grid_width, config.grid_height,
-                    {state.active_window_origin_x.load(std::memory_order_relaxed),
-                     state.active_window_origin_y.load(std::memory_order_relaxed)});
-                const auto nuke_probe_x = nuke_dispatch.origin_x / 8u + 1u;
-                const auto nuke_probe_y = nuke_dispatch.origin_y / 8u + 1u;
+                const auto nuke_probe_x = 1u;
+                const auto nuke_probe_y = 1u;
                 const auto& nuke_probe =
                     nuke_tiles[nuke_probe_y * tile_columns + nuke_probe_x];
                 constexpr std::uint32_t tile_sleeping = 0x00000004u;
@@ -4895,14 +4919,20 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     (nuke_probe.flags & tile_active) != 0u &&
                     (nuke_probe.flags & tile_fine_active) != 0u &&
                     (nuke_probe.flags & (tile_sleeping | tile_bulk_ready)) == 0u;
-                append("nuke_from_space_gpu_exact_atmosphere_edit",
-                       count_material(nuked, Material::atmosphere) == 0u &&
-                           count_material(nuked, Material::fire) == atmosphere_before &&
+                append("nuke_from_space_gpu_high_sky_edit",
+                       count_material(nuked, Material::atmosphere) ==
+                               atmosphere_before - expected_high_sky_fire &&
+                           count_material(nuked, Material::fire) ==
+                               expected_high_sky_fire &&
                             hierarchy_is_immediate &&
                            nuked[index_of(water_x, probe_y)].material ==
                                material_id(Material::water) &&
                            nuked[index_of(stone_x, probe_y)].material ==
-                               material_id(Material::stone),
+                               material_id(Material::stone) &&
+                           nuked[index_of(below_sky_x, below_sky_y)].material ==
+                               material_id(Material::atmosphere) &&
+                           nuked[index_of(cloud_x, cloud_y)].material ==
+                               material_id(Material::cloud),
                        "atmosphere_before=" + std::to_string(atmosphere_before) +
                            " atmosphere_after=" + std::to_string(
                                count_material(nuked, Material::atmosphere)) +
@@ -4910,8 +4940,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                count_material(nuked, Material::fire)) +
                            " water=" + std::to_string(
                                nuked[index_of(water_x, probe_y)].material) +
-                            " stone=" + std::to_string(
-                                nuked[index_of(stone_x, probe_y)].material) +
+                           " stone=" + std::to_string(
+                               nuked[index_of(stone_x, probe_y)].material) +
+                            " below_sky=" + std::to_string(
+                                nuked[index_of(below_sky_x, below_sky_y)].material) +
+                            " cloud=" + std::to_string(
+                                nuked[index_of(cloud_x, cloud_y)].material) +
                             " hierarchy=" +
                             std::to_string(hierarchy_is_immediate ? 1u : 0u) +
                             " probe=" + std::to_string(nuke_probe_x) + "," +
@@ -7525,6 +7559,21 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             return;
         }
         using Clock = std::chrono::steady_clock;
+        const bool interactive_acceptance = !config.interactive_acceptance_report.empty();
+        constexpr std::uint32_t interactive_phase_frames = 240u;
+        constexpr std::uint32_t interactive_warmup_frames = 60u;
+        constexpr std::array<std::string_view, 7u> interactive_phase_names{
+            "normal_world", "region_debug", "world_totals", "map_overlay",
+            "inventory_blueprints", "designer_blueprints", "nuke_warning_and_edit",
+        };
+        std::array<std::vector<double>, interactive_phase_names.size()> interactive_samples{};
+        std::uint32_t interactive_phase = std::numeric_limits<std::uint32_t>::max();
+        std::uint32_t interactive_presented_frames = 0u;
+        std::uint64_t interactive_ticks = 0u;
+        const auto interactive_start = Clock::now();
+        if (interactive_acceptance) {
+            state.presentation_limit.store(1u, std::memory_order_relaxed);
+        }
         constexpr auto simulation_interval = std::chrono::duration_cast<Clock::duration>(
             std::chrono::duration<double>{1.0 / 60.0});
         auto next_frame = Clock::now();
@@ -7536,6 +7585,35 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
         while (!stop_requested.load(std::memory_order_acquire) &&
                !state.quit.load(std::memory_order_acquire)) {
+            if (interactive_acceptance) {
+                const auto phase = (std::min)(
+                    interactive_presented_frames / interactive_phase_frames,
+                    static_cast<std::uint32_t>(interactive_phase_names.size() - 1u));
+                if (phase != interactive_phase) {
+                    interactive_phase = phase;
+                    state.debug_visualization.store(false, std::memory_order_relaxed);
+                    state.debug_page.store(0u, std::memory_order_relaxed);
+                    state.map_view.store(false, std::memory_order_relaxed);
+                    state.selected_workspace.store(1u, std::memory_order_relaxed);
+                    if (phase == 1u) {
+                        state.debug_page.store(0u, std::memory_order_relaxed);
+                        state.debug_visualization.store(true, std::memory_order_release);
+                    } else if (phase == 2u) {
+                        state.debug_page.store(1u, std::memory_order_relaxed);
+                        state.debug_visualization.store(true, std::memory_order_release);
+                    } else if (phase == 3u) {
+                        state.map_view.store(true, std::memory_order_release);
+                    } else if (phase == 4u) {
+                        state.selected_workspace.store(0u, std::memory_order_relaxed);
+                        state.inventory_pane.store(1u, std::memory_order_relaxed);
+                    } else if (phase == 5u) {
+                        state.selected_workspace.store(3u, std::memory_order_relaxed);
+                        state.designer_pane.store(1u, std::memory_order_relaxed);
+                    } else if (phase == 6u) {
+                        state.ignite_air.store(true, std::memory_order_release);
+                    }
+                }
+            }
             const auto width = state.window_width.load(std::memory_order_relaxed);
             const auto height = state.window_height.load(std::memory_order_relaxed);
             if (width == 0 || height == 0) {
@@ -7569,6 +7647,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const auto before_draw = Clock::now();
             const bool simulation_due = before_draw >= next_simulation;
             const std::uint32_t simulation_ticks = simulation_due ? 1u : 0u;
+            interactive_ticks += simulation_ticks;
             if (simulation_due) {
                 next_simulation += simulation_interval;
                 constexpr std::uint32_t max_time_debt_ticks = 2u;
@@ -7588,6 +7667,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 recreate_swapchain(width, height);
             } else if (present_frame) {
                 ++rendered_frames;
+                ++interactive_presented_frames;
+            }
+            const auto after_draw = Clock::now();
+            if (interactive_acceptance && present_frame &&
+                interactive_phase < interactive_samples.size() &&
+                (interactive_presented_frames % interactive_phase_frames) >
+                    interactive_warmup_frames) {
+                interactive_samples[interactive_phase].push_back(
+                    std::chrono::duration<double, std::milli>(after_draw - before_draw).count());
             }
 #if SANDHYBRID_ENABLE_VALIDATION
             log_conservation_if_due(state);
@@ -7617,6 +7705,69 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             } else {
                 next_frame = Clock::now();
                 std::this_thread::yield();
+            }
+
+            if (interactive_acceptance &&
+                interactive_presented_frames >=
+                    interactive_phase_frames * interactive_phase_names.size()) {
+                const auto elapsed_seconds = std::chrono::duration<double>(
+                    Clock::now() - interactive_start).count();
+                bool passed = !gpu_stalled &&
+                    interactive_ticks <= interactive_presented_frames;
+                std::array<double, interactive_phase_names.size()> means{};
+                std::array<double, interactive_phase_names.size()> p95s{};
+                std::array<double, interactive_phase_names.size()> maxima{};
+                for (std::size_t phase = 0u; phase < interactive_samples.size(); ++phase) {
+                    auto& samples = interactive_samples[phase];
+                    if (samples.empty()) {
+                        passed = false;
+                        continue;
+                    }
+                    std::ranges::sort(samples);
+                    double total = 0.0;
+                    for (const double value : samples) total += value;
+                    means[phase] = total / static_cast<double>(samples.size());
+                    const auto p95_index = (std::min)(
+                        samples.size() - 1u, (samples.size() * 95u) / 100u);
+                    p95s[phase] = samples[p95_index];
+                    maxima[phase] = samples.back();
+                    passed = passed && p95s[phase] <= 33.34;
+                }
+                const double debug_overhead = means[0] > 0.0
+                    ? ((means[1] - means[0]) / means[0]) * 100.0 : 100.0;
+                passed = passed && debug_overhead <= 3.0;
+
+                const std::filesystem::path report_path{config.interactive_acceptance_report};
+                if (!report_path.parent_path().empty())
+                    std::filesystem::create_directories(report_path.parent_path());
+                std::ofstream report{report_path, std::ios::binary | std::ios::trunc};
+                if (!report)
+                    throw std::runtime_error("Unable to create interactive acceptance report: " +
+                                             report_path.string());
+                report << "{\n"
+                       << "  \"schema\": 1,\n"
+                       << "  \"backend\": \"vulkan-presented\",\n"
+                       << "  \"passed\": " << (passed ? "true" : "false") << ",\n"
+                       << "  \"presented_frames\": " << interactive_presented_frames << ",\n"
+                       << "  \"simulation_ticks\": " << interactive_ticks << ",\n"
+                       << "  \"elapsed_seconds\": " << elapsed_seconds << ",\n"
+                       << "  \"debug_overhead_percent\": " << debug_overhead << ",\n"
+                       << "  \"phases\": [\n";
+                for (std::size_t phase = 0u; phase < interactive_phase_names.size(); ++phase) {
+                    report << "    {\"name\": \"" << interactive_phase_names[phase]
+                           << "\", \"samples\": " << interactive_samples[phase].size()
+                           << ", \"mean_ms\": " << means[phase]
+                           << ", \"p95_ms\": " << p95s[phase]
+                           << ", \"max_ms\": " << maxima[phase] << "}"
+                           << (phase + 1u == interactive_phase_names.size() ? "\n" : ",\n");
+                }
+                report << "  ]\n}\n";
+                if (!report)
+                    throw std::runtime_error("Unable to write interactive acceptance report: " +
+                                             report_path.string());
+                state.runtime_acceptance_exit_code.store(passed ? 0 : 4,
+                                                         std::memory_order_release);
+                state.quit.store(true, std::memory_order_release);
             }
         }
         startup_log("Render loop stopped.");
