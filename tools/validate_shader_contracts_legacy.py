@@ -173,9 +173,11 @@ def main() -> int:
                     errors.append(f"legacy alias/token remains in {source_path.relative_to(ROOT)}: {token}")
 
     beehive_glsl = (SHADERS / "beehive.glsl").read_text(encoding="utf-8")
-    for token in ("BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 24", "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 88", "BEEHIVE_CHAMBER_RADIUS_SQUARED = 24", "BEEHIVE_EXIT_MAX_X = 10", "BEEHIVE_CANONICAL_SEED = 0xD17A5EEDu", "BEEHIVE_SUPPORT_WIDTH = 72", "beehivePrefabMaterial"):
+    for token in ("BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 24", "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 88", "BEEHIVE_CHAMBER_RADIUS_SQUARED = 24", "BEEHIVE_EXIT_MAX_X = 10", "BEEHIVE_CANONICAL_SEED = 0xD17A5EEDu", "beehivePrefabMaterial"):
         if token not in beehive_glsl:
             errors.append(f"photographed historical Beehive contract missing {token!r}")
+    if "BEEHIVE_SUPPORT_" in beehive_glsl:
+        errors.append("obsolete Wood-perch Beehive contract remains")
 
     scene_image_cpp = (ROOT / "src/scene_image.cpp").read_text(encoding="utf-8")
     move = (SHADERS / "move.comp").read_text(encoding="utf-8")
@@ -681,6 +683,7 @@ def main() -> int:
 
     chemistry = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
     movement = (SHADERS / "move.comp").read_text(encoding="utf-8")
+    bee_movement = (SHADERS / "bee_move.comp").read_text(encoding="utf-8")
     if "VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT" in renderer_cpp:
         errors.append("movement pipeline still disables driver optimization")
     if 'if(SHADER_FILE STREQUAL "move.comp")' in cmake_text:
@@ -1104,7 +1107,7 @@ def main() -> int:
 
     motion_ecology_contracts = {
         "tiles": (tiles, ("activeContent", "!activeContent", "activeAgent", "activeLoose")),
-        "movement": (movement, ("sleepSafe", "beeOrbitTarget", "beeMovementTarget",
+        "movement": (movement + bee_movement, ("sleepSafe", "beeMoveExactHome", "beeMovementTarget",
                                  "if (targetDistance < sourceDistance) return true;", "boundedSidestep",
                                  "insectMoveAllowed", "MAT_PLANT_STEM")),
         "chemistry": (chemistry, ("flowerDropsSeed", "stemMoisture", "grassFrontier",

@@ -168,9 +168,16 @@ void main() {
     Cell cell;
     int colonySlot = -1;
     if (material == MAT_BEEHIVE) {
-        uint prefab = beehivePrefabMaterial(center, delta, beehivePrefabEntropy(center, delta));
+        ivec2 prefabQueen = center;
+        uint prefabDistrict = 0u;
+        ivec2 prefabDistrictLocal = ivec2(0);
+        if (beePersistentAddress(center, pc.width, pc.height,
+                                 prefabDistrict, prefabDistrictLocal))
+            prefabQueen = prefabDistrictLocal;
+        uint prefab = beehivePrefabMaterial(
+            prefabQueen, delta, beehivePrefabEntropy(prefabQueen, delta));
         if (prefab != MATERIAL_COUNT) {
-            bool fixedHiveContent = prefab == MAT_WOOD || prefab == MAT_BEEHIVE ||
+            bool fixedHiveContent = prefab == MAT_BEEHIVE ||
                                     prefab == MAT_HONEY || prefab == MAT_POLLEN;
             cell = fixedHiveContent ? makeStructuralCell(prefab, true) : makeCell(prefab);
         } else {

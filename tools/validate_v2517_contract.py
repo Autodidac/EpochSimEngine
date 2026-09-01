@@ -53,7 +53,8 @@ for token in (
 ):
     require("shaders/beehive.glsl", token)
 require("shaders/reset.comp", "beehivePrefabEntropy(queen, offset)")
-require("shaders/paint.comp", "beehivePrefabEntropy(center, delta)")
+require("shaders/paint.comp", "beePersistentAddress(center, pc.width, pc.height")
+require("shaders/paint.comp", "beehivePrefabEntropy(prefabQueen, delta)")
 for token in (
     "pre_pr19_hive_canonical_width = 640u",
     "pre_pr19_hive_canonical_seed = 0xD17A5EEDu",
@@ -118,7 +119,7 @@ require("tests/ui_layout_contract.cpp", "1920u, 1080u, 1280u, 720u")
 
 # Repository memory and release docs preserve active acceptance instead of overclaiming.
 for token in (
-    "photographed historical SimpleSandSim Fix29-era Sandbox hive",
+    "photographed historical SimpleSandSim Fix29-era wasp hive",
     "Water Half flag `0x00800000` is reserved state",
     "physical framebuffer coordinates to logical window coordinates",
 ):

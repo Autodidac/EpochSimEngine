@@ -31,8 +31,8 @@ constexpr std::uint32_t aux_random_mask = 0x007fff00u;
 constexpr std::uint32_t tile_size = 8u;
 constexpr std::uint32_t minimum_cohesive_cells = 32u;
 constexpr std::uint32_t full_strength_cells = 52u;
-constexpr std::uint32_t bee_target_none = 0xffffu;
-constexpr std::uint32_t bee_formation_count = 100u;
+constexpr std::uint32_t bee_formation_count =
+    static_cast<std::uint32_t>(fix29_bee_formation_count);
 constexpr std::uint32_t bee_metadata_mask = 0x00ffffffu;
 constexpr std::uint32_t bee_authored_home_slot_bit = 0x80u;
 constexpr std::int32_t beehive_shell_min_radius_squared = 24;
@@ -41,10 +41,10 @@ constexpr std::int32_t beehive_chamber_radius_squared = 24;
 constexpr std::int32_t beehive_exit_min_x = 1;
 constexpr std::int32_t beehive_exit_max_x = 10;
 constexpr std::int32_t beehive_exit_half_height = 1;
-constexpr std::int32_t beehive_support_width = 72;
-constexpr std::int32_t beehive_support_height = 8;
-constexpr std::int32_t beehive_support_left_bias = 40;
-constexpr std::int32_t beehive_support_top_bias = 16;
+constexpr std::int32_t legacy_perch_width = 72;
+constexpr std::int32_t legacy_perch_height = 8;
+constexpr std::int32_t legacy_perch_left_bias = 40;
+constexpr std::int32_t legacy_perch_top_bias = 16;
 
 
 constexpr std::uint32_t hash32(std::uint32_t value) noexcept {
@@ -139,7 +139,8 @@ void normalize_pre_pr19_hives_impl(std::vector<std::uint32_t>& materials,
     };
 
 
-    for (std::int32_t offset_y = -29; offset_y <= 14; ++offset_y) {
+    for (std::int32_t offset_y = fix29_bee_formation_min_y;
+         offset_y <= fix29_bee_formation_max_y; ++offset_y) {
         for (std::int32_t offset_x = -40; offset_x <= 31; ++offset_x) {
             const auto x = beehive_queen_x + offset_x;
             const auto y = beehive_queen_y + offset_y;
@@ -156,22 +157,26 @@ void normalize_pre_pr19_hives_impl(std::vector<std::uint32_t>& materials,
         }
     }
 
-    const auto support_origin_x = scene_origin_x_i32 +
-        ((beehive_scene_queen_x - beehive_support_left_bias) / static_cast<std::int32_t>(tile_size)) *
+    // The former 72x8 Wood perch is not part of the user-accepted wasp hive.
+    // Exact load normalization removes only that legacy canonical footprint,
+    // then rebuilds the body and swarm below. Open sky is Atmosphere, not a
+    // Vacuum scar left behind by the migration.
+    const auto legacy_perch_origin_x = scene_origin_x_i32 +
+        ((beehive_scene_queen_x - legacy_perch_left_bias) / static_cast<std::int32_t>(tile_size)) *
             static_cast<std::int32_t>(tile_size);
-    const auto support_origin_y = scene_origin_y_i32 +
-        ((beehive_scene_queen_y - beehive_support_top_bias) / static_cast<std::int32_t>(tile_size)) *
+    const auto legacy_perch_origin_y = scene_origin_y_i32 +
+        ((beehive_scene_queen_y - legacy_perch_top_bias) / static_cast<std::int32_t>(tile_size)) *
             static_cast<std::int32_t>(tile_size);
-    for (std::int32_t local_y = 0; local_y < beehive_support_height; ++local_y) {
-        for (std::int32_t local_x = 0; local_x < beehive_support_width; ++local_x) {
-            const auto x = support_origin_x + local_x;
-            const auto y = support_origin_y + local_y;
+    for (std::int32_t local_y = 0; local_y < legacy_perch_height; ++local_y) {
+        for (std::int32_t local_x = 0; local_x < legacy_perch_width; ++local_x) {
+            const auto x = legacy_perch_origin_x + local_x;
+            const auto y = legacy_perch_origin_y + local_y;
             if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
                 y >= static_cast<std::int32_t>(height))
                 continue;
             const auto index = static_cast<std::size_t>(y) * width +
                                static_cast<std::size_t>(x);
-            materials[index] = static_cast<std::uint32_t>(Material::wood);
+            materials[index] = static_cast<std::uint32_t>(Material::atmosphere);
         }
     }
     for (std::int32_t offset_y = -11; offset_y <= 11; ++offset_y) {
@@ -545,7 +550,8 @@ bool load_scene_ppm(const std::filesystem::path& path,
         auto& bee = cells[bee_index];
         bee.aux = pack_bee_metadata(bee.aux | aux_bee_fed | aux_bee_swarm,
             home_x, home_y, slot, width, height);
-        bee.age = (slot * 17u) % 900u | (bee_target_none << 16u);
+        bee.age = fix29_bee_pack_age(
+            (slot * 17u) % 900u, fix29_bee_target_none);
     }
     return true;
 }

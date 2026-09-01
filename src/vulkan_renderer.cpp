@@ -400,6 +400,7 @@ struct VulkanRenderer::Impl final {
     VkPipeline copy_cells_pipeline{};
     VkPipeline chemistry_pipeline{};
     VkPipeline conservation_corrections_pipeline{};
+    VkPipeline bee_movement_pipeline{};
     VkPipeline rainfall_pipeline{};
     VkPipeline macro_movement_pipeline{};
     VkPipeline movement_pipeline{};
@@ -519,6 +520,8 @@ save_slot(normalize_world_slot(requested_save_slot)) {
             if (chemistry_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_pipeline, nullptr);
             if (conservation_corrections_pipeline != VK_NULL_HANDLE)
                 vkDestroyPipeline(device, conservation_corrections_pipeline, nullptr);
+            if (bee_movement_pipeline != VK_NULL_HANDLE)
+                vkDestroyPipeline(device, bee_movement_pipeline, nullptr);
             if (rainfall_pipeline != VK_NULL_HANDLE)
                 vkDestroyPipeline(device, rainfall_pipeline, nullptr);
             if (macro_movement_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, macro_movement_pipeline, nullptr);
@@ -1160,6 +1163,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         chemistry_pipeline = create_compute_pipeline("chemistry.comp.spv");
         conservation_corrections_pipeline =
             create_compute_pipeline("conservation_corrections.comp.spv");
+        bee_movement_pipeline = create_compute_pipeline("bee_move.comp.spv");
         rainfall_pipeline = create_compute_pipeline("rainfall.comp.spv");
         macro_movement_pipeline = create_compute_pipeline("macro_move.comp.spv");
         movement_pipeline = create_compute_pipeline("move.comp.spv");
@@ -1611,6 +1615,42 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         check_vk(vkMapMemory(device, scene_staging_buffer.memory, 0,
                              scene_staging_buffer.size, 0, &mapped),
                  "vkMapMemory(fill readback)");
+        std::memcpy(cells.data(), mapped, cells.size() * sizeof(SceneCell));
+        vkUnmapMemory(device, scene_staging_buffer.memory);
+        return cells;
+    }
+
+    [[nodiscard]] std::vector<SceneCell> download_map_snapshot_cells() {
+        std::vector<SceneCell> cells(
+            static_cast<std::size_t>(config.grid_width) * config.grid_height);
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
+            buffer_barrier(command_buffer, map_snapshot_buffer,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT);
+            buffer_barrier(command_buffer, scene_staging_buffer,
+                           VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT |
+                               VK_ACCESS_TRANSFER_READ_BIT,
+                           VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT);
+            const VkBufferCopy copy{.size = scene_staging_buffer.size};
+            vkCmdCopyBuffer(command_buffer, map_snapshot_buffer.handle,
+                            scene_staging_buffer.handle, 1, &copy);
+            buffer_barrier(command_buffer, scene_staging_buffer,
+                           VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT);
+            buffer_barrier(command_buffer, map_snapshot_buffer,
+                           VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        });
+        void* mapped = nullptr;
+        check_vk(vkMapMemory(device, scene_staging_buffer.memory, 0,
+                             scene_staging_buffer.size, 0, &mapped),
+                 "vkMapMemory(map snapshot readback)");
         std::memcpy(cells.data(), mapped, cells.size() * sizeof(SceneCell));
         vkUnmapMemory(device, scene_staging_buffer.memory);
         return cells;
@@ -2284,9 +2324,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                      normalized == static_cast<std::uint32_t>(Material::honey)) ||
                     (hive_part == HivePart::pollen &&
                      normalized == static_cast<std::uint32_t>(Material::pollen));
-                if ((normalized == static_cast<std::uint32_t>(Material::wood) &&
-                     fix29_hive_support_cell(queen_x, queen_y, x, y)) ||
-                    fixed_hive_content) {
+                if (fixed_hive_content) {
                     cells[index].aux |= fill_aux_structural | fill_aux_supported;
                     cells[index].aux = (cells[index].aux & ~fill_aux_state_mask) | 255u;
                 }
@@ -2897,6 +2935,26 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         }
+
+        // Authored bees are held out of the frozen generic material kernel by
+        // the post-chemistry AUX_MOVED marker, then advanced transactionally
+        // here with the current 60-slot colony and large-World target format.
+        bind_compute(command_buffer, bee_movement_pipeline, current_set);
+        vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                           VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof(simulation_push), &simulation_push);
+        vkCmdDispatch(command_buffer,
+                      divide_round_up(active_dispatch.width, simulation_local_size),
+                      divide_round_up(active_dispatch.height, simulation_local_size), 1);
+        buffer_barrier(command_buffer, cell_buffers[current_set],
+                       VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         ++simulation_step;
     }
 
@@ -4237,6 +4295,28 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
             }
+
+            bind_compute(command_buffer, bee_movement_pipeline, current_set);
+            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                               VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                               sizeof(simulation_push), &simulation_push);
+            vkCmdDispatch(command_buffer,
+                          divide_round_up(acceptance_width,
+                                          simulation_local_size),
+                          divide_round_up(acceptance_height,
+                                          simulation_local_size), 1);
+            buffer_barrier(command_buffer, cell_buffers[current_set],
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT |
+                               VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            buffer_barrier(command_buffer, chunk_buffer,
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT |
+                               VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         });
         ++simulation_step;
     }
@@ -4703,19 +4783,24 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 const auto cells = download_scene_cells();
                 std::uint32_t mismatches = 0u;
                 std::uint32_t shell = 0u;
-                std::uint32_t support = 0u;
+                std::uint32_t legacy_perch_wood = 0u;
                 std::uint32_t honey = 0u;
                 std::uint32_t pollen = 0u;
                 std::uint32_t empty_chamber = 0u;
                 std::uint32_t bee_count = 0u;
                 std::uint32_t bee_metadata_mismatches = 0u;
+                std::uint32_t bee_position_mismatches = 0u;
                 std::uint32_t swarm_bees = 0u;
                 std::uint32_t fed_bees = 0u;
+                std::uint32_t queen_carrier_bees = 0u;
+                std::int32_t queen_carrier_dx = 0;
+                std::int32_t queen_carrier_dy = 0;
+                std::uint32_t queen_carrier_aux = 0u;
                 std::uint32_t district_home_bees = 0u;
                 std::uint32_t x_home_bees = 0u;
                 std::uint32_t y_home_bees = 0u;
                 std::uint32_t first_bee_aux = 0u;
-                std::array<bool, 100> bee_slots{};
+                std::array<bool, fix29_bee_formation_count> bee_slots{};
                 std::uint32_t unique_bee_slots = 0u;
                 std::uint32_t compact_bees = 0u;
                 std::uint32_t top_lobe_bees = 0u;
@@ -4735,13 +4820,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         const auto& actual_cell = cells[index_of(x, y)];
                         const auto actual = static_cast<Material>(actual_cell.material);
                         bool matches = true;
+                        if (dx >= -40 && dx <= 31 && dy >= -18 && dy <= -11 &&
+                            actual == Material::wood)
+                            ++legacy_perch_wood;
                         switch (part) {
-                        case HivePart::support:
-                            matches = actual == Material::wood &&
-                                (actual_cell.aux & (fill_aux_structural | fill_aux_supported)) ==
-                                    (fill_aux_structural | fill_aux_supported);
-                            ++support;
-                            break;
                         case HivePart::shell:
                             matches = actual == Material::beehive;
                             ++shell;
@@ -4795,6 +4877,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         ++bee_count;
                         constexpr std::uint32_t bee_swarm_bit = 0x08000000u;
                         constexpr std::uint32_t bee_fed_bit = 0x10000000u;
+                        constexpr std::uint32_t bee_queen_bit = 0x40000000u;
                         const auto slot = (bee.aux >> 13u) & 127u;
                         const auto encoded_district = (bee.aux >> 20u) & 7u;
                         const auto decoded_home_x =
@@ -4810,6 +4893,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         if (bee_count == 1u) first_bee_aux = bee.aux;
                         swarm_bees += (bee.aux & bee_swarm_bit) != 0u ? 1u : 0u;
                         fed_bees += (bee.aux & bee_fed_bit) != 0u ? 1u : 0u;
+                        if ((bee.aux & bee_queen_bit) != 0u) {
+                            ++queen_carrier_bees;
+                            queen_carrier_dx = dx;
+                            queen_carrier_dy = dy;
+                            queen_carrier_aux = bee.aux;
+                        }
                         district_home_bees += encoded_district == district ? 1u : 0u;
                         x_home_bees += decoded_home_x == expected_home_x ? 1u : 0u;
                         y_home_bees += decoded_home_y == expected_home_y ? 1u : 0u;
@@ -4826,37 +4915,56 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                 bee_slots[slot] = true;
                                 ++unique_bee_slots;
                             }
+                            const auto expected_offset =
+                                fix29_bee_formation_offset(slot);
+                            if (dx != expected_offset.x ||
+                                dy != expected_offset.y)
+                                ++bee_position_mismatches;
                             const auto compact_x = dx;
                             const auto compact_y = static_cast<std::int32_t>(queen_y) + dy -
                                 static_cast<std::int32_t>((queen_y / 8u) * 8u);
                             if (compact_x >= -24 && compact_x <= 24 &&
                                 compact_y >= -32 && compact_y <= 18)
                                 ++compact_bees;
-                            if (compact_x >= -10 && compact_x <= 10 &&
-                                compact_y >= -32 && compact_y <= -16)
+                            if (dy < 0)
                                 ++top_lobe_bees;
-                            if (compact_x >= -24 && compact_x <= -6 &&
-                                compact_y >= -4 && compact_y <= 18)
+                            if (dx < 0 && dy > 0)
                                 ++left_lobe_bees;
-                            if (compact_x >= 6 && compact_x <= 24 &&
-                                compact_y >= -4 && compact_y <= 18)
+                            if (dx > 0 && dy > 0)
                                 ++right_lobe_bees;
                         }
                     }
                 }
-                const auto expected_support = scene == Scene::sandbox ? 576u : 571u;
                 const auto expected_honey = scene == Scene::sandbox ? 35u : 31u;
                 const auto expected_pollen = scene == Scene::sandbox ? 13u : 9u;
                 const auto expected_empty = scene == Scene::sandbox ? 8u : 16u;
+                const auto hive_tile_states = download_tile_states();
+                const auto hive_tile_columns = divide_round_up(config.grid_width, 8u);
+                const auto global_queen_x = hive_origin_x + queen_x;
+                const auto global_queen_y = hive_origin_y + queen_y;
+                const auto hive_tile_index =
+                    (global_queen_y / 8u) * hive_tile_columns + global_queen_x / 8u;
+                const auto hive_tile_occupancy =
+                    hive_tile_index < hive_tile_states.size()
+                    ? hive_tile_states[hive_tile_index].occupancy : 0u;
+                const auto summarized_queen_x =
+                    (hive_tile_occupancy >> 7u) & 7u;
+                const auto summarized_queen_y =
+                    (hive_tile_occupancy >> 10u) & 7u;
                 append(std::string{name},
-                       mismatches == 0u && shell == 193u && support == expected_support &&
+                       mismatches == 0u && shell == 193u && legacy_perch_wood == 0u &&
                            honey == expected_honey && pollen == expected_pollen &&
-                           empty_chamber == expected_empty && bee_count == 100u &&
-                           bee_metadata_mismatches == 0u && unique_bee_slots == 100u &&
-                           compact_bees >= 90u && top_lobe_bees >= 20u &&
-                           left_lobe_bees >= 28u && right_lobe_bees >= 28u,
+                           empty_chamber == expected_empty &&
+                           bee_count == fix29_bee_formation_count &&
+                           bee_metadata_mismatches == 0u &&
+                           unique_bee_slots == fix29_bee_formation_count &&
+                           bee_position_mismatches == 0u &&
+                           compact_bees == fix29_bee_formation_count &&
+                           top_lobe_bees == 20u && left_lobe_bees == 20u &&
+                           right_lobe_bees == 20u,
                        "mismatches=" + std::to_string(mismatches) +
-                           " support=" + std::to_string(support) +
+                           " legacy_perch_wood=" +
+                           std::to_string(legacy_perch_wood) +
                            " shell=" + std::to_string(shell) +
                            " honey=" + std::to_string(honey) +
                            " pollen=" + std::to_string(pollen) +
@@ -4864,6 +4972,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            " bees=" + std::to_string(bee_count) +
                            " bee_metadata_mismatches=" +
                            std::to_string(bee_metadata_mismatches) +
+                           " bee_position_mismatches=" +
+                           std::to_string(bee_position_mismatches) +
                            " unique_slots=" + std::to_string(unique_bee_slots) +
                            " compact=" + std::to_string(compact_bees) +
                            " lobes=" + std::to_string(top_lobe_bees) + "/" +
@@ -4874,22 +4984,74 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                count_material(cells, Material::bee)) +
                            " swarm=" + std::to_string(swarm_bees) +
                            " fed=" + std::to_string(fed_bees) +
+                           " queen_carriers=" + std::to_string(queen_carrier_bees) +
+                           " queen_carrier=" + std::to_string(queen_carrier_dx) + "," +
+                               std::to_string(queen_carrier_dy) + "/" +
+                               std::to_string(queen_carrier_aux) +
                            " district_home=" + std::to_string(district_home_bees) +
                            " x_home=" + std::to_string(x_home_bees) +
                            " y_home=" + std::to_string(y_home_bees) +
-                           " first_aux=" + std::to_string(first_bee_aux));
+                           " first_aux=" + std::to_string(first_bee_aux) +
+                           " tile_queen=" + std::to_string(summarized_queen_x) + "," +
+                               std::to_string(summarized_queen_y) +
+                           " tile_occupancy=" + std::to_string(hive_tile_occupancy) +
+                           " tile_material=" + std::to_string(
+                               hive_tile_index < hive_tile_states.size()
+                                   ? hive_tile_states[hive_tile_index].material : 0u) +
+                           " tile_counters=" + std::to_string(
+                               hive_tile_index < hive_tile_states.size()
+                                   ? hive_tile_states[hive_tile_index].counters : 0u) +
+                           " tile_flags=" + std::to_string(
+                               hive_tile_index < hive_tile_states.size()
+                                   ? hive_tile_states[hive_tile_index].flags : 0u) +
+                           " expected_tile_queen=" +
+                               std::to_string(global_queen_x & 7u) + "," +
+                               std::to_string(global_queen_y & 7u));
             };
 
             {
-                constexpr std::int32_t queen_x = 96;
-                constexpr std::int32_t queen_y = 96;
+                const auto sandbox_district =
+                    persistent_world_district_index(Scene::sandbox);
+                const auto queen_x = static_cast<std::int32_t>(
+                    persistent_world_district_origin_x(
+                        config.grid_width, sandbox_district) + 512u);
+                const auto queen_y = static_cast<std::int32_t>(
+                    persistent_world_district_origin_y(
+                        config.grid_height, sandbox_district) + 234u);
                 auto cells = acceptance_atmosphere_world();
                 upload_scene_cells(cells);
                 run_acceptance_paint_pass(
                     queen_x, queen_y, Material::beehive, 64u);
                 const auto result = download_scene_cells();
+                // The sidebar Beehive item owns this same production paint
+                // pipeline. Refresh all bounded MAP bands, then require its
+                // canonical payload to be byte-identical to the placed world.
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    for (std::uint32_t slice = 0u; slice < 64u; ++slice)
+                        record_map_snapshot(command_buffer);
+                });
+                const auto map_result = download_map_snapshot_cells();
+                const bool map_payload_exact = map_result.size() == result.size() &&
+                    std::memcmp(map_result.data(), result.data(),
+                                result.size() * sizeof(SceneCell)) == 0;
+                bool placed_bees_exact =
+                    count_material(result, Material::bee) ==
+                    fix29_bee_formation_count;
+                for (std::size_t slot = 0u;
+                     slot < fix29_bee_formation_count; ++slot) {
+                    const auto offset = fix29_bee_formation_offset(slot);
+                    const auto& bee = result[index_of(
+                        static_cast<std::uint32_t>(queen_x + offset.x),
+                        static_cast<std::uint32_t>(queen_y + offset.y))];
+                    const auto encoded_slot = (bee.aux >> 13u) & 127u;
+                    placed_bees_exact =
+                        placed_bees_exact &&
+                        bee.material == material_id(Material::bee) &&
+                        encoded_slot == slot &&
+                        (bee.aux & 0x18000000u) == 0x18000000u;
+                }
                 std::uint32_t mismatches = 0u;
-                std::uint32_t support = 0u;
+                std::uint32_t legacy_perch_wood = 0u;
                 std::uint32_t shell = 0u;
                 std::uint32_t honey = 0u;
                 std::uint32_t pollen = 0u;
@@ -4898,21 +5060,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     for (std::int32_t dx = -40; dx <= 31; ++dx) {
                         const auto part = classify_pre_pr19_hive_cell(
                             dx, dy, fix29_hive_entropy(
-                                queen_x, queen_y, dx, dy),
-                            queen_x, queen_y);
+                                512, 234, dx, dy),
+                            512, 234);
                         const auto x = static_cast<std::uint32_t>(queen_x + dx);
                         const auto y = static_cast<std::uint32_t>(queen_y + dy);
                         const auto& actual_cell = result[index_of(x, y)];
                         const auto actual = static_cast<Material>(actual_cell.material);
                         bool matches = true;
+                        if (dx >= -40 && dx <= 31 && dy >= -18 && dy <= -11 &&
+                            actual == Material::wood)
+                            ++legacy_perch_wood;
                         switch (part) {
-                        case HivePart::support:
-                            matches = actual == Material::wood &&
-                                (actual_cell.aux &
-                                 (fill_aux_structural | fill_aux_supported)) ==
-                                (fill_aux_structural | fill_aux_supported);
-                            ++support;
-                            break;
                         case HivePart::shell:
                             matches = actual == Material::beehive;
                             ++shell;
@@ -4950,21 +5108,49 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     }
                 }
                 append("placed_fix29_hive_exact",
-                       mismatches == 0u && support == 571u && shell == 193u &&
-                           honey == 30u && pollen == 7u &&
-                           chamber_empty == 19u,
+                       mismatches == 0u && legacy_perch_wood == 0u && shell == 193u &&
+                           honey == 35u && pollen == 13u &&
+                           chamber_empty == 8u && placed_bees_exact,
                        "mismatches=" + std::to_string(mismatches) +
-                           " support=" + std::to_string(support) +
+                           " legacy_perch_wood=" +
+                           std::to_string(legacy_perch_wood) +
                            " shell=" + std::to_string(shell) +
                            " honey=" + std::to_string(honey) +
                            " pollen=" + std::to_string(pollen) +
-                           " chamber_empty=" + std::to_string(chamber_empty));
+                           " chamber_empty=" + std::to_string(chamber_empty) +
+                           " bees_exact=" +
+                           std::to_string(placed_bees_exact ? 1u : 0u));
+                append("beehive_button_tool_map_payload_exact",
+                       placed_bees_exact && map_payload_exact &&
+                           legacy_perch_wood == 0u && mismatches == 0u,
+                       "button_material=" +
+                           std::to_string(material_id(Material::beehive)) +
+                           " map_byte_exact=" +
+                           std::to_string(map_payload_exact ? 1u : 0u) +
+                           " bees=" + std::to_string(
+                               count_material(map_result, Material::bee)) +
+                           " legacy_perch_wood=" +
+                           std::to_string(legacy_perch_wood));
 
                 for (std::uint32_t tick = 0u; tick < 120u; ++tick)
                     run_acceptance_focused_tick();
                 const auto delayed = download_scene_cells();
+                bool delayed_bees_exact =
+                    count_material(delayed, Material::bee) ==
+                    fix29_bee_formation_count;
+                for (std::size_t slot = 0u;
+                     slot < fix29_bee_formation_count; ++slot) {
+                    const auto offset = fix29_bee_formation_offset(slot);
+                    const auto& bee = delayed[index_of(
+                        static_cast<std::uint32_t>(queen_x + offset.x),
+                        static_cast<std::uint32_t>(queen_y + offset.y))];
+                    delayed_bees_exact =
+                        delayed_bees_exact &&
+                        bee.material == material_id(Material::bee) &&
+                        ((bee.aux >> 13u) & 127u) == slot;
+                }
                 std::uint32_t delayed_mismatches = 0u;
-                std::uint32_t delayed_support = 0u;
+                std::uint32_t delayed_legacy_perch_wood = 0u;
                 std::uint32_t delayed_shell = 0u;
                 std::uint32_t delayed_honey = 0u;
                 std::uint32_t delayed_pollen = 0u;
@@ -4973,8 +5159,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     for (std::int32_t dx = -40; dx <= 31; ++dx) {
                         const auto part = classify_pre_pr19_hive_cell(
                             dx, dy, fix29_hive_entropy(
-                                queen_x, queen_y, dx, dy),
-                            queen_x, queen_y);
+                                512, 234, dx, dy),
+                            512, 234);
                         const auto x = static_cast<std::uint32_t>(queen_x + dx);
                         const auto y = static_cast<std::uint32_t>(queen_y + dy);
                         const auto& actual_cell = delayed[index_of(x, y)];
@@ -4985,11 +5171,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                             (fill_aux_structural | fill_aux_supported);
                         bool checked = true;
                         bool matches = true;
+                        if (dx >= -40 && dx <= 31 && dy >= -18 && dy <= -11 &&
+                            actual == Material::wood)
+                            ++delayed_legacy_perch_wood;
                         switch (part) {
-                        case HivePart::support:
-                            matches = actual == Material::wood && fixed;
-                            ++delayed_support;
-                            break;
                         case HivePart::shell:
                             matches = actual == Material::beehive;
                             ++delayed_shell;
@@ -5024,17 +5209,181 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 }
                 append("placed_fix29_hive_delayed_body_exact",
                        delayed_mismatches == 0u &&
-                           delayed_support == 571u &&
+                           delayed_legacy_perch_wood == 0u &&
                            delayed_shell == 193u &&
-                           delayed_honey == 30u &&
-                           delayed_pollen == 7u,
+                           delayed_honey == 35u &&
+                           delayed_pollen == 13u && delayed_bees_exact,
                        "ticks=120 mismatches=" +
                            std::to_string(delayed_mismatches) +
-                           " support=" + std::to_string(delayed_support) +
+                           " legacy_perch_wood=" +
+                           std::to_string(delayed_legacy_perch_wood) +
                            " shell=" + std::to_string(delayed_shell) +
                            " honey=" + std::to_string(delayed_honey) +
                            " pollen=" + std::to_string(delayed_pollen) +
+                           " bees_exact=" +
+                           std::to_string(delayed_bees_exact ? 1u : 0u) +
                            delayed_mismatch_detail);
+
+                // Exercise the real persistent-World lifecycle using the same
+                // button-placed colony. The chosen forager first acquires an
+                // addressable Large-world flower tile, then picks up pollen,
+                // returns through the no-perch body, deposits one exact Pollen
+                // cell, and completes the two-tick Honey feed handshake.
+                constexpr std::uint32_t bee_pollen_bit = 0x20000000u;
+                constexpr std::uint32_t bee_fed_bit = 0x10000000u;
+                const auto tile_columns = divide_round_up(config.grid_width, 8u);
+                const auto active_section_x = static_cast<std::int32_t>(
+                    static_cast<std::uint32_t>(queen_x) /
+                    active_region_width_cells);
+                const auto active_section_y = static_cast<std::int32_t>(
+                    static_cast<std::uint32_t>(queen_y) /
+                    active_region_height_cells);
+                std::size_t forager_slot = 0u;
+                while (forager_slot < fix29_bee_formation_count &&
+                       !fix29_bee_forager_slot(forager_slot))
+                    ++forager_slot;
+                const auto forager_offset =
+                    fix29_bee_formation_offset(forager_slot);
+                const auto forager_x = static_cast<std::uint32_t>(
+                    queen_x + forager_offset.x);
+                const auto forager_y = static_cast<std::uint32_t>(
+                    queen_y + forager_offset.y);
+                const auto flower_x = forager_x + 24u;
+                const auto flower_y = forager_y;
+                const auto flower_tile = (flower_y / 8u) * tile_columns +
+                                         flower_x / 8u;
+
+                auto lifecycle_cells = result;
+                lifecycle_cells[index_of(flower_x, flower_y)] = make_fill_cell(
+                    material_id(Material::flower),
+                    static_cast<std::uint32_t>(index_of(flower_x, flower_y)));
+                auto& departing_bee = lifecycle_cells[index_of(forager_x, forager_y)];
+                const auto departure_threshold = 1200u +
+                    static_cast<std::uint32_t>((forager_slot * 29u) % 600u);
+                departing_bee.age = fix29_bee_pack_age(
+                    departure_threshold - 1u, fix29_bee_target_none);
+                upload_scene_cells(lifecycle_cells);
+                run_acceptance_tile_pass(active_section_x, active_section_y, true);
+                run_acceptance_chemistry_pass(active_section_x, active_section_y, true);
+                const auto departed = download_scene_cells();
+                const auto& departed_bee = departed[index_of(forager_x, forager_y)];
+                const bool flower_target_acquired =
+                    departed_bee.material == material_id(Material::bee) &&
+                    fix29_bee_target_from_age(departed_bee.age) == flower_tile &&
+                    (departed_bee.aux & bee_pollen_bit) == 0u;
+
+                auto pickup_cells = departed;
+                pickup_cells[index_of(forager_x, forager_y)] = make_fill_cell(
+                    material_id(Material::atmosphere),
+                    static_cast<std::uint32_t>(index_of(forager_x, forager_y)));
+                const auto pickup_x = flower_x - 1u;
+                const auto pickup_y = flower_y;
+                pickup_cells[index_of(pickup_x, pickup_y)] = departed_bee;
+                upload_scene_cells(pickup_cells);
+                run_acceptance_tile_pass(active_section_x, active_section_y, true);
+                run_acceptance_chemistry_pass(active_section_x, active_section_y, true);
+                const auto picked_up = download_scene_cells();
+                const auto& pollen_bee = picked_up[index_of(pickup_x, pickup_y)];
+                const bool pollen_picked_up =
+                    pollen_bee.material == material_id(Material::bee) &&
+                    (pollen_bee.aux & bee_pollen_bit) != 0u &&
+                    (pollen_bee.aux & bee_fed_bit) == 0u;
+
+                auto deposit_cells = picked_up;
+                deposit_cells[index_of(pickup_x, pickup_y)] = make_fill_cell(
+                    material_id(Material::atmosphere),
+                    static_cast<std::uint32_t>(index_of(pickup_x, pickup_y)));
+                const auto deposit_x = static_cast<std::uint32_t>(queen_x + 10);
+                const auto deposit_y = static_cast<std::uint32_t>(queen_y + 1);
+                deposit_cells[index_of(deposit_x, deposit_y)] = pollen_bee;
+                const auto pollen_before_deposit =
+                    count_material(deposit_cells, Material::pollen);
+                upload_scene_cells(deposit_cells);
+                run_acceptance_tile_pass(active_section_x, active_section_y, true);
+                run_acceptance_chemistry_pass(active_section_x, active_section_y, true);
+                const auto deposited = download_scene_cells();
+                const auto& returned_bee = deposited[index_of(deposit_x, deposit_y)];
+                const bool pollen_deposited =
+                    returned_bee.material == material_id(Material::bee) &&
+                    (returned_bee.aux & (bee_pollen_bit | bee_fed_bit)) == 0u &&
+                    count_material(deposited, Material::pollen) ==
+                        pollen_before_deposit + 1u;
+
+                constexpr std::array<std::pair<std::int32_t, std::int32_t>, 8>
+                    lifecycle_neighbors{{
+                        {-1, -1}, {0, -1}, {1, -1}, {-1, 0},
+                        {1, 0}, {-1, 1}, {0, 1}, {1, 1}}};
+                std::uint32_t honey_x = 0u;
+                std::uint32_t honey_y = 0u;
+                std::uint32_t feeding_x = 0u;
+                std::uint32_t feeding_y = 0u;
+                bool feeding_site_found = false;
+                for (std::int32_t dy = -4; dy <= 4 && !feeding_site_found; ++dy) {
+                    for (std::int32_t dx = -4; dx <= 4 && !feeding_site_found; ++dx) {
+                        const auto candidate_x = static_cast<std::uint32_t>(queen_x + dx);
+                        const auto candidate_y = static_cast<std::uint32_t>(queen_y + dy);
+                        if (deposited[index_of(candidate_x, candidate_y)].material !=
+                            material_id(Material::honey))
+                            continue;
+                        for (const auto& [neighbor_x, neighbor_y] : lifecycle_neighbors) {
+                            const auto open_x = static_cast<std::uint32_t>(
+                                static_cast<std::int32_t>(candidate_x) + neighbor_x);
+                            const auto open_y = static_cast<std::uint32_t>(
+                                static_cast<std::int32_t>(candidate_y) + neighbor_y);
+                            if (deposited[index_of(open_x, open_y)].material ==
+                                material_id(Material::empty)) {
+                                honey_x = candidate_x;
+                                honey_y = candidate_y;
+                                feeding_x = open_x;
+                                feeding_y = open_y;
+                                feeding_site_found = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                auto feeding_cells = deposited;
+                feeding_cells[index_of(deposit_x, deposit_y)] = make_fill_cell(
+                    material_id(Material::empty),
+                    static_cast<std::uint32_t>(index_of(deposit_x, deposit_y)));
+                if (feeding_site_found) {
+                    auto feeding_bee = returned_bee;
+                    feeding_bee.age = fix29_bee_pack_age(
+                        0u, (honey_y / 8u) * tile_columns + honey_x / 8u);
+                    feeding_cells[index_of(feeding_x, feeding_y)] = feeding_bee;
+                }
+                upload_scene_cells(feeding_cells);
+                run_acceptance_tile_pass(active_section_x, active_section_y, true);
+                run_acceptance_chemistry_pass(active_section_x, active_section_y, true);
+                run_acceptance_chemistry_pass(active_section_x, active_section_y, true);
+                const auto fed_cells = download_scene_cells();
+                const auto& fed_bee = fed_cells[index_of(feeding_x, feeding_y)];
+                const bool honey_fed = feeding_site_found &&
+                    fed_bee.material == material_id(Material::bee) &&
+                    (fed_bee.aux & bee_fed_bit) != 0u &&
+                    (fed_bee.aux & bee_pollen_bit) == 0u;
+                const auto final_bee_count = count_material(fed_cells, Material::bee);
+
+                append("bee_lifecycle_gpu_transitions",
+                       flower_target_acquired && pollen_picked_up &&
+                           pollen_deposited && honey_fed &&
+                           final_bee_count == fix29_bee_formation_count,
+                       "forager_slot=" + std::to_string(forager_slot) +
+                           " flower_tile=" + std::to_string(flower_tile) +
+                           " target_capacity=" +
+                               std::to_string(fix29_bee_target_none) +
+                           " target_acquired=" +
+                               std::to_string(flower_target_acquired ? 1u : 0u) +
+                           " pollen_pickup=" +
+                               std::to_string(pollen_picked_up ? 1u : 0u) +
+                           " pollen_deposit=" +
+                               std::to_string(pollen_deposited ? 1u : 0u) +
+                           " feeding_site=" +
+                               std::to_string(feeding_site_found ? 1u : 0u) +
+                           " honey_fed=" +
+                               std::to_string(honey_fed ? 1u : 0u) +
+                           " final_bees=" + std::to_string(final_bee_count));
             }
 
             {

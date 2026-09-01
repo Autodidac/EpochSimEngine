@@ -74,8 +74,9 @@ require(
 require(
     "tests/scene_image_contract.cpp",
     "exact_hive",
-    "Scene::sandbox, 234, 576u, 35u, 13u, 8u",
-    "Scene::ecosystem, 232, 571u, 31u, 9u, 16u",
+    "Scene::sandbox, 234, 35u, 13u, 8u",
+    "Scene::ecosystem, 232, 31u, 9u, 16u",
+    "legacy_perch_wood == 0u",
 )
 require("include/sandhybrid/actor_medium.hpp", "((entropy >> 2u) & 3u) == 0u ? HivePart::pollen : HivePart::honey")
 reject("include/sandhybrid/actor_medium.hpp", "0xD17A55DEu", "dx <= 12", "radius_squared >= 28")
@@ -104,7 +105,7 @@ require(
     "const std::uint32_t simulation_ticks = simulation_due ? 1u : 0u",
     "active_limit != 0u",
     "max_time_debt_ticks = 2u",
-    "scene == Scene::sandbox ? 576u : 571u",
+    "legacy_perch_wood == 0u",
     "mismatches == 0u && shell == 193u",
     "persistent_world_district_count",
     "stone == expected && lava == 0u",

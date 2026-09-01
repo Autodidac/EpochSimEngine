@@ -613,7 +613,7 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
     case MAT_HONEY: {
         bool fixedHiveContent = (aux & AUX_STRUCTURAL) != 0u;
         color = fixedHiveContent
-            ? vec4(1.00, 0.78 + variation * 0.35, 0.10, 1.0)
+            ? vec4(1.00, 0.66 + variation * 0.08, 0.008, 1.0)
             : vec4(0.94, 0.54 + variation, 0.06, 0.96);
         break;
     }
@@ -652,14 +652,16 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
     }
     case MAT_BEEHIVE: {
         bool comb = ((position.x + (position.y & 1)) % 4) == 0;
-        color = vec4(comb ? 0.78 : 0.82, comb ? 0.58 : 0.64, 0.22, 1.0); break;
+        // Historical Fix29 shell: saturated ochre after linear-to-sRGB output,
+        // not the washed-out cream used by the generic authored palette.
+        color = vec4(comb ? 0.54 : 0.60, comb ? 0.30 : 0.34, 0.03, 1.0); break;
     }
     case MAT_DIRTY_STEAM: color = vec4(0.43, 0.47 + variation, 0.48, 0.68); break;
     case MAT_DIRTY_WATER: color = vec4(0.16, 0.30 + variation, 0.31, 0.94); break;
     case MAT_POLLEN: {
         bool fixedHiveContent = (aux & AUX_STRUCTURAL) != 0u;
         color = fixedHiveContent
-            ? vec4(1.00, 0.92 + variation * 0.20, 0.30, 1.0)
+            ? vec4(1.00, 0.82 + variation * 0.08, 0.035, 1.0)
             : vec4(0.98, 0.78 + variation, 0.08, 1.0);
         break;
     }

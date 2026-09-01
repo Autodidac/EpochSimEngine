@@ -169,9 +169,7 @@ void main() {
     bool hasHoney = false;
     bool hasMigratingQueen = false;
     bool beeHazard = false;
-    ivec2 queenLocal = ivec2(0);
-    ivec2 flowerLocal = ivec2(0);
-    ivec2 honeyLocal = ivec2(0);
+    uint featureLocations = 0u;
     uint beeCount = 0u;
 
     for (uint y = 0u; y < TILE_SIZE; ++y) {
@@ -189,14 +187,49 @@ void main() {
             if (halfCell)
                 halfWaterAttractionPending = halfWaterAttractionPending ||
                     halfWaterPartnerVisible(p, -1) || halfWaterPartnerVisible(p, 1);
-            ivec2 local = ivec2(x, y);
-            if (cell.material == MAT_QUEEN_BEE) { if (!hasQueen) queenLocal = local; hasQueen = true; }
+            if (cell.material == MAT_QUEEN_BEE) {
+                if (!hasQueen) {
+                    featureLocations &=
+                        ~((7u << TILE_QUEEN_X_SHIFT) |
+                          (7u << TILE_QUEEN_Y_SHIFT));
+                    featureLocations |=
+                        (x << TILE_QUEEN_X_SHIFT) |
+                        (y << TILE_QUEEN_Y_SHIFT);
+                }
+                hasQueen = true;
+            }
             if (cell.material == MAT_BEEHIVE) hasHive = true;
-            if (cell.material == MAT_FLOWER) { if (!hasFlower) flowerLocal = local; hasFlower = true; }
-            if (cell.material == MAT_HONEY) { if (!hasHoney) honeyLocal = local; hasHoney = true; }
+            if (cell.material == MAT_FLOWER) {
+                if (!hasFlower) {
+                    featureLocations |=
+                        (x << TILE_FLOWER_X_SHIFT) |
+                        (y << TILE_FLOWER_Y_SHIFT);
+                }
+                hasFlower = true;
+            }
+            if (cell.material == MAT_HONEY) {
+                if (!hasHoney) {
+                    featureLocations |=
+                        (x << TILE_HONEY_X_SHIFT) |
+                        (y << TILE_HONEY_Y_SHIFT);
+                }
+                hasHoney = true;
+            }
             if (cell.material == MAT_BEE) {
                 ++beeCount;
-                if ((cell.aux & AUX_CHARGED) != 0u) { if (!hasMigratingQueen) queenLocal = local; hasMigratingQueen = true; }
+                // BEE_AUX_QUEEN intentionally aliases AUX_CHARGED, but an
+                // in-flight queen must never replace the resident Queen cell
+                // used as this tile's exact colony home.  Sandbox exposes the
+                // bug because its canonical queen sits two cells below the
+                // aligned metadata home; Ecosystem happens to be aligned.
+                if ((cell.aux & AUX_CHARGED) != 0u) {
+                    if (!hasQueen && !hasMigratingQueen) {
+                        featureLocations |=
+                            (x << TILE_QUEEN_X_SHIFT) |
+                            (y << TILE_QUEEN_Y_SHIFT);
+                    }
+                    hasMigratingQueen = true;
+                }
             }
             bool agent = cell.material == MAT_BEE || cell.material == MAT_QUEEN_BEE ||
                          cell.material == MAT_BEEHIVE || cell.material == MAT_ANT ||
@@ -475,7 +508,7 @@ void main() {
     uint packedStructuralCells = durableStructuralTile ? structural : dominantCount;
     uint packedOccupancy = packTileOccupancy(
         structuralTile ? packedStructuralCells : represented,
-        queenLocal, flowerLocal, honeyLocal, beeCount);
+        featureLocations, beeCount);
     tiles[index] = TileState(tileMaterial, packedOccupancy, flags,
                              packTileCounters(stableTicks, cooldown));
 }

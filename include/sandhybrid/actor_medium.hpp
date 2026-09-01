@@ -168,6 +168,8 @@ struct BeeLifecycleResult final {
     bool die{};
 };
 
+inline constexpr std::uint32_t fix29_bee_colony_max = 60u;
+
 [[nodiscard]] constexpr BeeLifecycleResult advance_bee_lifecycle(
     const ActorComponent& bee,
     const BeeLifecycleInput input) noexcept {
@@ -175,7 +177,8 @@ struct BeeLifecycleResult final {
         return {LifeStage::dead, false, false, false, true};
     }
     if (input.hazard) return {LifeStage::hazard_escape, false, false, false, false};
-    if (input.migration_required && input.colony_population <= 100u) {
+    if (input.migration_required &&
+        input.colony_population <= fix29_bee_colony_max) {
         return {LifeStage::migrate, false, false, false, false};
     }
     if (bee.energy < 250u && input.honey_available) {
@@ -195,7 +198,9 @@ struct BeeLifecycleResult final {
 [[nodiscard]] constexpr std::uint32_t capped_bee_births(
     const std::uint32_t population,
     const std::uint32_t requested_births) noexcept {
-    return population >= 100u ? 0u : (std::min)(requested_births, 100u - population);
+    return population >= fix29_bee_colony_max
+        ? 0u
+        : (std::min)(requested_births, fix29_bee_colony_max - population);
 }
 
 struct FormationOffset final {
@@ -315,24 +320,43 @@ inline constexpr std::int32_t fix29_hive_ecosystem_queen_y = 232;
 inline constexpr std::int32_t pre_pr19_hive_canonical_queen_y =
     fix29_hive_ecosystem_queen_y;
 inline constexpr std::uint32_t pre_pr19_hive_canonical_seed = 0xD17A5EEDu;
-inline constexpr std::int32_t fix29_hive_support_tile_size = 8;
-inline constexpr std::int32_t fix29_hive_support_width = 72;
-inline constexpr std::int32_t fix29_hive_support_height = 8;
-inline constexpr std::size_t fix29_bee_formation_count = 100u;
+inline constexpr std::size_t fix29_bee_formation_count = 60u;
+inline constexpr std::uint32_t fix29_bee_timer_bits = 14u;
+inline constexpr std::uint32_t fix29_bee_timer_mask =
+    (1u << fix29_bee_timer_bits) - 1u;
+inline constexpr std::uint32_t fix29_bee_target_none =
+    (1u << (32u - fix29_bee_timer_bits)) - 1u;
+inline constexpr std::int32_t fix29_bee_formation_min_x = -20;
+inline constexpr std::int32_t fix29_bee_formation_max_x = 20;
+inline constexpr std::int32_t fix29_bee_formation_min_y = -22;
+inline constexpr std::int32_t fix29_bee_formation_max_y = 14;
 
 inline constexpr std::array<std::uint16_t, fix29_bee_formation_count>
     fix29_bee_formation_packed{{
-        4541u, 4542u, 4543u, 4545u, 4546u, 4547u, 4668u, 4669u, 4675u, 4676u,
-        4795u, 4805u, 4922u, 4923u, 4933u, 4934u, 5049u, 5050u, 5062u, 5063u,
-        5177u, 5191u, 5433u, 5447u, 5561u, 5575u, 5689u, 5703u, 8240u, 8241u,
-        8243u, 8269u, 8271u, 8272u, 8366u, 8367u, 8401u, 8402u, 8493u, 8494u,
-        8530u, 8531u, 8620u, 8627u, 8653u, 8660u, 8747u, 8748u, 8788u, 8789u,
-        9003u, 9012u, 9036u, 9045u, 9131u, 9173u, 9259u, 9269u, 9291u, 9301u,
-        9515u, 9516u, 9527u, 9545u, 9556u, 9557u, 9644u, 9645u, 9655u, 9657u,
-        9671u, 9673u, 9683u, 9684u, 9774u, 9783u, 9788u, 9796u, 9801u, 9810u,
-        9902u, 9903u, 9909u, 9910u, 9918u, 9922u, 9930u, 9931u, 9937u, 9938u,
-        10032u, 10033u, 10034u, 10036u, 10037u, 10059u, 10060u, 10062u,
-        10063u, 10064u}};
+        5437u, 5564u, 5572u, 5691u, 5701u, 5818u, 5830u, 5946u, 5958u, 6075u,
+        6085u, 6204u, 6205u, 6211u, 6212u, 6334u, 6335u, 6336u, 6337u, 6338u,
+        8495u, 8496u, 8497u, 8527u, 8528u, 8529u, 8626u, 8654u, 8755u, 8781u,
+        8884u, 8908u, 9013u, 9035u, 9142u, 9162u, 9270u, 9290u, 9398u, 9418u,
+        9525u, 9547u, 9644u, 9652u, 9676u, 9684u, 9773u, 9779u, 9805u, 9811u,
+        9902u, 9906u, 9934u, 9938u, 10031u, 10032u, 10033u, 10063u, 10064u,
+        10065u}};
+
+[[nodiscard]] constexpr std::uint32_t fix29_bee_pack_age(
+    const std::uint32_t timer, const std::uint32_t target_tile) noexcept {
+    return (std::min)(timer, fix29_bee_timer_mask) |
+           ((std::min)(target_tile, fix29_bee_target_none) <<
+            fix29_bee_timer_bits);
+}
+
+[[nodiscard]] constexpr std::uint32_t fix29_bee_timer_from_age(
+    const std::uint32_t age) noexcept {
+    return age & fix29_bee_timer_mask;
+}
+
+[[nodiscard]] constexpr std::uint32_t fix29_bee_target_from_age(
+    const std::uint32_t age) noexcept {
+    return age >> fix29_bee_timer_bits;
+}
 
 [[nodiscard]] constexpr bool fix29_bee_forager_slot(
     const std::size_t slot) noexcept {
@@ -397,7 +421,6 @@ inline constexpr std::array<std::uint16_t, fix29_bee_formation_count>
 
 enum class HivePart : std::uint8_t {
     empty = 0,
-    support,
     shell,
     chamber,
     queen,
@@ -405,19 +428,6 @@ enum class HivePart : std::uint8_t {
     honey,
     pollen
 };
-
-[[nodiscard]] constexpr bool fix29_hive_support_cell(
-    const std::int32_t queen_x,
-    const std::int32_t queen_y,
-    const std::int32_t x,
-    const std::int32_t y) noexcept {
-    const auto origin_x = ((queen_x - 40) / fix29_hive_support_tile_size) *
-                          fix29_hive_support_tile_size;
-    const auto origin_y = ((queen_y - 16) / fix29_hive_support_tile_size) *
-                          fix29_hive_support_tile_size;
-    return x >= origin_x && x < origin_x + fix29_hive_support_width &&
-           y >= origin_y && y < origin_y + fix29_hive_support_height;
-}
 
 [[nodiscard]] constexpr HivePart classify_pre_pr19_hive_cell(
     const std::int32_t dx,
@@ -433,8 +443,8 @@ enum class HivePart : std::uint8_t {
         if ((entropy & 3u) == 0u) return HivePart::chamber;
         return ((entropy >> 2u) & 3u) == 0u ? HivePart::pollen : HivePart::honey;
     }
-    if (fix29_hive_support_cell(queen_x, queen_y, queen_x + dx, queen_y + dy))
-        return HivePart::support;
+    static_cast<void>(queen_x);
+    static_cast<void>(queen_y);
     return HivePart::empty;
 }
 [[nodiscard]] constexpr GridPosition hive_home_from_scene_origin(

@@ -1,0 +1,136 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "materials.glsl"
+#include "tiles.glsl"
+#include "chunks.glsl"
+#include "bee_swarm.glsl"
+#include "debug_stats.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
+layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
+layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };
+layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
+
+uint beeMoveTileCount() {
+    return tileColumns(pc.width) * ((pc.height + TILE_SIZE - 1u) / TILE_SIZE);
+}
+
+bool beeMoveTargetValid(uint index, uint requiredFlags) {
+    return index < beeMoveTileCount() && tileHas(tiles[index], requiredFlags);
+}
+
+ivec2 beeMoveExactHome(Cell bee) {
+    ivec2 approximate = beeHomeCenterFromAux(bee.aux, pc.width, pc.height);
+    uint homeTile = tileIndex(approximate, pc.width);
+    return beeMoveTargetValid(homeTile, TILE_HAS_QUEEN)
+        ? tileQueenPosition(homeTile, pc.width, tiles[homeTile])
+        : approximate;
+}
+
+ivec2 beeMoveDestination(Cell bee) {
+    uint slot = beeFormationSlotFromAux(bee.aux, pc.width, pc.height);
+    ivec2 home = beeMoveExactHome(bee);
+    uint targetTile = beeTargetTileFromAge(bee.age);
+    if ((bee.aux & BEE_AUX_QUEEN) != 0u) {
+        if (!beeMoveTargetValid(targetTile, TILE_HAS_FLOWER)) return home;
+        return beeMigrationSite(
+            tileFlowerPosition(targetTile, pc.width, tiles[targetTile]),
+            pc.width, pc.height);
+    }
+    if ((bee.aux & BEE_AUX_MIGRATING) != 0u) {
+        if (!beeMoveTargetValid(targetTile, TILE_HAS_MIGRATING_QUEEN) &&
+            !beeMoveTargetValid(targetTile, TILE_HAS_QUEEN)) return home;
+        ivec2 queen = tileQueenPosition(targetTile, pc.width, tiles[targetTile]);
+        return queen + beeRotateOffset(beeFormationOffset(slot) / 2, pc.step / 8u);
+    }
+    if ((bee.aux & BEE_AUX_POLLEN) != 0u)
+        return home + beeLandingOffset(slot);
+    if ((bee.aux & BEE_AUX_FED) == 0u) {
+        if (!beeMoveTargetValid(targetTile, TILE_HAS_HONEY))
+            return home + beeLandingOffset(slot);
+        ivec2 honey = tileHoneyPosition(targetTile, pc.width, tiles[targetTile]);
+        return beeApproachPosition(honey, home);
+    }
+    if (targetTile != BEE_TARGET_NONE) {
+        if (!beeMoveTargetValid(targetTile, TILE_HAS_FLOWER))
+            return home + beeBiohazardTargetOffset(slot, pc.step);
+        ivec2 flower = tileFlowerPosition(targetTile, pc.width, tiles[targetTile]);
+        return beeApproachPosition(flower, home);
+    }
+    return home + beeBiohazardTargetOffset(slot, pc.step);
+}
+
+bool beeMovePassable(Cell target) {
+    return target.material == MAT_EMPTY ||
+           (isCellGas(target) && target.material != MAT_CLOUD);
+}
+
+void markBeeMoveDirty(ivec2 position) {
+    atomicOr(chunks[chunkIndex(position, pc.width)].flags,
+             CHUNK_DIRTY | CHUNK_ACTIVE | CHUNK_FINE_ACTIVE);
+}
+
+bool tryBeeMove(ivec2 sourcePosition, Cell bee, ivec2 offset) {
+    if (all(equal(offset, ivec2(0)))) return false;
+    ivec2 targetPosition = sourcePosition + offset;
+    if (!inside(targetPosition) ||
+        !sectionActiveAt(targetPosition, pc.activeSectionX,
+                         pc.activeSectionY, pc.activeMode)) return false;
+
+    uint sourceIndex = indexOf(sourcePosition);
+    uint targetIndex = indexOf(targetPosition);
+    Cell target = cells[targetIndex];
+    if (!beeMovePassable(target)) return false;
+    if (atomicCompSwap(cells[targetIndex].material,
+                       target.material, MAT_BEE) != target.material) return false;
+
+    bee.aux &= ~AUX_MOVED;
+    cells[targetIndex].age = bee.age;
+    cells[targetIndex].temperature = bee.temperature;
+    cells[targetIndex].aux = bee.aux;
+    cells[sourceIndex] = target;
+    markBeeMoveDirty(sourcePosition);
+    markBeeMoveDirty(targetPosition);
+    atomicAdd(debugStats[STAT_BEE_MOVES], 1u);
+    return true;
+}
+
+void main() {
+    ivec2 position = ivec2(gl_GlobalInvocationID.xy) + activeDispatchCellOrigin(
+        pc.activeSectionX, pc.activeSectionY, pc.activeMode);
+    if (!inside(position) ||
+        !sectionActiveAt(position, pc.activeSectionX,
+                         pc.activeSectionY, pc.activeMode)) return;
+
+    uint index = indexOf(position);
+    Cell bee = cells[index];
+    if (bee.material != MAT_BEE || (bee.aux & BEE_AUX_SWARM) == 0u) return;
+
+    uint slot = beeFormationSlotFromAux(bee.aux, pc.width, pc.height);
+    if (((slot + pc.step) & 3u) != 0u) {
+        atomicAnd(cells[index].aux, ~AUX_MOVED);
+        return;
+    }
+
+    ivec2 destination = beeMoveDestination(bee);
+    ivec2 delta = destination - position;
+    if (all(equal(delta, ivec2(0)))) {
+        atomicAnd(cells[index].aux, ~AUX_MOVED);
+        return;
+    }
+
+    ivec2 horizontal = ivec2(delta.x > 0 ? 1 : (delta.x < 0 ? -1 : 0), 0);
+    ivec2 vertical = ivec2(0, delta.y > 0 ? 1 : (delta.y < 0 ? -1 : 0));
+    bool horizontalFirst = abs(delta.x) >= abs(delta.y);
+    if (tryBeeMove(position, bee, horizontalFirst ? horizontal : vertical)) return;
+    if (tryBeeMove(position, bee, horizontalFirst ? vertical : horizontal)) return;
+
+    bool clockwise = ((slot * 17u + 3u) & 1u) == 0u;
+    ivec2 sidestep = clockwise
+        ? ivec2(delta.y > 0 ? -1 : 1, delta.x > 0 ? 1 : -1)
+        : ivec2(delta.y > 0 ? 1 : -1, delta.x > 0 ? -1 : 1);
+    if (tryBeeMove(position, bee, ivec2(sidestep.x, 0))) return;
+    if (tryBeeMove(position, bee, ivec2(0, sidestep.y))) return;
+    atomicAnd(cells[index].aux, ~AUX_MOVED);
+}

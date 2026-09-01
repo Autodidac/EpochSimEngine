@@ -494,10 +494,8 @@ vec3 applyWorldLighting(vec3 color, Cell cell, ivec2 grid, bool mapSample) {
     bool weatherGas = cell.material == MAT_SMOKE || cell.material == MAT_STEAM ||
                       cell.material == MAT_DIRTY_STEAM || cell.material == MAT_CLOUD;
     if (weatherGas) illumination = max(illumination, 0.48);
-    // The Fix29 hive hangs beneath a complete Wood support tile. Keep its
-    // structural shell/chamber readable without animating or changing the
-    // authoritative cells; otherwise the support's shadow collapses the old
-    // bright center into the brown shell at normal zoom.
+    // Keep the unsupported wasp-style Fix29 shell/chamber readable without
+    // animating or changing its authoritative cells.
     bool fixedHiveComposite = cell.material == MAT_BEEHIVE ||
         cell.material == MAT_QUEEN_BEE ||
         ((cell.material == MAT_HONEY || cell.material == MAT_POLLEN) &&

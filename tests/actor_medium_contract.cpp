@@ -26,14 +26,14 @@ int main() {
         sandhybrid::LifeStage::forage, 800u, false, false, true};
     if (!bee.valid() || sandhybrid::actor_is_material_record(bee.species)) return 7;
     auto bee_result = sandhybrid::advance_bee_lifecycle(
-        bee, {.flower_available = true, .colony_population = 99u});
+        bee, {.flower_available = true, .colony_population = 59u});
     if (!bee_result.collect_pollen || bee_result.next_stage != sandhybrid::LifeStage::carry) return 8;
     bee.carrying_pollen = true;
     bee_result = sandhybrid::advance_bee_lifecycle(
-        bee, {.at_home = true, .colony_population = 100u});
+        bee, {.at_home = true, .colony_population = 60u});
     if (!bee_result.deposit_pollen || bee_result.next_stage != sandhybrid::LifeStage::deposit) return 9;
-    if (sandhybrid::capped_bee_births(99u, 5u) != 1u ||
-        sandhybrid::capped_bee_births(100u, 1u) != 0u) return 10;
+    if (sandhybrid::capped_bee_births(59u, 5u) != 1u ||
+        sandhybrid::capped_bee_births(60u, 1u) != 0u) return 10;
 
     const auto formation_a = sandhybrid::biohazard_formation_offset(0u, 0u);
     const auto formation_b = sandhybrid::biohazard_formation_offset(0u, 120u);
@@ -43,7 +43,76 @@ int main() {
          slot < sandhybrid::fix29_bee_formation_count; ++slot) {
         if (sandhybrid::fix29_bee_forager_slot(slot)) ++forager_slots;
     }
-    if (forager_slots != 10u) return 36;
+    if (forager_slots != 6u) return 36;
+    std::uint32_t formation_fingerprint = 2166136261u;
+    for (std::size_t slot = 0u;
+         slot < sandhybrid::fix29_bee_formation_count; ++slot) {
+        const auto packed = sandhybrid::fix29_bee_formation_packed[slot];
+        formation_fingerprint ^= packed & 0xffu;
+        formation_fingerprint *= 16777619u;
+        formation_fingerprint ^= packed >> 8u;
+        formation_fingerprint *= 16777619u;
+        const auto point = sandhybrid::fix29_bee_formation_offset(slot);
+        if (sandhybrid::classify_pre_pr19_hive_cell(point.x, point.y) !=
+            sandhybrid::HivePart::empty) return 40;
+        if (sandhybrid::fix29_bee_formation_slot(point.x, point.y) !=
+            static_cast<std::int32_t>(slot)) return 37;
+        bool connected = false;
+        for (std::size_t other = 0u;
+             other < sandhybrid::fix29_bee_formation_count; ++other) {
+            if (slot == other) continue;
+            const auto neighbor =
+                sandhybrid::fix29_bee_formation_offset(other);
+            const auto dx = point.x - neighbor.x;
+            const auto dy = point.y - neighbor.y;
+            if (dx >= -1 && dx <= 1 && dy >= -1 && dy <= 1) {
+                connected = true;
+                break;
+            }
+        }
+        if (!connected) return 38;
+    }
+    if (formation_fingerprint != 0xbeb650bdu) return 39;
+    std::array<bool, sandhybrid::fix29_bee_formation_count> visited{};
+    std::array<std::size_t, sandhybrid::fix29_bee_formation_count> stack{};
+    std::uint32_t components = 0u;
+    for (std::size_t start = 0u;
+         start < sandhybrid::fix29_bee_formation_count; ++start) {
+        if (visited[start]) continue;
+        std::size_t stack_size = 0u;
+        std::uint32_t component_size = 0u;
+        stack[stack_size++] = start;
+        visited[start] = true;
+        while (stack_size > 0u) {
+            const auto current = stack[--stack_size];
+            ++component_size;
+            const auto point =
+                sandhybrid::fix29_bee_formation_offset(current);
+            for (std::size_t other = 0u;
+                 other < sandhybrid::fix29_bee_formation_count; ++other) {
+                if (visited[other]) continue;
+                const auto neighbor =
+                    sandhybrid::fix29_bee_formation_offset(other);
+                const auto dx = point.x - neighbor.x;
+                const auto dy = point.y - neighbor.y;
+                if (dx >= -1 && dx <= 1 && dy >= -1 && dy <= 1) {
+                    visited[other] = true;
+                    stack[stack_size++] = other;
+                }
+            }
+        }
+        if (component_size != 20u) return 41;
+        ++components;
+    }
+    if (components != 3u) return 42;
+    // The golden hive is the central biohazard ring. Each 20-bee outer
+    // crescent must face its opening away from that body.
+    if (sandhybrid::fix29_bee_formation_slot(0, -22) >= 0 ||
+        sandhybrid::fix29_bee_formation_slot(0, -15) < 0) return 43;
+    if (sandhybrid::fix29_bee_formation_slot(-20, 8) >= 0 ||
+        sandhybrid::fix29_bee_formation_slot(-10, 8) < 0) return 44;
+    if (sandhybrid::fix29_bee_formation_slot(20, 8) >= 0 ||
+        sandhybrid::fix29_bee_formation_slot(10, 8) < 0) return 45;
 
     if (sandhybrid::choose_ant_intent({.hazard = true}) !=
         sandhybrid::AntIntent::avoid_hazard) return 12;
@@ -70,7 +139,7 @@ int main() {
     if (!blocked.blocked_capacity) return 20;
 
     if (sandhybrid::classify_pre_pr19_hive_cell(-40, -16) !=
-        sandhybrid::HivePart::support) return 21;
+        sandhybrid::HivePart::empty) return 21;
     if (sandhybrid::classify_pre_pr19_hive_cell(0, 0) !=
         sandhybrid::HivePart::queen) return 22;
     if (sandhybrid::classify_pre_pr19_hive_cell(10, 1) !=
@@ -108,3 +177,10 @@ int main() {
             sandhybrid::species_index(sandhybrid::ActorSpecies::bee)] != 1u) return 35;
     return 0;
 }
+    constexpr auto large_world_last_tile = 1280u * 180u - 1u;
+    static_assert(large_world_last_tile < sandhybrid::fix29_bee_target_none);
+    constexpr auto packed_large_target = sandhybrid::fix29_bee_pack_age(
+        1'701u, large_world_last_tile);
+    static_assert(sandhybrid::fix29_bee_timer_from_age(packed_large_target) == 1'701u);
+    static_assert(sandhybrid::fix29_bee_target_from_age(packed_large_target) ==
+                  large_world_last_tile);

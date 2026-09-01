@@ -76,7 +76,7 @@ evidence = {
     "MC-018": (("tests/packet_transaction_contract.cpp", ("blocked", "commit")),),
     "MC-026": (("tests/atmosphere_contract.cpp", ("transfer_atmosphere", "respire")),),
     "MC-031": (("tests/actor_medium_contract.cpp", ("drowning", "suffocating")),),
-    "MC-032": (("tools/audit_ecology_motion.py", ("BEE_COLONY_MAX = 100u",)),),
+    "MC-032": (("tools/audit_ecology_motion.py", ("BEE_COLONY_MAX = 60u",)),),
     "MC-038": (("tests/scene_image_contract.cpp", ("queen", "structural")),),
     "MC-039": (("tests/actor_medium_contract.cpp", ("impulse_x", "impulse_y")),),
     "MC-068": (("tests/input_routing_contract.cpp", ("camera_wasd_enabled",)),
@@ -109,7 +109,7 @@ for mission, checks in evidence.items():
         for token in tokens:
             require(path, token)
 
-require("tools/audit_ecology_motion.py", "BEE_COLONY_MAX = 100u")
+require("tools/audit_ecology_motion.py", "BEE_COLONY_MAX = 60u")
 require("tools/audit_fix34.py", "BEE_INITIAL_PACKED")
 require("missioncache.md", "Cross-system packaged runtime acceptance")
 

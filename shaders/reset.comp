@@ -880,12 +880,6 @@ bool looseAuthoredTerrain(uint scene, ivec2 p, uint material) {
     return false;
 }
 
-bool beehiveSupportForScene(uint scene, ivec2 p) {
-    if (scene != SCENE_SANDBOX && scene != SCENE_ECOSYSTEM) return false;
-    ivec2 queen = scene == SCENE_SANDBOX ? sandboxQueen() : ecosystemQueen();
-    return beehiveSupportCell(queen, p - queen);
-}
-
 bool beehiveFixedContentForScene(uint scene, ivec2 p, uint material) {
     if ((material != MAT_HONEY && material != MAT_POLLEN) ||
         (scene != SCENE_SANDBOX && scene != SCENE_ECOSYSTEM)) return false;

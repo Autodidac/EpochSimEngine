@@ -35,16 +35,13 @@ for token in ("gas_tile_eligible(true, true, false)",
               "liquid_tile_eligible(true, true, false)"):
     require("tests/behavior_contract.cpp", token)
 
-# Exact Fix29 Ecosystem hive body, tiled perch, positions, and deterministic contents without foreign actor behavior.
+# Exact Fix29 Ecosystem hive body, no perch, positions, and deterministic contents without foreign actor behavior.
 for token in (
     "BEEHIVE_SHELL_MIN_RADIUS_SQUARED = 24",
     "BEEHIVE_SHELL_MAX_RADIUS_SQUARED = 88",
     "BEEHIVE_CHAMBER_RADIUS_SQUARED = 24",
     "BEEHIVE_EXIT_MAX_X = 10",
-    "BEEHIVE_SUPPORT_WIDTH = 72",
-    "BEEHIVE_SUPPORT_HEIGHT = 8",
-    "BEEHIVE_SUPPORT_TILE_SIZE = 8",
-    "BEEHIVE_SUPPORT_LEFT_BIAS = 40",
+    "beehivePrefabMaterial",
 ):
     require("shaders/beehive.glsl", token)
 for token in (
@@ -74,12 +71,14 @@ for token in ("halfWaterFallPending", "halfWaterMergePending",
 for token in (
     "AUTHORED_WORLD_CELLS.x * 4 / 5, AUTHORED_WORLD_CELLS.y - 126",
     "AUTHORED_WORLD_CELLS.x * 4 / 5, AUTHORED_WORLD_CELLS.y - 128",
-    "beehiveSupportForScene",
+    "includeFormation",
 ):
     require("shaders/reset.comp", token)
 for token in ("normalize_pre_pr19_hives", "pre_pr19_beehive_material",
-              "beehive_support_width = 72"):
+              "fix29_bee_formation_count"):
     require("src/scene_image.cpp", token)
+for token in ("BEEHIVE_SUPPORT_WIDTH", "beehiveSupportForScene"):
+    reject("shaders/beehive.glsl" if token.startswith("BEEHIVE") else "shaders/reset.comp", token)
 for token in ("effective_world_brush_radius", "effective_world_brush_shape"):
     require("include/sandhybrid/simulation_policy.hpp", token)
 require("include/sandhybrid/ui_layout.hpp", "pointer_to_grid")

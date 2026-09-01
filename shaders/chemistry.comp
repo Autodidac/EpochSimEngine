@@ -3,7 +3,7 @@
 #include "materials.glsl"
 #include "tiles.glsl"
 #include "chunks.glsl"
-#include "bee_swarm.glsl"
+#include "bee_swarm_chemistry_legacy.glsl"
 #include "conservation.glsl"
 #include "debug_stats.glsl"
 

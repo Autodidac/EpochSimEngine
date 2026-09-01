@@ -1,11 +1,9 @@
 #ifndef SANDHYBRID_BEE_SWARM_GLSL
 #define SANDHYBRID_BEE_SWARM_GLSL
 
-const uint BEE_FORMATION_COUNT = 60u;
-const uint BEE_COLONY_MAX = 60u;
-const uint BEE_TIMER_BITS = 14u;
-const uint BEE_TIMER_MAX = 0x3fffu;
-const uint BEE_TARGET_NONE = 0x3ffffu;
+const uint BEE_FORMATION_COUNT = 100u;
+const uint BEE_COLONY_MAX = 100u;
+const uint BEE_TARGET_NONE = 0xffffu;
 const uint BEE_AUX_QUEEN = 0x40000000u;
 const uint BEE_AUX_POLLEN = 0x20000000u;
 const uint BEE_AUX_FED = 0x10000000u;
@@ -18,13 +16,16 @@ const ivec2 BEE_AUTHORED_WORLD_CELLS = ivec2(640, 360);
 const ivec2 BEE_PERSISTENT_WORLD_CELLS = ivec2(5120, 360);
 
 const uint BEE_INITIAL_PACKED[BEE_FORMATION_COUNT] = uint[](
-    5437u, 5564u, 5572u, 5691u, 5701u, 5818u, 5830u, 5946u, 5958u, 6075u,
-    6085u, 6204u, 6205u, 6211u, 6212u, 6334u, 6335u, 6336u, 6337u, 6338u,
-    8495u, 8496u, 8497u, 8527u, 8528u, 8529u, 8626u, 8654u, 8755u, 8781u,
-    8884u, 8908u, 9013u, 9035u, 9142u, 9162u, 9270u, 9290u, 9398u, 9418u,
-    9525u, 9547u, 9644u, 9652u, 9676u, 9684u, 9773u, 9779u, 9805u, 9811u,
-    9902u, 9906u, 9934u, 9938u, 10031u, 10032u, 10033u, 10063u, 10064u,
-    10065u
+    4541u, 4542u, 4543u, 4545u, 4546u, 4547u, 4668u, 4669u, 4675u, 4676u,
+    4795u, 4805u, 4922u, 4923u, 4933u, 4934u, 5049u, 5050u, 5062u, 5063u,
+    5177u, 5191u, 5433u, 5447u, 5561u, 5575u, 5689u, 5703u, 8240u, 8241u,
+    8243u, 8269u, 8271u, 8272u, 8366u, 8367u, 8401u, 8402u, 8493u, 8494u,
+    8530u, 8531u, 8620u, 8627u, 8653u, 8660u, 8747u, 8748u, 8788u, 8789u,
+    9003u, 9012u, 9036u, 9045u, 9131u, 9173u, 9259u, 9269u, 9291u, 9301u,
+    9515u, 9516u, 9527u, 9545u, 9556u, 9557u, 9644u, 9645u, 9655u, 9657u,
+    9671u, 9673u, 9683u, 9684u, 9774u, 9783u, 9788u, 9796u, 9801u, 9810u,
+    9902u, 9903u, 9909u, 9910u, 9918u, 9922u, 9930u, 9931u, 9937u, 9938u,
+    10032u, 10033u, 10034u, 10036u, 10037u, 10059u, 10060u, 10062u, 10063u, 10064u
 );
 
 uint beeHash32(uint value) {
@@ -175,11 +176,10 @@ uint beePackMetadata(uint aux, ivec2 homeCenter, uint slot, uint width, uint hei
     uint metadata = homeX | (homeY << 8u) | (packedSlot << 15u);
     return (aux & ~BEE_METADATA_MASK) | metadata;
 }
-uint beeTimerFromAge(uint age) { return age & BEE_TIMER_MAX; }
-uint beeTargetTileFromAge(uint age) { return age >> BEE_TIMER_BITS; }
+uint beeTimerFromAge(uint age) { return age & 0xffffu; }
+uint beeTargetTileFromAge(uint age) { return age >> 16u; }
 uint beePackAge(uint timer, uint targetTile) {
-    return min(timer, BEE_TIMER_MAX) |
-           (min(targetTile, BEE_TARGET_NONE) << BEE_TIMER_BITS);
+    return min(timer, 0xffffu) | (min(targetTile, BEE_TARGET_NONE) << 16u);
 }
 
 bool beeIsForager(uint aux, uint width, uint height) {
@@ -214,7 +214,7 @@ ivec2 beeBiohazardTargetOffset(uint slot, uint step) {
     // readable. Real foragers still leave through their explicit flower target
     // and return through pollen/honey lifecycle targets.
     // Resting owners do not orbit their assigned pixel: a universal one-cell
-    // flutter made all 60 canonical bees look like an amorphous swarm.
+    // flutter made all 100 canonical bees look like an amorphous swarm.
     return beeFormationOffset(slot);
 }
 

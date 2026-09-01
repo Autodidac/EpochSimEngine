@@ -117,7 +117,7 @@ require("tests/ui_layout_contract.cpp", "blueprint_slot_count")
 for token in (
     "Blueprint slots are shared",
     "Player presence or mining mode never suppresses",
-    "photographed historical SimpleSandSim Fix29-era Sandbox hive",
+    "photographed historical SimpleSandSim Fix29-era wasp hive",
 ):
     require("AGENTS.md", token)
 for token in (

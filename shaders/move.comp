@@ -3,7 +3,7 @@
 #include "material_ids.glsl"
 #include "tiles.glsl"
 #include "chunks.glsl"
-#include "bee_swarm.glsl"
+#include "bee_swarm_chemistry_legacy.glsl"
 #include "debug_stats.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;

@@ -156,6 +156,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         copy_cells.comp
         chemistry.comp
         conservation_corrections.comp
+        bee_move.comp
         rainfall.comp
         macro_move.comp
         move.comp
@@ -180,6 +181,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
                     -o "${SHADER_OUTPUT}"
             DEPENDS "${SHADER_INPUT}" "${SHADER_SOURCE_DIR}/materials.glsl"
                     "${SHADER_SOURCE_DIR}/bee_swarm.glsl"
+                    "${SHADER_SOURCE_DIR}/bee_swarm_chemistry_legacy.glsl"
                     "${SHADER_SOURCE_DIR}/beehive.glsl"
                     "${SHADER_SOURCE_DIR}/material_ids.glsl"
                     "${SHADER_SOURCE_DIR}/material_physics.glsl"

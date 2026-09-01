@@ -7,11 +7,6 @@ const int BEEHIVE_CHAMBER_RADIUS_SQUARED = 24;
 const int BEEHIVE_EXIT_MIN_X = 1;
 const int BEEHIVE_EXIT_MAX_X = 10;
 const int BEEHIVE_EXIT_HALF_HEIGHT = 1;
-const int BEEHIVE_SUPPORT_TILE_SIZE = 8;
-const int BEEHIVE_SUPPORT_WIDTH = 72;
-const int BEEHIVE_SUPPORT_HEIGHT = 8;
-const int BEEHIVE_SUPPORT_LEFT_BIAS = 40;
-const int BEEHIVE_SUPPORT_TOP_BIAS = 16;
 const uint BEEHIVE_CANONICAL_WIDTH = 640u;
 const ivec2 BEEHIVE_CANONICAL_SANDBOX_QUEEN = ivec2(512, 234);
 const ivec2 BEEHIVE_CANONICAL_ECOSYSTEM_QUEEN = ivec2(512, 232);
@@ -20,19 +15,6 @@ const uint BEEHIVE_CANONICAL_SEED = 0xD17A5EEDu;
 
 // Exact compact hive body and chamber rule from the photographed historical
 // SimpleSandSim Sandbox map. SandHybrid owns the surrounding bee population and behavior.
-ivec2 beehiveSupportOrigin(ivec2 queen) {
-    return ((queen - ivec2(BEEHIVE_SUPPORT_LEFT_BIAS,
-                           BEEHIVE_SUPPORT_TOP_BIAS)) /
-            BEEHIVE_SUPPORT_TILE_SIZE) * BEEHIVE_SUPPORT_TILE_SIZE;
-}
-
-bool beehiveSupportCell(ivec2 queen, ivec2 offset) {
-    ivec2 p = queen + offset;
-    ivec2 origin = beehiveSupportOrigin(queen);
-    return p.x >= origin.x && p.x < origin.x + BEEHIVE_SUPPORT_WIDTH &&
-           p.y >= origin.y && p.y < origin.y + BEEHIVE_SUPPORT_HEIGHT;
-}
-
 uint beehivePrefabEntropy(ivec2 queen, ivec2 offset) {
     // Fix29 hashes the actual 640-wide map cell. The Sandbox and Ecosystem
     // queens differ by two rows, so sharing an offset-only pattern is incorrect.
@@ -55,7 +37,6 @@ uint beehivePrefabMaterial(ivec2 queen, ivec2 offset, uint entropy) {
         if ((entropy & 3u) == 0u) return MAT_EMPTY;
         return ((entropy >> 2u) & 3u) == 0u ? MAT_POLLEN : MAT_HONEY;
     }
-    if (beehiveSupportCell(queen, offset)) return MAT_WOOD;
     return MATERIAL_COUNT;
 }
 

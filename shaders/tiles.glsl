@@ -98,15 +98,9 @@ ivec2 tileHoneyLocal(TileState state) {
 }
 uint tileBeeCount(TileState state) { return (state.occupancy >> TILE_BEE_COUNT_SHIFT) & 127u; }
 
-uint packTileOccupancy(uint occupancy, ivec2 queenLocal, ivec2 flowerLocal,
-                       ivec2 honeyLocal, uint beeCount) {
+uint packTileOccupancy(uint occupancy, uint featureLocations, uint beeCount) {
     return min(occupancy, 64u) |
-           (uint(clamp(queenLocal.x, 0, 7)) << TILE_QUEEN_X_SHIFT) |
-           (uint(clamp(queenLocal.y, 0, 7)) << TILE_QUEEN_Y_SHIFT) |
-           (uint(clamp(flowerLocal.x, 0, 7)) << TILE_FLOWER_X_SHIFT) |
-           (uint(clamp(flowerLocal.y, 0, 7)) << TILE_FLOWER_Y_SHIFT) |
-           (uint(clamp(honeyLocal.x, 0, 7)) << TILE_HONEY_X_SHIFT) |
-           (uint(clamp(honeyLocal.y, 0, 7)) << TILE_HONEY_Y_SHIFT) |
+           featureLocations |
            (min(beeCount, 127u) << TILE_BEE_COUNT_SHIFT);
 }
 

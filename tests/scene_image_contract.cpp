@@ -18,7 +18,6 @@ constexpr std::uint32_t aux_supported = 0x02000000u;
 constexpr std::uint32_t aux_moved = 0x01000000u;
 constexpr std::uint32_t aux_water_half = 0x00800000u;
 constexpr std::uint32_t aux_state_mask = 0x000000ffu;
-constexpr std::uint32_t bee_target_none = 0xffffu;
 constexpr std::uint32_t bee_authored_home_slot_bit = 0x80u;
 }
 
@@ -81,7 +80,8 @@ int main() {
         if ((packed_slot & bee_authored_home_slot_bit) == 0u) return 6;
         const auto slot = packed_slot & 127u;
         if (home_x != queen_x || home_y != queen_y || slot != expected_slot) return 6;
-        if ((bee.age >> 16u) != bee_target_none) return 7;
+        if (sandhybrid::fix29_bee_target_from_age(bee.age) !=
+            sandhybrid::fix29_bee_target_none) return 7;
         ++expected_slot;
     }
 
@@ -115,33 +115,29 @@ int main() {
     constexpr std::uint32_t canonical_height = 360u;
     const auto exact_hive = [&](const sandhybrid::Scene scene,
                                 const std::int32_t hive_queen_y,
-                                const std::uint32_t expected_support,
                                 const std::uint32_t expected_honey,
                                 const std::uint32_t expected_pollen,
                                 const std::uint32_t expected_empty) {
         std::vector<std::uint32_t> cells(
             canonical_width * canonical_height,
-            static_cast<std::uint32_t>(sandhybrid::Material::empty));
+            static_cast<std::uint32_t>(sandhybrid::Material::atmosphere));
         sandhybrid::normalize_pre_pr19_hives(
             cells, canonical_width, canonical_height, 0u, 0u, scene);
 
-        std::uint32_t support = 0u;
+        std::uint32_t legacy_perch_wood = 0u;
         std::uint32_t shell = 0u;
         std::uint32_t honey = 0u;
         std::uint32_t pollen = 0u;
         std::uint32_t chamber_empty = 0u;
         std::uint32_t bees = 0u;
-        for (std::int32_t dy = -29; dy <= 14; ++dy) {
+        for (std::int32_t dy = sandhybrid::fix29_bee_formation_min_y;
+             dy <= sandhybrid::fix29_bee_formation_max_y; ++dy) {
             for (std::int32_t dx = -40; dx <= 31; ++dx) {
                 const auto part = sandhybrid::classify_pre_pr19_hive_cell(
                     dx, dy, sandhybrid::fix29_hive_entropy(512, hive_queen_y, dx, dy),
                     512, hive_queen_y);
                 auto expected = sandhybrid::Material::empty;
                 switch (part) {
-                case sandhybrid::HivePart::support:
-                    expected = sandhybrid::Material::wood;
-                    ++support;
-                    break;
                 case sandhybrid::HivePart::shell:
                     expected = sandhybrid::Material::beehive;
                     ++shell;
@@ -161,7 +157,10 @@ int main() {
                     ++chamber_empty;
                     break;
                 case sandhybrid::HivePart::exit:
+                    expected = sandhybrid::Material::empty;
+                    break;
                 case sandhybrid::HivePart::empty:
+                    expected = sandhybrid::Material::atmosphere;
                     break;
                 }
                 const auto formation_slot =
@@ -174,15 +173,19 @@ int main() {
                 const auto actual = static_cast<sandhybrid::Material>(cells[
                     static_cast<std::size_t>(hive_queen_y + dy) * canonical_width +
                     static_cast<std::size_t>(512 + dx)]);
+                if (dx >= -40 && dx <= 31 && dy >= -18 && dy <= -11 &&
+                    actual == sandhybrid::Material::wood)
+                    ++legacy_perch_wood;
                 if (actual != expected) return false;
             }
         }
-        return support == expected_support && shell == 193u && bees == 100u &&
+        return legacy_perch_wood == 0u && shell == 193u &&
+               bees == sandhybrid::fix29_bee_formation_count &&
                honey == expected_honey && pollen == expected_pollen &&
                chamber_empty == expected_empty;
     };
-    if (!exact_hive(sandhybrid::Scene::sandbox, 234, 576u, 35u, 13u, 8u) ||
-        !exact_hive(sandhybrid::Scene::ecosystem, 232, 571u, 31u, 9u, 16u))
+    if (!exact_hive(sandhybrid::Scene::sandbox, 234, 35u, 13u, 8u) ||
+        !exact_hive(sandhybrid::Scene::ecosystem, 232, 31u, 9u, 16u))
         return 15;
 
     // Persistent-World PPM normalization must encode the same district-local
@@ -225,7 +228,9 @@ int main() {
                 (aux_bee_fed | aux_bee_swarm) ||
             (bee.aux & aux_water_half) != 0u || district != 0u ||
             home_x != persistent_queen_x || home_y != 232u ||
-            slot != expected_slot || (bee.age >> 16u) != bee_target_none)
+            slot != expected_slot ||
+            sandhybrid::fix29_bee_target_from_age(bee.age) !=
+                sandhybrid::fix29_bee_target_none)
             return 18;
     }
 

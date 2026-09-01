@@ -31,6 +31,14 @@ int main() {
          bot_slot.position.y + bot_slot.size.y * 0.5f});
     if (material != Material::factory_core) return 2;
 
+    const auto beehive_slot = sandhybrid::ui::palette_item_rect(
+        layout, MaterialGroup::colony, 3u);
+    const auto beehive_button_material = sandhybrid::ui::palette_material_at(
+        layout, MaterialGroup::colony,
+        {beehive_slot.position.x + beehive_slot.size.x * 0.5f,
+         beehive_slot.position.y + beehive_slot.size.y * 0.5f});
+    if (beehive_button_material != Material::beehive) return 28;
+
     if (layout.reset_scene.position.y != layout.pause_toggle.position.y ||
         layout.reset_scene.size.y != layout.pause_toggle.size.y ||
         layout.reset_scene.position.x + layout.reset_scene.size.x >

@@ -33,7 +33,8 @@ require("shaders/beehive.glsl",
         "uint cellIndex = uint(cell.y) * BEEHIVE_CANONICAL_WIDTH + uint(cell.x);",
         "hash32(cellIndex ^ BEEHIVE_CANONICAL_SEED)")
 require("shaders/reset.comp", "beehivePrefabEntropy(queen, offset)")
-require("shaders/paint.comp", "beehivePrefabEntropy(center, delta)")
+require("shaders/paint.comp", "beePersistentAddress(center, pc.width, pc.height")
+require("shaders/paint.comp", "beehivePrefabEntropy(prefabQueen, delta)")
 require("include/sandhybrid/actor_medium.hpp",
         "fix29_hive_entropy(", "fix29_hive_sandbox_queen_y", "fix29_hive_ecosystem_queen_y")
 require("tests/actor_medium_contract.cpp", "0x1c707b05u", "0x04572a8au")

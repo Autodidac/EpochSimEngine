@@ -8,7 +8,16 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 1) buffer NextCells { Cell nextCells[]; };
+layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
 layout(std430, binding = 10) buffer RainColumns { uint rainColumns[]; };
+
+const uint CORRECTION_BEE_TIMER_BITS = 14u;
+const uint CORRECTION_BEE_TIMER_MAX = 0x3fffu;
+const uint CORRECTION_BEE_TARGET_NONE = 0x3ffffu;
+const uint CORRECTION_BEE_AUX_POLLEN = 0x20000000u;
+const uint CORRECTION_BEE_AUX_FED = 0x10000000u;
+const uint CORRECTION_BEE_AUX_SWARM = 0x08000000u;
+const uint CORRECTION_BEE_AUX_MIGRATING = 0x02000000u;
 
 const ivec2 correctionNeighborOffsets[8] = ivec2[8](
     ivec2(-1, -1), ivec2(0, -1), ivec2(1, -1), ivec2(-1, 0),
@@ -21,6 +30,84 @@ Cell sourceAt(ivec2 position) {
 bool sourceHasNeighbor(ivec2 position, uint material) {
     for (uint i = 0u; i < 8u; ++i)
         if (sourceAt(position + correctionNeighborOffsets[i]).material == material) return true;
+    return false;
+}
+
+bool sourceHasWithin(ivec2 position, uint material, int radius) {
+    for (int dy = -radius; dy <= radius; ++dy) {
+        for (int dx = -radius; dx <= radius; ++dx) {
+            if (dx == 0 && dy == 0) continue;
+            if (sourceAt(position + ivec2(dx, dy)).material == material) return true;
+        }
+    }
+    return false;
+}
+
+uint correctionBeeTimer(uint age) {
+    return age & CORRECTION_BEE_TIMER_MAX;
+}
+
+uint correctionBeeTarget(uint age) {
+    return age >> CORRECTION_BEE_TIMER_BITS;
+}
+
+uint correctionBeePackAge(uint timer, uint target) {
+    return min(timer, CORRECTION_BEE_TIMER_MAX) |
+           (min(target, CORRECTION_BEE_TARGET_NONE) << CORRECTION_BEE_TIMER_BITS);
+}
+
+bool correctionTargetHasFlags(uint target, uint required, uint forbidden) {
+    uint tileColumns = (pc.width + 7u) / 8u;
+    uint tileRows = (pc.height + 7u) / 8u;
+    return target < tileColumns * tileRows &&
+           (tiles[target].flags & required) == required &&
+           (tiles[target].flags & forbidden) == 0u;
+}
+
+uint correctionBeeSlot(uint aux) {
+    bool persistent = pc.width >= 5120u && pc.height >= 360u;
+    return persistent ? ((aux >> 13u) & 127u) : ((aux >> 15u) & 127u);
+}
+
+bool correctionBeeIsForager(uint aux) {
+    uint slot = correctionBeeSlot(aux);
+    return ((slot * 37u + 11u) % 10u) == 0u;
+}
+
+uint correctionNearestBeeTile(ivec2 position, uint required, uint forbidden,
+                              int maximumTileDistance) {
+    uint columns = (pc.width + 7u) / 8u;
+    uint rows = (pc.height + 7u) / 8u;
+    ivec2 origin = position / 8;
+    uint best = CORRECTION_BEE_TARGET_NONE;
+    int bestDistance = 0x3fffffff;
+    for (int dy = -maximumTileDistance; dy <= maximumTileDistance; ++dy) {
+        for (int dx = -maximumTileDistance; dx <= maximumTileDistance; ++dx) {
+            int tileDistance = abs(dx) + abs(dy);
+            if (tileDistance > maximumTileDistance) continue;
+            ivec2 candidate = origin + ivec2(dx, dy);
+            if (candidate.x < 0 || candidate.y < 0 ||
+                candidate.x >= int(columns) || candidate.y >= int(rows)) continue;
+            uint candidateIndex = uint(candidate.y) * columns + uint(candidate.x);
+            if (!correctionTargetHasFlags(candidateIndex, required, forbidden)) continue;
+            int distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared < bestDistance ||
+                (distanceSquared == bestDistance && candidateIndex < best)) {
+                bestDistance = distanceSquared;
+                best = candidateIndex;
+            }
+        }
+    }
+    return best;
+}
+
+bool correctionBeeBesideTarget(ivec2 position, uint target, uint material) {
+    if (!correctionTargetHasFlags(target, 0u, 0u)) return false;
+    for (uint i = 0u; i < 8u; ++i) {
+        ivec2 candidate = position + correctionNeighborOffsets[i];
+        if (sourceAt(candidate).material == material &&
+            tileIndex(candidate, pc.width) == target) return true;
+    }
     return false;
 }
 
@@ -71,6 +158,88 @@ void main() {
     Cell source = cells[index];
     Cell proposed = nextCells[index];
     Cell corrected = proposed;
+
+    // Keep the proven monolithic chemistry kernel's control-flow shape for
+    // software Vulkan, but own the complete current 14-bit-timer/18-bit-target
+    // lifecycle for authored bees here. The frozen kernel still owns hazards
+    // and paired Pollen creation; this shallow pass preserves current metadata
+    // and performs flower departure, pickup, return/deposit, and Honey feeding.
+    if (source.material == MAT_BEE && proposed.material == MAT_BEE &&
+        (source.aux & CORRECTION_BEE_AUX_SWARM) != 0u &&
+        (source.aux & CORRECTION_BEE_AUX_MIGRATING) == 0u) {
+        corrected = source;
+        uint timer = min(correctionBeeTimer(source.age) + 1u,
+                         CORRECTION_BEE_TIMER_MAX);
+        uint target = correctionBeeTarget(source.age);
+        bool carryingPollen = (source.aux & CORRECTION_BEE_AUX_POLLEN) != 0u;
+        bool fed = (source.aux & CORRECTION_BEE_AUX_FED) != 0u;
+        corrected.age = correctionBeePackAge(timer, target);
+
+        if (fed && !carryingPollen && target == CORRECTION_BEE_TARGET_NONE &&
+            correctionBeeIsForager(source.aux) &&
+            timer >= 1200u + ((correctionBeeSlot(source.aux) * 29u) % 600u)) {
+            target = correctionNearestBeeTile(
+                position, TILE_HAS_FLOWER,
+                TILE_HAS_HIVE | TILE_HAS_QUEEN | TILE_HAS_MIGRATING_QUEEN |
+                    TILE_BEE_HAZARD,
+                12);
+            if (target != CORRECTION_BEE_TARGET_NONE) {
+                timer = 0u;
+                corrected.age = correctionBeePackAge(timer, target);
+            }
+        }
+
+        if (fed && !carryingPollen && target != CORRECTION_BEE_TARGET_NONE) {
+            if (!correctionTargetHasFlags(target, TILE_HAS_FLOWER,
+                                          TILE_BEE_HAZARD)) {
+                target = CORRECTION_BEE_TARGET_NONE;
+                timer = 0u;
+                corrected.age = correctionBeePackAge(timer, target);
+            } else if (correctionBeeBesideTarget(position, target, MAT_FLOWER)) {
+                corrected.aux |= CORRECTION_BEE_AUX_POLLEN;
+                corrected.aux &= ~CORRECTION_BEE_AUX_FED;
+                carryingPollen = true;
+                fed = false;
+                target = CORRECTION_BEE_TARGET_NONE;
+                timer = 0u;
+                corrected.age = correctionBeePackAge(timer, target);
+            }
+        }
+
+        if (carryingPollen &&
+            (sourceHasNeighbor(position, MAT_QUEEN_BEE) ||
+             sourceHasNeighbor(position, MAT_BEEHIVE))) {
+            corrected.aux &= ~(CORRECTION_BEE_AUX_POLLEN |
+                               CORRECTION_BEE_AUX_FED);
+            carryingPollen = false;
+            fed = false;
+            target = correctionNearestBeeTile(
+                position, TILE_HAS_HONEY, TILE_BEE_HAZARD, 12);
+            timer = 0u;
+            corrected.age = correctionBeePackAge(timer, target);
+        }
+
+        if (!carryingPollen && !fed) {
+            if (!correctionTargetHasFlags(target, TILE_HAS_HONEY,
+                                          TILE_BEE_HAZARD)) {
+                target = correctionNearestBeeTile(
+                    position, TILE_HAS_HONEY, TILE_BEE_HAZARD, 12);
+                timer = 0u;
+                corrected.age = correctionBeePackAge(timer, target);
+            }
+            if (target != CORRECTION_BEE_TARGET_NONE &&
+                correctionBeeBesideTarget(position, target, MAT_HONEY)) {
+                if (timer == 0u) {
+                    timer = 1u;
+                    corrected.age = correctionBeePackAge(timer, target);
+                } else {
+                    corrected.aux |= CORRECTION_BEE_AUX_FED;
+                    corrected.age = correctionBeePackAge(
+                        0u, CORRECTION_BEE_TARGET_NONE);
+                }
+            }
+        }
+    }
 
     // The fine-authored Fix29 shell is canonical body content, not loose cargo.
     if (source.material == MAT_BEEHIVE && isStructural(source)) {
@@ -191,6 +360,13 @@ void main() {
             addConvertedStat();
         }
     }
+
+    // Authored bees are advanced by the dedicated lightweight bee movement
+    // pass after generic fine movement. Marking them moved here keeps the
+    // frozen material kernel from applying its legacy 100-slot target model.
+    if (corrected.material == MAT_BEE &&
+        (corrected.aux & CORRECTION_BEE_AUX_SWARM) != 0u)
+        corrected.aux |= AUX_MOVED;
 
     nextCells[index] = corrected;
 }
