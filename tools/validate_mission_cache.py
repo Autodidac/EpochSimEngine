@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CACHE = ROOT / "missioncache.md"
 STATUS = r"OPEN|PARTIAL|REGRESSION|DEFERRED"
 ROW = re.compile(rf"^\| (MC-\d{{3}}) \| ({STATUS}) \| (.+?) \| (.+?) \|$")
+ACCEPTED_ROW = re.compile(r"^\| (MC-\d{3}) \| (.+?) \| (.+?) \|$")
 
 
 def fail(message: str) -> None:
@@ -32,6 +33,7 @@ def main() -> int:
 
     active_text = text[active_start:permanent_start]
     misplaced_text = text[permanent_start:archive_start]
+    accepted_text = text[archive_start:]
     rows: list[tuple[str, str, str, str]] = []
     for line_number, line in enumerate(active_text.splitlines(), start=1):
         match = ROW.match(line)
@@ -44,6 +46,11 @@ def main() -> int:
         fail("no active mission rows found")
 
     ids = [row[0] for row in rows]
+    accepted_ids = [
+        match.group(1)
+        for line in accepted_text.splitlines()
+        if (match := ACCEPTED_ROW.match(line))
+    ]
     priority_line = next(
         (line for line in text.splitlines() if line.startswith("- **P0 / primary release gate:**")),
         "",
@@ -60,6 +67,14 @@ def main() -> int:
     duplicates = sorted({mission_id for mission_id in ids if ids.count(mission_id) > 1})
     if duplicates:
         fail(f"duplicate active mission IDs: {', '.join(duplicates)}")
+    duplicate_accepted = sorted({
+        mission_id for mission_id in accepted_ids if accepted_ids.count(mission_id) > 1
+    })
+    if duplicate_accepted:
+        fail(f"duplicate accepted mission IDs: {', '.join(duplicate_accepted)}")
+    active_and_accepted = sorted(set(ids).intersection(accepted_ids))
+    if active_and_accepted:
+        fail(f"missions are both active and accepted: {', '.join(active_and_accepted)}")
 
     misplaced = [line for line in misplaced_text.splitlines() if line.startswith("| MC-")]
     if misplaced:
@@ -67,7 +82,7 @@ def main() -> int:
             line.split("|")[1].strip() for line in misplaced))
 
     required_recent = {f"MC-{number:03d}" for number in range(92, 99)}
-    missing_recent = sorted(required_recent.difference(ids))
+    missing_recent = sorted(required_recent.difference(set(ids).union(accepted_ids)))
     if missing_recent:
         fail(f"recent user requirements missing from active cache: {', '.join(missing_recent)}")
 

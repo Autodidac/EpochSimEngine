@@ -99,6 +99,18 @@ The executable allocates the selected resident World (Large is 10240x1440), runs
 
 This focused gate does not close broader cross-district traversal, multi-interval weather/ecology cycles, all machinery, repeated long-running save/reload conservation, full bee lifecycle, measured debug overhead, or final user visual review of the photographed hive and distributed scenery.
 
+## Installed interactive presentation command
+
+Run this from the `bin` directory of a fresh native install:
+
+```text
+sandhybrid --world-size compact --interactive-acceptance-report interactive-acceptance.json
+```
+
+The gate submits at most one fixed simulation tick per presented frame and writes a schema-1 timing report plus a sibling `interactive-acceptance-frames` directory. Its real swapchain captures cover normal World, REGION Debug, WORLD TOTALS, MAP, Inventory Blueprints, Designer Blueprints, the close canonical Ecosystem hive, the brightest high-sky Nuke warning, and the post-edit high sky. Hardware Vulkan runs 240 presented frames per phase, discards warmup and synchronous-capture frames from timing, requires every p95 at or below 33.34 ms, and requires REGION Debug overhead at or below 3%. CPU software Vulkan executes a short visual parity path and records `performance_gate: false`; it cannot satisfy the hardware performance mission.
+
+Exit zero means the timing/capture contract passed. It does not accept the imagery on the user's behalf, prove a complete bee lifecycle, or replace repeated finite weather/ecology/save-load cycles.
+
 ## v2.5.25 stable local release gates
 
 Cold-package synchronization gate: full scene staging now declares HOST/TRANSFER dependencies in both directions. The focused audit requires those barriers, and the fresh installed Windows Large package must pass RUNNING and PAUSED paint plus the complete production suite twice consecutively before archiving.

@@ -33,4 +33,12 @@ The packaged executable can run the focused production Vulkan gate:
 sandhybrid --world-size compact --runtime-acceptance-report runtime-acceptance.json
 ```
 
-Focused checks never substitute for long-cycle conservation, interactive performance, or packaged visual acceptance.
+It can also run a presented-frame acceptance pass from the installed `bin` directory:
+
+```text
+sandhybrid --world-size compact --interactive-acceptance-report interactive-acceptance.json
+```
+
+The interactive pass measures adjacent normal/REGION Debug presentation, then captures normal World, REGION Debug, WORLD TOTALS, MAP, Inventory, Designer, a close canonical Ecosystem hive, the brightest high-sky Nuke warning, and the resulting bounded high-sky edit. The sibling `<report-name>-frames` directory contains the real Vulkan swapchain BMPs. Hardware Vulkan enforces frame-time and Debug-overhead gates; CPU software Vulkan records the same pages and visual states without pretending its timing is an interactive hardware result.
+
+Focused and interactive checks never substitute for long-cycle conservation or explicit visual acceptance.

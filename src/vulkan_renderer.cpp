@@ -371,6 +371,7 @@ struct VulkanRenderer::Impl final {
     VkDebugUtilsMessengerEXT debug_messenger{};
     VkSurfaceKHR surface{};
     VkPhysicalDevice physical_device{};
+    bool cpu_physical_device{};
     VkDevice device{};
     std::uint32_t graphics_family{};
     std::uint32_t present_family{};
@@ -421,6 +422,7 @@ struct VulkanRenderer::Impl final {
     Buffer ui_text_buffer{};
     Buffer designer_buffer{};
     Buffer scene_staging_buffer{};
+    Buffer frame_capture_buffer{};
     std::uint32_t current_set{};
     std::uint32_t simulation_step{};
     std::uint32_t random_seed{0xD17A5EEDu};
@@ -435,6 +437,7 @@ struct VulkanRenderer::Impl final {
     bool map_was_visible{};
     std::uint32_t nuke_flash_frames_remaining{};
     bool nuke_dispatch_pending{};
+    std::optional<std::filesystem::path> pending_frame_capture{};
 #if SANDHYBRID_ENABLE_VALIDATION
     std::chrono::steady_clock::time_point next_conservation_log{};
 #endif
@@ -733,6 +736,8 @@ save_slot(normalize_world_slot(requested_save_slot)) {
 
         VkPhysicalDeviceProperties selected_properties{};
         vkGetPhysicalDeviceProperties(physical_device, &selected_properties);
+        cpu_physical_device =
+            selected_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
         startup_log(std::string{"Selected GPU: "} + selected_properties.deviceName);
     }
 
@@ -1249,6 +1254,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         }
 
         const std::array queue_indices{graphics_family, present_family};
+        const bool capture_frames = !config.interactive_acceptance_report.empty();
+        if (capture_frames &&
+            (support.capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) == 0u) {
+            throw std::runtime_error(
+                "The Vulkan surface cannot copy presented frames for interactive acceptance.");
+        }
         VkSwapchainCreateInfoKHR create_info{
             .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
             .surface = surface,
@@ -1257,7 +1268,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .imageColorSpace = surface_format.colorSpace,
             .imageExtent = extent,
             .imageArrayLayers = 1,
-            .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                (capture_frames
+                    ? static_cast<VkImageUsageFlags>(VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+                    : VkImageUsageFlags{}),
             .preTransform = support.capabilities.currentTransform,
             .compositeAlpha = choose_composite_alpha(support.capabilities.supportedCompositeAlpha),
             .presentMode = present_mode,
@@ -1281,6 +1295,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         check_vk(vkGetSwapchainImagesKHR(device, swapchain, &image_count, swapchain_images.data()),
                  "vkGetSwapchainImagesKHR(data)");
         image_fences.assign(swapchain_images.size(), VK_NULL_HANDLE);
+        if (capture_frames) {
+            const auto capture_size = static_cast<VkDeviceSize>(extent.width) *
+                static_cast<VkDeviceSize>(extent.height) * 4u;
+            frame_capture_buffer = create_buffer(
+                capture_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        }
 
         swapchain_views.resize(swapchain_images.size());
         for (std::size_t index = 0; index < swapchain_images.size(); ++index) {
@@ -1449,6 +1470,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
     void destroy_swapchain_resources() {
         if (device == VK_NULL_HANDLE) return;
+        destroy_buffer(frame_capture_buffer);
+        pending_frame_capture.reset();
         for (const auto framebuffer : framebuffers) {
             if (framebuffer != VK_NULL_HANDLE) vkDestroyFramebuffer(device, framebuffer, nullptr);
         }
@@ -3078,7 +3101,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             ? state.designer_hovered_material.load(std::memory_order_relaxed)
             : state.hovered_material.load(std::memory_order_relaxed);
         constexpr std::uint32_t nuke_warning_stage_count = 6u;
-        constexpr std::uint32_t nuke_presentations_per_stage = 8u;
+        const std::uint32_t nuke_presentations_per_stage =
+            cpu_physical_device && !config.interactive_acceptance_report.empty() ? 1u : 8u;
         const auto nuke_warning_stage = nuke_flash_frames_remaining == 0u
             ? 0u
             : (std::min)(
@@ -3215,10 +3239,135 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         vkCmdEndRenderPass(command_buffer);
     }
 
+    void record_frame_capture(const VkCommandBuffer command_buffer,
+                              const std::uint32_t image_index) const {
+        if (frame_capture_buffer.handle == VK_NULL_HANDLE) return;
+        const VkImageSubresourceRange color_range{
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0u,
+            .levelCount = 1u,
+            .baseArrayLayer = 0u,
+            .layerCount = 1u,
+        };
+        const VkImageMemoryBarrier to_transfer{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = swapchain_images[image_index],
+            .subresourceRange = color_range,
+        };
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0u,
+                             0u, nullptr, 0u, nullptr, 1u, &to_transfer);
+        const VkBufferImageCopy copy{
+            .bufferOffset = 0u,
+            .bufferRowLength = 0u,
+            .bufferImageHeight = 0u,
+            .imageSubresource = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .mipLevel = 0u,
+                .baseArrayLayer = 0u,
+                .layerCount = 1u,
+            },
+            .imageOffset = {0, 0, 0},
+            .imageExtent = {swapchain_extent.width, swapchain_extent.height, 1u},
+        };
+        vkCmdCopyImageToBuffer(command_buffer, swapchain_images[image_index],
+                               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               frame_capture_buffer.handle, 1u, &copy);
+        buffer_barrier(command_buffer, frame_capture_buffer,
+                       VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT);
+        const VkImageMemoryBarrier to_present{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .dstAccessMask = 0u,
+            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = swapchain_images[image_index],
+            .subresourceRange = color_range,
+        };
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0u,
+                             0u, nullptr, 0u, nullptr, 1u, &to_present);
+    }
+
+    void write_frame_capture(const std::filesystem::path& path) {
+        const bool bgra = swapchain_format == VK_FORMAT_B8G8R8A8_SRGB ||
+                          swapchain_format == VK_FORMAT_B8G8R8A8_UNORM;
+        const bool rgba = swapchain_format == VK_FORMAT_R8G8B8A8_SRGB ||
+                          swapchain_format == VK_FORMAT_R8G8B8A8_UNORM;
+        if (!bgra && !rgba)
+            throw std::runtime_error("Interactive capture requires an 8-bit BGRA or RGBA swapchain.");
+        if (!path.parent_path().empty()) std::filesystem::create_directories(path.parent_path());
+
+        void* mapped = nullptr;
+        check_vk(vkMapMemory(device, frame_capture_buffer.memory, 0,
+                             frame_capture_buffer.size, 0u, &mapped),
+                 "vkMapMemory(frame capture)");
+        try {
+            const auto width = swapchain_extent.width;
+            const auto height = swapchain_extent.height;
+            const auto row_stride = (width * 3u + 3u) & ~3u;
+            const auto pixel_bytes = row_stride * height;
+            std::vector<std::uint8_t> bmp(54u + pixel_bytes, 0u);
+            const auto put_u16 = [&bmp](const std::size_t offset, const std::uint16_t value) {
+                bmp[offset] = static_cast<std::uint8_t>(value);
+                bmp[offset + 1u] = static_cast<std::uint8_t>(value >> 8u);
+            };
+            const auto put_u32 = [&bmp](const std::size_t offset, const std::uint32_t value) {
+                bmp[offset] = static_cast<std::uint8_t>(value);
+                bmp[offset + 1u] = static_cast<std::uint8_t>(value >> 8u);
+                bmp[offset + 2u] = static_cast<std::uint8_t>(value >> 16u);
+                bmp[offset + 3u] = static_cast<std::uint8_t>(value >> 24u);
+            };
+            bmp[0] = 'B';
+            bmp[1] = 'M';
+            put_u32(2u, static_cast<std::uint32_t>(bmp.size()));
+            put_u32(10u, 54u);
+            put_u32(14u, 40u);
+            put_u32(18u, width);
+            put_u32(22u, height);
+            put_u16(26u, 1u);
+            put_u16(28u, 24u);
+            put_u32(34u, pixel_bytes);
+
+            const auto* source = static_cast<const std::uint8_t*>(mapped);
+            for (std::uint32_t y = 0u; y < height; ++y) {
+                auto* destination = bmp.data() + 54u +
+                    static_cast<std::size_t>(height - 1u - y) * row_stride;
+                const auto* row = source + static_cast<std::size_t>(y) * width * 4u;
+                for (std::uint32_t x = 0u; x < width; ++x) {
+                    const auto* pixel = row + static_cast<std::size_t>(x) * 4u;
+                    destination[x * 3u] = bgra ? pixel[0] : pixel[2];
+                    destination[x * 3u + 1u] = pixel[1];
+                    destination[x * 3u + 2u] = bgra ? pixel[2] : pixel[0];
+                }
+            }
+            std::ofstream output{path, std::ios::binary | std::ios::trunc};
+            if (!output) throw std::runtime_error("Unable to create frame capture: " + path.string());
+            output.write(reinterpret_cast<const char*>(bmp.data()),
+                         static_cast<std::streamsize>(bmp.size()));
+            if (!output) throw std::runtime_error("Unable to write frame capture: " + path.string());
+        } catch (...) {
+            vkUnmapMemory(device, frame_capture_buffer.memory);
+            throw;
+        }
+        vkUnmapMemory(device, frame_capture_buffer.memory);
+    }
+
     bool draw_frame(SharedState& state, const std::uint32_t scheduled_simulation_ticks,
                     const bool present_frame) {
         auto& frame = frames[frame_index];
-        constexpr std::uint64_t gpu_timeout_ns = 5'000'000'000ull;
+        const std::uint64_t gpu_timeout_ns = cpu_physical_device &&
+            !config.interactive_acceptance_report.empty()
+            ? 60'000'000'000ull : 5'000'000'000ull;
         const auto fence_result = vkWaitForFences(device, 1, &frame.fence, VK_TRUE, gpu_timeout_ns);
         if (fence_result == VK_TIMEOUT) {
             gpu_stalled = true;
@@ -3242,7 +3391,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         if (state.ignite_air.exchange(false, std::memory_order_acq_rel)) {
             if (!needs_reset) {
                 constexpr std::uint32_t nuke_warning_stage_count = 6u;
-                constexpr std::uint32_t nuke_presentations_per_stage = 8u;
+                const std::uint32_t nuke_presentations_per_stage =
+                    cpu_physical_device && !config.interactive_acceptance_report.empty() ? 1u : 8u;
                 nuke_flash_frames_remaining =
                     nuke_warning_stage_count * nuke_presentations_per_stage;
                 nuke_dispatch_pending = true;
@@ -3413,6 +3563,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         if (present_frame) {
             record_designer_snapshot(frame.command_buffer, state);
             record_render(frame.command_buffer, image_index, state);
+            if (pending_frame_capture.has_value())
+                record_frame_capture(frame.command_buffer, image_index);
         }
         check_vk(vkEndCommandBuffer(frame.command_buffer), "vkEndCommandBuffer");
 
@@ -3435,6 +3587,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
         VkResult present_result = VK_SUCCESS;
         if (present_frame) {
+            if (pending_frame_capture.has_value()) {
+                const auto capture_result = vkWaitForFences(
+                    device, 1u, &frame.fence, VK_TRUE, gpu_timeout_ns);
+                if (capture_result == VK_TIMEOUT) {
+                    gpu_stalled = true;
+                    throw std::runtime_error("Frame capture fence timed out.");
+                }
+                check_vk(capture_result, "vkWaitForFences(frame capture)");
+                write_frame_capture(*pending_frame_capture);
+                pending_frame_capture.reset();
+            }
             const VkPresentInfoKHR present_info{
                 .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
                 .waitSemaphoreCount = 1,
@@ -7560,19 +7723,53 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         }
         using Clock = std::chrono::steady_clock;
         const bool interactive_acceptance = !config.interactive_acceptance_report.empty();
-        constexpr std::uint32_t interactive_phase_frames = 240u;
-        constexpr std::uint32_t interactive_warmup_frames = 60u;
-        constexpr std::array<std::string_view, 7u> interactive_phase_names{
+        constexpr std::array<std::string_view, 8u> interactive_phase_names{
             "normal_world", "region_debug", "world_totals", "map_overlay",
-            "inventory_blueprints", "designer_blueprints", "nuke_warning_and_edit",
+            "inventory_blueprints", "designer_blueprints", "hive_ecology",
+            "nuke_warning_and_edit",
+        };
+        std::array<std::uint32_t, interactive_phase_names.size()>
+            interactive_phase_frame_counts{};
+        interactive_phase_frame_counts.fill(240u);
+        if (cpu_physical_device) {
+            interactive_phase_frame_counts.fill(1u);
+            interactive_phase_frame_counts.back() = 8u;
+        }
+        std::uint32_t interactive_total_frames = 0u;
+        for (const auto count : interactive_phase_frame_counts)
+            interactive_total_frames += count;
+        constexpr std::uint32_t interactive_hardware_warmup_frames = 60u;
+        const auto locate_interactive_phase =
+            [&interactive_phase_frame_counts](std::uint32_t frame) {
+                for (std::uint32_t phase = 0u;
+                     phase < interactive_phase_frame_counts.size(); ++phase) {
+                    if (frame < interactive_phase_frame_counts[phase])
+                        return std::pair{phase, frame};
+                    frame -= interactive_phase_frame_counts[phase];
+                }
+                return std::pair{
+                    static_cast<std::uint32_t>(interactive_phase_frame_counts.size() - 1u),
+                    interactive_phase_frame_counts.back() - 1u};
+            };
+        struct InteractiveCapture final {
+            std::string phase;
+            std::filesystem::path path;
+            std::uint32_t width{};
+            std::uint32_t height{};
         };
         std::array<std::vector<double>, interactive_phase_names.size()> interactive_samples{};
+        std::vector<InteractiveCapture> interactive_captures{};
+        std::filesystem::path interactive_capture_directory{};
         std::uint32_t interactive_phase = std::numeric_limits<std::uint32_t>::max();
+        std::uint32_t interactive_phase_offset = 0u;
         std::uint32_t interactive_presented_frames = 0u;
         std::uint64_t interactive_ticks = 0u;
         const auto interactive_start = Clock::now();
         if (interactive_acceptance) {
             state.presentation_limit.store(1u, std::memory_order_relaxed);
+            const std::filesystem::path report_path{config.interactive_acceptance_report};
+            interactive_capture_directory = report_path.parent_path() /
+                (report_path.stem().string() + "-frames");
         }
         constexpr auto simulation_interval = std::chrono::duration_cast<Clock::duration>(
             std::chrono::duration<double>{1.0 / 60.0});
@@ -7586,9 +7783,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         while (!stop_requested.load(std::memory_order_acquire) &&
                !state.quit.load(std::memory_order_acquire)) {
             if (interactive_acceptance) {
-                const auto phase = (std::min)(
-                    interactive_presented_frames / interactive_phase_frames,
-                    static_cast<std::uint32_t>(interactive_phase_names.size() - 1u));
+                const auto [phase, phase_offset] =
+                    locate_interactive_phase(interactive_presented_frames);
+                interactive_phase_offset = phase_offset;
                 if (phase != interactive_phase) {
                     interactive_phase = phase;
                     state.debug_visualization.store(false, std::memory_order_relaxed);
@@ -7610,6 +7807,24 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         state.selected_workspace.store(3u, std::memory_order_relaxed);
                         state.designer_pane.store(1u, std::memory_order_relaxed);
                     } else if (phase == 6u) {
+                        const auto ecosystem_district =
+                            persistent_world_district_index(Scene::ecosystem);
+                        state.camera_center_x.store(
+                            static_cast<int>(persistent_world_district_origin_x(
+                                config.grid_width, ecosystem_district) + 512u),
+                            std::memory_order_relaxed);
+                        state.camera_center_y.store(
+                            static_cast<int>(persistent_world_district_origin_y(
+                                config.grid_height, ecosystem_district) + 232u),
+                            std::memory_order_relaxed);
+                        state.camera_zoom.store(camera_zoom_max,
+                                                std::memory_order_relaxed);
+                    } else if (phase == 7u) {
+                        state.camera_zoom.store(camera_zoom_default, std::memory_order_relaxed);
+                        state.camera_center_x.store(
+                            static_cast<int>(config.grid_width / 2u),
+                            std::memory_order_relaxed);
+                        state.camera_center_y.store(360, std::memory_order_relaxed);
                         state.ignite_air.store(true, std::memory_order_release);
                     }
                 }
@@ -7647,7 +7862,6 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const auto before_draw = Clock::now();
             const bool simulation_due = before_draw >= next_simulation;
             const std::uint32_t simulation_ticks = simulation_due ? 1u : 0u;
-            interactive_ticks += simulation_ticks;
             if (simulation_due) {
                 next_simulation += simulation_interval;
                 constexpr std::uint32_t max_time_debt_ticks = 2u;
@@ -7663,17 +7877,47 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const bool present_requested = active_limit != 0u ||
                 ((thirty_fps_divider++ & 1u) == 0u);
             const bool present_frame = present_requested;
+            std::optional<InteractiveCapture> scheduled_capture{};
+            if (interactive_acceptance && present_frame &&
+                interactive_phase < interactive_phase_names.size()) {
+                const bool final_phase_frame =
+                    interactive_phase_offset + 1u ==
+                        interactive_phase_frame_counts[interactive_phase];
+                const auto nuke_warning_presentations = 6u *
+                    (cpu_physical_device ? 1u : 8u);
+                const bool final_bright_nuke_warning =
+                    interactive_phase + 1u == interactive_phase_names.size() &&
+                    interactive_phase_offset + 1u == nuke_warning_presentations;
+                if (final_phase_frame || final_bright_nuke_warning) {
+                    const std::string capture_name = final_bright_nuke_warning
+                        ? "nuke_warning_bright"
+                        : std::string{interactive_phase_names[interactive_phase]};
+                    scheduled_capture = InteractiveCapture{
+                        .phase = capture_name,
+                        .path = interactive_capture_directory / (capture_name + ".bmp"),
+                        .width = swapchain_extent.width,
+                        .height = swapchain_extent.height,
+                    };
+                    pending_frame_capture = scheduled_capture->path;
+                }
+            }
             if (!draw_frame(state, simulation_ticks, present_frame)) {
                 recreate_swapchain(width, height);
-            } else if (present_frame) {
-                ++rendered_frames;
-                ++interactive_presented_frames;
+            } else {
+                interactive_ticks += simulation_ticks;
+                if (present_frame) {
+                    ++rendered_frames;
+                    ++interactive_presented_frames;
+                    if (scheduled_capture.has_value())
+                        interactive_captures.push_back(std::move(*scheduled_capture));
+                }
             }
             const auto after_draw = Clock::now();
             if (interactive_acceptance && present_frame &&
                 interactive_phase < interactive_samples.size() &&
-                (interactive_presented_frames % interactive_phase_frames) >
-                    interactive_warmup_frames) {
+                (cpu_physical_device ||
+                    (!scheduled_capture.has_value() && interactive_phase_offset >
+                        interactive_hardware_warmup_frames))) {
                 interactive_samples[interactive_phase].push_back(
                     std::chrono::duration<double, std::milli>(after_draw - before_draw).count());
             }
@@ -7708,8 +7952,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             }
 
             if (interactive_acceptance &&
-                interactive_presented_frames >=
-                    interactive_phase_frames * interactive_phase_names.size()) {
+                interactive_presented_frames >= interactive_total_frames) {
                 const auto elapsed_seconds = std::chrono::duration<double>(
                     Clock::now() - interactive_start).count();
                 bool passed = !gpu_stalled &&
@@ -7731,11 +7974,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         samples.size() - 1u, (samples.size() * 95u) / 100u);
                     p95s[phase] = samples[p95_index];
                     maxima[phase] = samples.back();
-                    passed = passed && p95s[phase] <= 33.34;
+                    if (!cpu_physical_device)
+                        passed = passed && p95s[phase] <= 33.34;
                 }
                 const double debug_overhead = means[0] > 0.0
                     ? ((means[1] - means[0]) / means[0]) * 100.0 : 100.0;
-                passed = passed && debug_overhead <= 3.0;
+                if (!cpu_physical_device) passed = passed && debug_overhead <= 3.0;
+                passed = passed && interactive_captures.size() ==
+                    interactive_phase_names.size() + 1u;
+                for (const auto& capture : interactive_captures)
+                    passed = passed && std::filesystem::is_regular_file(capture.path) &&
+                        std::filesystem::file_size(capture.path) > 54u;
 
                 const std::filesystem::path report_path{config.interactive_acceptance_report};
                 if (!report_path.parent_path().empty())
@@ -7747,11 +7996,34 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 report << "{\n"
                        << "  \"schema\": 1,\n"
                        << "  \"backend\": \"vulkan-presented\",\n"
+                       << "  \"device_class\": \""
+                       << (cpu_physical_device ? "cpu-software" : "hardware") << "\",\n"
+                       << "  \"performance_gate\": "
+                       << (cpu_physical_device ? "false" : "true") << ",\n"
+                       << "  \"phase_frame_counts\": [";
+                for (std::size_t phase = 0u;
+                     phase < interactive_phase_frame_counts.size(); ++phase) {
+                    report << interactive_phase_frame_counts[phase]
+                           << (phase + 1u == interactive_phase_frame_counts.size()
+                               ? "],\n" : ", ");
+                }
+                report
                        << "  \"passed\": " << (passed ? "true" : "false") << ",\n"
                        << "  \"presented_frames\": " << interactive_presented_frames << ",\n"
                        << "  \"simulation_ticks\": " << interactive_ticks << ",\n"
                        << "  \"elapsed_seconds\": " << elapsed_seconds << ",\n"
                        << "  \"debug_overhead_percent\": " << debug_overhead << ",\n"
+                       << "  \"captures\": [\n";
+                for (std::size_t index = 0u; index < interactive_captures.size(); ++index) {
+                    const auto& capture = interactive_captures[index];
+                    report << "    {\"phase\": \"" << json_escape(capture.phase)
+                           << "\", \"file\": \""
+                           << json_escape(capture.path.generic_string())
+                           << "\", \"width\": " << capture.width
+                           << ", \"height\": " << capture.height << "}"
+                           << (index + 1u == interactive_captures.size() ? "\n" : ",\n");
+                }
+                report << "  ],\n"
                        << "  \"phases\": [\n";
                 for (std::size_t phase = 0u; phase < interactive_phase_names.size(); ++phase) {
                     report << "    {\"name\": \"" << interactive_phase_names[phase]

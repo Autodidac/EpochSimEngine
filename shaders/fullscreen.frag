@@ -211,16 +211,16 @@ vec3 debugStatColor(uint row) {
 }
 
 vec3 debugKeyColor(uint key) {
-    if (key == 0u) return vec3(0.92, 0.24, 0.20);       // damaged / collapsing
-    if (key == 1u) return vec3(0.18, 0.70, 0.82);       // active
-    if (key == 2u) return vec3(0.30, 0.52, 0.88);       // fine active
-    if (key == 3u) return vec3(0.92, 0.52, 0.18);       // bulk moved
-    if (key == 4u) return vec3(0.58, 0.42, 0.78);       // bulk ready
-    if (key == 5u) return vec3(0.92, 0.76, 0.22);       // breakup to fine
-    if (key == 6u) return vec3(0.28, 0.72, 0.44);       // settled
-    if (key == 7u) return vec3(0.20, 0.66, 0.62);       // enclosed medium
-    if (key == 8u) return vec3(0.12, 0.18, 0.28);     // sleeping
-    return vec3(0.68, 0.74, 0.82);                      // stable / candidate
+    if (key == 0u) return vec3(1.00, 0.16, 0.10);       // damaged / collapsing
+    if (key == 1u) return vec3(0.04, 0.84, 1.00);       // active
+    if (key == 2u) return vec3(0.18, 0.42, 1.00);       // fine active
+    if (key == 3u) return vec3(1.00, 0.43, 0.04);       // bulk moved
+    if (key == 4u) return vec3(0.78, 0.16, 1.00);       // bulk ready
+    if (key == 5u) return vec3(1.00, 0.82, 0.04);       // breakup to fine
+    if (key == 6u) return vec3(0.08, 0.92, 0.32);       // settled
+    if (key == 7u) return vec3(0.00, 0.76, 0.60);       // enclosed medium
+    if (key == 8u) return vec3(0.10, 0.20, 0.40);       // sleeping
+    return vec3(0.76, 0.84, 0.94);                      // stable / candidate
 }
 
 // Debug state is an annotation over the authoritative material presentation.
@@ -360,8 +360,11 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
                 ivec2 markerLocal = ivec2(
                     int((x - keyLeft - 4u) * 8u / swatchSize),
                     int((y - swatchTop) * 8u / swatchSize));
+                // The complete block communicates the state color at a glance;
+                // the reversed glyph is the exact sparse shape drawn in-world.
+                vec3 keyColor = debugKeyColor(key);
                 color = debugStateMarkerPixel(key, markerLocal)
-                    ? debugKeyColor(key) : vec3(0.055, 0.075, 0.095);
+                    ? mix(keyColor, vec3(1.0), 0.86) : keyColor;
                 if (borderPixel(x, y, keyLeft + 4u, swatchTop,
                                 keyLeft + 4u + swatchSize, swatchTop + swatchSize))
                     color = vec3(0.92);
