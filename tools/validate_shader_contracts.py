@@ -215,6 +215,11 @@ def main() -> int:
         "mergeHalfMediumTemperature",
         "halfCell.temperature = source.temperature",
         "restoredMediumFrom(Cell source, uint material, uint volume, int temperature)",
+        "uint sourceMediumMaterial = ambientAir ? MAT_EMPTY : mediumMaterial;",
+        "firstAmbient && secondAmbient",
+        "secondMaterial == MAT_ATMOSPHERE) ? MAT_ATMOSPHERE : MAT_EMPTY",
+        "cell.material == MAT_WATER && !isHalfWaterCell(cell)",
+        "if (isHalfWaterCell(cell)) return;",
     ):
         require(move, token, errors, "Half Water heat-ledger contract")
     for token in (
@@ -226,6 +231,12 @@ def main() -> int:
         require(simulation_policy, token, errors, "CPU Half Water heat-ledger contract")
     require(renderer, 'append("half_water_split_merge_heat_ledger"', errors,
             "production Half Water heat-ledger acceptance")
+    for token in (
+        "tile_boundary=1",
+        "atmosphere_owners == 1u && empty_owners == 1u",
+    ):
+        require(renderer, token, errors,
+                "production Half Water integer medium-owner acceptance")
 
     for token in (
         "bool macroLiquid = fullLiquid && !liquidBoundaryFine;",

@@ -234,8 +234,14 @@ bool halfWaterMergeCompatible(Cell first, Cell second) {
     uint secondVolume = halfMediumVolume(second);
     uint firstMaterial = halfMediumMaterial(first);
     uint secondMaterial = halfMediumMaterial(second);
-    if (firstVolume == 0u && secondVolume == 0u)
-        return firstMaterial == secondMaterial;
+    if (firstVolume == 0u && secondVolume == 0u) {
+        bool firstAmbient = firstMaterial == MAT_EMPTY ||
+                            firstMaterial == MAT_ATMOSPHERE;
+        bool secondAmbient = secondMaterial == MAT_EMPTY ||
+                             secondMaterial == MAT_ATMOSPHERE;
+        return firstMaterial == secondMaterial ||
+               (firstAmbient && secondAmbient);
+    }
     if (firstVolume == 0u)
         return (firstMaterial == MAT_EMPTY || firstMaterial == secondMaterial) &&
                secondVolume <= 255u;
@@ -253,7 +259,10 @@ bool mergeHalfWaterPair(ivec2 keepPosition, ivec2 releasePosition, Cell keep, Ce
     uint secondMaterial = halfMediumMaterial(released);
     int firstMediumTemperature = halfMediumTemperature(keep);
     int secondMediumTemperature = halfMediumTemperature(released);
-    uint mediumMaterial = firstVolume != 0u ? firstMaterial : secondMaterial;
+    uint mediumMaterial = firstVolume != 0u ? firstMaterial :
+        (secondVolume != 0u ? secondMaterial :
+            ((firstMaterial == MAT_ATMOSPHERE ||
+              secondMaterial == MAT_ATMOSPHERE) ? MAT_ATMOSPHERE : MAT_EMPTY));
     uint mediumVolume = firstVolume + secondVolume;
     int mediumTemperature = mergeHalfMediumTemperature(
         firstMaterial, firstVolume, firstMediumTemperature,
@@ -280,13 +289,19 @@ void splitFullWaterPair(ivec2 sourcePosition, ivec2 targetPosition, Cell source,
     uint sourceMediumVolume = mediumVolume / 2u;
     uint targetMediumVolume = mediumVolume - sourceMediumVolume;
 
+    // The target-position half owns the displaced balanced-Air marker. Copying
+    // that zero-volume marker into both halves would permit one original Air
+    // owner to be restored twice after the halves meet different partners.
+    uint sourceMediumMaterial = ambientAir ? MAT_EMPTY : mediumMaterial;
+    uint targetMediumMaterial = mediumMaterial;
+
     setHalfWaterCell(source, true);
-    setHalfMedium(source, mediumMaterial, sourceMediumVolume, target.temperature);
+    setHalfMedium(source, sourceMediumMaterial, sourceMediumVolume, target.temperature);
     source.age = 0u;
     source.aux |= AUX_MOVED;
 
     Cell halfCell = source;
-    setHalfMedium(halfCell, mediumMaterial, targetMediumVolume, target.temperature);
+    setHalfMedium(halfCell, targetMediumMaterial, targetMediumVolume, target.temperature);
     halfCell.temperature = source.temperature;
     cells[moveIndex(sourcePosition)] = source;
     cells[moveIndex(targetPosition)] = halfCell;
@@ -295,10 +310,12 @@ void splitFullWaterPair(ivec2 sourcePosition, ivec2 targetPosition, Cell source,
 }
 
 uint salinity(Cell cell) {
-    return (cell.material == MAT_WATER || cell.material == MAT_SALTWATER) ? stateValue(cell) : 0u;
+    return ((cell.material == MAT_WATER && !isHalfWaterCell(cell)) ||
+            cell.material == MAT_SALTWATER) ? stateValue(cell) : 0u;
 }
 
 void setSalinity(inout Cell cell, uint value) {
+    if (isHalfWaterCell(cell)) return;
     uint concentration = min(value, 255u);
     cell.material = concentration >= 12u ? MAT_SALTWATER : MAT_WATER;
     setStateValue(cell, concentration);
@@ -494,7 +511,8 @@ bool isConductive(uint material) {
 }
 
 bool isSalineLiquid(Cell cell) {
-    return cell.material == MAT_WATER || cell.material == MAT_SALTWATER;
+    return (cell.material == MAT_WATER && !isHalfWaterCell(cell)) ||
+           cell.material == MAT_SALTWATER;
 }
 
 bool macroExclusiveCell(Cell cell);

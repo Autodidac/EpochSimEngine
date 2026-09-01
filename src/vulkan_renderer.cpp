@@ -6161,24 +6161,26 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     ((material_id(Material::atmosphere) & 0x7fu) << 8u) |
                     half_medium_temperature_20;
                 auto cells = acceptance_atmosphere_world();
-                seed_rect(cells, Material::stone, 88u, 101u, 8u, 1u);
-                cells[index_of(90u, 100u)] = SceneCell{
+                seed_rect(cells, Material::stone, 88u, 101u, 16u, 1u);
+                cells[index_of(95u, 100u)] = SceneCell{
                     .material = material_id(Material::water),
                     .age = 0u,
                     .temperature = 10,
-                    .aux = half_atmosphere_aux,
+                    .aux = water_half_bit,
                 };
-                cells[index_of(91u, 100u)] = SceneCell{
+                cells[index_of(96u, 100u)] = SceneCell{
                     .material = material_id(Material::water),
                     .age = 0u,
                     .temperature = 50,
                     .aux = half_atmosphere_aux,
                 };
                 upload_scene_cells(cells);
-                run_acceptance_horizontal_pass(0);
+                // x=95/96 crosses an 8x8 ownership boundary. One half owns the
+                // displaced Atmosphere marker and the other owns no medium.
+                run_acceptance_horizontal_pass(1);
                 const auto result = download_scene_cells();
-                const auto& water = result[index_of(90u, 100u)];
-                const auto& atmosphere = result[index_of(91u, 100u)];
+                const auto& water = result[index_of(95u, 100u)];
+                const auto& atmosphere = result[index_of(96u, 100u)];
                 append("half_water_split_merge_heat_ledger",
                        water.material == material_id(Material::water) &&
                            (water.aux & water_half_bit) == 0u &&
@@ -6190,7 +6192,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            " water_state=" + std::to_string(water.aux & 0xffu) +
                            " medium=" + std::to_string(atmosphere.material) +
                            " medium_temp=" + std::to_string(atmosphere.temperature) +
-                           " medium_state=" + std::to_string(atmosphere.aux & 0xffu));
+                           " medium_state=" + std::to_string(atmosphere.aux & 0xffu) +
+                           " tile_boundary=1");
             }
 
             {
@@ -6263,24 +6266,36 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 const auto [units, halves] = water_half_units(result);
                 bool half_heat_exact = true;
                 std::uint32_t inspected_halves = 0u;
+                std::uint32_t atmosphere_owners = 0u;
+                std::uint32_t empty_owners = 0u;
                 for (const auto& cell : result) {
                     if (cell.material != material_id(Material::water) ||
                         (cell.aux & water_half_bit) == 0u)
                         continue;
                     ++inspected_halves;
+                    const auto medium = (cell.aux >> 8u) & 0x7fu;
+                    const bool atmosphere_owner =
+                        medium == material_id(Material::atmosphere);
+                    const bool empty_owner = medium == material_id(Material::empty);
+                    atmosphere_owners += atmosphere_owner ? 1u : 0u;
+                    empty_owners += empty_owner ? 1u : 0u;
                     half_heat_exact = half_heat_exact && cell.temperature == 80 &&
-                        (cell.aux & 0xffu) == half_medium_temperature_20 &&
-                        ((cell.aux >> 8u) & 0x7fu) ==
-                            material_id(Material::atmosphere);
+                        ((atmosphere_owner &&
+                          (cell.aux & 0xffu) == half_medium_temperature_20) ||
+                         (empty_owner && (cell.aux & 0xffu) == 0u));
                 }
                 append("supplied_ledge_creates_half_water",
                        units == 4u && halves == 2u &&
                            count_material(result, Material::water) == 3u &&
-                           inspected_halves == 2u && half_heat_exact,
+                           inspected_halves == 2u && half_heat_exact &&
+                           atmosphere_owners == 1u && empty_owners == 1u,
                        "half_units=" + std::to_string(units) +
                            " halves=" + std::to_string(halves) +
                            " water_cells=" +
                            std::to_string(count_material(result, Material::water)) +
+                           " atmosphere_owners=" +
+                           std::to_string(atmosphere_owners) +
+                           " empty_owners=" + std::to_string(empty_owners) +
                            " half_heat_exact=" +
                            std::string{half_heat_exact ? "true" : "false"});
             }
