@@ -176,9 +176,11 @@ bool isInventoryResource(uint material) {
 }
 
 void markLaserFragmentWorldOnly(inout Cell fragment) {
-    // AUX_BEE_POLLEN is outside every constructor/random payload for these
-    // mineral/cargo materials and survives normal fine movement.
-    if (isInventoryResource(fragment.material))
+    // AUX_BEE_POLLEN is type-disjoint for ordinary condensed materials and
+    // survives normal fine movement. It prevents both later actor collection
+    // and immediate loose-cell repair into the same damaged tile. Live bee
+    // owners retain the bit's canonical pollen meaning.
+    if (fragment.material != MAT_BEE && fragment.material != MAT_QUEEN_BEE)
         fragment.aux |= AUX_BEE_POLLEN;
 }
 
@@ -218,21 +220,30 @@ bool releaseDamagedFragment(ActorState state, ivec2 sourcePosition,
         ? ivec2(towardTool.x >= 0 ? 1 : -1, 0)
         : ivec2(0, towardTool.y >= 0 ? 1 : -1);
     ivec2 tangent = ivec2(-impactNormal.y, impactNormal.x);
-    // Prefer cells that the current radius-one burst already visited. This
-    // prevents a conserved fragment from being hit again in the same click.
-    // The impact-relative normal also gives exposed undersides a destination
-    // below the struck owner instead of searching only above and sideways.
-    ivec2 targets[6] = ivec2[6](
-        sourcePosition + ivec2(0, -1),
+    // Eject through the acquired impact face first. The old unconditional
+    // upward preference stacked side/underside fragments into one column and
+    // let them repair back into the damaged tile. Two-cell destinations make
+    // the released unit visibly leave the face while retaining an exact
+    // one-for-one swap with a real gas owner.
+    ivec2 targets[8] = ivec2[8](
+        sourcePosition + impactNormal * 2,
         sourcePosition + impactNormal,
+        sourcePosition + impactNormal * 2 + tangent,
+        sourcePosition + impactNormal * 2 - tangent,
         sourcePosition + impactNormal + tangent,
         sourcePosition + impactNormal - tangent,
         sourcePosition + tangent,
         sourcePosition - tangent);
-    for (uint targetIndex = 0u; targetIndex < 6u; ++targetIndex) {
+    for (uint targetIndex = 0u; targetIndex < 8u; ++targetIndex) {
         ivec2 targetPosition = targets[targetIndex];
         if (!actorInside(targetPosition) || insideActorPickup(state, targetPosition))
             continue;
+        ivec2 targetDelta = targetPosition - sourcePosition;
+        ivec2 firstStep = sourcePosition + ivec2(
+            targetDelta.x == 0 ? 0 : (targetDelta.x > 0 ? 1 : -1),
+            targetDelta.y == 0 ? 0 : (targetDelta.y > 0 ? 1 : -1));
+        if (max(abs(targetDelta.x), abs(targetDelta.y)) > 1 &&
+            !stableLaserMedium(actorAt(firstStep).material)) continue;
         Cell target = actorAt(targetPosition);
         // A terminal hit is an exact world-to-world swap with canonical real
         // gas. Empty would leave visible Vacuum at the source; transient
@@ -302,7 +313,6 @@ void damageCell(inout ActorState state, ivec2 p, uint damage) {
     } else {
         setStateValue(cell, looseHealth - damage);
         cell.age = 0u;
-        cell.aux |= AUX_MOVED;
         cells[index] = cell;
     }
 }
@@ -339,13 +349,10 @@ void fireTool(inout ActorState state) {
     // ammunition exists. Ammo never blocks ordinary mining.
     bool plasma = found && hitMaterial == MAT_BEETLE && state.ammo > 0u && (state.unlocks & 8u) != 0u;
     if (found) {
-        int radius = plasma ? 2 : 1;
         uint damage = plasma ? 255u : (state.drillLevel >= 2u ? 192u : 144u);
-        for (int y = -radius; y <= radius; ++y) {
-            for (int x = -radius; x <= radius; ++x) {
-                if (x * x + y * y <= radius * radius) damageCell(state, hit + ivec2(x, y), damage);
-            }
-        }
+        // The ray owns exactly its first stationary damageable cell. Material
+        // fracture/motion, not a hidden radius burst, propagates consequences.
+        damageCell(state, hit, damage);
         if (plasma) state.ammo -= 1u;
     }
     state.hitX = hit.x;

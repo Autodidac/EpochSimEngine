@@ -263,7 +263,7 @@ def main() -> int:
         "pressure = min(255u, pressure + recharge)",
         "if (cell.material == MAT_ASH) return (randomValue % 5u) != 0u;",
         "chunkPairSleeping(a, b) && sleepSafe(a, firstCell) && sleepSafe(b, secondCell)",
-        "renderPc.debugMode != 0u && !mapSample",
+        "renderPc.debugMode == 1u && !mapSample",
     ):
         if token not in world_layout + reset_shader + bee_swarm + actor_shader + scene_image_cpp + chemistry + move + fullscreen_medium:
             errors.append(f"runtime screenshot propagation contract missing {token!r}")
@@ -574,12 +574,12 @@ def main() -> int:
     ):
         if token not in debug_stats_comp:
             errors.append(f"medium debug counter missing {token!r}")
-    for token in ("COLOR KEY", "TILE_MEDIUM_BREAKUP", "debugKeyColor", "textScale"):
-        if token not in fullscreen and token != "COLOR KEY":
+    for token in ("MARKER KEY", "TILE_MEDIUM_BREAKUP", "debugKeyColor", "textScale"):
+        if token not in fullscreen and token != "MARKER KEY":
             errors.append(f"high-contrast debug contract missing {token!r}")
     generator_text = (ROOT / "tools/generate_ui_text.py").read_text(encoding="utf-8")
-    if "COLOR KEY" not in generator_text:
-        errors.append("debug color-key text is missing")
+    if "MARKER KEY" not in generator_text:
+        errors.append("debug marker-key text is missing")
     for token in ("SAMPLED CELLS", "MATERIAL CELLS", "SAMPLED TILES", "UNCLASSIFIED", "SAMPLED CHUNKS"):
         if token not in generator_text:
             errors.append(f"complete debug hierarchy label missing {token!r}")

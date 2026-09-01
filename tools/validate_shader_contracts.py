@@ -302,24 +302,30 @@ def main() -> int:
         "color.rgb = mix(color.rgb, debugKeyColor(state), alpha * occupancy)",
         "color = debugStateMarkerPixel(key, markerLocal)",
         "bool activeBoundary = activeArea && (activeLocal.x == 0 || activeLocal.y == 0)",
+        "if (renderPc.debugMode == 1u && !mapSample)",
+        "WORLD TOTALS and MAP remain clean presentations",
     ):
         require(fullscreen, token, errors,
                 "material-preserving debug marker contract")
     if "bool stateEdge = local.x == 0 || local.y == 0" in fullscreen:
         errors.append("debug presentation reintroduced dense full-tile state frames")
     for token in (
-        "if (debug_visible && run_simulation)",
+        "if (debug_region_visible && run_simulation)",
         "if (collect_debug_stats) reset_debug_stats(frame.command_buffer)",
         "if (collect_debug_stats) {",
     ):
         require(renderer, token, errors,
                 "zero-cost hidden debug collection contract")
     for token in (
-        "record_nuke_from_space(frame.command_buffer)",
+        "record_nuke_from_space(frame.command_buffer, state)",
+        "cannot combine new Fire cells with stale Atmosphere tile metadata",
         "nuke_warning_stage_count * nuke_presentations_per_stage",
         "Nuke from Space committed as one GPU Atmosphere-to-Fire edit",
         "nuke_from_space_gpu_exact_atmosphere_edit",
+        "authored_structures_start_without_false_damage_or_bulk_state",
         "map_snapshot_slice = (map_snapshot_slice + 1u) % slice_count",
+        "constexpr std::uint32_t slice_count = 64u",
+        "constexpr std::uint32_t map_refresh_steps = 4u",
         "const bool present_frame = present_requested",
     ):
         require(renderer, token, errors,

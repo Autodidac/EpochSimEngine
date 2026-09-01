@@ -627,6 +627,10 @@ bool repairDamagedTileFromLooseCell(ivec2 sourcePosition, ivec2 contactPosition,
     if (isStructural(source) || isCellGas(source) || isCellLiquid(source) ||
         source.material == MAT_EMPTY || source.material == MAT_LAVA ||
         source.material != contact.material || !isStructural(contact)) return false;
+    // A laser-released unit remains visible world debris. Reattaching it to the
+    // same damaged tile on the next fine pass caused the observed single-cell
+    // juggling loop and hid the conservative ejection.
+    if ((source.aux & AUX_BEE_POLLEN) != 0u) return false;
 
     uint targetTileIndex = tileIndex(contactPosition, movePc.width);
     TileState targetTile = tiles[targetTileIndex];

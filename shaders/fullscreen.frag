@@ -262,21 +262,28 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
         textHit = true;
         textColor = vec3(0.96);
     }
-    uint scopeLabelX = panelRight > panelLeft + 122u ? panelRight - 112u : panelLeft + 10u;
-    if (fixedPixel(pixel, ivec2(int(scopeLabelX), int(panelTop + 8u)), 1, 196u)) {
+    bool regionPage = renderPc.debugMode == 1u;
+    uint scopeLabel = regionPage ? 197u : 198u;
+    uint scopeLabelWidth = fixedTextLength(scopeLabel) * 6u;
+    uint scopeLabelX = panelRight > panelLeft + scopeLabelWidth + 10u
+        ? panelRight - scopeLabelWidth - 10u : panelLeft + 10u;
+    if (fixedPixel(pixel, ivec2(int(scopeLabelX), int(panelTop + 8u)), 1, scopeLabel)) {
         textHit = true;
-        textColor = vec3(0.54, 0.80, 0.62);
+        textColor = regionPage ? vec3(0.54, 0.80, 0.62)
+                               : vec3(0.52, 0.70, 0.92);
     }
 
-    const uint statCount = 34u;
+    const uint allStatCount = 34u;
+    uint firstStat = regionPage ? 8u : 0u;
+    uint statCount = regionPage ? 26u : 8u;
     uint rowHeight = textScale == 2 ? 18u : 12u;
     uint headerHeight = textScale == 2 ? 24u : 15u;
-    uint fixedLabels[statCount] = uint[statCount](
+    uint fixedLabels[allStatCount] = uint[allStatCount](
         1u, 174u, 175u, 176u, 177u, 178u, 179u, 143u, 137u,
         160u, 161u, 94u, 95u, 96u, 144u, 145u,
         162u, 98u, 81u, 163u, 119u, 120u, 121u,
         164u, 115u, 114u, 122u, 146u, 78u, 116u, 117u, 123u, 124u, 112u);
-    uint fixedValues[statCount] = uint[statCount](
+    uint fixedValues[allStatCount] = uint[allStatCount](
         renderPc.framesPerSecond, renderPc.gridWidth, renderPc.gridHeight,
         renderPc.gridWidth * renderPc.gridHeight, renderPc.tileColumns, renderPc.tileRows,
         renderPc.tileColumns * renderPc.tileRows,
@@ -296,19 +303,23 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
         debugStats[STAT_MACRO_LIQUID_TILES], debugStats[STAT_FINE_REPAIR_MOVES]);
     uint statsTop = panelTop + headerHeight;
     if (y >= statsTop && y < statsTop + statCount * rowHeight) {
-        uint stat = (y - statsTop) / rowHeight;
+        uint displayStat = (y - statsTop) / rowHeight;
+        uint stat = firstStat + displayStat;
         if (statPixel(pixel, ivec2(int(panelLeft + 10u),
-            int(statsTop + stat * rowHeight)), textScale, fixedLabels[stat], fixedValues[stat])) {
+            int(statsTop + displayStat * rowHeight)), textScale,
+            fixedLabels[stat], fixedValues[stat])) {
             textHit = true;
             textColor = debugStatColor(stat);
         }
     }
 
-    uint separators[4] = uint[4](11u, 16u, 23u, 27u);
-    for (uint separator = 0u; separator < 4u; ++separator) {
-        uint separatorY = statsTop + separators[separator] * rowHeight - 4u;
-        if (y == separatorY && x >= panelLeft + 8u && x < panelRight - 8u)
-            color = vec3(0.09, 0.16, 0.22);
+    if (regionPage) {
+        uint separators[4] = uint[4](3u, 8u, 15u, 19u);
+        for (uint separator = 0u; separator < 4u; ++separator) {
+            uint separatorY = statsTop + separators[separator] * rowHeight - 4u;
+            if (y == separatorY && x >= panelLeft + 8u && x < panelRight - 8u)
+                color = vec3(0.09, 0.16, 0.22);
+        }
     }
 
     uint keyRows = 5u;
@@ -317,7 +328,8 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
     uint cardsHeight = keyTitleHeight + keyRows * cardHeight + 10u;
     uint keyTop = max(statsTop + statCount * rowHeight + 8u,
                       panelBottom > cardsHeight ? panelBottom - cardsHeight : panelTop);
-    if (fixedPixel(pixel, ivec2(int(panelLeft + 10u), int(keyTop)), textScale, 127u)) {
+    if (regionPage &&
+        fixedPixel(pixel, ivec2(int(panelLeft + 10u), int(keyTop)), textScale, 127u)) {
         textHit = true;
         textColor = vec3(0.96);
     }
@@ -327,7 +339,7 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
     uint keyColumns = panelRight - panelLeft >= 330u ? 2u : 1u;
     uint keyColumnWidth = max((panelRight - panelLeft - 20u) / keyColumns, 1u);
     uint swatchSize = textScale == 2 ? 24u : 18u;
-    if (y >= keyTop + keyTitleHeight) {
+    if (regionPage && y >= keyTop + keyTitleHeight) {
         uint row = (y - keyTop - keyTitleHeight) / cardHeight;
         uint localX = x > panelLeft + 10u ? x - panelLeft - 10u : 0u;
         uint column = min(localX / keyColumnWidth, keyColumns - 1u);
@@ -361,6 +373,12 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
                 textColor = vec3(0.90, 0.94, 0.98);
             }
         }
+    }
+    if (!regionPage &&
+        fixedPixel(pixel, ivec2(int(panelLeft + 10u),
+                   int(statsTop + statCount * rowHeight + 14u)), 1, 199u)) {
+        textHit = true;
+        textColor = vec3(0.62, 0.76, 0.90);
     }
     if (textHit) color = textColor;
     return true;
@@ -1293,7 +1311,8 @@ void main() {
         if (cameraEdge) color.rgb = vec3(1.00, 0.84, 0.22);
     }
 
-    if (renderPc.debugMode != 0u && !mapSample) {
+    // REGION alone annotates the camera. WORLD TOTALS and MAP remain clean presentations.
+    if (renderPc.debugMode == 1u && !mapSample) {
         uint cellPixelsX = renderPc.viewportWidth / max(renderPc.viewWidth, 1u);
         uint cellPixelsY = renderPc.viewportHeight / max(renderPc.viewHeight, 1u);
         bool readableTileGrid = min(cellPixelsX, cellPixelsY) >= 1u;
@@ -1379,16 +1398,10 @@ void main() {
         float along = clamp(dot(samplePoint - toolOrigin, ray) / raySquared, 0.0, 1.0);
         float beamDistance = segmentDistance(samplePoint, toolOrigin, toolHit);
         uint beamStep = uint(floor(along * sqrt(raySquared)));
-        uint burstHash = hash32(uint(grid.x) * 2246822519u ^ uint(grid.y) * 3266489917u ^
-                      renderPc.worldTime * 668265263u ^ actor.shotTimer * 374761393u);
         bool tinyDash = ((beamStep + actor.shotTimer) % 7u) < 2u;
-        if (beamDistance < 0.46 && tinyDash && (burstHash & 3u) != 0u)
+        if (beamDistance < 0.46 && tinyDash)
   color = actor.shotTimer > 4u ? vec4(1.0, 0.28, 0.68, 1.0)
                                : vec4(1.0, 0.82, 0.20, 1.0);
-        ivec2 impactDelta = grid - ivec2(actor.hitX, actor.hitY);
-        int impactDistance = impactDelta.x * impactDelta.x + impactDelta.y * impactDelta.y;
-        if (impactDistance >= 1 && impactDistance <= 8 && ((burstHash >> 3u) & 3u) == 0u)
-  color = vec4(1.0, 0.96, 0.72, 1.0);
     }
 
     if (renderPc.selectedWorkspace == 1u &&

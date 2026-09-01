@@ -2505,7 +2505,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         record_paint_at_grid(command_buffer, state, erase, paint, grid_x, grid_y);
     }
 
-    void record_nuke_from_space(const VkCommandBuffer command_buffer) {
+    void record_nuke_from_space(const VkCommandBuffer command_buffer,
+                                const SharedState& state) {
         // The old action downloaded and flood-filled the complete resident
         // world on the CPU. This deterministic GPU edit has no readback and
         // touches each Atmosphere cell once after the staged light warning.
@@ -2529,6 +2530,52 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+        // Nuke remains one material-edit dispatch. Reclassify only the bounded
+        // active window immediately so PAUSED and the next presented frame
+        // cannot combine new Fire cells with stale Atmosphere tile metadata.
+        const auto active_section_x =
+            state.active_window_origin_x.load(std::memory_order_relaxed);
+        const auto active_section_y =
+            state.active_window_origin_y.load(std::memory_order_relaxed);
+        const auto active_dispatch = active_cell_dispatch(
+            config.grid_width, config.grid_height,
+            {active_section_x, active_section_y});
+        const SimulationPush hierarchy_push{
+            .width = config.grid_width,
+            .height = config.grid_height,
+            .step = simulation_step,
+            .seed = random_seed,
+            .active_section_x = active_section_x,
+            .active_section_y = active_section_y,
+            .active_mode = 1u,
+            .reserved = policy::macro_packet_step_due(simulation_step) ? 2u : 0u,
+        };
+        bind_compute(command_buffer, tile_pipeline, current_set);
+        vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                           VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof(hierarchy_push), &hierarchy_push);
+        vkCmdDispatch(command_buffer,
+                      divide_round_up(divide_round_up(active_dispatch.width, 8u), 8u),
+                      divide_round_up(divide_round_up(active_dispatch.height, 8u), 8u), 1);
+        buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+        bind_compute(command_buffer, chunk_pipeline, current_set);
+        vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                           VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof(hierarchy_push), &hierarchy_push);
+        vkCmdDispatch(command_buffer,
+                      divide_round_up(divide_round_up(config.grid_width, 64u), 8u),
+                      divide_round_up(divide_round_up(config.grid_height, 64u), 8u), 1);
         buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -2877,9 +2924,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_PIPELINE_STAGE_TRANSFER_BIT,
                        VK_PIPELINE_STAGE_TRANSFER_BIT);
         // Refresh one contiguous row band per cadence instead of copying the
-        // 225 MiB Large resident field in one frame. Reset/load already seed a
-        // complete valid snapshot, so rolling bands only update live changes.
-        constexpr std::uint32_t slice_count = 16u;
+        // 225 MiB Large resident field in one frame. Sixty-four bands cap the
+        // per-frame Large transfer near 3.6 MiB while a four-tick cadence still
+        // rolls a complete snapshot in roughly 4.3 seconds. Reset/load already
+        // seed a complete valid snapshot, so rolling bands only update changes.
+        constexpr std::uint32_t slice_count = 64u;
         const auto rows_per_slice = divide_round_up(config.grid_height, slice_count);
         const auto first_row = map_snapshot_slice * rows_per_slice;
         const auto row_count = (std::min)(rows_per_slice,
@@ -3093,7 +3142,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .scene_count = scene_count,
             .mining_mode = state.mining_mode.load(std::memory_order_relaxed) ? 1u : 0u,
             .inspect_mode = inspect_visible ? 1u : 0u,
-            .debug_mode = state.debug_visualization.load(std::memory_order_relaxed) ? 1u : 0u,
+            .debug_mode = state.debug_visualization.load(std::memory_order_relaxed)
+                ? 1u + (state.debug_page.load(std::memory_order_relaxed) & 1u)
+                : 0u,
             .tile_columns = divide_round_up(config.grid_width, 8u),
             .tile_rows = divide_round_up(config.grid_height, 8u),
             .viewport_left = static_cast<std::uint32_t>(simulation_viewport.rect.position.x),
@@ -3260,25 +3311,27 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             record_paint(frame.command_buffer, state);
         if (!reset_this_frame && nuke_dispatch_pending &&
             nuke_flash_frames_remaining == 0u) {
-            record_nuke_from_space(frame.command_buffer);
+            record_nuke_from_space(frame.command_buffer, state);
             nuke_dispatch_pending = false;
             startup_log("Nuke from Space committed as one GPU Atmosphere-to-Fire edit.");
         }
 
         const bool debug_visible = state.debug_visualization.load(std::memory_order_relaxed);
+        const bool debug_region_visible = debug_visible &&
+            (state.debug_page.load(std::memory_order_relaxed) & 1u) == 0u;
         const bool step_once = state.single_step.exchange(false, std::memory_order_acq_rel);
         const auto simulation_ticks = reset_this_frame ? 0u :
             (paused ? (step_once ? 1u : 0u)
                     : (std::max)(scheduled_simulation_ticks, step_once ? 1u : 0u));
         const bool run_simulation = simulation_ticks != 0u;
         bool collect_debug_stats = false;
-        if (debug_visible && run_simulation) {
+        if (debug_region_visible && run_simulation) {
             collect_debug_stats = !debug_was_visible || (debug_sample_frame % 120u) == 0u;
             ++debug_sample_frame;
-        } else if (!debug_visible) {
+        } else if (!debug_region_visible) {
             debug_sample_frame = 0u;
         }
-        debug_was_visible = debug_visible;
+        debug_was_visible = debug_region_visible;
         if (collect_debug_stats) reset_debug_stats(frame.command_buffer);
         if (run_simulation) {
             for (std::uint32_t tick = 0u; tick < simulation_ticks; ++tick) {
@@ -3336,7 +3389,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                static_cast<std::uint32_t>(tested_pairs));
         }
         const bool map_visible = state.map_view.load(std::memory_order_relaxed);
-        constexpr std::uint32_t map_refresh_steps = 15u;
+        constexpr std::uint32_t map_refresh_steps = 4u;
         if (map_visible && !paused && !reset_this_frame &&
             (!map_was_visible || simulation_step - map_snapshot_step >= map_refresh_steps))
             record_map_snapshot(frame.command_buffer);
@@ -4819,12 +4872,33 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 const auto atmosphere_before = count_material(cells, Material::atmosphere);
                 upload_scene_cells(cells);
                 immediate_submit([&](const VkCommandBuffer command_buffer) {
-                    record_nuke_from_space(command_buffer);
+                    record_nuke_from_space(command_buffer, state);
                 });
                 const auto nuked = download_scene_cells();
+                const auto nuke_tiles = download_tile_states();
+                const auto tile_columns = divide_round_up(config.grid_width, 8u);
+                const auto nuke_dispatch = active_cell_dispatch(
+                    config.grid_width, config.grid_height,
+                    {state.active_window_origin_x.load(std::memory_order_relaxed),
+                     state.active_window_origin_y.load(std::memory_order_relaxed)});
+                const auto nuke_probe_x = nuke_dispatch.origin_x / 8u + 1u;
+                const auto nuke_probe_y = nuke_dispatch.origin_y / 8u + 1u;
+                const auto& nuke_probe =
+                    nuke_tiles[nuke_probe_y * tile_columns + nuke_probe_x];
+                constexpr std::uint32_t tile_sleeping = 0x00000004u;
+                constexpr std::uint32_t tile_active = 0x00000008u;
+                constexpr std::uint32_t tile_fine_active = 0x00020000u;
+                constexpr std::uint32_t tile_bulk_ready = 0x08000000u;
+                const bool hierarchy_is_immediate =
+                    nuke_probe.material == material_id(Material::fire) &&
+                    nuke_probe.occupancy == 64u &&
+                    (nuke_probe.flags & tile_active) != 0u &&
+                    (nuke_probe.flags & tile_fine_active) != 0u &&
+                    (nuke_probe.flags & (tile_sleeping | tile_bulk_ready)) == 0u;
                 append("nuke_from_space_gpu_exact_atmosphere_edit",
                        count_material(nuked, Material::atmosphere) == 0u &&
                            count_material(nuked, Material::fire) == atmosphere_before &&
+                            hierarchy_is_immediate &&
                            nuked[index_of(water_x, probe_y)].material ==
                                material_id(Material::water) &&
                            nuked[index_of(stone_x, probe_y)].material ==
@@ -4836,8 +4910,54 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                count_material(nuked, Material::fire)) +
                            " water=" + std::to_string(
                                nuked[index_of(water_x, probe_y)].material) +
-                           " stone=" + std::to_string(
-                               nuked[index_of(stone_x, probe_y)].material));
+                            " stone=" + std::to_string(
+                                nuked[index_of(stone_x, probe_y)].material) +
+                            " hierarchy=" +
+                            std::to_string(hierarchy_is_immediate ? 1u : 0u) +
+                            " probe=" + std::to_string(nuke_probe_x) + "," +
+                            std::to_string(nuke_probe_y) +
+                            " tile=" + std::to_string(nuke_probe.material) + "/" +
+                            std::to_string(nuke_probe.occupancy) + "/" +
+                            std::to_string(nuke_probe.flags));
+            }
+
+            {
+                constexpr std::uint32_t full_x = 64u;
+                constexpr std::uint32_t partial_x = 80u;
+                constexpr std::uint32_t structural_y = 64u;
+                constexpr std::uint32_t tile_structural = 0x00000001u;
+                constexpr std::uint32_t tile_damaged = 0x00000080u;
+                constexpr std::uint32_t tile_bulk_ready = 0x08000000u;
+                constexpr std::uint32_t tile_fracture_armed = 0x10000000u;
+                auto cells = acceptance_atmosphere_world();
+                seed_rect(cells, Material::stone, full_x, structural_y, 8u, 8u);
+                seed_rect(cells, Material::stone, partial_x, structural_y, 4u, 4u);
+                upload_scene_cells(cells);
+                run_acceptance_tile_pass();
+                const auto states = download_tile_states();
+                const auto columns = divide_round_up(config.grid_width, 8u);
+                const auto& full =
+                    states[(structural_y / 8u) * columns + full_x / 8u];
+                const auto& partial =
+                    states[(structural_y / 8u) * columns + partial_x / 8u];
+                const bool full_exact =
+                    full.material == material_id(Material::stone) &&
+                    full.occupancy == 64u &&
+                    (full.flags & (tile_structural | tile_fracture_armed)) ==
+                        (tile_structural | tile_fracture_armed) &&
+                    (full.flags & (tile_damaged | tile_bulk_ready)) == 0u;
+                const bool partial_exact =
+                    (partial.flags & tile_structural) != 0u &&
+                    (partial.flags &
+                     (tile_damaged | tile_bulk_ready | tile_fracture_armed)) == 0u;
+                append("authored_structures_start_without_false_damage_or_bulk_state",
+                       full_exact && partial_exact,
+                       "full=" + std::to_string(full.material) + "/" +
+                           std::to_string(full.occupancy) + "/" +
+                           std::to_string(full.flags) +
+                           " partial=" + std::to_string(partial.material) + "/" +
+                           std::to_string(partial.occupancy) + "/" +
+                           std::to_string(partial.flags));
             }
 
             {
@@ -6936,7 +7056,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 const auto result_actor = download_actor_state();
                 const auto result = download_scene_cells();
                 const std::uint64_t after_units = count_material(result, Material::gold);
-                const auto& fragment = result[index_of(target_x, target_y - 1u)];
+                const auto& fragment = result[index_of(target_x - 2u, target_y)];
                 append("player_laser_world_transfer_conserves_without_collection",
                        result_actor.gold == 0u && before_units == after_units &&
                            count_material(result, Material::gold) == 1u &&
@@ -6985,7 +7105,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                material_id(Material::sand) &&
                            result[index_of(target_x, target_y)].material ==
                                material_id(Material::atmosphere) &&
-                           result[index_of(target_x, target_y - 1u)].material ==
+                           result[index_of(target_x - 2u, target_y)].material ==
                                material_id(Material::gold) &&
                            count_material(result, Material::gold) == 1u,
                        "inventory=" + std::to_string(result_actor.gold) +
@@ -7010,7 +7130,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     material_id(Material::gold),
                     static_cast<std::uint32_t>(index_of(target_x, target_y)));
                 // Make the struck owner terminal on the first pulse while the
-                // solid immediately above survives that same radius-one hit.
+                // solid immediately above remains an independent owner.
                 // This isolates the underside-release direction instead of
                 // letting a second pulse open the preferred upward slot first.
                 cells[index_of(target_x, target_y)].aux =
@@ -7026,14 +7146,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                material_id(Material::stone) &&
                            result[index_of(target_x, target_y)].material ==
                                material_id(Material::atmosphere) &&
-                           result[index_of(target_x, target_y + 1u)].material ==
+                           result[index_of(target_x, target_y + 2u)].material ==
                                material_id(Material::gold) &&
                            count_material(result, Material::gold) == 1u,
                        "inventory=" + std::to_string(result_actor.gold) +
                            " source=" + std::to_string(
                                result[index_of(target_x, target_y)].material) +
                            " below=" + std::to_string(
-                               result[index_of(target_x, target_y + 1u)].material));
+                               result[index_of(target_x, target_y + 2u)].material));
             }
             {
                 auto full_actor = actor;
@@ -7046,6 +7166,18 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 cells[index_of(target_x, target_y)] = make_fill_cell(
                     material_id(Material::gold),
                     static_cast<std::uint32_t>(index_of(target_x, target_y)));
+                const auto seed_guard = [&](const std::uint32_t x,
+                                            const std::uint32_t y) {
+                    cells[index_of(x, y)] = make_fill_cell(
+                        material_id(Material::stone),
+                        static_cast<std::uint32_t>(index_of(x, y)));
+                };
+                seed_guard(target_x, target_y - 1u);
+                seed_guard(target_x, target_y + 1u);
+                seed_guard(target_x + 1u, target_y);
+                const auto guard_above = cells[index_of(target_x, target_y - 1u)];
+                const auto guard_below = cells[index_of(target_x, target_y + 1u)];
+                const auto guard_behind = cells[index_of(target_x + 1u, target_y)];
                 upload_scene_cells(cells);
                 upload_actor_state(full_actor);
                 fire_acceptance_laser(target_x, target_y);
@@ -7055,19 +7187,31 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 fire_acceptance_laser(target_x, target_y);
                 const auto result_actor = download_actor_state();
                 const auto result = download_scene_cells();
-                const auto& fragment = result[index_of(target_x, target_y - 1u)];
+                const auto& fragment = result[index_of(target_x - 2u, target_y)];
+                const auto cell_unchanged = [](const SceneCell& lhs,
+                                               const SceneCell& rhs) {
+                    return lhs.material == rhs.material && lhs.age == rhs.age &&
+                           lhs.temperature == rhs.temperature && lhs.aux == rhs.aux;
+                };
+                const bool adjacent_owners_unchanged =
+                    cell_unchanged(result[index_of(target_x, target_y - 1u)], guard_above) &&
+                    cell_unchanged(result[index_of(target_x, target_y + 1u)], guard_below) &&
+                    cell_unchanged(result[index_of(target_x + 1u, target_y)], guard_behind);
                 append("player_laser_releases_exact_loose_fragment",
                        result_actor.gold == 9999u &&
-                           count_material(result, Material::gold) == 1u &&
-                           result[index_of(target_x, target_y)].material ==
+                            count_material(result, Material::gold) == 1u &&
+                            adjacent_owners_unchanged &&
+                            result[index_of(target_x, target_y)].material ==
                                material_id(Material::atmosphere) &&
                            fragment.material == material_id(Material::gold) &&
                            (fragment.aux & fill_aux_structural) == 0u &&
                            (fragment.aux & 255u) == 1u,
                        "inventory=" + std::to_string(result_actor.gold) +
-                           " world_gold=" + std::to_string(
-                               count_material(result, Material::gold)) +
-                           " fragment=" + std::to_string(fragment.material) +
+                            " world_gold=" + std::to_string(
+                                count_material(result, Material::gold)) +
+                            " adjacent_unchanged=" +
+                            std::to_string(adjacent_owners_unchanged ? 1u : 0u) +
+                            " fragment=" + std::to_string(fragment.material) +
                            "/" + std::to_string(fragment.aux & 255u));
             }
             {
@@ -7124,19 +7268,19 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            count_material(result, Material::grass) == 1u &&
                            result[index_of(water_x, target_y)].material ==
                                material_id(Material::atmosphere) &&
-                           result[index_of(water_x, target_y - 1u)].material ==
+                           result[index_of(water_x - 2u, target_y)].material ==
                                material_id(Material::water) &&
                            result[index_of(grass_x, target_y)].material ==
                                material_id(Material::atmosphere) &&
-                           result[index_of(grass_x, target_y - 1u)].material ==
+                           result[index_of(grass_x - 2u, target_y)].material ==
                                material_id(Material::grass) &&
                            result[index_of(cloud_x, target_y)].material ==
                                material_id(Material::atmosphere) &&
-                           result[index_of(cloud_x, target_y - 1u)].material ==
+                           result[index_of(cloud_x - 2u, target_y)].material ==
                                material_id(Material::cloud) &&
                            result[index_of(bee_x, target_y)].material ==
                                material_id(Material::atmosphere) &&
-                           result[index_of(bee_x, target_y - 1u)].material ==
+                           result[index_of(bee_x - 2u, target_y)].material ==
                                material_id(Material::bee),
                        "inventory_unchanged=" +
                            std::to_string(inventory_unchanged ? 1u : 0u) +

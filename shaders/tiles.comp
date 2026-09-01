@@ -347,7 +347,11 @@ void main() {
                        !structuralTile && !isBlockCapable(dominant);
     // Block-capable solids may use tile metadata for cohesion, support, sleep,
     // and debug state, but they never become whole-tile movement packets.
-    bool bulkReadySolid = fullRegion && isBlockCapable(dominant) && !hot && !reacting;
+    // Authored structural tiles are already canonical stable ownership. Calling
+    // them BULK READY made reset look like a field of pending/broken packets
+    // even though structural solids never enter macro movement.
+    bool bulkReadySolid = fullRegion && isBlockCapable(dominant) &&
+                          !structuralTile && !hot && !reacting;
     bool macroLava = fullRegion && dominant == MAT_LAVA && !structuralTile &&
                      !alwaysActiveThermal;
     bool macroMovable = (macroLiquid || macroGas || macroPowder || macroLava) &&
@@ -376,8 +380,12 @@ void main() {
     bool previouslyDense = tileHas(previous, TILE_STRUCTURAL) &&
                            tileOccupancy(previous) >= TILE_STABILITY_OCCUPANCY;
     bool reducedDurability = structuralTile && dominantCount < TILE_STABILITY_OCCUPANCY;
+    // Partial fine-authored beams, props, and machinery are not fractured
+    // remnants. Occupancy damage is meaningful only after a complete aligned
+    // block armed the fracture contract; per-cell integrity remains visible.
     bool damaged = structuralTile &&
-                   (reducedDurability || dominantCount < TILE_CELL_COUNT ||
+                   ((fractureArmed &&
+                     (reducedDurability || dominantCount < TILE_CELL_COUNT)) ||
                     (structural > 0u && healthSum / structural < 240u));
     bool candidate = !structuralTile && cooldown == 0u && stabilizable && physicallySupported &&
                      occupied >= TILE_STABILITY_OCCUPANCY && stable == occupied &&

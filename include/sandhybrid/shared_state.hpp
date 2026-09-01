@@ -44,6 +44,7 @@ struct SharedState final {
     std::atomic_bool secondary_down{false};
     std::atomic_bool inspect_material{false};
     std::atomic_bool debug_visualization{false};
+    std::atomic_uint32_t debug_page{0}; // 0 camera-region markers, 1 resident/world totals
     std::atomic_bool camera_controls{false};
     std::atomic_bool map_view{false};
 

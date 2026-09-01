@@ -73,6 +73,20 @@ struct CameraView final {
         map_view);
 }
 
+void cycle_debug_page(SharedState& state) noexcept {
+    const bool visible = state.debug_visualization.load(std::memory_order_relaxed);
+    const auto page = state.debug_page.load(std::memory_order_relaxed) & 1u;
+    if (!visible) {
+        state.debug_page.store(0u, std::memory_order_relaxed);
+        state.debug_visualization.store(true, std::memory_order_release);
+    } else if (page == 0u) {
+        state.debug_page.store(1u, std::memory_order_release);
+    } else {
+        state.debug_page.store(0u, std::memory_order_relaxed);
+        state.debug_visualization.store(false, std::memory_order_release);
+    }
+}
+
 [[nodiscard]] std::pair<std::int32_t, std::int32_t> pointer_grid(
     const SharedState& state, const SimulationConfig& config,
     const ui::SimulationViewport& viewport, const std::int32_t mouse_x,
@@ -385,8 +399,7 @@ int run_application(const ApplicationOptions& options) {
         }
         shared_state.inspect_material.store(input.inspect_material, std::memory_order_relaxed);
         if (input.toggle_debug) {
-            const bool debug = shared_state.debug_visualization.load(std::memory_order_relaxed);
-            shared_state.debug_visualization.store(!debug, std::memory_order_release);
+            cycle_debug_page(shared_state);
         }
         if (input.toggle_map) {
             const bool map = shared_state.map_view.load(std::memory_order_relaxed);
@@ -652,8 +665,7 @@ int run_application(const ApplicationOptions& options) {
                 const bool map = shared_state.map_view.load(std::memory_order_relaxed);
                 shared_state.map_view.store(!map, std::memory_order_release);
             } else if (epochengine::gui_lib::contains(layout.debug_toggle, pointer)) {
-                const bool debug = shared_state.debug_visualization.load(std::memory_order_relaxed);
-                shared_state.debug_visualization.store(!debug, std::memory_order_release);
+                cycle_debug_page(shared_state);
             } else if (settings_workspace && epochengine::gui_lib::contains(layout.fps_30, pointer)) {
                 shared_state.presentation_limit.store(0u, std::memory_order_release);
             } else if (settings_workspace && epochengine::gui_lib::contains(layout.fps_60, pointer)) {
