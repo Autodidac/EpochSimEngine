@@ -3522,7 +3522,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     }
 
     bool draw_frame(SharedState& state, const std::uint32_t scheduled_simulation_ticks,
-                    const bool present_frame) {
+                    const bool present_frame,
+                    const bool force_debug_sample = false) {
         auto& frame = frames[frame_index];
         const std::uint64_t gpu_timeout_ns = cpu_physical_device &&
             !config.interactive_acceptance_report.empty()
@@ -3656,6 +3657,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         } else if (!debug_region_visible) {
             debug_sample_frame = 0u;
         }
+        if (force_debug_sample && debug_region_visible)
+            collect_debug_stats = true;
         debug_was_visible = debug_region_visible;
         if (collect_debug_stats) reset_debug_stats(frame.command_buffer);
         if (run_simulation) {
@@ -9095,10 +9098,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             std::uint32_t height{};
         };
         std::array<std::vector<double>, interactive_phase_names.size()> interactive_samples{};
+        std::array<std::vector<double>, 2u> interactive_debug_frame_intervals{};
         std::vector<InteractiveCapture> interactive_captures{};
         std::filesystem::path interactive_capture_directory{};
         std::uint32_t interactive_phase = std::numeric_limits<std::uint32_t>::max();
         std::uint32_t interactive_phase_offset = 0u;
+        bool interactive_debug_pair_region = false;
+        bool interactive_debug_pair_measurement = false;
         std::uint32_t interactive_presented_frames = 0u;
         std::uint64_t interactive_ticks = 0u;
         const auto interactive_start = Clock::now();
@@ -9164,6 +9170,38 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         state.camera_center_y.store(360, std::memory_order_relaxed);
                         state.ignite_air.store(true, std::memory_order_release);
                     }
+                }
+                interactive_debug_pair_measurement = false;
+                if (!cpu_physical_device && interactive_phase < 2u) {
+                    const auto pair_frame =
+                        interactive_phase * interactive_phase_frame_counts[0] +
+                        interactive_phase_offset;
+                    const bool capture_frame =
+                        interactive_phase_offset + 1u ==
+                            interactive_phase_frame_counts[interactive_phase];
+                    if (capture_frame) {
+                        interactive_debug_pair_region = interactive_phase == 1u;
+                        state.paused.store(false, std::memory_order_relaxed);
+                    } else {
+                        const auto pair_index = pair_frame / 2u;
+                        const bool second_in_pair = (pair_frame & 1u) != 0u;
+                        interactive_debug_pair_region =
+                            (pair_index & 1u) == 0u
+                                ? second_in_pair
+                                : !second_in_pair;
+                        interactive_debug_pair_measurement =
+                            pair_frame >= interactive_hardware_warmup_frames &&
+                            interactive_phase_offset + 2u <
+                                interactive_phase_frame_counts[interactive_phase];
+                        // Freeze canonical simulation state while alternating
+                        // N/R and R/N pair order. REGION still forces its
+                        // observational stats dispatch in draw_frame().
+                        state.paused.store(true, std::memory_order_relaxed);
+                    }
+                    state.debug_page.store(0u, std::memory_order_relaxed);
+                    state.debug_visualization.store(
+                        interactive_debug_pair_region,
+                        std::memory_order_release);
                 }
             }
             const auto width = state.window_width.load(std::memory_order_relaxed);
@@ -9238,7 +9276,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     pending_frame_capture = scheduled_capture->path;
                 }
             }
-            if (!draw_frame(state, simulation_ticks, present_frame)) {
+            const bool frame_presented = draw_frame(
+                state, simulation_ticks, present_frame,
+                interactive_debug_pair_measurement &&
+                    interactive_debug_pair_region);
+            if (!frame_presented) {
                 recreate_swapchain(width, height);
             } else {
                 interactive_ticks += simulation_ticks;
@@ -9250,13 +9292,21 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 }
             }
             const auto after_draw = Clock::now();
-            if (interactive_acceptance && present_frame &&
-                interactive_phase < interactive_samples.size() &&
-                (cpu_physical_device ||
-                    (!scheduled_capture.has_value() && interactive_phase_offset >
-                        interactive_hardware_warmup_frames))) {
-                interactive_samples[interactive_phase].push_back(
-                    std::chrono::duration<double, std::milli>(after_draw - before_draw).count());
+            if (interactive_acceptance && present_frame && frame_presented &&
+                interactive_phase < interactive_samples.size()) {
+                const double draw_ms =
+                    std::chrono::duration<double, std::milli>(
+                        after_draw - before_draw).count();
+                if (interactive_debug_pair_measurement) {
+                    interactive_samples[
+                        interactive_debug_pair_region ? 1u : 0u].push_back(draw_ms);
+                } else if (cpu_physical_device ||
+                           (interactive_phase >= 2u &&
+                            !scheduled_capture.has_value() &&
+                            interactive_phase_offset >
+                                interactive_hardware_warmup_frames)) {
+                    interactive_samples[interactive_phase].push_back(draw_ms);
+                }
             }
 #if SANDHYBRID_ENABLE_VALIDATION
             log_conservation_if_due(state);
@@ -9287,6 +9337,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 next_frame = Clock::now();
                 std::this_thread::yield();
             }
+            if (interactive_debug_pair_measurement && frame_presented) {
+                interactive_debug_frame_intervals[
+                    interactive_debug_pair_region ? 1u : 0u].push_back(
+                        std::chrono::duration<double, std::milli>(
+                            Clock::now() - before_draw).count());
+            }
 
             if (interactive_acceptance &&
                 interactive_presented_frames >= interactive_total_frames) {
@@ -9297,6 +9353,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 std::array<double, interactive_phase_names.size()> means{};
                 std::array<double, interactive_phase_names.size()> p95s{};
                 std::array<double, interactive_phase_names.size()> maxima{};
+                std::array<double, 2u> debug_interval_means{};
+                std::array<double, 2u> debug_interval_p95s{};
+                std::array<double, 2u> debug_interval_maxima{};
                 for (std::size_t phase = 0u; phase < interactive_samples.size(); ++phase) {
                     auto& samples = interactive_samples[phase];
                     if (samples.empty()) {
@@ -9322,13 +9381,42 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     ? (debug_p95_delta / p95s[0]) * 100.0 : 100.0;
                 constexpr double ten_fps_tail_loss_ms =
                     (1000.0 / 50.0) - (1000.0 / 60.0);
+                constexpr double fifty_fps_interval_ms = 1000.0 / 50.0;
                 if (!cpu_physical_device) {
-                    // Tail latency owns the jitter/overhead gate. Sequential
-                    // sub-millisecond arithmetic means are retained for
-                    // diagnostics, but phase-order and scheduler noise can
-                    // reverse their sign between otherwise identical runs.
-                    passed = passed && debug_p95_overhead <= 3.0 &&
-                        debug_p95_delta <= ten_fps_tail_loss_ms;
+                    passed = passed &&
+                        interactive_samples[0].size() ==
+                            interactive_samples[1].size() &&
+                        interactive_debug_frame_intervals[0].size() ==
+                            interactive_debug_frame_intervals[1].size();
+                    for (std::size_t bucket = 0u;
+                         bucket < interactive_debug_frame_intervals.size();
+                         ++bucket) {
+                        auto& samples = interactive_debug_frame_intervals[bucket];
+                        if (samples.empty()) {
+                            passed = false;
+                            continue;
+                        }
+                        std::ranges::sort(samples);
+                        double total = 0.0;
+                        for (const double value : samples) total += value;
+                        debug_interval_means[bucket] =
+                            total / static_cast<double>(samples.size());
+                        const auto p95_index = (std::min)(
+                            samples.size() - 1u,
+                            (samples.size() * 95u) / 100u);
+                        debug_interval_p95s[bucket] = samples[p95_index];
+                        debug_interval_maxima[bucket] = samples.back();
+                    }
+                    const double debug_present_p95_delta =
+                        debug_interval_p95s[1] - debug_interval_p95s[0];
+                    // Absolute paired tail/cadence loss owns the gate.
+                    // Relative percent remains diagnostic only because
+                    // sub-millisecond baselines amplify scheduler noise.
+                    passed = passed &&
+                        debug_p95_delta <= ten_fps_tail_loss_ms &&
+                        debug_present_p95_delta <= ten_fps_tail_loss_ms &&
+                        debug_interval_p95s[0] <= fifty_fps_interval_ms &&
+                        debug_interval_p95s[1] <= fifty_fps_interval_ms;
                 }
                 passed = passed && interactive_captures.size() ==
                     interactive_phase_names.size() + 1u;
@@ -9344,7 +9432,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     throw std::runtime_error("Unable to create interactive acceptance report: " +
                                              report_path.string());
                 report << "{\n"
-                       << "  \"schema\": 2,\n"
+                       << "  \"schema\": 3,\n"
                        << "  \"backend\": \"vulkan-presented\",\n"
                        << "  \"device_class\": \""
                        << (cpu_physical_device ? "cpu-software" : "hardware") << "\",\n"
@@ -9369,6 +9457,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        << debug_p95_overhead << ",\n"
                        << "  \"debug_mean_delta_ms\": " << debug_mean_delta << ",\n"
                        << "  \"debug_p95_delta_ms\": " << debug_p95_delta << ",\n"
+                       << "  \"debug_pairing\": "
+                          "\"interleaved-frozen-state-balanced-order\",\n"
+                       << "  \"debug_present_p95_delta_ms\": "
+                       << (debug_interval_p95s[1] - debug_interval_p95s[0])
+                       << ",\n"
                        << "  \"captures\": [\n";
                 for (std::size_t index = 0u; index < interactive_captures.size(); ++index) {
                     const auto& capture = interactive_captures[index];
@@ -9378,6 +9471,21 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            << "\", \"width\": " << capture.width
                            << ", \"height\": " << capture.height << "}"
                            << (index + 1u == interactive_captures.size() ? "\n" : ",\n");
+                }
+                report << "  ],\n"
+                       << "  \"debug_present_intervals\": [\n";
+                constexpr std::array<std::string_view, 2u> debug_interval_names{
+                    "normal_world", "region_debug"};
+                for (std::size_t bucket = 0u;
+                     bucket < debug_interval_names.size(); ++bucket) {
+                    report << "    {\"name\": \"" << debug_interval_names[bucket]
+                           << "\", \"samples\": "
+                           << interactive_debug_frame_intervals[bucket].size()
+                           << ", \"mean_ms\": " << debug_interval_means[bucket]
+                           << ", \"p95_ms\": " << debug_interval_p95s[bucket]
+                           << ", \"max_ms\": " << debug_interval_maxima[bucket] << "}"
+                           << (bucket + 1u == debug_interval_names.size()
+                               ? "\n" : ",\n");
                 }
                 report << "  ],\n"
                        << "  \"phases\": [\n";

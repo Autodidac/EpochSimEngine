@@ -148,7 +148,7 @@ struct NativeWindow::Impl final {
 };
 
 NativeWindow::NativeWindow(const std::string_view title, const std::uint32_t width,
-                           const std::uint32_t height)
+                           const std::uint32_t height, const bool visible)
     : impl_(std::make_unique<Impl>()) {
     int screen_index{};
     impl_->connection = xcb_connect(nullptr, &screen_index);
@@ -225,7 +225,8 @@ NativeWindow::NativeWindow(const std::string_view title, const std::uint32_t wid
         &impl_->wm_delete_window);
 
     set_title(title);
-    xcb_map_window(impl_->connection, impl_->window);
+    if (visible)
+        xcb_map_window(impl_->connection, impl_->window);
     xcb_flush(impl_->connection);
 }
 

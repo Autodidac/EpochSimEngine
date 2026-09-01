@@ -45,7 +45,8 @@ struct WindowInput final {
 
 class NativeWindow final {
 public:
-    NativeWindow(std::string_view title, std::uint32_t width, std::uint32_t height);
+    NativeWindow(std::string_view title, std::uint32_t width, std::uint32_t height,
+                 bool visible = true);
     ~NativeWindow();
 
     NativeWindow(const NativeWindow&) = delete;

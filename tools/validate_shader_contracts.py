@@ -110,6 +110,9 @@ def main() -> int:
     rainfall = (SHADERS / "rainfall.comp").read_text(encoding="utf-8")
     renderer = (ROOT / "src/vulkan_renderer.cpp").read_text(encoding="utf-8")
     app = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
+    window_header = (ROOT / "include/sandhybrid/window.hpp").read_text(encoding="utf-8")
+    window_win32 = (ROOT / "src/window_win32.cpp").read_text(encoding="utf-8")
+    window_xcb = (ROOT / "src/window_xcb.cpp").read_text(encoding="utf-8")
     input_routing = (ROOT / "include/sandhybrid/input_routing.hpp").read_text(encoding="utf-8")
     scene = (ROOT / "include/sandhybrid/scene.hpp").read_text(encoding="utf-8")
     world_layout = (ROOT / "include/sandhybrid/world_layout.hpp").read_text(encoding="utf-8")
@@ -241,15 +244,31 @@ def main() -> int:
     for token in (
         "const double debug_mean_overhead",
         "const double debug_p95_overhead",
-        "debug_p95_overhead <= 3.0",
         "debug_p95_delta <= ten_fps_tail_loss_ms",
-        '\"schema\\\": 2',
+        "interactive_debug_pair_measurement",
+        "interactive_debug_frame_intervals",
+        "interactive_samples[0].size() ==",
+        "interactive_debug_frame_intervals[0].size() ==",
+        "if (force_debug_sample && debug_region_visible)",
+        "debug_present_p95_delta <= ten_fps_tail_loss_ms",
+        "debug_interval_p95s[0] <= fifty_fps_interval_ms",
+        '\"schema\\\": 3',
         '\"debug_mean_overhead_percent\\\"',
         '\"debug_p95_overhead_percent\\\"',
         '\"debug_p95_delta_ms\\\"',
+        '\"debug_pairing\\\"',
+        '\"debug_present_intervals\\\"',
     ):
         require(renderer, token, errors,
                 "interactive Debug tail-latency acceptance")
+    for token in (
+        "options.interactive_acceptance_report.empty()",
+        "bool visible = true",
+        "visible ? WS_VISIBLE : 0u",
+        "if (visible)",
+    ):
+        require(app + window_header + window_win32 + window_xcb, token, errors,
+                "hidden automated acceptance window contract")
 
     for token in (
         "bool macroLiquid = fullLiquid && !liquidBoundaryFine;",

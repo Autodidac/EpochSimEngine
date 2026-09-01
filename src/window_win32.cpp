@@ -266,7 +266,7 @@ struct NativeWindow::Impl final {
 };
 
 NativeWindow::NativeWindow(const std::string_view title, const std::uint32_t width,
-                           const std::uint32_t height)
+                           const std::uint32_t height, const bool visible)
     : impl_(std::make_unique<Impl>()) {
     impl_->width = width;
     impl_->height = height;
@@ -288,11 +288,13 @@ NativeWindow::NativeWindow(const std::string_view title, const std::uint32_t wid
     AdjustWindowRectEx(&rectangle, WS_OVERLAPPEDWINDOW, FALSE, 0);
 
     const auto wide_title = widen(title);
+    const DWORD window_style =
+        WS_OVERLAPPEDWINDOW | (visible ? WS_VISIBLE : 0u);
     impl_->handle = CreateWindowExW(
         0,
         window_class_name,
         wide_title.c_str(),
-        WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+        window_style,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
         rectangle.right - rectangle.left,
