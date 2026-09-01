@@ -300,6 +300,8 @@ struct RenderPush final {
     std::uint32_t selected_group{};
     std::uint32_t hovered_group{};
     std::uint32_t hovered_material{};
+    // Persistent World uses the legacy graphics-only selected-scene slot for
+    // the latest explicit Beehive-tool Queen anchor.
     std::uint32_t selected_scene{};
     std::uint32_t group_count{};
     std::uint32_t scene_count{};
@@ -438,6 +440,8 @@ struct VulkanRenderer::Impl final {
     bool map_was_visible{};
     std::uint32_t nuke_flash_frames_remaining{};
     bool nuke_dispatch_pending{};
+    static constexpr std::uint32_t no_tool_hive_anchor = 0xffffffffu;
+    std::uint32_t tool_hive_anchor{no_tool_hive_anchor};
     std::optional<std::filesystem::path> pending_frame_capture{};
 #if SANDHYBRID_ENABLE_VALIDATION
     std::chrono::steady_clock::time_point next_conservation_log{};
@@ -2391,6 +2395,30 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 }
             }
         }
+        tool_hive_anchor = no_tool_hive_anchor;
+        const auto sandbox_district = persistent_world_district_index(Scene::sandbox);
+        const auto ecosystem_district = persistent_world_district_index(Scene::ecosystem);
+        const auto sandbox_queen_x =
+            persistent_world_district_origin_x(config.grid_width, sandbox_district) + 512u;
+        const auto sandbox_queen_y =
+            persistent_world_district_origin_y(config.grid_height, sandbox_district) + 234u;
+        const auto ecosystem_queen_x =
+            persistent_world_district_origin_x(config.grid_width, ecosystem_district) + 512u;
+        const auto ecosystem_queen_y =
+            persistent_world_district_origin_y(config.grid_height, ecosystem_district) + 232u;
+        for (std::size_t index = 0u; index < cells.size(); ++index) {
+            if (cells[index].material !=
+                static_cast<std::uint32_t>(Material::queen_bee)) continue;
+            const auto x = static_cast<std::uint32_t>(index % config.grid_width);
+            const auto y = static_cast<std::uint32_t>(index / config.grid_width);
+            const bool authored_queen =
+                (x == sandbox_queen_x && y == sandbox_queen_y) ||
+                (x == ecosystem_queen_x && y == ecosystem_queen_y);
+            if (!authored_queen) {
+                tool_hive_anchor = (x & 0xffffu) | ((y & 0xffffu) << 16u);
+                break;
+            }
+        }
         upload_scene_cells(cells, true);
         if (owners.actor_present) upload_actor_state(owners.actor);
         if (!error.empty()) startup_log("World load recovery: " + error);
@@ -2422,6 +2450,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     }
 
     void record_reset(const VkCommandBuffer command_buffer, const std::uint32_t scene_index) {
+        tool_hive_anchor = no_tool_hive_anchor;
         SimulationPush push{
             .width = config.grid_width,
             .height = config.grid_height,
@@ -2604,6 +2633,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const auto shape = policy::effective_world_brush_shape(
             tile_mode, state.brush_shape.load(std::memory_order_relaxed));
         const auto packed_material = material | (shape << 16u) | (tile_mode ? (1u << 18u) : 0u);
+        if (!erase && material == static_cast<std::uint32_t>(Material::beehive)) {
+            tool_hive_anchor =
+                (static_cast<std::uint32_t>(grid_x) & 0xffffu) |
+                ((static_cast<std::uint32_t>(grid_y) & 0xffffu) << 16u);
+        } else if (tool_hive_anchor != no_tool_hive_anchor) {
+            const auto hive_x = static_cast<std::int32_t>(tool_hive_anchor & 0xffffu);
+            const auto hive_y = static_cast<std::int32_t>(tool_hive_anchor >> 16u);
+            const auto reach = static_cast<std::int32_t>(radius) + 13;
+            if (std::abs(grid_x - hive_x) <= reach && std::abs(grid_y - hive_y) <= reach)
+                tool_hive_anchor = no_tool_hive_anchor;
+        }
         SimulationPush push{
             .width = config.grid_width,
             .height = config.grid_height,
@@ -3295,7 +3335,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .selected_group = active_selected_group % material_group_count,
             .hovered_group = active_hovered_group,
             .hovered_material = active_hovered_material,
-            .selected_scene = state.selected_scene.load(std::memory_order_relaxed) % scene_count,
+            .selected_scene = tool_hive_anchor,
             .group_count = material_group_count,
             .scene_count = scene_count,
             .mining_mode = state.mining_mode.load(std::memory_order_relaxed) ? 1u : 0u,

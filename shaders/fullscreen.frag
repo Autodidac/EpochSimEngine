@@ -553,48 +553,73 @@ vec4 gasPresentation(Cell cell, ivec2 grid, vec4 base) {
     return base;
 }
 
-// The historical Fix29 capture reads as a woven wasp nest rather than a
-// perfect material circle: sparse static fibres protrude from its outer shell.
-// Keep those fibres presentation-only so the canonical body/chamber cells,
-// conservation accounting, save payload, and delayed repair stay exact. The
-// early hash gates keep the extra neighborhood reads bounded, and the immediate
-// enclosure rejection prevents fibres from filling the chamber or right exit.
-bool fix29HiveFibre(ivec2 grid, Cell medium, out vec3 fibreColor) {
-    if (medium.material != MAT_ATMOSPHERE && medium.material != MAT_EMPTY) return false;
+// Exact shell, comb, highlight, and dark-fibre cells sampled from the supplied
+// July 31 Fix29 screenshot on its native five-pixel lattice. The conserved
+// shell/chamber/queen/exit cells remain authoritative; this 22x25 presentation
+// mask reproduces the photographed ragged paper hive in normal World and MAP
+// presentation without changing simulation, saves, or Debug.
+const uint FIX29_REFERENCE_BODY_ROWS[25] = uint[](
+    0x00000200u, 0x00010280u, 0x00014a88u, 0x0001dfd8u, 0x0001fff8u,
+    0x0005fdf8u, 0x0007fd7cu, 0x0007ff7cu, 0x003ebf7eu, 0x000e9ffeu,
+    0x000ebffeu, 0x000b7fffu, 0x003bffffu, 0x0015ffffu, 0x0005ffffu,
+    0x000fffffu, 0x000fffffu, 0x000ffff6u, 0x000ffff6u, 0x000afff6u,
+    0x0002fff0u, 0x0002ff60u, 0x0000bd60u, 0x00003d20u, 0x00001500u
+);
+const uint FIX29_REFERENCE_GOLD_ROWS[25] = uint[](
+    0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0x00000e00u, 0x000008c0u,
+    0x000002c0u, 0x00000200u, 0x00000a00u, 0x00009bc0u, 0x00001520u,
+    0x00000700u, 0x00001800u, 0x00002c00u, 0x00000400u, 0u,
+    0u, 0u, 0u, 0u, 0u
+);
+const uint FIX29_REFERENCE_YELLOW_ROWS[25] = uint[](
+    0u, 0u, 0u, 0u, 0u, 0u, 0u, 0x00000200u, 0u, 0x00001000u,
+    0u, 0x00000c80u, 0x00000400u, 0x00004020u, 0x00000ac0u,
+    0x00000800u, 0x00002000u, 0x00001000u, 0u, 0u,
+    0u, 0u, 0u, 0u, 0u
+);
+const uint FIX29_REFERENCE_DARK_ROWS[25] = uint[](
+    0u, 0u, 0u, 0u, 0u, 0u, 0u, 0x00000800u, 0x00200000u, 0u,
+    0x00040000u, 0u, 0x002a0000u, 0x00100000u, 0u,
+    0u, 0x00000001u, 0u, 0x00050000u, 0x00080006u,
+    0u, 0x00024200u, 0x00008040u, 0u, 0x00001500u
+);
 
-    uint columnHash = hash32(uint(grid.x) * 0x9e3779b9u ^ 0xd17a5eedu);
-    uint rowHash = hash32(uint(grid.y) * 0x85ebca6bu ^ 0xd17a5eedu);
-    bool verticalFibre = (columnHash & 1u) == 0u;
-    bool hangingFibre = (columnHash & 15u) == 0u;
-    bool horizontalFibre = (rowHash & 3u) == 0u;
-    if (!verticalFibre && !hangingFibre && !horizontalFibre) return false;
+int fixedHiveReferenceAtQueen(ivec2 grid, ivec2 queen) {
+    ivec2 offset = grid - queen;
+    // The recovered Queen is column 10, row 13 of the 22x25 reference lattice.
+    ivec2 reference = offset + ivec2(10, 13);
+    if (reference.x < 0 || reference.x >= 22 || reference.y < 0 || reference.y >= 25)
+        return -1;
+    // This single authoritative probe executes only inside a candidate 22x25
+    // box. Ordinary fragments perform arithmetic only and touch no extra buffer.
+    if (cellAt(queen).material != MAT_QUEEN_BEE) return -1;
+    uint bit = 1u << uint(reference.x);
+    if ((FIX29_REFERENCE_BODY_ROWS[reference.y] & bit) == 0u) return 0;
+    if ((FIX29_REFERENCE_DARK_ROWS[reference.y] & bit) != 0u) return 4;
+    if ((FIX29_REFERENCE_YELLOW_ROWS[reference.y] & bit) != 0u) return 3;
+    if ((FIX29_REFERENCE_GOLD_ROWS[reference.y] & bit) != 0u) return 2;
+    return 1;
+}
 
-    uint immediateHive = 0u;
-    immediateHive += cellAt(grid + ivec2(-1, 0)).material == MAT_BEEHIVE ? 1u : 0u;
-    immediateHive += cellAt(grid + ivec2(1, 0)).material == MAT_BEEHIVE ? 1u : 0u;
-    immediateHive += cellAt(grid + ivec2(0, -1)).material == MAT_BEEHIVE ? 1u : 0u;
-    immediateHive += cellAt(grid + ivec2(0, 1)).material == MAT_BEEHIVE ? 1u : 0u;
-    if (immediateHive >= 2u) return false;
+int fixedHiveReferenceBody(ivec2 grid) {
+    int authoredOriginY = int(renderPc.gridHeight) >= 1080 ? 720 : 0;
+    ivec2 sandboxQueen = ivec2(512, authoredOriginY + 234);
+    int reference = fixedHiveReferenceAtQueen(grid, sandboxQueen);
+    if (reference >= 0) return reference;
 
-    if (verticalFibre &&
-        (cellAt(grid + ivec2(0, -1)).material == MAT_BEEHIVE ||
-         cellAt(grid + ivec2(0, 1)).material == MAT_BEEHIVE)) {
-        fibreColor = vec3(0.63, 0.39, 0.07);
-        return true;
+    int spare = max(int(renderPc.gridWidth) - 5120, 0);
+    int gap = (spare / 7 / 8) * 8;
+    int sharedSurfaceY = authoredOriginY + 40 * 8;
+    ivec2 ecosystemQueen = ivec2(640 + gap + 512, sharedSurfaceY - 37 * 8 + 232);
+    reference = fixedHiveReferenceAtQueen(grid, ecosystemQueen);
+    if (reference >= 0) return reference;
+
+    if (renderPc.selectedScene != 0xffffffffu) {
+        ivec2 toolQueen = ivec2(int(renderPc.selectedScene & 0xffffu),
+                                int(renderPc.selectedScene >> 16u));
+        return fixedHiveReferenceAtQueen(grid, toolQueen);
     }
-    if (hangingFibre &&
-        (cellAt(grid + ivec2(0, -2)).material == MAT_BEEHIVE ||
-         cellAt(grid + ivec2(0, 2)).material == MAT_BEEHIVE)) {
-        fibreColor = vec3(0.60, 0.36, 0.06);
-        return true;
-    }
-    if (horizontalFibre &&
-        (cellAt(grid + ivec2(-1, 0)).material == MAT_BEEHIVE ||
-         cellAt(grid + ivec2(1, 0)).material == MAT_BEEHIVE)) {
-        fibreColor = vec3(0.61, 0.37, 0.065);
-        return true;
-    }
-    return false;
+    return -1;
 }
 
 vec4 worldColor(Cell cell, ivec2 grid) {
@@ -1335,15 +1360,42 @@ void main() {
                       sampleY * sampleViewHeight / sampleHeight);
     ivec2 grid = ivec2(int(gridX), int(gridY));
     Cell cell = cellAt(grid);
-    vec3 hiveFibreColor = vec3(0.0);
-    bool hiveFibre = renderPc.debugMode == 0u &&
-        fix29HiveFibre(grid, cell, hiveFibreColor);
-    vec4 color = worldColor(cell, grid);
-    color.rgb = applyWorldLighting(color.rgb, cell, grid, mapSample);
-    if (hiveFibre) {
-        // Match the minimum illumination applied to the authoritative hive
-        // composite so the fibres remain one coherent straw-gold body.
-        color.rgb = hiveFibreColor * 0.90;
+    Cell displayCell = cell;
+    int referenceHive = -1;
+    if (renderPc.debugMode == 0u) {
+        referenceHive = fixedHiveReferenceBody(grid);
+        bool canonicalHive = cell.material == MAT_BEEHIVE || cell.material == MAT_QUEEN_BEE ||
+            ((cell.material == MAT_HONEY || cell.material == MAT_POLLEN) &&
+             (cell.aux & AUX_STRUCTURAL) != 0u);
+        if (referenceHive > 0 &&
+            (canonicalHive || cell.material == MAT_ATMOSPHERE || cell.material == MAT_EMPTY)) {
+            displayCell.material = MAT_BEEHIVE;
+            displayCell.age = 0u;
+            displayCell.temperature = 20;
+            displayCell.aux = AUX_STRUCTURAL;
+        } else if (referenceHive == 0 && canonicalHive) {
+            displayCell.material = MAT_ATMOSPHERE;
+            displayCell.age = 0u;
+            displayCell.temperature = 20;
+            displayCell.aux = 0u;
+        }
+    }
+    vec4 color = worldColor(displayCell, grid);
+    color.rgb = applyWorldLighting(color.rgb, displayCell, grid, mapSample);
+    if (referenceHive > 0) {
+        // Palette classes are part of the photographed cell mask, not an
+        // animated effect. A small stable per-cell variation preserves the
+        // fibrous paper texture without rounding the silhouette back into a disk.
+        float paper = float(hash32(uint(grid.x) * 2654435761u ^ uint(grid.y)) & 7u) / 7.0;
+        if (referenceHive == 4)
+            color.rgb = vec3(0.03434, 0.04231, 0.05613);
+        else if (referenceHive == 3)
+            color.rgb = vec3(0.98225, 0.80695, 0.08022);
+        else if (referenceHive == 2)
+            color.rgb = vec3(0.93869, 0.57112, 0.05951);
+        else
+            color.rgb = mix(vec3(0.55201, 0.29177, 0.03955),
+                            vec3(0.72306, 0.48515, 0.09531), paper);
         color.a = 1.0;
     }
 

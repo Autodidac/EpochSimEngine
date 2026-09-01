@@ -652,10 +652,11 @@ vec4 materialColor(uint material, uint age, uint aux, ivec2 position) {
     }
     case MAT_BEEHIVE: {
         bool comb = ((position.x + (position.y & 1)) % 4) == 0;
-        // Historical Fix29 shell: static straw-gold comb. These are the
-        // photographed material values with the old time pulse removed, so
-        // the unsupported wasp nest keeps its bright woven identity without
-        // pretending that stable structural cells are moving.
+        // Historical Fix29 shell: the authoritative shell cells render
+        // directly as static straw-gold comb. Normal World/MAP presentation
+        // uses the complete reference-derived July 31 paper-fibre body while
+        // canonical simulation/save/debug cells stay unchanged. The old random
+        // second shell and time pulse stay gone.
         color = vec4(comb ? 0.62 : 0.66, comb ? 0.37 : 0.42, 0.08, 1.0); break;
     }
     case MAT_DIRTY_STEAM: color = vec4(0.43, 0.47 + variation, 0.48, 0.68); break;

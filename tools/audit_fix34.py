@@ -160,10 +160,20 @@ for token in ("fixedHiveContent", "Historical Fix29 shell",
     if token not in materials:
         errors.append(f"Fix29 visible hive palette missing {token!r}")
 for token in ("fixedHiveComposite", "illumination = max(illumination, 0.90)",
-              "fix29HiveFibre", "immediateHive >= 2u",
+              "FIX29_REFERENCE_BODY_ROWS[25]", "FIX29_REFERENCE_GOLD_ROWS[25]",
+              "FIX29_REFERENCE_YELLOW_ROWS[25]", "FIX29_REFERENCE_DARK_ROWS[25]",
+              "fixedHiveReferenceBody",
+              "fixedHiveReferenceAtQueen", "renderPc.selectedScene",
               "Classify it before rejecting", "if (!mapSample &&"):
     if token not in fullscreen:
         errors.append(f"Fix29 shadow-readable presentation missing {token!r}")
+for token in ("fix29HiveFibre", "hiveFibre", "hiveFibreColor"):
+    if token in fullscreen:
+        errors.append(f"Fix29 presentation must not repaint adjacent medium via {token!r}")
+for token in (".selected_scene = tool_hive_anchor", "tool_hive_anchor =",
+              "material == static_cast<std::uint32_t>(Material::beehive)"):
+    if token not in renderer:
+        errors.append(f"Fix29 tool/MAP presentation anchor missing {token!r}")
 if reset.count("SCENE_") < 18:
     errors.append("not all nine scenes are represented in the brick rebuild")
 
