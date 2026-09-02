@@ -16,6 +16,13 @@ Before changing code:
 
 Statuses: `OPEN`, `PARTIAL`, `REGRESSION`, `DEFERRED`; completed missions move to Accepted foundations with result-based evidence. v2.5.21 is published from `30343c7822b9d6b3d4d49276e3d9f74a8fd89522` with focused package evidence, but many-bee performance telemetry, broad visual scene review, generated/tool/loaded hive observation, Water leveling, and complete scene-cycle acceptance remain active. Every unaccepted mission remains active.
 
+### 2026-09-02 v2.5.27 incremental release boundary
+
+- The user explicitly accepts an incremental stable release at the current clean feature boundary without claiming that the complete active mission backlog is finished. The release must describe every remaining `OPEN`, `PARTIAL`, `REGRESSION`, and `DEFERRED` mission truthfully and may not relabel them COMPLETE.
+- The accepted visual set is frozen: the exact photographed no-perch `22x25` hive body, three outward-open 20-bee crescents, and high-sky Nuke flash/edit are not redesigned. The source includes the chained three-hazard/schema-2 colony gate, paired hidden Debug cadence gate, exact Half Water displaced-medium correction, and repeated finite-ledger gate.
+- Canonical EpochGui authority remains the Site mirror. The required pre-release query on 2026-09-02 confirms main and peeled tag v0.89.30 still resolve to `b97167423373b9a7af3f821dcf91d8a71613dbf2`, matching the complete vendored 53-file snapshot and its recorded archive SHA-256.
+- Final publication still requires a clean exact v2.5.27 commit; rebuilt Windows/Linux Release tests; fresh installed packages and runtime evidence; versioned Windows/Linux/source archives with exact byte sizes and SHA-256; committed-tree-only source semantics; and a structured Site handoff. GitHub remains out of scope.
+
 ### 2026-09-01 consecutive hive lifecycle/save contradiction
 
 - The production check named `bee_hazard_replacement_and_strict_60_cap` claims three consecutive cycles, but each iteration rebuilds `hazard_cells` from the original pre-cycle `result`. It therefore proves three independently seeded missing slots, not one colony surviving repeated hazard, autonomous replacement, strict-cap rejection, schema-2 save/load, and the next hazard. This contradicts MC-032's multi-cycle loaded-home criterion, MC-033's recurring formation criterion, MC-136's longer installed save/load criterion, and the ledger's “three consecutive” wording.

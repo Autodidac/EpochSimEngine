@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(EpochSimEngine VERSION 2.5.26 LANGUAGES CXX)
+project(EpochSimEngine VERSION 2.5.27 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -359,8 +359,8 @@ if(BUILD_TESTING)
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2524_contract.py)
         add_test(NAME sandhybrid_v2525_source_contract
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2525_contract.py)
-        add_test(NAME sandhybrid_v2526_source_contract
-       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2526_contract.py)
+        add_test(NAME sandhybrid_v2527_source_contract
+       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2527_contract.py)
     endif()
 
     add_executable(sandhybrid_input_routing_contract tests/input_routing_contract.cpp)

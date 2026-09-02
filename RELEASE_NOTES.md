@@ -1,24 +1,25 @@
-# SandHybrid v2.5.26
+# SandHybrid v2.5.27
 
-Post-v2.5.25 weather, material, laser, hive, debug, Nuke, and frame-pacing correction for the SandHybrid example/runtime bundled with EpochSimEngine.
+Incremental hive, Debug, hierarchy, weather, mining, conservation, and performance correction for the SandHybrid example/runtime bundled with EpochSimEngine. This release preserves every unfinished mission as active work; it does not claim the complete backlog is finished.
 
 ## Corrected behavior
 
-- Preserves the photographed saturated-golden, no-perch Fix29 Sandbox, Ecosystem, and tool-placed hive bodies immediately and after 120 fixed ticks, including the exact shell/chamber/queen/right-exit contents and 60 live district-home SandHybrid bees in three outward-open 20-bee lobes.
-- Keeps recognizable base material colors in Debug and uses sparse state markers plus a complete damage outline; hidden/visible Debug collection remains byte-identical to production simulation.
-- Renames the former Ignite Air action to `NUKE FROM SPACE`, presents six warning-light frames, then performs one deterministic GPU Atmosphere-to-Fire edit without a full-world CPU readback.
-- Makes the player laser a world-to-world material transfer: it never creates Vacuum, never collects inventory, targets liquids and vegetation as well as solids, and retains the source when no deterministic body-clear gas swap can commit.
-- Prevents Acid adjacency and moist Waste from inventing Water-family units. Wet Waste becomes Fertilizer while the real Water owner remains; unsupported inorganic Acid dissolution remains unchanged until a paired Acid/solute owner exists.
-- Replaces synchronized bulk rain with sparse lower-edge Cloud precipitation staggered by eight-column band. Steam and Dirty Steam join or nucleate the continuous high-sky Cloud deck one-for-one, and every rain cell carries its source temperature.
-- Removes the observed presentation spikes: late fixed ticks no longer suppress requested frames, live MAP refresh copies one of 16 row bands, reset no longer exports a full-world PPM, and Nuke never downloads/floods the complete world on the CPU.
-- Keeps the proven software-Vulkan chemistry kernel byte-identical and applies the new conservative ownership rules in one shallow post-pass, avoiding the llvmpipe optimizer cliff.
-- Makes every incremental build deploy generated SPIR-V beside the executable so runtime tests cannot silently load an older shader.
+- Presents the exact accepted photographed saturated-golden, no-perch Fix29 hive from one fixed `22x25` ragged body mask with a compact bright comb, torn fibres, and an irregular right opening; the same canonical body is used by reset, the Beehive tool, MAP, and load normalization.
+- Retains exactly 60 live district-home SandHybrid bees in three separate outward-open 20-bee crescents and chains three distinct hazard, autonomous replacement, strict-cap, and public schema-2 save/load cycles through the prior loaded colony.
+- Separates Debug into `REGION` and `WORLD TOTALS`, leaves MAP material-only, names measured scopes plainly, and draws the marker key with the same sparse glyphs used over the World.
+- Replaces bursty MAP snapshots with a 64-band rolling refresh and measures hidden Debug through balanced interleaved normal/REGION samples against identical frozen state.
+- Makes ordinary mining acquire one stationary damageable owner from every approach, including exposed undersides; moving cells are ignored, terminal debris ejects through the impact face, player pickup is forbidden, and the radial spark burst is removed.
+- Keeps `NUKE FROM SPACE` above the intact continuous Cloud deck. A readable near-white warning flash precedes one bounded GPU Atmosphere-to-Fire edit, and affected hierarchy ownership is reclassified immediately.
+- Slows and sparsifies the scheduled rain interval. Dry Cloud does not animate rain; only tagged Water already falling continues outside the active window, clears its tag on landing, and cannot disturb an unrelated settled pool.
+- Keeps Fire, Ember, and Lava active for bounded heat/reaction work; limits skylight Grass to a shallow surface layer and preserves exact Water ownership through earth percolation toward rock.
+- Corrects Half Water split/merge ownership so exactly one displaced Atmosphere marker is carried and restored, the reserved carrier state cannot enter salinity, and temperature/pressure remain conserved.
+- Repeats finite Half Water, Water-Steam-Cloud-rain, Lava-Stone-Lava, actor-owner, and schema-2 save/load cycles without Empty/Vacuum or family-count drift.
 
 ## Release verification
 
-The exact versioned Windows Release build passes all `43/43` CTests, including ten supported EpochGui v0.89.30 suites. The native Linux Release build passes all `33/33` CTests. Fresh Windows/RTX 5080 and Linux/llvmpipe runtime trees each pass all `63/63` production Vulkan checks, including macro-packet travel/breakup, zero-jitter Water and Half Water, H2/O2 synthesis, Atmosphere respiration, finite weather and rock loops, Acid/Waste ownership, balanced Volcano output, non-collecting laser transfer, Nuke, Debug byte identity, and exact immediate/delayed hives.
+The final pre-release source checkpoint passes Windows Release CTest `43/43` and native Linux Release CTest `33/33`. Fresh installed Windows/RTX 5080 and Linux/Xvfb/llvmpipe reports pass `76/76`, including three chained colony hazard/replacement/save-load cycles with exact canonical cells, the 20-word actor owner, GPU bytes, homes, slots, and strict 60 cap. Repeated finite-ledger reports pass `12/12` on both platforms, and three installed Windows hidden Debug runs each present 1,920 frames with 208/208 balanced pairs inside the absolute draw/cadence budgets. The installed Linux chained gate exits zero in `43:01.92`, peaks at `4,172,208` KiB RSS, and uses zero swap.
 
-The final installed-package Linux llvmpipe gate completes in `8:24.79`, peaks at `3,118,248` KiB RSS, and uses zero swap. Package audits verify native PE/ELF binaries, 14 deployed shaders byte-identical to the generated Release shaders, 20 public headers, and only three consolidated lowercase documents. Broad packaged visual judgment, measured interactive frame-time capture, and repeated long finite-system/save-load cycles remain active in `missioncache.md`; deterministic readback does not mark those missions COMPLETE.
+The release remains an incremental feature-boundary build. `missioncache.md` retains 122 active missions (70 PARTIAL, 35 REGRESSION, 16 OPEN, one DEFERRED), including broader bee aging/migration, longer visual recurrence, complete cross-district acceptance, and architectural backlog. Those limitations are not represented as completed work.
 
 ## Dependency snapshot
 
@@ -26,11 +27,11 @@ The complete vendored EpochGui dependency is synchronized from the canonical Git
 
 ## Stable release assets
 
-- SandHybrid-Windows-x64-v2.5.26.zip
-- SandHybrid-Windows-x64-v2.5.26.zip.sha256
-- SandHybrid-Linux-x64-v2.5.26.tar.gz
-- SandHybrid-Linux-x64-v2.5.26.tar.gz.sha256
-- SandHybrid-v2.5.26-source.tar.gz
-- SandHybrid-v2.5.26-source.tar.gz.sha256
+- SandHybrid-Windows-x64-v2.5.27.zip
+- SandHybrid-Windows-x64-v2.5.27.zip.sha256
+- SandHybrid-Linux-x64-v2.5.27.tar.gz
+- SandHybrid-Linux-x64-v2.5.27.tar.gz.sha256
+- SandHybrid-v2.5.27-source.tar.gz
+- SandHybrid-v2.5.27-source.tar.gz.sha256
 
-Updater-facing aliases remain `SandHybrid-Windows-x64-current.zip`, `SandHybrid-Linux-x64-current.tar.gz`, and `simengine-source.tar.gz`; each must be byte-identical to its immutable v2.5.26 object and carry a matching checksum sidecar. The public release is a normal visible Site release. GitHub repository, tags, and releases remain outside this publication scope.
+Updater-facing aliases remain `SandHybrid-Windows-x64-current.zip`, `SandHybrid-Linux-x64-current.tar.gz`, and `simengine-source.tar.gz`; each must be byte-identical to its immutable v2.5.27 object and carry a matching checksum sidecar. The public release is a normal visible Site release. GitHub repository, tags, and releases remain outside this publication scope.

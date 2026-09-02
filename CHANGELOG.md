@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.5.27
+
+- Reproduced the accepted photographed no-perch Fix29 wasp hive with its exact `22x25` ragged body presentation and three outward-open 20-bee crescents, while keeping canonical shell, chamber, Queen, right-exit, Honey, and Pollen owners authoritative.
+- Chained three distinct bee hazard, autonomous replacement, strict-cap, and schema-2 save/load cycles so each cycle begins from the prior loaded 60-bee colony and preserves exact cells, actor ownership, GPU bytes, home districts, and formation slots.
+- Split Debug into dedicated `REGION` and `WORLD TOTALS` pages, kept MAP material-only, matched the marker key to the actual sparse glyphs, and replaced bursty MAP snapshots with a 64-band rolling refresh.
+- Corrected ordinary laser/mining acquisition from every approach: moving cells are ignored, one stationary owner is damaged, terminal debris transfers through the exposed impact face, player pickup is forbidden, and the unrelated radial spark effect is removed.
+- Kept `NUKE FROM SPACE` bounded to the high sky above the intact Cloud deck, with a readable near-white warning flash before the one-shot GPU edit and immediate hierarchy reclassification.
+- Slowed and sparsified scheduled rain, retained motion only for tagged falling Water outside the active window, and prevented landed drops from disturbing unrelated settled pools.
+- Made Fire, Ember, and Lava active heat/reaction owners in the bounded simulation window; limited skylight Grass to a shallow surface layer and preserved Water ownership while moisture percolates toward rock.
+- Corrected Half Water displaced-medium ownership so a split carries exactly one Atmosphere marker, salinity never consumes the reserved state, and merge restores one canonical medium with conserved temperature and pressure.
+- Added repeated finite Water/Steam/Cloud/rain, Lava/Stone/Lava, Half Water, actor-owner, and schema-2 save/load cycles with zero Empty/Vacuum drift.
+- Replaced sequential Debug timing comparisons with hidden, balanced interleaved normal/REGION measurements against identical frozen state.
+
 ## 2.5.26
 - Updated the complete canonical EpochGui dependency to v0.89.30 at `b97167423373b9a7af3f821dcf91d8a71613dbf2`, including its mandatory Input module and tenth supported Windows test.
 - Preserved the known-good software-Vulkan chemistry kernel and moved conservative Acid/Waste, fixed-hive, sparse-rain, and vapor/Cloud corrections into one shallow post-pass, avoiding the llvmpipe optimizer cliff while keeping all 63 production checks green on both RTX and llvmpipe.
