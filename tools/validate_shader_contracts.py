@@ -99,6 +99,7 @@ def main() -> int:
         return 1
 
     move = (SHADERS / "move.comp").read_text(encoding="utf-8")
+    bee_move = (SHADERS / "bee_move.comp").read_text(encoding="utf-8")
     paint = (SHADERS / "paint.comp").read_text(encoding="utf-8")
     actor = (SHADERS / "actor.comp").read_text(encoding="utf-8")
     actor_defs = (SHADERS / "actor.glsl").read_text(encoding="utf-8")
@@ -262,6 +263,8 @@ def main() -> int:
         require(renderer, token, errors,
                 "interactive Debug tail-latency acceptance")
     for token in (
+        "options.runtime_acceptance_report.empty()",
+        "options.long_cycle_acceptance_report.empty()",
         "options.interactive_acceptance_report.empty()",
         "bool visible = true",
         "visible ? WS_VISIBLE : 0u",
@@ -449,17 +452,8 @@ def main() -> int:
     for token in (
         "source.material == MAT_BEEHIVE && isStructural(source)",
         '#include "bee_swarm.glsl"',
-        "correctionCurrentBirthCandidate",
-        "source.material == MAT_EMPTY &&",
-        "proposed.material == MAT_BEE || currentBirthProposal",
-        "correctionDistrictBeePopulation",
-        "correctionStationaryBeeCount",
-        "storedHome / int(TILE_SIZE)",
-        "correctionBirthOwner",
-        "(pc.step + indexOf(queenPosition)) & 4095u",
-        "districtBees < BEE_COLONY_MAX",
-        "stationaryBees == districtBees",
-        "corrected.aux = beePackMetadata",
+        "source.material != MAT_BEE && proposed.material == MAT_BEE",
+        "The dedicated Bee birth phase owns the",
         "const uint weatherCycleTicks = 7200u",
         "const uint rainStartTick = 4800u",
         "const uint rainDurationTicks = 600u",
@@ -475,6 +469,26 @@ def main() -> int:
         require(conservation_corrections, token, errors,
                 "software-Vulkan-safe hive/lifecycle/weather correction contract")
     for token in (
+        "const uint BEE_PASS_BIRTH = 1u",
+        "layout(std430, binding = 1) buffer NextCells",
+        "bool beeMoveAcceptedBirth",
+        "void runBeeBirth(ivec2 position, Cell source)",
+        "(pc.step & 4095u) != 0u",
+        "beeMoveNearNestTile(position)",
+        "uint stationaryBees = beeMoveStationaryPopulation",
+        "uint districtBees = beeMoveDistrictPopulation",
+        "districtBees >= BEE_COLONY_MAX",
+        "stationaryBees != districtBees",
+        "beeMoveSourceAt(missingPosition).material != MAT_ASH",
+        "newborn.aux = beePackMetadata",
+        "nextCells[indexOf(position)] = newborn",
+        "nextCells[indexOf(position)] = cells[birthOwner]",
+        "CurrentCells is immutable throughout this rare bounded phase",
+        "runBeeBirth(position, bee)",
+    ):
+        require(bee_move, token, errors,
+                "conserved two-cell Bee replacement transaction")
+    for token in (
         "layout(std430, binding = 10) buffer RainColumns",
         "if (pc.activeMode == 2u)",
         "if (((pc.step + x) & 3u) != 0u) return",
@@ -483,6 +497,26 @@ def main() -> int:
     ):
         require(rainfall, token, errors,
                 "scheduled off-window rain ownership contract")
+    for token in (
+        "auto chained_cycle_cells = result",
+        "auto hazard_cells = chained_cycle_cells",
+        '"bee_repeated_lifecycle_schema2_round_trip"',
+        "save_world(",
+        "load_world(",
+        "chained_cycle_cells = std::move(gpu_loaded)",
+        "const bool district_bounded = false",
+        "const auto translated_width = district_bounded",
+        "? pre_expansion_world_width",
+        "const auto translated_height = district_bounded",
+        "? pre_expansion_world_height",
+        "active_section_x, active_section_y, true, true",
+    ):
+        require(renderer, token, errors,
+                "chained hive lifecycle and schema-2 ownership contract")
+    if "auto hazard_cells = result" in renderer:
+        errors.append(
+            "independently reseeded hive replacement cycle: "
+            "forbidden token 'auto hazard_cells = result'")
     for source, tokens, description in (
         (swarm, ("return beeFormationOffset(slot)",),
          "stable idle biohazard-slot contract"),
@@ -505,6 +539,10 @@ def main() -> int:
         "conservation_corrections_pipeline =",
         "create_compute_pipeline(\"conservation_corrections.comp.spv\")",
         "bind_compute(command_buffer, conservation_corrections_pipeline, current_set)",
+        "auto bee_birth_push = simulation_push",
+        "bee_birth_push.material = 1u",
+        "record_bee_birth_pass(command_buffer, simulation_push, active_dispatch)",
+        "record_bee_birth_pass(command_buffer, push, acceptance_dispatch)",
         "create_compute_pipeline(\"rainfall.comp.spv\")",
         "bind_compute(command_buffer, rainfall_pipeline, current_set)",
     ):

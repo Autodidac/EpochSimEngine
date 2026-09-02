@@ -295,45 +295,13 @@ void main() {
     Cell proposed = nextCells[index];
     Cell corrected = proposed;
 
-    // The frozen chemistry kernel retains its historical 100-owner constants so
-    // software Vulkan keeps the proven control-flow shape. Admit its proposed
-    // newborn only through the current 60-owner contract. One deterministic
-    // candidate fills the first genuinely missing formation slot, and only after
-    // every surviving colony member has returned to its exact home slot. A
-    // forager temporarily away from the hive therefore never looks like a death.
-    ivec2 currentBirthQueen = ivec2(0);
-    bool currentBirthProposal = source.material == MAT_EMPTY &&
-        correctionCurrentBirthCandidate(position, currentBirthQueen);
-    if (source.material == MAT_EMPTY &&
-        (proposed.material == MAT_BEE || currentBirthProposal)) {
-        bool queenFound = currentBirthProposal;
-        ivec2 queenPosition = currentBirthProposal
-            ? currentBirthQueen : correctionNearestQueen(position, queenFound);
-        uint missingSlot = BEE_FORMATION_COUNT;
-        uint stationaryBees = queenFound
-            ? correctionStationaryBeeCount(queenPosition, missingSlot) : 0u;
-        uint districtBees = queenFound
-            ? correctionDistrictBeePopulation(queenPosition) : BEE_COLONY_MAX;
-        uint birthOwner = queenFound
-            ? correctionBirthOwner(queenPosition) : 0xffffffffu;
-        bool acceptedBirth = queenFound &&
-            districtBees < BEE_COLONY_MAX &&
-            stationaryBees == districtBees &&
-            missingSlot < BEE_FORMATION_COUNT &&
-            index == birthOwner;
-        if (acceptedBirth) {
-            corrected = makeCell(MAT_BEE);
-            corrected.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
-            corrected.aux &= ~(BEE_AUX_QUEEN | BEE_AUX_POLLEN |
-                               BEE_AUX_MIGRATING);
-            corrected.aux = beePackMetadata(
-                corrected.aux, queenPosition, missingSlot, pc.width, pc.height);
-            corrected.age = beePackAge(
-                beeNewbornHomeTimer(queenPosition), BEE_TARGET_NEWBORN);
-        } else {
-            corrected = advancedSource(source);
-            undoConvertedStat();
-        }
+    // The frozen chemistry kernel retains its historical 100-owner birth path
+    // only to preserve the proven software-Vulkan control-flow shape. Reject
+    // every unpaired proposal here. The dedicated Bee birth phase owns the
+    // current 60-slot, two-cell Ash/medium transaction after this pass.
+    if (source.material != MAT_BEE && proposed.material == MAT_BEE) {
+        corrected = advancedSource(source);
+        undoConvertedStat();
     }
 
     // Keep the proven monolithic chemistry kernel's control-flow shape for

@@ -94,16 +94,6 @@ for token in ("CORRECTION_BEE_TIMER_BITS = 14u",
               "TILE_HAS_FLOWER", "TILE_HAS_HONEY",
               "correctionBeeBesideTarget", "corrected.age = correctionBeePackAge",
               '#include "bee_swarm.glsl"',
-              "correctionDistrictBeePopulation",
-              "correctionStationaryBeeCount",
-              "storedHome / int(TILE_SIZE)",
-              "correctionCurrentBirthCandidate",
-              "correctionBirthOwner",
-              "(pc.step + indexOf(queenPosition)) & 4095u",
-              "districtBees < BEE_COLONY_MAX",
-              "stationaryBees == districtBees",
-              "missingSlot < BEE_FORMATION_COUNT",
-              "beeNewbornHomeTimer(queenPosition), BEE_TARGET_NEWBORN",
               "target == CORRECTION_BEE_TARGET_NEWBORN",
               "correctionBeeExactHome"):
     if token not in corrections:
@@ -120,6 +110,16 @@ for token in ('#include "bee_swarm.glsl"', "beeMoveExactHome", "tileQueenPositio
               "beeNewbornTransitTarget", "const int outsideLaneX = 23",
               "approachY = settled.y < 0 ? -24 : 16",
               "local.y == approachY && local.x != settled.x",
+              "beeMoveDistrictPopulation",
+              "beeMoveStationaryPopulation",
+              "storedHome / int(TILE_SIZE)",
+              "beeMoveBirthOwner",
+              "districtBees >= BEE_COLONY_MAX",
+              "stationaryBees != districtBees",
+              "missingSlot >= BEE_FORMATION_COUNT",
+              "beeNewbornHomeTimer(queenPosition)",
+              "nextCells[indexOf(position)] = newborn",
+              "nextCells[indexOf(position)] = cells[birthOwner]",
               "!newbornTransit && ((slot + pc.step) & 3u) != 0u",
               "tryBeeMove", "atomicCompSwap",
               "atomicAnd(cells[index].aux, ~AUX_MOVED)"):
@@ -130,7 +130,8 @@ for token in ("cells[indexOf(candidate)].material != MAT_QUEEN_BEE",
     if token not in bee_move:
         errors.append(f"canonical-cell Queen-home scan missing {token!r}")
 for token in ("bee_movement_pipeline", 'create_compute_pipeline("bee_move.comp.spv")',
-              "bind_compute(command_buffer, bee_movement_pipeline, current_set)"):
+              "bind_compute(command_buffer, bee_movement_pipeline, current_set)",
+              "record_bee_birth_pass", "bee_birth_push.material = 1u"):
     if token not in renderer:
         errors.append(f"dedicated bee movement dispatch missing {token!r}")
 if "if ((bee.aux & BEE_AUX_SWARM) != 0u) return false;" not in move:

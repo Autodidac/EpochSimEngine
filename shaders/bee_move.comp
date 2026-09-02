@@ -8,9 +8,158 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
+layout(std430, binding = 1) buffer NextCells { Cell nextCells[]; };
 layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
 layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };
 layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
+
+const uint BEE_PASS_MOVE = 0u;
+const uint BEE_PASS_BIRTH = 1u;
+
+Cell beeMoveSourceAt(ivec2 position) {
+    return inside(position) ? cells[indexOf(position)] : makeCell(MAT_STONE);
+}
+
+bool beeMoveHasNeighbor(ivec2 position, uint material) {
+    for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            if ((dx != 0 || dy != 0) &&
+                beeMoveSourceAt(position + ivec2(dx, dy)).material == material)
+                return true;
+        }
+    }
+    return false;
+}
+
+uint beeMoveCountWithin(ivec2 position, uint material, int radius) {
+    uint count = 0u;
+    for (int dy = -radius; dy <= radius; ++dy) {
+        for (int dx = -radius; dx <= radius; ++dx) {
+            if (dx * dx + dy * dy <= radius * radius &&
+                beeMoveSourceAt(position + ivec2(dx, dy)).material == material)
+                ++count;
+        }
+    }
+    return count;
+}
+
+ivec2 beeMoveNearestQueen(ivec2 position, out bool found) {
+    ivec2 nearest = position;
+    int bestDistance = 0x3fffffff;
+    uint bestIndex = 0xffffffffu;
+    found = false;
+    for (int dy = -5; dy <= 5; ++dy) {
+        for (int dx = -5; dx <= 5; ++dx) {
+            ivec2 candidate = position + ivec2(dx, dy);
+            if (!inside(candidate) ||
+                beeMoveSourceAt(candidate).material != MAT_QUEEN_BEE) continue;
+            int distance = dx * dx + dy * dy;
+            uint candidateIndex = indexOf(candidate);
+            if (distance < bestDistance ||
+                (distance == bestDistance && candidateIndex < bestIndex)) {
+                found = true;
+                nearest = candidate;
+                bestDistance = distance;
+                bestIndex = candidateIndex;
+            }
+        }
+    }
+    return nearest;
+}
+
+ivec2 beeMoveDistrictOrigin(ivec2 homeCenter) {
+    if (beeUsesPersistentWorldHome(pc.width, pc.height)) {
+        uint district = 0u;
+        ivec2 districtLocal = ivec2(0);
+        if (beePersistentAddress(homeCenter, pc.width, pc.height,
+                                 district, districtLocal))
+            return beePersistentDistrictOrigin(pc.width, pc.height, district);
+    }
+    return beeAuthoredWorldOrigin(pc.width, pc.height);
+}
+
+uint beeMoveDistrictPopulation(ivec2 homeCenter) {
+    ivec2 origin = beeMoveDistrictOrigin(homeCenter);
+    ivec2 firstTile = max(origin / int(TILE_SIZE), ivec2(0));
+    ivec2 finalCell = min(origin + BEE_AUTHORED_WORLD_CELLS - ivec2(1),
+                          ivec2(int(pc.width) - 1, int(pc.height) - 1));
+    ivec2 finalTile = finalCell / int(TILE_SIZE);
+    uint columns = tileColumns(pc.width);
+    uint count = 0u;
+    for (int tileY = firstTile.y; tileY <= finalTile.y; ++tileY) {
+        for (int tileX = firstTile.x; tileX <= finalTile.x; ++tileX)
+            count += tileBeeCount(tiles[uint(tileY) * columns + uint(tileX)]);
+    }
+    return count;
+}
+
+uint beeMoveStationaryPopulation(ivec2 homeCenter, out uint firstMissingSlot) {
+    uint count = 0u;
+    firstMissingSlot = BEE_FORMATION_COUNT;
+    for (uint slot = 0u; slot < BEE_FORMATION_COUNT; ++slot) {
+        Cell bee = beeMoveSourceAt(homeCenter + beeFormationOffset(slot));
+        ivec2 storedHome = beeHomeCenterFromAux(bee.aux, pc.width, pc.height);
+        bool exact = bee.material == MAT_BEE &&
+            (bee.aux & BEE_AUX_SWARM) != 0u &&
+            beeFormationSlotFromAux(bee.aux, pc.width, pc.height) == slot &&
+            all(equal(storedHome / int(TILE_SIZE),
+                      homeCenter / int(TILE_SIZE)));
+        if (exact) ++count;
+        else if (firstMissingSlot == BEE_FORMATION_COUNT)
+            firstMissingSlot = slot;
+    }
+    return count;
+}
+
+bool beeMoveBirthMedium(Cell cell) {
+    return cell.material == MAT_EMPTY || cell.material == MAT_ATMOSPHERE;
+}
+
+bool beeMoveNearNestTile(ivec2 position) {
+    ivec2 center = position / int(TILE_SIZE);
+    ivec2 limits = ivec2(int(tileColumns(pc.width)) - 1,
+                         int((pc.height + TILE_SIZE - 1u) / TILE_SIZE) - 1);
+    for (int tileY = -1; tileY <= 1; ++tileY) {
+        for (int tileX = -1; tileX <= 1; ++tileX) {
+            ivec2 candidate = center + ivec2(tileX, tileY);
+            if (any(lessThan(candidate, ivec2(0))) ||
+                any(greaterThan(candidate, limits))) continue;
+            uint flags = tiles[uint(candidate.y) * tileColumns(pc.width) +
+                               uint(candidate.x)].flags;
+            if ((flags & (TILE_HAS_HIVE | TILE_HAS_QUEEN)) != 0u) return true;
+        }
+    }
+    return false;
+}
+
+bool beeMoveBirthCandidate(ivec2 position, ivec2 queenPosition) {
+    Cell medium = beeMoveSourceAt(position);
+    if (!beeMoveBirthMedium(medium)) return false;
+    bool queenFound = false;
+    ivec2 nearestQueen = beeMoveNearestQueen(position, queenFound);
+    ivec2 queenOffset = queenPosition - position;
+    int queenDistance = queenOffset.x * queenOffset.x +
+        queenOffset.y * queenOffset.y;
+    bool nestFrontier = beeMoveHasNeighbor(position, MAT_QUEEN_BEE) ||
+        beeMoveHasNeighbor(position, MAT_BEEHIVE);
+    bool foodFrontier = beeMoveHasNeighbor(position, MAT_HONEY) ||
+        beeMoveHasNeighbor(position, MAT_POLLEN);
+    return queenFound && all(equal(nearestQueen, queenPosition)) &&
+        queenDistance > 0 && queenDistance <= 6 && nestFrontier &&
+        foodFrontier && beeMoveCountWithin(position, MAT_BEE, 6) < 4u;
+}
+
+uint beeMoveBirthOwner(ivec2 queenPosition) {
+    uint owner = 0xffffffffu;
+    for (int dy = -3; dy <= 3; ++dy) {
+        for (int dx = -3; dx <= 3; ++dx) {
+            ivec2 candidate = queenPosition + ivec2(dx, dy);
+            if (inside(candidate) && beeMoveBirthCandidate(candidate, queenPosition))
+                owner = min(owner, indexOf(candidate));
+        }
+    }
+    return owner;
+}
 
 uint beeMoveTileCount() {
     return tileColumns(pc.width) * ((pc.height + TILE_SIZE - 1u) / TILE_SIZE);
@@ -121,6 +270,84 @@ void markBeeMoveDirty(ivec2 position) {
              CHUNK_DIRTY | CHUNK_ACTIVE | CHUNK_FINE_ACTIVE);
 }
 
+bool beeMoveAcceptedBirth(ivec2 queenPosition,
+                          out uint missingSlot,
+                          out uint birthOwner) {
+    missingSlot = BEE_FORMATION_COUNT;
+    birthOwner = 0xffffffffu;
+    if ((pc.step & 4095u) != 0u) return false;
+    uint stationaryBees = beeMoveStationaryPopulation(queenPosition, missingSlot);
+    uint districtBees = beeMoveDistrictPopulation(queenPosition);
+    if (districtBees >= BEE_COLONY_MAX || stationaryBees != districtBees ||
+        missingSlot >= BEE_FORMATION_COUNT) return false;
+
+    ivec2 missingPosition = queenPosition + beeFormationOffset(missingSlot);
+    if (!inside(missingPosition) ||
+        beeMoveSourceAt(missingPosition).material != MAT_ASH) return false;
+
+    birthOwner = beeMoveBirthOwner(queenPosition);
+    return birthOwner != 0xffffffffu &&
+        beeMoveBirthMedium(cells[birthOwner]);
+}
+
+bool beeMoveAshFormationOwner(ivec2 position,
+                              out ivec2 queenPosition,
+                              out uint formationSlot) {
+    for (uint slot = 0u; slot < BEE_FORMATION_COUNT; ++slot) {
+        ivec2 candidateQueen = position - beeFormationOffset(slot);
+        if (inside(candidateQueen) &&
+            beeMoveSourceAt(candidateQueen).material == MAT_QUEEN_BEE) {
+            queenPosition = candidateQueen;
+            formationSlot = slot;
+            return true;
+        }
+    }
+    queenPosition = ivec2(0);
+    formationSlot = BEE_FORMATION_COUNT;
+    return false;
+}
+
+void runBeeBirth(ivec2 position, Cell source) {
+    if ((pc.step & 4095u) != 0u) return;
+    if (!beeMoveNearNestTile(position)) return;
+
+    ivec2 queenPosition = ivec2(0);
+    uint missingSlot = BEE_FORMATION_COUNT;
+    uint birthOwner = 0xffffffffu;
+    if (beeMoveBirthMedium(source)) {
+        bool queenFound = false;
+        queenPosition = beeMoveNearestQueen(position, queenFound);
+        if (!queenFound ||
+            !beeMoveAcceptedBirth(queenPosition, missingSlot, birthOwner) ||
+            indexOf(position) != birthOwner) return;
+
+        Cell newborn = makeCell(MAT_BEE);
+        newborn.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
+        newborn.aux &= ~(BEE_AUX_QUEEN | BEE_AUX_POLLEN |
+                         BEE_AUX_MIGRATING);
+        newborn.aux = beePackMetadata(newborn.aux, queenPosition, missingSlot,
+                                      pc.width, pc.height);
+        newborn.age = beePackAge(beeNewbornHomeTimer(queenPosition),
+                                 BEE_TARGET_NEWBORN);
+        nextCells[indexOf(position)] = newborn;
+        markBeeMoveDirty(position);
+        return;
+    }
+
+    uint formationSlot = BEE_FORMATION_COUNT;
+    if (source.material != MAT_ASH ||
+        !beeMoveAshFormationOwner(position, queenPosition, formationSlot) ||
+        !beeMoveAcceptedBirth(queenPosition, missingSlot, birthOwner) ||
+        formationSlot != missingSlot) return;
+
+    // CurrentCells is immutable throughout this rare bounded phase. The birth
+    // medium and missing-slot Ash invocations independently own their matching
+    // NextCells outputs, forming one deterministic two-cell transaction without
+    // same-dispatch cross-cell writes.
+    nextCells[indexOf(position)] = cells[birthOwner];
+    markBeeMoveDirty(position);
+}
+
 bool tryBeeMove(ivec2 sourcePosition, Cell bee, ivec2 offset) {
     if (all(equal(offset, ivec2(0)))) return false;
     ivec2 targetPosition = sourcePosition + offset;
@@ -155,6 +382,11 @@ void main() {
 
     uint index = indexOf(position);
     Cell bee = cells[index];
+    if (pc.material == BEE_PASS_BIRTH) {
+        runBeeBirth(position, bee);
+        return;
+    }
+    if (pc.material != BEE_PASS_MOVE) return;
     if (bee.material != MAT_BEE || (bee.aux & BEE_AUX_SWARM) == 0u) return;
 
     uint slot = beeFormationSlotFromAux(bee.aux, pc.width, pc.height);

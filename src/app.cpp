@@ -321,7 +321,9 @@ int run_application(const ApplicationOptions& options) {
         "SandHybrid v" + std::string{SANDHYBRID_VERSION_STRING};
     NativeWindow window{
         application_title, 1280, 720,
-        options.interactive_acceptance_report.empty()};
+        options.runtime_acceptance_report.empty() &&
+            options.long_cycle_acceptance_report.empty() &&
+            options.interactive_acceptance_report.empty()};
     window.show_startup_message("Compiling Shaders...");
     std::fprintf(stderr, "[SandHybrid] Native window created.\n");
     SharedState shared_state{};
