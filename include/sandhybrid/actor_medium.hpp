@@ -328,6 +328,10 @@ inline constexpr std::uint32_t fix29_bee_target_none =
     (1u << (32u - fix29_bee_timer_bits)) - 1u;
 inline constexpr std::uint32_t fix29_bee_target_newborn =
     fix29_bee_target_none - 1u;
+inline constexpr std::uint32_t fix29_bee_departure_base_ticks = 1200u;
+inline constexpr std::uint32_t fix29_bee_departure_span_ticks = 600u;
+inline constexpr std::uint32_t fix29_bee_forager_stagger_ticks = 12u;
+inline constexpr std::uint32_t fix29_bee_forager_activation_window_ticks = 61u;
 inline constexpr std::int32_t fix29_bee_formation_min_x = -20;
 inline constexpr std::int32_t fix29_bee_formation_max_x = 20;
 inline constexpr std::int32_t fix29_bee_formation_min_y = -22;
@@ -363,6 +367,29 @@ inline constexpr std::array<std::uint16_t, fix29_bee_formation_count>
 [[nodiscard]] constexpr bool fix29_bee_forager_slot(
     const std::size_t slot) noexcept {
     return ((slot * 37u + 11u) % 10u) == 0u;
+}
+
+[[nodiscard]] constexpr std::uint32_t fix29_bee_forager_ordinal(
+    const std::size_t slot) noexcept {
+    return static_cast<std::uint32_t>(
+        (std::min)(slot, fix29_bee_formation_count - 1u) / 10u);
+}
+
+[[nodiscard]] constexpr std::uint32_t fix29_bee_departure_threshold(
+    const std::size_t slot) noexcept {
+    return fix29_bee_departure_base_ticks +
+           static_cast<std::uint32_t>(
+               (slot * 29u) % fix29_bee_departure_span_ticks);
+}
+
+[[nodiscard]] constexpr std::uint32_t fix29_bee_initial_timer(
+    const std::size_t slot) noexcept {
+    if (!fix29_bee_forager_slot(slot))
+        return static_cast<std::uint32_t>((slot * 17u) % 900u);
+    const auto activation_tick =
+        1u + fix29_bee_forager_ordinal(slot) *
+                 fix29_bee_forager_stagger_ticks;
+    return fix29_bee_departure_threshold(slot) - activation_tick;
 }
 
 [[nodiscard]] constexpr FormationOffset fix29_bee_formation_offset(

@@ -783,6 +783,9 @@ int run_application(const ApplicationOptions& options) {
         const bool inspecting = input.inspect_material;
         const bool blueprint_placement_active =
             shared_state.blueprint_placement_active.load(std::memory_order_acquire);
+        const bool one_shot_hive_placement = editor_workspace &&
+            active_selected_material.load(std::memory_order_relaxed) ==
+                static_cast<std::uint32_t>(Material::beehive);
         if (primary_pressed && !over_world) primary_one_shot_latched = true;
         const auto world_primary_action = route_world_primary_action({
             .editor_workspace = editor_workspace,
@@ -790,6 +793,7 @@ int run_application(const ApplicationOptions& options) {
             .pointer_over_world = over_world,
             .primary_down = input.primary_down && !primary_one_shot_latched,
             .primary_pressed = primary_pressed && !primary_one_shot_latched,
+            .one_shot_paint = one_shot_hive_placement,
             .inspecting = inspecting,
             .fill_modifier = input.fill_modifier,
             .panning = pan_button_down,
@@ -809,6 +813,14 @@ int run_application(const ApplicationOptions& options) {
             shared_state.fill_region.store(true, std::memory_order_release);
             primary_one_shot_latched = true;
         }
+        if (world_primary_action == WorldPrimaryAction::editor_paint &&
+            one_shot_hive_placement) {
+            request_beehive_placement(
+                shared_state,
+                shared_state.last_world_cursor_x.load(std::memory_order_relaxed),
+                shared_state.last_world_cursor_y.load(std::memory_order_relaxed));
+            primary_one_shot_latched = true;
+        }
 
         const bool designer_paint_active = designer_workspace && over_designer_grid &&
                                            input.primary_down && !inspecting &&
@@ -817,7 +829,8 @@ int run_application(const ApplicationOptions& options) {
             paint_designer_grid(shared_state, designer_grid_viewport, input.mouse_x, input.mouse_y);
 
         shared_state.primary_down.store(
-            world_primary_action == WorldPrimaryAction::editor_paint,
+            world_primary_action == WorldPrimaryAction::editor_paint &&
+                !one_shot_hive_placement,
             std::memory_order_relaxed);
         // Right mouse is camera-only. Erasing is an explicit left-click Eraser
         // selection, never an implicit Oxygen write.

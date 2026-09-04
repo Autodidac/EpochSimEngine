@@ -15,6 +15,13 @@ namespace sandhybrid {
 
 inline constexpr std::uint32_t world_save_format_version = 2u;
 inline constexpr std::uint32_t world_save_min_format_version = 1u;
+
+[[nodiscard]] constexpr bool requires_pre_pr19_hive_migration(
+    const std::uint32_t format_version) noexcept {
+    // Schema 2 is an exact persistent-World cell/owner payload. Only legacy
+    // schema-1 scene saves may pass through the historical image migration.
+    return format_version < world_save_format_version;
+}
 inline constexpr std::uint32_t world_save_chunk_edge = 64u;
 inline constexpr std::uint32_t world_save_actor_version = 1u;
 inline constexpr std::uint32_t world_save_actor_bytes = 80u;

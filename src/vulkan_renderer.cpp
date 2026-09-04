@@ -1,6 +1,7 @@
 #include "sandhybrid/vulkan_renderer.hpp"
 
 #include "sandhybrid/actor_medium.hpp"
+#include "sandhybrid/hive_recovery.hpp"
 #include "sandhybrid/input_routing.hpp"
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/scene.hpp"
@@ -117,6 +118,99 @@ SceneCell make_fill_cell(const std::uint32_t material_id, const std::uint32_t in
         cell.aux = (cell.aux & ~fill_aux_state_mask) | 255u;
     }
     return cell;
+}
+
+[[nodiscard]] bool canonical_fix29_hive_signature_at(
+    const std::span<const SceneCell> cells,
+    const std::uint32_t width,
+    const std::uint32_t height,
+    const std::uint32_t queen_x,
+    const std::uint32_t queen_y) {
+    if (queen_x >= width || queen_y >= height ||
+        cells.size() != static_cast<std::size_t>(width) * height)
+        return false;
+
+    std::int32_t entropy_queen_x = static_cast<std::int32_t>(queen_x);
+    std::int32_t entropy_queen_y = static_cast<std::int32_t>(queen_y);
+    std::optional<std::uint32_t> expected_home;
+    for (std::uint32_t district = 0u;
+         district < persistent_world_district_count; ++district) {
+        const auto origin_x = persistent_world_district_origin_x(width, district);
+        const auto origin_y = persistent_world_district_origin_y(height, district);
+        if (queen_x >= origin_x && queen_x < origin_x + pre_expansion_world_width &&
+            queen_y >= origin_y && queen_y < origin_y + pre_expansion_world_height) {
+            entropy_queen_x = static_cast<std::int32_t>(queen_x - origin_x);
+            entropy_queen_y = static_cast<std::int32_t>(queen_y - origin_y);
+            expected_home = ((queen_x - origin_x) / 8u) |
+                (((queen_y - origin_y) / 8u) << 7u) | (district << 20u);
+            break;
+        }
+    }
+
+    std::uint32_t shell = 0u;
+    std::uint32_t honey = 0u;
+    std::uint32_t pollen = 0u;
+    std::uint32_t chamber = 0u;
+    for (std::int32_t dy = -10; dy <= 10; ++dy) {
+        for (std::int32_t dx = -10; dx <= 10; ++dx) {
+            const auto x = static_cast<std::int32_t>(queen_x) + dx;
+            const auto y = static_cast<std::int32_t>(queen_y) + dy;
+            if (x < 0 || y < 0 || x >= static_cast<std::int32_t>(width) ||
+                y >= static_cast<std::int32_t>(height))
+                return false;
+            const auto part = classify_pre_pr19_hive_cell(
+                dx, dy,
+                fix29_hive_entropy(entropy_queen_x, entropy_queen_y, dx, dy),
+                entropy_queen_x, entropy_queen_y);
+            if (part == HivePart::empty) continue;
+            const auto& cell = cells[
+                static_cast<std::size_t>(y) * width + static_cast<std::uint32_t>(x)];
+            const bool fixed = (cell.aux &
+                (fill_aux_structural | fill_aux_supported)) ==
+                (fill_aux_structural | fill_aux_supported);
+            switch (part) {
+            case HivePart::shell:
+                if (cell.material != static_cast<std::uint32_t>(Material::beehive) ||
+                    !fixed) return false;
+                ++shell;
+                break;
+            case HivePart::queen:
+                if (cell.material != static_cast<std::uint32_t>(Material::queen_bee))
+                    return false;
+                break;
+            case HivePart::honey:
+                if (cell.material != static_cast<std::uint32_t>(Material::honey) ||
+                    !fixed) return false;
+                ++honey;
+                break;
+            case HivePart::pollen:
+                if (cell.material != static_cast<std::uint32_t>(Material::pollen) ||
+                    !fixed) return false;
+                ++pollen;
+                break;
+            case HivePart::chamber:
+            case HivePart::exit:
+                // The authored opening begins Empty, but a running closed
+                // system legitimately relaxes Atmosphere into it. Both retain
+                // the same intact hive-body signature for load presentation.
+                if (cell.material == static_cast<std::uint32_t>(Material::bee) &&
+                    expected_home.has_value() && (cell.aux & 0x08000000u) != 0u &&
+                    (cell.aux & 0x00701fffu) == *expected_home &&
+                    ((cell.aux >> 13u) & 127u) < fix29_bee_formation_count) {
+                    // A live home-owned returning Bee may occupy an opening;
+                    // its presence must not switch the intact body to raw art.
+                } else if (cell.material != static_cast<std::uint32_t>(Material::empty) &&
+                    cell.material !=
+                        static_cast<std::uint32_t>(Material::atmosphere))
+                    return false;
+                if (part == HivePart::chamber) ++chamber;
+                break;
+            case HivePart::empty:
+                break;
+            }
+        }
+    }
+    return shell == 193u && honey + pollen + chamber == 56u;
 }
 
 SceneCell make_resident_substrate_cell(
@@ -2415,39 +2509,49 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
   startup_log("World load skipped: " + error);
   return false;
         }
-        if (scene == Scene::ecosystem || scene == Scene::sandbox) {
+        // Schema-2 persistent World saves already contain exact canonical cells
+        // and current Bee ownership. Re-running the pre-PR19 single-scene image
+        // migration here injected a phantom third hive at authored_map_origin,
+        // then created 60 metadata-free bees that unraveled after the first tick.
+        if (requires_pre_pr19_hive_migration(metadata.format_version) &&
+            (scene == Scene::ecosystem || scene == Scene::sandbox)) {
             std::vector<std::uint32_t> materials(static_cast<std::size_t>(cells.size()));
             for (std::size_t index = 0u; index < cells.size(); ++index)
                 materials[index] = cells[index].material;
-            normalize_pre_pr19_hives(materials, config.grid_width, config.grid_height, authored_map_origin_x(), authored_map_origin_y(), scene);
-            const auto queen_x = static_cast<std::int32_t>(authored_map_origin_x()) + 512;
-            const auto queen_y = static_cast<std::int32_t>(authored_map_origin_y()) +
-                (scene == Scene::sandbox ? 234 : 232);
+            // Persistent schema-1 saves own both authored districts. The old
+            // single-scene origin is never a legitimate persistent Bee home.
+            for (const auto hive_scene : {Scene::sandbox, Scene::ecosystem}) {
+                const auto district = persistent_world_district_index(hive_scene);
+                normalize_pre_pr19_hives(materials, config.grid_width, config.grid_height,
+                    persistent_world_district_origin_x(config.grid_width, district),
+                    persistent_world_district_origin_y(config.grid_height, district), hive_scene);
+            }
             for (std::size_t index = 0u; index < cells.size(); ++index) {
                 const auto normalized = materials[index];
-                if (cells[index].material != normalized) {
+                if (cells[index].material != normalized)
                     cells[index] = make_fill_cell(normalized, static_cast<std::uint32_t>(index));
-                } else {
-                    cells[index].material = normalized;
-                }
-                const auto x = static_cast<std::int32_t>(index % config.grid_width);
-                const auto y = static_cast<std::int32_t>(index / config.grid_width);
-                const auto local_queen_y = scene == Scene::sandbox ? 234 : 232;
-                const auto dx = x - queen_x;
-                const auto dy = y - queen_y;
-                const auto hive_part = classify_pre_pr19_hive_cell(
-                    dx, dy, fix29_hive_entropy(512, local_queen_y, dx, dy),
-                    512, local_queen_y);
-                const bool fixed_hive_content =
-                    (hive_part == HivePart::honey &&
-                     normalized == static_cast<std::uint32_t>(Material::honey)) ||
-                    (hive_part == HivePart::pollen &&
-                     normalized == static_cast<std::uint32_t>(Material::pollen));
-                if (fixed_hive_content) {
-                    cells[index].aux |= fill_aux_structural | fill_aux_supported;
-                    cells[index].aux = (cells[index].aux & ~fill_aux_state_mask) | 255u;
+            }
+            for (const auto hive_scene : {Scene::sandbox, Scene::ecosystem}) {
+                const auto district = persistent_world_district_index(hive_scene);
+                const auto migrated = initialize_schema1_hive_owners(cells,
+                    config.grid_width, config.grid_height,
+                    persistent_world_district_origin_x(config.grid_width, district),
+                    persistent_world_district_origin_y(config.grid_height, district), hive_scene);
+                if (!migrated.initialized) {
+                    startup_log("World load rejected: schema-1 hive owners failed validation.");
+                    return false;
                 }
             }
+        }
+        const auto phantom = recover_v2527_phantom_hive(cells,
+            config.grid_width, config.grid_height, scene, metadata.format_version);
+        if (phantom.status == PhantomHiveRecoveryStatus::repaired ||
+            phantom.status == PhantomHiveRecoveryStatus::signature_mismatch) {
+            startup_log("World load recovery: " + std::string{
+                phantom_hive_recovery_status_name(phantom.status)} +
+                " changed=" + std::to_string(phantom.changed_cells()) +
+                " bees=" + std::to_string(phantom.bee_cells) +
+                " mismatches=" + std::to_string(phantom.mismatches));
         }
         tool_hive_anchor = no_tool_hive_anchor;
         const auto sandbox_district = persistent_world_district_index(Scene::sandbox);
@@ -2468,7 +2572,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const bool authored_queen =
                 (x == sandbox_queen_x && y == sandbox_queen_y) ||
                 (x == ecosystem_queen_x && y == ecosystem_queen_y);
-            if (!authored_queen) {
+            if (!authored_queen && canonical_fix29_hive_signature_at(
+                    cells, config.grid_width, config.grid_height, x, y)) {
                 tool_hive_anchor = (x & 0xffffu) | ((y & 0xffffu) << 16u);
                 break;
             }
@@ -2674,29 +2779,74 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                               const bool erase,
                               const bool paint,
                               const std::int32_t grid_x,
-                              const std::int32_t grid_y) {
+                              const std::int32_t grid_y,
+                              const std::optional<std::uint32_t> material_override =
+                                  std::nullopt) {
         if (!erase && !paint) return;
 
         const auto requested_radius = state.brush_radius.load(std::memory_order_relaxed);
-        const auto material = erase ? static_cast<std::uint32_t>(Material::oxygen)
-                                    : state.selected_material.load(std::memory_order_relaxed);
-        const bool tile_mode = state.placement_mode.load(std::memory_order_relaxed) != 0u;
+        const auto material = erase
+            ? static_cast<std::uint32_t>(Material::oxygen)
+            : material_override.value_or(
+                  state.selected_material.load(std::memory_order_relaxed));
+        const bool beehive = material == static_cast<std::uint32_t>(Material::beehive);
+        if (beehive) {
+            bool valid_home = false;
+            for (std::uint32_t district = 0u; district < persistent_world_district_count; ++district) {
+                const auto ox = static_cast<std::int32_t>(
+                    persistent_world_district_origin_x(config.grid_width, district));
+                const auto oy = static_cast<std::int32_t>(
+                    persistent_world_district_origin_y(config.grid_height, district));
+                valid_home = valid_home || (grid_x >= ox && grid_x < ox + 640 &&
+                    grid_y >= oy && grid_y < oy + 360);
+            }
+            if (!valid_home || grid_x < 64 || grid_y < 64 ||
+                grid_x + 64 >= static_cast<std::int32_t>(config.grid_width) ||
+                grid_y + 64 >= static_cast<std::int32_t>(config.grid_height)) {
+                startup_log("Beehive placement rejected: complete footprint and persistent district home required.");
+                return;
+            }
+            const auto cleanup = [&](std::int32_t x, std::int32_t y, std::uint32_t mode) {
+                const SimulationPush cleanup_push{
+                    .width = config.grid_width, .height = config.grid_height,
+                    .step = simulation_step, .seed = random_seed,
+                    .brush_x = x, .brush_y = y, .radius = 64u,
+                    .active_mode = mode,
+                };
+                bind_compute(command_buffer, paint_pipeline, current_set);
+                vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                    VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(cleanup_push), &cleanup_push);
+                vkCmdDispatch(command_buffer, 1u, 1u, 1u);
+                buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
+                    VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            };
+            if (tool_hive_anchor != no_tool_hive_anchor) {
+                const auto previous_x = static_cast<std::int32_t>(tool_hive_anchor & 0xffffu);
+                const auto previous_y = static_cast<std::int32_t>(tool_hive_anchor >> 16u);
+                bool authored = false;
+                for (std::uint32_t district = 0u; district < 2u; ++district)
+                    authored = authored || (previous_x == static_cast<std::int32_t>(
+                        persistent_world_district_origin_x(config.grid_width, district) + 512u) &&
+                        previous_y == static_cast<std::int32_t>(
+                        persistent_world_district_origin_y(config.grid_height, district) +
+                        (district == 0u ? 234u : 232u)));
+                if (!authored) cleanup(previous_x, previous_y, 4u);
+            }
+            cleanup(grid_x, grid_y, 3u);
+        }
+        const bool tile_mode = policy::effective_world_tile_mode(
+            beehive, state.placement_mode.load(std::memory_order_relaxed) != 0u);
         const auto radius = policy::effective_world_brush_radius(
-            material == static_cast<std::uint32_t>(Material::beehive),
-            tile_mode, requested_radius);
+            beehive, tile_mode, requested_radius);
         const auto shape = policy::effective_world_brush_shape(
-            tile_mode, state.brush_shape.load(std::memory_order_relaxed));
+            beehive, tile_mode,
+            state.brush_shape.load(std::memory_order_relaxed));
         const auto packed_material = material | (shape << 16u) | (tile_mode ? (1u << 18u) : 0u);
-        if (!erase && material == static_cast<std::uint32_t>(Material::beehive)) {
+        if (!erase && beehive) {
             tool_hive_anchor =
                 (static_cast<std::uint32_t>(grid_x) & 0xffffu) |
                 ((static_cast<std::uint32_t>(grid_y) & 0xffffu) << 16u);
-        } else if (tool_hive_anchor != no_tool_hive_anchor) {
-            const auto hive_x = static_cast<std::int32_t>(tool_hive_anchor & 0xffffu);
-            const auto hive_y = static_cast<std::int32_t>(tool_hive_anchor >> 16u);
-            const auto reach = static_cast<std::int32_t>(radius) + 13;
-            if (std::abs(grid_x - hive_x) <= reach && std::abs(grid_y - hive_y) <= reach)
-                tool_hive_anchor = no_tool_hive_anchor;
         }
         SimulationPush push{
             .width = config.grid_width,
@@ -3365,6 +3515,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         }
         if (state.blueprint_placement_active.load(std::memory_order_relaxed))
             blueprint_flags |= 1u << 6u;
+        const bool world_beehive_selected =
+            active_selected_material == static_cast<std::uint32_t>(Material::beehive);
+        const bool effective_world_tile_mode = policy::effective_world_tile_mode(
+            world_beehive_selected,
+            state.placement_mode.load(std::memory_order_relaxed) != 0u);
         const RenderPush push{
             .grid_width = config.grid_width,
             .grid_height = config.grid_height,
@@ -3374,12 +3529,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .material_count = material_count,
             .cursor_x = pointer_over_world ? cursor_x : -1'000'000,
             .cursor_y = pointer_over_world ? cursor_y : -1'000'000,
-            .brush_radius = [&state, designer_workspace, active_selected_material]() {
+            .brush_radius = [&state, designer_workspace, active_selected_material,
+                             effective_world_tile_mode]() {
                 if (designer_workspace)
                     return state.designer_brush_radius.load(std::memory_order_relaxed);
                 return policy::effective_world_brush_radius(
                     active_selected_material == static_cast<std::uint32_t>(Material::beehive),
-                    state.placement_mode.load(std::memory_order_relaxed) != 0u,
+                    effective_world_tile_mode,
                     state.brush_radius.load(std::memory_order_relaxed));
             }(),
             .status_height = static_cast<std::uint32_t>(layout.status.size.y),
@@ -3414,11 +3570,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .brush_shape = designer_workspace
                 ? state.designer_brush_shape.load(std::memory_order_relaxed) % 4u
                 : policy::effective_world_brush_shape(
-                    state.placement_mode.load(std::memory_order_relaxed) != 0u,
+                    world_beehive_selected,
+                    effective_world_tile_mode,
                     state.brush_shape.load(std::memory_order_relaxed)),
             .placement_mode = designer_workspace
                 ? (state.designer_placement_mode.load(std::memory_order_relaxed) & 1u)
-                : (state.placement_mode.load(std::memory_order_relaxed) != 0u ? 1u : 0u),
+                : (effective_world_tile_mode ? 1u : 0u),
             .active_area_count = state.active_section_count.load(std::memory_order_relaxed),
             .active_area_x = state.active_window_origin_x.load(std::memory_order_relaxed),
             .active_area_y = state.active_window_origin_y.load(std::memory_order_relaxed),
@@ -3690,8 +3847,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             reset_actor = true;
             reset_this_frame = true;
         }
-        if (policy::editor_mutation_allowed(paused, reset_this_frame))
+        if (policy::editor_mutation_allowed(paused, reset_this_frame)) {
+            if (const auto request = consume_beehive_placement(state)) {
+                record_paint_at_grid(
+                    frame.command_buffer, state, false, true,
+                    request->x, request->y,
+                    static_cast<std::uint32_t>(Material::beehive));
+            }
             record_paint(frame.command_buffer, state);
+        }
         if (!reset_this_frame && nuke_dispatch_pending &&
             nuke_flash_frames_remaining == 0u) {
             record_nuke_from_space(frame.command_buffer);
@@ -3731,6 +3895,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             // Reset is a hard epoch boundary: no held/queued edit or actor action
             // may leak into the freshly rebuilt scene on the next frame.
             state.primary_down.store(false, std::memory_order_release);
+            state.beehive_place_request.store(0u, std::memory_order_release);
             state.fill_region.store(false, std::memory_order_release);
             state.fill_armed.store(false, std::memory_order_release);
             state.ignite_air.store(false, std::memory_order_release);
@@ -3846,13 +4011,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     }
 
 
-#if SANDHYBRID_ENABLE_VALIDATION
-    void log_conservation_if_due(const SharedState& state) {
-        if (!state.debug_visualization.load(std::memory_order_relaxed)) return;
-        const auto now = std::chrono::steady_clock::now();
-        if (next_conservation_log != std::chrono::steady_clock::time_point{} && now < next_conservation_log) return;
-        next_conservation_log = now + std::chrono::seconds{5};
-
+    [[nodiscard]] std::array<std::uint32_t, 8>
+    download_conservation_counters() const {
         check_vk(vkDeviceWaitIdle(device), "vkDeviceWaitIdle(conservation log)");
         void* mapped = nullptr;
         check_vk(vkMapMemory(device, conservation_buffer.memory, 0, conservation_buffer.size, 0, &mapped),
@@ -3860,6 +4020,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         std::array<std::uint32_t, 8> counters{};
         std::memcpy(counters.data(), mapped, sizeof(counters));
         vkUnmapMemory(device, conservation_buffer.memory);
+        return counters;
+    }
+
+#if SANDHYBRID_ENABLE_VALIDATION
+    void log_conservation_if_due(const SharedState& state) {
+        if (!state.debug_visualization.load(std::memory_order_relaxed)) return;
+        const auto now = std::chrono::steady_clock::now();
+        if (next_conservation_log != std::chrono::steady_clock::time_point{} && now < next_conservation_log) return;
+        next_conservation_log = now + std::chrono::seconds{5};
+
+        const auto counters = download_conservation_counters();
         std::fprintf(stderr,
             "[SandHybrid conservation] created=%u destroyed=%u converted=%u boundary=%u "
             "phase=%u rebuilt=%u broken=%u errors=%u\n",
@@ -5075,8 +5246,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         x_home_bees += decoded_home_x == expected_home_x ? 1u : 0u;
                         y_home_bees += decoded_home_y == expected_home_y ? 1u : 0u;
                         const bool metadata_matches = composed_world &&
-                            (bee.aux & (bee_swarm_bit | bee_fed_bit)) ==
-                                (bee_swarm_bit | bee_fed_bit) &&
+                            (bee.aux & bee_swarm_bit) != 0u &&
+                            (delayed_ticks > 0u || (bee.aux & bee_fed_bit) != 0u) &&
                             encoded_district == district &&
                             decoded_home_x == expected_home_x &&
                             decoded_home_y == expected_home_y && slot < bee_slots.size();
@@ -5089,8 +5260,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                             }
                             const auto expected_offset =
                                 fix29_bee_formation_offset(slot);
-                            if (dx != expected_offset.x ||
-                                dy != expected_offset.y)
+                            if ((dx != expected_offset.x || dy != expected_offset.y) &&
+                                !(delayed_ticks > 0u && fix29_bee_forager_slot(slot)))
                                 ++bee_position_mismatches;
                             const auto compact_x = dx;
                             const auto compact_y = static_cast<std::int32_t>(queen_y) + dy -
@@ -5131,9 +5302,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            bee_metadata_mismatches == 0u &&
                            unique_bee_slots == fix29_bee_formation_count &&
                            bee_position_mismatches == 0u &&
-                           compact_bees == fix29_bee_formation_count &&
-                           top_lobe_bees == 20u && left_lobe_bees == 20u &&
-                           right_lobe_bees == 20u,
+                           compact_bees >= (delayed_ticks > 0u ? 54u : 60u) &&
+                           top_lobe_bees >= (delayed_ticks > 0u ? 18u : 20u) &&
+                           left_lobe_bees >= (delayed_ticks > 0u ? 18u : 20u) &&
+                           right_lobe_bees >= (delayed_ticks > 0u ? 18u : 20u),
                        "mismatches=" + std::to_string(mismatches) +
                            " legacy_perch_wood=" +
                            std::to_string(legacy_perch_wood) +
@@ -5184,17 +5356,139 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             {
                 const auto sandbox_district =
                     persistent_world_district_index(Scene::sandbox);
+                constexpr std::int32_t local_queen_x = 310;
+                constexpr std::int32_t local_queen_y = 100;
                 const auto queen_x = static_cast<std::int32_t>(
                     persistent_world_district_origin_x(
-                        config.grid_width, sandbox_district) + 512u);
+                        config.grid_width, sandbox_district) + local_queen_x);
                 const auto queen_y = static_cast<std::int32_t>(
                     persistent_world_district_origin_y(
-                        config.grid_height, sandbox_district) + 234u);
+                        config.grid_height, sandbox_district) + local_queen_y);
                 auto cells = acceptance_atmosphere_world();
+                // Seed the obsolete larger circular body, complete retired
+                // perch, and metadata-free swarm that clean-air tests missed.
+                const auto legacy_x = queen_x + 24;
+                const auto legacy_y = queen_y;
+                for (std::int32_t dy = 0; dy < 8; ++dy)
+                    for (std::int32_t dx = 0; dx < 72; ++dx) {
+                        const auto index = index_of(
+                            static_cast<std::uint32_t>((legacy_x / 8) * 8 - 40 + dx),
+                            static_cast<std::uint32_t>((legacy_y / 8) * 8 - 16 + dy));
+                        cells[index] = make_fill_cell(material_id(Material::wood),
+                            static_cast<std::uint32_t>(index));
+                    }
+                for (std::size_t slot = 0u; slot < fix29_bee_formation_count; ++slot) {
+                    const auto offset = fix29_bee_formation_offset(slot);
+                    const auto index = index_of(static_cast<std::uint32_t>(legacy_x + offset.x),
+                        static_cast<std::uint32_t>(legacy_y + offset.y));
+                    cells[index] = make_fill_cell(material_id(Material::bee),
+                        static_cast<std::uint32_t>(index));
+                }
+                for (std::int32_t dy = -10; dy <= 10; ++dy)
+                    for (std::int32_t dx = -10; dx <= 10; ++dx) {
+                        const auto r2 = dx * dx + dy * dy;
+                        if (r2 >= 100) continue;
+                        const auto material = r2 == 0 ? Material::queen_bee :
+                            (r2 >= 24 ? Material::beehive : Material::honey);
+                        const auto index = index_of(static_cast<std::uint32_t>(legacy_x + dx),
+                            static_cast<std::uint32_t>(legacy_y + dy));
+                        cells[index] = make_fill_cell(material_id(material),
+                            static_cast<std::uint32_t>(index));
+                    }
+                const auto unrelated_index = index_of(
+                    static_cast<std::uint32_t>(queen_x - 50),
+                    static_cast<std::uint32_t>(queen_y + 50));
+                cells[unrelated_index] = make_fill_cell(material_id(Material::wood),
+                    static_cast<std::uint32_t>(unrelated_index));
+                const auto unrelated_cell = cells[unrelated_index];
+                const auto loose_honey_index = unrelated_index + 2u;
+                const auto loose_pollen_index = unrelated_index + 3u;
+                cells[loose_honey_index] = make_fill_cell(material_id(Material::honey),
+                    static_cast<std::uint32_t>(loose_honey_index));
+                cells[loose_pollen_index] = make_fill_cell(material_id(Material::pollen),
+                    static_cast<std::uint32_t>(loose_pollen_index));
+                cells[loose_honey_index].aux &= ~(fill_aux_structural | fill_aux_supported);
+                cells[loose_pollen_index].aux &= ~(fill_aux_structural | fill_aux_supported);
                 upload_scene_cells(cells);
-                run_acceptance_paint_pass(
-                    queen_x, queen_y, Material::beehive, 64u);
+                const auto previous_selected_material =
+                    state.selected_material.load(std::memory_order_acquire);
+                const auto previous_placement_mode =
+                    state.placement_mode.load(std::memory_order_acquire);
+                const auto previous_brush_shape =
+                    state.brush_shape.load(std::memory_order_acquire);
+                state.selected_material.store(
+                    material_id(Material::beehive), std::memory_order_release);
+                // Exercise the normal edge-triggered Editor route at a
+                // non-authored location. The UI polls eight times before the
+                // renderer consumes the queued click; selection then changes,
+                // proving that the original Beehive payload is retained.
+                state.placement_mode.store(1u, std::memory_order_release);
+                state.brush_shape.store(3u, std::memory_order_release);
+                std::uint32_t hive_paint_requests = 0u;
+                for (std::uint32_t frame = 0u; frame < 8u; ++frame) {
+                    const auto action = route_world_primary_action({
+                        .editor_workspace = true,
+                        .pointer_over_world = true,
+                        .primary_down = true,
+                        .primary_pressed = frame == 0u,
+                        .one_shot_paint = true,
+                        .paused = frame >= 4u,
+                    });
+                    if (action == WorldPrimaryAction::editor_paint) {
+                        ++hive_paint_requests;
+                        request_beehive_placement(
+                            state, queen_x + static_cast<std::int32_t>(frame),
+                            queen_y);
+                    }
+                    state.primary_down.store(false, std::memory_order_release);
+                }
+                state.selected_material.store(
+                    material_id(Material::sand), std::memory_order_release);
+                const auto queued_hive = consume_beehive_placement(state);
+                std::uint32_t hive_consumes = 0u;
+                if (queued_hive) {
+                    ++hive_consumes;
+                    immediate_submit([&](const VkCommandBuffer command_buffer) {
+                        record_paint_at_grid(
+                            command_buffer, state, false, true,
+                            queued_hive->x, queued_hive->y,
+                            material_id(Material::beehive));
+                    });
+                }
+                const bool second_consume_empty =
+                    !consume_beehive_placement(state).has_value();
+                state.selected_material.store(
+                    previous_selected_material, std::memory_order_release);
+                state.placement_mode.store(
+                    previous_placement_mode, std::memory_order_release);
+                state.brush_shape.store(
+                    previous_brush_shape, std::memory_order_release);
                 const auto result = download_scene_cells();
+                const bool canonical_tool_signature =
+                    canonical_fix29_hive_signature_at(
+                        result, config.grid_width, config.grid_height,
+                        static_cast<std::uint32_t>(queen_x),
+                        static_cast<std::uint32_t>(queen_y));
+                append("beehive_legacy_overlap_cleanup",
+                    canonical_tool_signature && count_material(result, Material::queen_bee) == 1u &&
+                    count_material(result, Material::bee) == 60u &&
+                    count_material(result, Material::beehive) == 193u &&
+                    count_material(result, Material::wood) == 1u &&
+                    std::memcmp(&result[loose_honey_index], &cells[loose_honey_index], sizeof(SceneCell)) == 0 &&
+                    std::memcmp(&result[loose_pollen_index], &cells[loose_pollen_index], sizeof(SceneCell)) == 0 &&
+                    std::memcmp(&result[unrelated_index], &unrelated_cell, sizeof(SceneCell)) == 0,
+                    "queens=" + std::to_string(count_material(result, Material::queen_bee)) +
+                    " bees=" + std::to_string(count_material(result, Material::bee)) +
+                    " shell=" + std::to_string(count_material(result, Material::beehive)) +
+                    " unrelated_wood=" + std::to_string(count_material(result, Material::wood)));
+                auto isolated_queen = acceptance_atmosphere_world();
+                isolated_queen[index_of(100u, 100u)] = make_fill_cell(
+                    material_id(Material::queen_bee),
+                    static_cast<std::uint32_t>(index_of(100u, 100u)));
+                const bool isolated_queen_rejected =
+                    !canonical_fix29_hive_signature_at(
+                        isolated_queen, config.grid_width, config.grid_height,
+                        100u, 100u);
                 // The sidebar Beehive item owns this same production paint
                 // pipeline. Refresh all bounded MAP bands, then require its
                 // canonical payload to be byte-identical to the placed world.
@@ -5209,6 +5503,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 bool placed_bees_exact =
                     count_material(result, Material::bee) ==
                     fix29_bee_formation_count;
+                std::uint32_t structural_honey = 0u;
+                std::uint32_t structural_pollen = 0u;
+                for (const auto& candidate : result) {
+                    const bool fixed = (candidate.aux &
+                        (fill_aux_structural | fill_aux_supported)) ==
+                        (fill_aux_structural | fill_aux_supported);
+                    if (fixed && candidate.material == material_id(Material::honey))
+                        ++structural_honey;
+                    if (fixed && candidate.material == material_id(Material::pollen))
+                        ++structural_pollen;
+                }
                 for (std::size_t slot = 0u;
                      slot < fix29_bee_formation_count; ++slot) {
                     const auto offset = fix29_bee_formation_offset(slot);
@@ -5232,8 +5537,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     for (std::int32_t dx = -40; dx <= 31; ++dx) {
                         const auto part = classify_pre_pr19_hive_cell(
                             dx, dy, fix29_hive_entropy(
-                                512, 234, dx, dy),
-                            512, 234);
+                                local_queen_x, local_queen_y, dx, dy),
+                            local_queen_x, local_queen_y);
                         const auto x = static_cast<std::uint32_t>(queen_x + dx);
                         const auto y = static_cast<std::uint32_t>(queen_y + dy);
                         const auto& actual_cell = result[index_of(x, y)];
@@ -5282,16 +5587,23 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 append("placed_fix29_hive_exact",
                        mismatches == 0u && legacy_perch_wood == 0u && shell == 193u &&
                            honey == 35u && pollen == 13u &&
-                           chamber_empty == 8u && placed_bees_exact,
+                           chamber_empty == 8u && placed_bees_exact &&
+                           count_material(result, Material::beehive) == 193u &&
+                           count_material(result, Material::queen_bee) == 1u &&
+                           structural_honey == 35u && structural_pollen == 13u,
                        "mismatches=" + std::to_string(mismatches) +
                            " legacy_perch_wood=" +
                            std::to_string(legacy_perch_wood) +
                            " shell=" + std::to_string(shell) +
                            " honey=" + std::to_string(honey) +
                            " pollen=" + std::to_string(pollen) +
-                           " chamber_empty=" + std::to_string(chamber_empty) +
-                           " bees_exact=" +
-                           std::to_string(placed_bees_exact ? 1u : 0u));
+                            " chamber_empty=" + std::to_string(chamber_empty) +
+                            " global_body=" + std::to_string(
+                                count_material(result, Material::beehive)) + "/" +
+                                std::to_string(structural_honey) + "/" +
+                                std::to_string(structural_pollen) +
+                            " bees_exact=" +
+                            std::to_string(placed_bees_exact ? 1u : 0u));
                 append("beehive_button_tool_map_payload_exact",
                        placed_bees_exact && map_payload_exact &&
                            legacy_perch_wood == 0u && mismatches == 0u,
@@ -5301,15 +5613,47 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            std::to_string(map_payload_exact ? 1u : 0u) +
                            " bees=" + std::to_string(
                                count_material(map_result, Material::bee)) +
-                           " legacy_perch_wood=" +
-                           std::to_string(legacy_perch_wood));
+                            " legacy_perch_wood=" +
+                            std::to_string(legacy_perch_wood));
+                append("beehive_normal_press_is_one_shot",
+                        hive_paint_requests == 1u &&
+                            hive_consumes == 1u && second_consume_empty &&
+                            canonical_tool_signature && isolated_queen_rejected &&
+                            count_material(result, Material::queen_bee) == 1u &&
+                            count_material(result, Material::bee) ==
+                                fix29_bee_formation_count &&
+                            tool_hive_anchor ==
+                                ((static_cast<std::uint32_t>(queen_x) & 0xffffu) |
+                                 ((static_cast<std::uint32_t>(queen_y) & 0xffffu)
+                                  << 16u)),
+                        "held_frames=8 paint_requests=" +
+                            std::to_string(hive_paint_requests) +
+                            " consumes=" + std::to_string(hive_consumes) +
+                            " second_empty=" +
+                            std::to_string(second_consume_empty ? 1u : 0u) +
+                            " canonical_signature=" +
+                            std::to_string(canonical_tool_signature ? 1u : 0u) +
+                            " isolated_rejected=" +
+                            std::to_string(isolated_queen_rejected ? 1u : 0u) +
+                            " queens=" + std::to_string(
+                                count_material(result, Material::queen_bee)) +
+                            " bees=" + std::to_string(
+                                count_material(result, Material::bee)));
 
                 for (std::uint32_t tick = 0u; tick < 120u; ++tick)
-                    run_acceptance_focused_tick();
+                    run_acceptance_focused_tick(
+                        queen_x / active_region_width_cells,
+                        queen_y / active_region_height_cells, true, true);
                 const auto delayed = download_scene_cells();
+                const bool delayed_canonical_signature =
+                    canonical_fix29_hive_signature_at(
+                        delayed, config.grid_width, config.grid_height,
+                        static_cast<std::uint32_t>(queen_x),
+                        static_cast<std::uint32_t>(queen_y));
                 bool delayed_bees_exact =
                     count_material(delayed, Material::bee) ==
                     fix29_bee_formation_count;
+                bool delayed_bee_timers_exact = true;
                 for (std::size_t slot = 0u;
                      slot < fix29_bee_formation_count; ++slot) {
                     const auto offset = fix29_bee_formation_offset(slot);
@@ -5320,6 +5664,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         delayed_bees_exact &&
                         bee.material == material_id(Material::bee) &&
                         ((bee.aux >> 13u) & 127u) == slot;
+                    delayed_bee_timers_exact = delayed_bee_timers_exact &&
+                        (bee.age & 0x3fffu) == fix29_bee_initial_timer(slot) + 120u &&
+                        (bee.age >> 14u) == 0x3ffffu;
                 }
                 std::uint32_t delayed_mismatches = 0u;
                 std::uint32_t delayed_legacy_perch_wood = 0u;
@@ -5331,8 +5678,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     for (std::int32_t dx = -40; dx <= 31; ++dx) {
                         const auto part = classify_pre_pr19_hive_cell(
                             dx, dy, fix29_hive_entropy(
-                                512, 234, dx, dy),
-                            512, 234);
+                                local_queen_x, local_queen_y, dx, dy),
+                            local_queen_x, local_queen_y);
                         const auto x = static_cast<std::uint32_t>(queen_x + dx);
                         const auto y = static_cast<std::uint32_t>(queen_y + dy);
                         const auto& actual_cell = delayed[index_of(x, y)];
@@ -5362,6 +5709,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                             matches = actual == Material::pollen && fixed;
                             ++delayed_pollen;
                             break;
+                        case HivePart::chamber:
+                        case HivePart::exit:
+                            // The canonical opening is authored Empty; normal
+                            // closed-system gas relaxation may fill it with
+                            // Atmosphere without changing the hive body.
+                            matches = actual == Material::empty ||
+                                      actual == Material::atmosphere;
+                            break;
                         default:
                             checked = false;
                             break;
@@ -5384,7 +5739,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            delayed_legacy_perch_wood == 0u &&
                            delayed_shell == 193u &&
                            delayed_honey == 35u &&
-                           delayed_pollen == 13u && delayed_bees_exact,
+                           delayed_pollen == 13u && delayed_bees_exact &&
+                           delayed_bee_timers_exact &&
+                           delayed_canonical_signature &&
+                           count_material(delayed, Material::beehive) == 193u &&
+                           count_material(delayed, Material::queen_bee) == 1u,
                        "ticks=120 mismatches=" +
                            std::to_string(delayed_mismatches) +
                            " legacy_perch_wood=" +
@@ -5392,9 +5751,235 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            " shell=" + std::to_string(delayed_shell) +
                            " honey=" + std::to_string(delayed_honey) +
                            " pollen=" + std::to_string(delayed_pollen) +
-                           " bees_exact=" +
-                           std::to_string(delayed_bees_exact ? 1u : 0u) +
-                           delayed_mismatch_detail);
+                            " bees_exact=" +
+                            std::to_string(delayed_bees_exact ? 1u : 0u) +
+                            " timers_exact=" +
+                            std::to_string(delayed_bee_timers_exact ? 1u : 0u) +
+                            " load_signature=" +
+                            std::to_string(
+                                delayed_canonical_signature ? 1u : 0u) +
+                            delayed_mismatch_detail);
+
+                auto autonomous_cells = result;
+                const auto bloom_x = static_cast<std::uint32_t>((queen_x + 48) / 8 * 8);
+                const auto bloom_y = static_cast<std::uint32_t>((queen_y - 40) / 8 * 8);
+                for (std::uint32_t y = bloom_y; y < bloom_y + 8u; ++y)
+                    for (std::uint32_t x = bloom_x; x < bloom_x + 8u; ++x)
+                        autonomous_cells[index_of(x, y)] = make_fill_cell(
+                            material_id(Material::flower), static_cast<std::uint32_t>(index_of(x, y)));
+                upload_scene_cells(autonomous_cells);
+                for (std::uint32_t tick = 0u; tick < 120u; ++tick)
+                    run_acceptance_focused_tick(queen_x / active_region_width_cells,
+                        queen_y / active_region_height_cells, true, true);
+                const auto autonomous = download_scene_cells();
+                std::array<bool, fix29_bee_formation_count> live_slots{};
+                std::uint32_t moved_foragers = 0u;
+                std::uint32_t stationary_nonforagers = 0u;
+                std::string autonomous_detail;
+                bool autonomous_homes = true;
+                for (std::size_t index = 0u; index < autonomous.size(); ++index) {
+                    const auto& bee = autonomous[index];
+                    if (bee.material != material_id(Material::bee)) continue;
+                    const auto slot = (bee.aux >> 13u) & 127u;
+                    if (slot >= fix29_bee_formation_count || live_slots[slot]) {
+                        autonomous_homes = false;
+                        continue;
+                    }
+                    live_slots[slot] = true;
+                    const auto offset = fix29_bee_formation_offset(slot);
+                    const auto initial_index = index_of(static_cast<std::uint32_t>(queen_x + offset.x),
+                        static_cast<std::uint32_t>(queen_y + offset.y));
+                    autonomous_homes = autonomous_homes &&
+                        (bee.aux & 0x1fffu) == (result[initial_index].aux & 0x1fffu) &&
+                        ((bee.aux >> 20u) & 7u) == sandbox_district &&
+                        (bee.aux & 0x08000000u) != 0u;
+                    if (fix29_bee_forager_slot(slot)) {
+                        moved_foragers += index != initial_index ? 1u : 0u;
+                        autonomous_detail += " slot" + std::to_string(slot) + "@" +
+                            std::to_string(index % config.grid_width) + "," +
+                            std::to_string(index / config.grid_width) + " target=" +
+                            std::to_string(fix29_bee_target_from_age(bee.age));
+                    }
+                    else stationary_nonforagers += index == initial_index ? 1u : 0u;
+                }
+                append("beehive_autonomous_six_foragers",
+                    moved_foragers == 6u && stationary_nonforagers == 54u && autonomous_homes &&
+                    count_material(autonomous, Material::bee) == 60u &&
+                    canonical_fix29_hive_signature_at(autonomous, config.grid_width, config.grid_height,
+                        static_cast<std::uint32_t>(queen_x), static_cast<std::uint32_t>(queen_y)),
+                    "ticks=120 unmodified_initial_timers=1 moved_foragers=" + std::to_string(moved_foragers) +
+                    " stationary_nonforagers=" + std::to_string(stationary_nonforagers) +
+                    " exact_homes=" + std::to_string(autonomous_homes ? 1u : 0u) + autonomous_detail);
+
+                const auto retained_anchor = tool_hive_anchor;
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    record_paint_at_grid(command_buffer, state, false, true, 1, queen_y,
+                        material_id(Material::beehive));
+                    if (config.grid_width > persistent_world_width)
+                        record_paint_at_grid(command_buffer, state, false, true, 700, queen_y,
+                            material_id(Material::beehive));
+                });
+                const auto invalid_result = download_scene_cells();
+                append("beehive_invalid_placement_is_atomic",
+                    retained_anchor == tool_hive_anchor &&
+                    std::memcmp(invalid_result.data(), autonomous.data(), autonomous.size() * sizeof(SceneCell)) == 0,
+                    "clipped_and_gap_rejected=1 anchor_retained=" +
+                        std::to_string(retained_anchor == tool_hive_anchor ? 1u : 0u));
+
+                const auto next_queen_x = queen_x + 144;
+                request_beehive_placement(state, next_queen_x, queen_y);
+                const auto repeated_request = consume_beehive_placement(state);
+                if (repeated_request) immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    record_paint_at_grid(command_buffer, state, false, true,
+                        repeated_request->x, repeated_request->y, material_id(Material::beehive));
+                });
+                const auto repeated = download_scene_cells();
+                append("beehive_repeat_replaces_prior_tool_colony",
+                    repeated_request.has_value() && count_material(repeated, Material::queen_bee) == 1u &&
+                    count_material(repeated, Material::bee) == 60u &&
+                    count_material(repeated, Material::beehive) == 193u &&
+                    canonical_fix29_hive_signature_at(repeated, config.grid_width, config.grid_height,
+                        static_cast<std::uint32_t>(next_queen_x), static_cast<std::uint32_t>(queen_y)) &&
+                    repeated[index_of(static_cast<std::uint32_t>(queen_x), static_cast<std::uint32_t>(queen_y))].material ==
+                        material_id(Material::atmosphere) &&
+                    std::memcmp(&repeated[unrelated_index], &autonomous[unrelated_index], sizeof(SceneCell)) == 0,
+                    "queens=" + std::to_string(count_material(repeated, Material::queen_bee)) +
+                    " bees=" + std::to_string(count_material(repeated, Material::bee)) +
+                    " shell=" + std::to_string(count_material(repeated, Material::beehive)));
+
+                // Force the frozen legacy Empty -> Beehive proposal once. The
+                // shallow rejection must restore the Empty source and reverse
+                // the CREATED counter (not underflow CONVERTED).
+                const auto saved_growth_step = simulation_step;
+                constexpr std::uint32_t growth_x = 100u;
+                constexpr std::uint32_t growth_y = 100u;
+                auto retired_growth_cells = acceptance_atmosphere_world();
+                auto growth_source = make_fill_cell(
+                    material_id(Material::empty),
+                    static_cast<std::uint32_t>(index_of(growth_x, growth_y)));
+                growth_source.age = 0u;
+                growth_source.aux = 0u;
+                retired_growth_cells[index_of(growth_x, growth_y)] = growth_source;
+                retired_growth_cells[index_of(growth_x + 1u, growth_y)] =
+                    make_fill_cell(
+                        material_id(Material::beehive),
+                        static_cast<std::uint32_t>(
+                            index_of(growth_x + 1u, growth_y)));
+                retired_growth_cells[index_of(growth_x + 3u, growth_y)] =
+                    make_fill_cell(
+                        material_id(Material::queen_bee),
+                        static_cast<std::uint32_t>(
+                            index_of(growth_x + 3u, growth_y)));
+                bool growth_step_found = false;
+                for (std::uint32_t candidate = 0u;
+                     candidate < 1'048'576u; ++candidate) {
+                    const auto random_value = fill_hash(
+                        growth_x * 73856093u ^ growth_y * 19349663u ^
+                        candidate * 83492791u ^ random_seed);
+                    if ((random_value & 4095u) == 0u) {
+                        simulation_step = candidate;
+                        growth_step_found = true;
+                        break;
+                    }
+                }
+                upload_scene_cells(retired_growth_cells);
+                if (growth_step_found) run_acceptance_chemistry_pass();
+                const auto rejected_growth = download_scene_cells();
+                const auto growth_counters = download_conservation_counters();
+                const auto& restored_growth_source =
+                    rejected_growth[index_of(growth_x, growth_y)];
+                const bool growth_source_restored =
+                    restored_growth_source.material == material_id(Material::empty) &&
+                    restored_growth_source.age == growth_source.age + 1u &&
+                    restored_growth_source.temperature == growth_source.temperature &&
+                    restored_growth_source.aux == growth_source.aux;
+                const bool growth_counters_clear = std::all_of(
+                    growth_counters.begin(), growth_counters.end(),
+                    [](const std::uint32_t value) { return value == 0u; });
+                const auto retained_hives =
+                    count_material(rejected_growth, Material::beehive);
+                const auto retained_queens =
+                    count_material(rejected_growth, Material::queen_bee);
+                const auto retired_bees =
+                    count_material(rejected_growth, Material::bee);
+                append("retired_hive_growth_rejected_without_false_conservation",
+                       growth_step_found && growth_source_restored &&
+                           retained_hives == 1u && retained_queens == 1u &&
+                           retired_bees == 0u && growth_counters_clear,
+                       "step_found=" +
+                           std::to_string(growth_step_found ? 1u : 0u) +
+                           " source_restored=" +
+                           std::to_string(growth_source_restored ? 1u : 0u) +
+                           " hives=" + std::to_string(retained_hives) +
+                           " queens=" + std::to_string(retained_queens) +
+                           " bees=" + std::to_string(retired_bees) +
+                           " counters_clear=" +
+                           std::to_string(growth_counters_clear ? 1u : 0u) +
+                           " created=" + std::to_string(growth_counters[0]) +
+                           " converted=" + std::to_string(growth_counters[2]));
+                simulation_step = saved_growth_step;
+
+                // Reject only the retired Empty -> Bee proposal. A stressed
+                // Queen becoming the current lifecycle's migrating queen
+                // carrier is a legitimate, one-for-one material conversion.
+                constexpr std::uint32_t migration_queen_x = 64u;
+                constexpr std::uint32_t migration_queen_y = 96u;
+                constexpr std::uint32_t migration_flower_x = 144u;
+                constexpr std::uint32_t migration_flower_y = 96u;
+                auto migration_cells = acceptance_atmosphere_world();
+                auto migration_queen = make_fill_cell(
+                    material_id(Material::queen_bee),
+                    static_cast<std::uint32_t>(
+                        index_of(migration_queen_x, migration_queen_y)));
+                migration_queen.age = 36'001u;
+                migration_queen.aux =
+                    (migration_queen.aux & ~fill_aux_state_mask) | 240u;
+                migration_cells[index_of(migration_queen_x, migration_queen_y)] =
+                    migration_queen;
+                migration_cells[index_of(migration_flower_x, migration_flower_y)] =
+                    make_fill_cell(
+                        material_id(Material::flower),
+                        static_cast<std::uint32_t>(
+                            index_of(migration_flower_x, migration_flower_y)));
+                upload_scene_cells(migration_cells);
+                run_acceptance_tile_pass();
+                run_acceptance_chemistry_pass();
+                const auto migrated_queen_cells = download_scene_cells();
+                const auto migration_counters = download_conservation_counters();
+                const auto& queen_carrier =
+                    migrated_queen_cells[index_of(migration_queen_x,
+                                                  migration_queen_y)];
+                constexpr std::uint32_t bee_queen_carrier_bit = 0x40000000u;
+                constexpr std::uint32_t bee_swarm_owner_bit = 0x08000000u;
+                const auto migration_tile_columns =
+                    divide_round_up(config.grid_width, 8u);
+                const auto expected_migration_target =
+                    (migration_flower_y / 8u) * migration_tile_columns +
+                    migration_flower_x / 8u;
+                const auto actual_migration_target =
+                    (queen_carrier.age >> 14u) & 0x3ffffu;
+                constexpr std::uint32_t bee_target_none = 0x3ffffu;
+                append("queen_to_bee_migration_remains_live",
+                       queen_carrier.material == material_id(Material::bee) &&
+                           (queen_carrier.aux & bee_queen_carrier_bit) != 0u &&
+                           (queen_carrier.aux & bee_swarm_owner_bit) != 0u &&
+                           actual_migration_target != bee_target_none &&
+                           migration_counters[0] == 0u &&
+                           migration_counters[1] == 0u &&
+                           migration_counters[2] == 1u &&
+                           migration_counters[3] == 0u &&
+                           migration_counters[7] == 0u,
+                       "material=" + std::to_string(queen_carrier.material) +
+                           " queen_carrier=" + std::to_string(
+                               (queen_carrier.aux & bee_queen_carrier_bit) != 0u
+                                   ? 1u : 0u) +
+                           " swarm=" + std::to_string(
+                               (queen_carrier.aux & bee_swarm_owner_bit) != 0u
+                                   ? 1u : 0u) +
+                           " target=" + std::to_string(actual_migration_target) +
+                           "/" + std::to_string(expected_migration_target) +
+                           " converted=" +
+                           std::to_string(migration_counters[2]));
 
                 // Exercise the real persistent-World lifecycle using the same
                 // button-placed colony. The chosen forager first acquires an
@@ -5641,9 +6226,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 std::string replacement_detail;
                 auto chained_cycle_cells = result;
                 const auto district_origin_x =
-                    static_cast<std::uint32_t>(queen_x - 512);
+                    persistent_world_district_origin_x(
+                        config.grid_width, sandbox_district);
                 const auto district_origin_y =
-                    static_cast<std::uint32_t>(queen_y - 234);
+                    persistent_world_district_origin_y(
+                        config.grid_height, sandbox_district);
                 const auto expected_home_x =
                     static_cast<std::uint32_t>(queen_x -
                         static_cast<std::int32_t>(district_origin_x)) / 8u;

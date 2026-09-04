@@ -222,6 +222,17 @@ ivec2 beeNewbornTransitTarget(ivec2 position, ivec2 home, uint slot) {
     return home + settled;
 }
 
+ivec2 beeForagerDepartureTarget(ivec2 home, uint slot) {
+    ivec2 formation = beeFormationOffset(slot);
+    // Each of the three photographed crescents opens away from the hive body.
+    // Hold a newly assigned forager on that lobe's first clear outside lane for
+    // a bounded 64-tick stage before normal flower seeking. This keeps the
+    // exact resting symbol unchanged while preventing a greedy target step
+    // from oscillating against the next frozen owner in a dense crescent.
+    if (formation.y < 0) return home + ivec2(formation.x, -24);
+    return home + ivec2(formation.x < 0 ? -23 : 23, formation.y);
+}
+
 ivec2 beeMoveDestination(ivec2 position, Cell bee) {
     uint slot = beeFormationSlotFromAux(bee.aux, pc.width, pc.height);
     ivec2 home = beeMoveExactHome(bee);
@@ -254,8 +265,10 @@ ivec2 beeMoveDestination(ivec2 position, Cell bee) {
     if (targetTile != BEE_TARGET_NONE) {
         if (!beeMoveTargetValid(targetTile, TILE_HAS_FLOWER))
             return home + beeBiohazardTargetOffset(slot, pc.step);
+        if (beeForagerSlot(slot) && beeTimerFromAge(bee.age) <= 64u)
+            return beeForagerDepartureTarget(home, slot);
         ivec2 flower = tileFlowerPosition(targetTile, pc.width, tiles[targetTile]);
-        return beeApproachPosition(flower, home);
+        return beeForagerApproachPosition(flower, slot);
     }
     return home + beeBiohazardTargetOffset(slot, pc.step);
 }
@@ -387,7 +400,21 @@ void main() {
         return;
     }
     if (pc.material != BEE_PASS_MOVE) return;
-    if (bee.material != MAT_BEE || (bee.aux & BEE_AUX_SWARM) == 0u) return;
+    if (bee.material != MAT_BEE || (bee.aux & BEE_AUX_SWARM) == 0u ||
+        (bee.aux & AUX_MOVED) == 0u) return;
+
+    // NextCells is the immutable beginning-of-movement snapshot. Requiring the
+    // same persistent owner rejects an invocation whose target was published as
+    // MAT_BEE by an earlier in-place move in this dispatch, even if that target
+    // invocation raced the remaining payload writes.
+    Cell snapshotBee = nextCells[index];
+    if (snapshotBee.material != MAT_BEE ||
+        (snapshotBee.aux & BEE_AUX_SWARM) == 0u ||
+        (snapshotBee.aux & BEE_METADATA_MASK) !=
+            (bee.aux & BEE_METADATA_MASK)) return;
+    uint claimedAux = atomicAnd(cells[index].aux, ~AUX_MOVED);
+    if ((claimedAux & AUX_MOVED) == 0u) return;
+    bee.aux = claimedAux & ~AUX_MOVED;
 
     uint slot = beeFormationSlotFromAux(bee.aux, pc.width, pc.height);
     bool newbornTransit = beeTargetTileFromAge(bee.age) == BEE_TARGET_NEWBORN;

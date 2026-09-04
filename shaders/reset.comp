@@ -953,7 +953,7 @@ void main() {
             ivec2 worldQueen = activeAuthoredOrigin + localQueen;
             cell.aux |= BEE_AUX_SWARM | BEE_AUX_FED;
             cell.aux = beePackMetadata(cell.aux, worldQueen, uint(slot), pc.width, pc.height);
-            cell.age = beePackAge(uint((slot * 17) % 900), BEE_TARGET_NONE);
+            cell.age = beePackAge(beeInitialTimer(uint(slot)), BEE_TARGET_NONE);
         }
     }
 

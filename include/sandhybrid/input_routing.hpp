@@ -38,6 +38,7 @@ struct WorldPrimaryInput final {
     bool pointer_over_world{};
     bool primary_down{};
     bool primary_pressed{};
+    bool one_shot_paint{};
     bool inspecting{};
     bool fill_modifier{};
     bool panning{};
@@ -93,7 +94,7 @@ struct WorldPrimaryInput final {
                 ? WorldPrimaryAction::editor_fill
                 : WorldPrimaryAction::none;
         }
-        return input.primary_down
+        return (input.one_shot_paint ? input.primary_pressed : input.primary_down)
             ? WorldPrimaryAction::editor_paint
             : WorldPrimaryAction::none;
     }

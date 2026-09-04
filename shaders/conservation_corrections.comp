@@ -280,6 +280,28 @@ void undoConvertedStat() {
     atomicAdd(conservation[CONS_CONVERTED], 0xffffffffu);
 }
 
+void undoMaterialChangeStat(Cell before, Cell after) {
+    if (before.material >= MATERIAL_COUNT || after.material >= MATERIAL_COUNT) {
+        atomicAdd(conservation[CONS_ERRORS], 0xffffffffu);
+        return;
+    }
+    if (before.material == MAT_EMPTY && after.material != MAT_EMPTY) {
+        atomicAdd(conservation[CONS_CREATED], 0xffffffffu);
+    } else if (before.material != MAT_EMPTY && after.material == MAT_EMPTY) {
+        uint counter = isEphemeralEnergy(before.material)
+            ? CONS_BOUNDARY_LOST : CONS_DESTROYED;
+        atomicAdd(conservation[counter], 0xffffffffu);
+    } else if (before.material != after.material) {
+        atomicAdd(conservation[CONS_CONVERTED], 0xffffffffu);
+    }
+    if (before.material == after.material && cellPhase(before) != cellPhase(after))
+        atomicAdd(conservation[CONS_PHASE_CHANGES], 0xffffffffu);
+    if (!isStructural(before) && isStructural(after))
+        atomicAdd(conservation[CONS_STABILIZED], 0xffffffffu);
+    if (isStructural(before) && !isStructural(after))
+        atomicAdd(conservation[CONS_BROKEN], 0xffffffffu);
+}
+
 void addConvertedStat() {
     atomicAdd(conservation[CONS_CONVERTED], 1u);
 }
@@ -295,13 +317,23 @@ void main() {
     Cell proposed = nextCells[index];
     Cell corrected = proposed;
 
-    // The frozen chemistry kernel retains its historical 100-owner birth path
-    // only to preserve the proven software-Vulkan control-flow shape. Reject
-    // every unpaired proposal here. The dedicated Bee birth phase owns the
-    // current 60-slot, two-cell Ash/medium transaction after this pass.
-    if (source.material != MAT_BEE && proposed.material == MAT_BEE) {
+    // The frozen chemistry kernel retains its historical Empty -> Bee birth
+    // path only to preserve the proven software-Vulkan control-flow shape.
+    // Reject that unpaired proposal here. Do not reject Queen -> Bee: that is
+    // the legitimate queen-carrier migration transition owned by the current
+    // lifecycle. The dedicated Bee movement phase owns replacement births.
+    if (source.material == MAT_EMPTY && proposed.material == MAT_BEE) {
         corrected = advancedSource(source);
-        undoConvertedStat();
+        undoMaterialChangeStat(source, proposed);
+    }
+
+    // Preserve the proven monolithic chemistry control-flow shape for
+    // software Vulkan, but never commit its retired circular-nest growth.
+    // Canonical Beehive bodies are authored only by reset/import/tool paths;
+    // the dedicated Bee birth phase below is the sole replacement authority.
+    if (source.material != MAT_BEEHIVE && proposed.material == MAT_BEEHIVE) {
+        corrected = advancedSource(source);
+        undoMaterialChangeStat(source, proposed);
     }
 
     // Keep the proven monolithic chemistry kernel's control-flow shape for
@@ -349,7 +381,7 @@ void main() {
                 position, TILE_HAS_FLOWER,
                 TILE_HAS_HIVE | TILE_HAS_QUEEN | TILE_HAS_MIGRATING_QUEEN |
                     TILE_BEE_HAZARD,
-                12);
+                16);
             if (target != CORRECTION_BEE_TARGET_NONE) {
                 timer = 0u;
                 corrected.age = correctionBeePackAge(timer, target);

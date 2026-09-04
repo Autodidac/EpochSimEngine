@@ -452,8 +452,8 @@ def main() -> int:
     for token in (
         "source.material == MAT_BEEHIVE && isStructural(source)",
         '#include "bee_swarm.glsl"',
-        "source.material != MAT_BEE && proposed.material == MAT_BEE",
-        "The dedicated Bee birth phase owns the",
+        "source.material == MAT_EMPTY && proposed.material == MAT_BEE",
+        "dedicated Bee movement phase owns replacement births",
         "const uint weatherCycleTicks = 7200u",
         "const uint rainStartTick = 4800u",
         "const uint rainDurationTicks = 600u",
@@ -468,6 +468,10 @@ def main() -> int:
     ):
         require(conservation_corrections, token, errors,
                 "software-Vulkan-safe hive/lifecycle/weather correction contract")
+    if "source.material != MAT_BEE && proposed.material == MAT_BEE" in conservation_corrections:
+        errors.append(
+            "software-Vulkan-safe hive/lifecycle/weather correction contract "
+            "must preserve legitimate Queen-to-Bee migration")
     for token in (
         "const uint BEE_PASS_BIRTH = 1u",
         "layout(std430, binding = 1) buffer NextCells",

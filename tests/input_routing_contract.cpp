@@ -41,6 +41,31 @@ int main() {
     if (route_world_primary_action(running_player_build) !=
         WorldPrimaryAction::editor_paint) return 3;
 
+    auto one_shot_hive = running_player_mining;
+    one_shot_hive.one_shot_paint = true;
+    if (route_world_primary_action(one_shot_hive) !=
+        WorldPrimaryAction::editor_paint) return 16;
+    one_shot_hive.primary_pressed = false;
+    if (route_world_primary_action(one_shot_hive) !=
+        WorldPrimaryAction::none) return 17;
+    one_shot_hive.paused = true;
+    one_shot_hive.primary_pressed = true;
+    if (route_world_primary_action(one_shot_hive) !=
+        WorldPrimaryAction::editor_paint) return 18;
+
+    SharedState queued_hive;
+    request_beehive_placement(queued_hive, 512, 954);
+    // UI polling may run repeatedly before the renderer; it must not erase the
+    // pending click as the old primary_down pulse did.
+    for (int poll = 0; poll < 8; ++poll)
+        queued_hive.primary_down.store(false);
+    const auto first_hive = consume_beehive_placement(queued_hive);
+    if (!first_hive || first_hive->x != 512 || first_hive->y != 954) return 19;
+    if (consume_beehive_placement(queued_hive)) return 20;
+    request_beehive_placement(queued_hive, 1880, 976);
+    const auto second_hive = consume_beehive_placement(queued_hive);
+    if (!second_hive || second_hive->x != 1880 || second_hive->y != 976) return 21;
+
     WorldPrimaryInput inventory_player{
         .inventory_workspace = true,
         .pointer_over_world = true,

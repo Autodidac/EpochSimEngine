@@ -61,14 +61,25 @@ inline constexpr std::uint32_t wet_density_bonus = 32u;
     const bool beehive,
     const bool tile_mode,
     const std::uint32_t requested_radius) noexcept {
-    if (tile_mode) return tile_size;
-    return beehive ? 64u : requested_radius;
+    if (beehive) return 64u;
+    return tile_mode ? tile_size : requested_radius;
+}
+
+[[nodiscard]] constexpr bool effective_world_tile_mode(
+    const bool beehive,
+    const bool requested_tile_mode) noexcept {
+    // Beehive is one indivisible cell-authored prefab in both sidebar modes.
+    // Treating it as a generic tile used to paint an obsolete 8x8 solid block.
+    return requested_tile_mode && !beehive;
 }
 
 [[nodiscard]] constexpr std::uint32_t effective_world_brush_shape(
+    const bool beehive,
     const bool tile_mode,
     const std::uint32_t requested_shape) noexcept {
-    return tile_mode ? 1u : requested_shape % 4u;
+    // The prefab owns its complete 129x129 dispatch footprint; a line-shaped
+    // cursor must not slice away most of its body or bee formation.
+    return (beehive || tile_mode) ? 1u : requested_shape % 4u;
 }
 
 

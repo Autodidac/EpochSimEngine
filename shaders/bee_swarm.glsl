@@ -183,6 +183,17 @@ uint beePackAge(uint timer, uint targetTile) {
            (min(targetTile, BEE_TARGET_NONE) << BEE_TIMER_BITS);
 }
 
+bool beeForagerSlot(uint slot) { return ((slot * 37u + 11u) % 10u) == 0u; }
+uint beeForagerOrdinal(uint slot) {
+    return min(slot, BEE_FORMATION_COUNT - 1u) / 10u;
+}
+uint beeDepartureThreshold(uint slot) { return 1200u + (slot * 29u) % 600u; }
+uint beeInitialTimer(uint slot) {
+    if (!beeForagerSlot(slot)) return (slot * 17u) % 900u;
+    uint activationTick = 1u + beeForagerOrdinal(slot) * 12u;
+    return beeDepartureThreshold(slot) - activationTick;
+}
+
 // A replacement bee must retain the Queen's exact intra-tile position while
 // it owns the reserved newborn route. Persistent metadata intentionally stores
 // only the home tile, so the otherwise-unused newborn timer carries the exact
@@ -198,7 +209,7 @@ ivec2 beeNewbornExactHome(uint age, ivec2 alignedHome) {
 
 bool beeIsForager(uint aux, uint width, uint height) {
     uint slot = beeFormationSlotFromAux(aux, width, height);
-    return ((slot * 37u + 11u) % 10u) == 0u;
+    return beeForagerSlot(slot);
 }
 
 ivec2 beeRotateOffset(ivec2 offset, uint phase) {
@@ -263,6 +274,13 @@ ivec2 beeApproachPosition(ivec2 occupiedPosition, ivec2 fromPosition) {
     ivec2 direction = ivec2(beeAxisSign(delta.x), beeAxisSign(delta.y));
     if (all(equal(direction, ivec2(0)))) direction = ivec2(1, 0);
     return occupiedPosition + direction;
+}
+
+ivec2 beeForagerApproachPosition(ivec2 occupiedPosition, uint slot) {
+    const ivec2 offsets[6] = ivec2[6](
+        ivec2(-1, -1), ivec2(0, -1), ivec2(1, -1),
+        ivec2(1, 0), ivec2(1, 1), ivec2(-1, 1));
+    return occupiedPosition + offsets[beeForagerOrdinal(slot)];
 }
 
 ivec2 beeMigrationSite(ivec2 flowerPosition, uint width, uint height) {

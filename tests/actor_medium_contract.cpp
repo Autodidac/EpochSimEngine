@@ -39,11 +39,35 @@ int main() {
     const auto formation_b = sandhybrid::biohazard_formation_offset(0u, 120u);
     if (formation_a != formation_b) return 11;
     std::uint32_t forager_slots = 0u;
+    std::uint32_t previous_activation_tick = 0u;
+    std::uint32_t latest_activation_tick = 0u;
     for (std::size_t slot = 0u;
          slot < sandhybrid::fix29_bee_formation_count; ++slot) {
-        if (sandhybrid::fix29_bee_forager_slot(slot)) ++forager_slots;
+        if (!sandhybrid::fix29_bee_forager_slot(slot)) {
+            if (sandhybrid::fix29_bee_initial_timer(slot) !=
+                (slot * 17u) % 900u) return 46;
+            continue;
+        }
+        const auto threshold =
+            sandhybrid::fix29_bee_departure_threshold(slot);
+        const auto initial_timer =
+            sandhybrid::fix29_bee_initial_timer(slot);
+        if (initial_timer >= threshold) return 47;
+        const auto activation_tick = threshold - initial_timer;
+        const auto expected_tick =
+            1u + forager_slots *
+                     sandhybrid::fix29_bee_forager_stagger_ticks;
+        if (sandhybrid::fix29_bee_forager_ordinal(slot) != forager_slots ||
+            activation_tick != expected_tick ||
+            activation_tick <= previous_activation_tick) return 48;
+        previous_activation_tick = activation_tick;
+        latest_activation_tick = activation_tick;
+        ++forager_slots;
     }
     if (forager_slots != 6u) return 36;
+    if (latest_activation_tick !=
+            sandhybrid::fix29_bee_forager_activation_window_ticks)
+        return 49;
     std::uint32_t formation_fingerprint = 2166136261u;
     for (std::size_t slot = 0u;
          slot < sandhybrid::fix29_bee_formation_count; ++slot) {

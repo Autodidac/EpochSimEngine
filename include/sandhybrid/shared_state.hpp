@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cstdint>
 #include <mutex>
+#include <optional>
 
 namespace sandhybrid {
 
@@ -41,6 +42,9 @@ struct SharedState final {
     std::atomic_int last_world_cursor_x{0};
     std::atomic_int last_world_cursor_y{0};
     std::atomic_bool primary_down{false};
+    // One atomic mailbox keeps prefab clicks alive until the render thread
+    // consumes them. Bit 63 marks a request; the remaining words are x/y.
+    std::atomic_uint64_t beehive_place_request{0u};
     std::atomic_bool secondary_down{false};
     std::atomic_bool inspect_material{false};
     std::atomic_bool debug_visualization{false};
@@ -111,6 +115,35 @@ struct SharedState final {
             cell.store(static_cast<std::uint32_t>(Material::empty), std::memory_order_relaxed);
     }
 };
+
+struct BeehivePlacementRequest final {
+    std::int32_t x{};
+    std::int32_t y{};
+};
+
+inline constexpr std::uint64_t beehive_place_request_marker = 1ull << 63u;
+
+inline void request_beehive_placement(
+    SharedState& state,
+    const std::int32_t x,
+    const std::int32_t y) noexcept {
+    const auto packed = beehive_place_request_marker |
+        (static_cast<std::uint64_t>(static_cast<std::uint32_t>(x)) << 32u) |
+        static_cast<std::uint32_t>(y);
+    state.beehive_place_request.store(packed, std::memory_order_release);
+}
+
+[[nodiscard]] inline std::optional<BeehivePlacementRequest>
+consume_beehive_placement(SharedState& state) noexcept {
+    const auto packed = state.beehive_place_request.exchange(
+        0u, std::memory_order_acq_rel);
+    if ((packed & beehive_place_request_marker) == 0u) return std::nullopt;
+    return BeehivePlacementRequest{
+        static_cast<std::int32_t>(
+            static_cast<std::uint32_t>(packed >> 32u) & 0x7fffffffu),
+        static_cast<std::int32_t>(static_cast<std::uint32_t>(packed)),
+    };
+}
 
 inline void request_world_reset(SharedState& state) noexcept {
     // Reset is a simulation epoch boundary. Camera and MAP navigation are

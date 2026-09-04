@@ -13,6 +13,8 @@ using namespace sandhybrid;
 
 static_assert(world_save_format_version == 2u);
 static_assert(world_save_min_format_version == 1u);
+static_assert(requires_pre_pr19_hive_migration(1u));
+static_assert(!requires_pre_pr19_hive_migration(2u));
 static_assert(world_save_chunk_edge == 64u);
 static_assert(world_save_actor_bytes == 80u);
 static_assert(world_dimensions(WorldSizePreset::compact).width == 5120u);

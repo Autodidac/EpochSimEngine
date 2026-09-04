@@ -551,7 +551,7 @@ bool load_scene_ppm(const std::filesystem::path& path,
         bee.aux = pack_bee_metadata(bee.aux | aux_bee_fed | aux_bee_swarm,
             home_x, home_y, slot, width, height);
         bee.age = fix29_bee_pack_age(
-            (slot * 17u) % 900u, fix29_bee_target_none);
+            fix29_bee_initial_timer(slot), fix29_bee_target_none);
     }
     return true;
 }

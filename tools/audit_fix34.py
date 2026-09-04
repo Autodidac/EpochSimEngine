@@ -10,6 +10,7 @@ chemistry = (root / "shaders/chemistry.comp").read_text(encoding="utf-8")
 bee_move = (root / "shaders/bee_move.comp").read_text(encoding="utf-8")
 legacy_swarm = (root / "shaders/bee_swarm_chemistry_legacy.glsl").read_text(encoding="utf-8")
 reset = (root / "shaders/reset.comp").read_text(encoding="utf-8")
+paint = (root / "shaders/paint.comp").read_text(encoding="utf-8")
 scene_image = (root / "src/scene_image.cpp").read_text(encoding="utf-8")
 renderer = (root / "src/vulkan_renderer.cpp").read_text(encoding="utf-8")
 materials = (root / "shaders/materials.glsl").read_text(encoding="utf-8")
@@ -25,6 +26,22 @@ if len(values) != 60 or len(set(values)) != 60 or values != sorted(values):
     errors.append("formation anchor table must contain exactly 60 unique sorted anchors")
 if cpu_values != values:
     errors.append("CPU and GPU formation anchor tables must be byte-identical")
+for token in ("fix29_bee_departure_threshold", "fix29_bee_initial_timer",
+              "fix29_bee_forager_activation_window_ticks"):
+    if token not in actor_header:
+        errors.append(f"CPU plural-forager timing contract missing {token!r}")
+for token in ("beeForagerSlot", "beeForagerOrdinal",
+              "beeDepartureThreshold", "beeInitialTimer",
+              "beeForagerApproachPosition"):
+    if token not in swarm:
+        errors.append(f"GPU plural-forager contract missing {token!r}")
+if "beeInitialTimer(uint(slot))" not in reset:
+    errors.append("reset path does not use the shared bee initial timer")
+if "beeInitialTimer(uint(colonySlot))" not in paint or \
+   "beeInitialTimer(slot)" not in paint:
+    errors.append("paint paths do not use the shared bee initial timer")
+if "fix29_bee_initial_timer(slot)" not in scene_image:
+    errors.append("scene-import path does not use the shared bee initial timer")
 points = [((value & 127) - 64, (value >> 7) - 64) for value in values]
 if points:
     if min(x*x + y*y for x, y in points) < 144:
@@ -121,6 +138,8 @@ for token in ('#include "bee_swarm.glsl"', "beeMoveExactHome", "tileQueenPositio
               "nextCells[indexOf(position)] = newborn",
               "nextCells[indexOf(position)] = cells[birthOwner]",
               "!newbornTransit && ((slot + pc.step) & 3u) != 0u",
+              "beeForagerApproachPosition(flower, slot)",
+              "(bee.aux & AUX_MOVED) == 0u",
               "tryBeeMove", "atomicCompSwap",
               "atomicAnd(cells[index].aux, ~AUX_MOVED)"):
     if token not in bee_move:

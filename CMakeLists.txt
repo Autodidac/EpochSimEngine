@@ -49,6 +49,7 @@ endfunction()
 # and application event handling are intentionally absent from this target.
 add_library(SandHybrid STATIC
     src/scene_image.cpp
+    src/hive_recovery.cpp
     src/world_save.cpp
     src/section_grid.cpp
     src/section_scheduler.cpp
@@ -280,6 +281,7 @@ set(SANDHYBRID_CORE_PUBLIC_HEADERS
     include/sandhybrid/scene.hpp
     include/sandhybrid/scene_spawn.hpp
     include/sandhybrid/scene_image.hpp
+    include/sandhybrid/hive_recovery.hpp
     include/sandhybrid/world_save.hpp
     include/sandhybrid/section_grid.hpp
     include/sandhybrid/section_scheduler.hpp
@@ -403,6 +405,12 @@ if(BUILD_TESTING)
     target_compile_features(sandhybrid_scene_image_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_scene_image_contract)
     add_test(NAME sandhybrid_scene_image_contract COMMAND sandhybrid_scene_image_contract)
+
+    add_executable(sandhybrid_hive_recovery_contract tests/hive_recovery_contract.cpp)
+    target_link_libraries(sandhybrid_hive_recovery_contract PRIVATE SandHybrid)
+    target_compile_features(sandhybrid_hive_recovery_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_hive_recovery_contract)
+    add_test(NAME sandhybrid_hive_recovery_contract COMMAND sandhybrid_hive_recovery_contract)
 
     add_executable(sandhybrid_world_save_contract tests/world_save_contract.cpp)
     target_link_libraries(sandhybrid_world_save_contract PRIVATE SandHybrid)
