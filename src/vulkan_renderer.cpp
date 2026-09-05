@@ -30,8 +30,10 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <limits>
 #include <iterator>
+#include <locale>
 #include <optional>
 #include <set>
 #include <span>
@@ -531,6 +533,7 @@ struct VulkanRenderer::Impl final {
     VkPipeline conservation_corrections_pipeline{};
     VkPipeline bee_movement_pipeline{};
     VkPipeline rainfall_pipeline{};
+    VkPipeline structural_repair_pipeline{};
     VkPipeline macro_movement_pipeline{};
     VkPipeline movement_pipeline{};
     VkPipeline actor_pipeline{};
@@ -655,6 +658,8 @@ save_slot(normalize_world_slot(requested_save_slot)) {
                 vkDestroyPipeline(device, bee_movement_pipeline, nullptr);
             if (rainfall_pipeline != VK_NULL_HANDLE)
                 vkDestroyPipeline(device, rainfall_pipeline, nullptr);
+            if (structural_repair_pipeline != VK_NULL_HANDLE)
+                vkDestroyPipeline(device, structural_repair_pipeline, nullptr);
             if (macro_movement_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, macro_movement_pipeline, nullptr);
             if (movement_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, movement_pipeline, nullptr);
             if (actor_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, actor_pipeline, nullptr);
@@ -1299,6 +1304,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             create_compute_pipeline("conservation_corrections.comp.spv");
         bee_movement_pipeline = create_compute_pipeline("bee_move.comp.spv");
         rainfall_pipeline = create_compute_pipeline("rainfall.comp.spv");
+        structural_repair_pipeline = create_compute_pipeline("structural_repair.comp.spv");
         macro_movement_pipeline = create_compute_pipeline("macro_move.comp.spv");
         movement_pipeline = create_compute_pipeline("move.comp.spv");
         actor_pipeline = create_compute_pipeline("actor.comp.spv");
@@ -1673,6 +1679,42 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            0, sizeof(copy_push), &copy_push);
         vkCmdDispatch(command_buffer, divide_round_up(rectangle.width, simulation_local_size),
                       divide_round_up(rectangle.height, simulation_local_size), 1);
+    }
+
+    void record_structural_repair_pass(const VkCommandBuffer command_buffer,
+                                      const SimulationPush& simulation_push,
+                                      const ActiveCellDispatch dispatch) {
+        if (dispatch.width == 0u || dispatch.height == 0u) return;
+        buffer_barrier(command_buffer, cell_buffers[current_set],
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        bind_compute(command_buffer, structural_repair_pipeline, current_set);
+        for (std::uint32_t parity = 0u; parity != 2u; ++parity) {
+            auto push = simulation_push;
+            // Workgroup padding can cover extra tile rows. Every caller,
+            // including a focused 360-row fixture inside a taller World, owns
+            // only its declared rectangle; height is not the cell row stride.
+            push.height = (std::min)(push.height, dispatch.origin_y + dispatch.height);
+            push.reserved = parity;
+            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                               VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+            vkCmdDispatch(command_buffer, divide_round_up(dispatch.width, 16u),
+                          divide_round_up(divide_round_up(
+                              divide_round_up(dispatch.height, 8u), 2u), 8u), 1);
+            // Each parity has disjoint nine-cell column footprints. The next
+            // parity and the fine snapshot must see both endpoints together.
+            buffer_barrier(command_buffer, cell_buffers[current_set],
+                           VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        }
     }
 
     void record_bee_birth_pass(const VkCommandBuffer command_buffer,
@@ -3065,9 +3107,19 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
     }
 
+    template<bool Profile = false>
     void record_simulation_step(const VkCommandBuffer command_buffer,
                                 const SharedState& state,
-                                const bool /*collect_debug_stats*/) {
+                                const bool /*collect_debug_stats*/,
+                                const VkQueryPool profile_queries = VK_NULL_HANDLE) {
+        // The normal instantiation emits no profiling commands or resources.
+        // Profiling is an explicit isolated run, never hidden Debug overhead.
+        const auto mark_profile = [&]([[maybe_unused]] const std::uint32_t boundary) {
+            if constexpr (Profile)
+                vkCmdWriteTimestamp(command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                    profile_queries, boundary);
+        };
+        mark_profile(0u);
         const auto active_section_x = state.active_window_origin_x.load(std::memory_order_relaxed);
         const auto active_section_y = state.active_window_origin_y.load(std::memory_order_relaxed);
         const auto active_dispatch = active_cell_dispatch(
@@ -3099,6 +3151,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
         }
 
+        mark_profile(1u);
         bind_compute(command_buffer, tile_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
                            0, sizeof(simulation_push), &simulation_push);
@@ -3120,6 +3173,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
              VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
              VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
+        mark_profile(2u);
         const auto next_set = current_set ^ 1u;
         buffer_barrier(command_buffer, cell_buffers[next_set],
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
@@ -3134,6 +3188,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         buffer_barrier(command_buffer, cell_buffers[next_set], VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        mark_profile(3u);
         bind_compute(command_buffer, conservation_corrections_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
                            0, sizeof(simulation_push), &simulation_push);
@@ -3152,6 +3207,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        mark_profile(4u);
         copy_cell_rectangle(command_buffer, next_set, current_set, active_dispatch);
         buffer_barrier(command_buffer, cell_buffers[next_set], VK_ACCESS_SHADER_READ_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
@@ -3160,6 +3216,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
+        mark_profile(5u);
         // Only one uint per world column is inspected here. Already-emitted
         // rain therefore continues outside the 4x4 active window without a
         // complete-world cell scan or any global Water wake-up.
@@ -3193,6 +3250,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
+        mark_profile(6u);
         // Full uniform 8x8 regions use the same fall/diagonal/spread decisions
         // as cells, but transfer all 64 canonical cells in parallel. Mixed,
         // partial, structural, reacting, or half-water regions fall through to
@@ -3239,6 +3297,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             }
         }
 
+        mark_profile(7u);
+        record_structural_repair_pass(command_buffer, simulation_push, active_dispatch);
+        mark_profile(8u);
         // Freeze the post-chemistry and macro-movement state for all neighborhood decisions in
         // the movement passes. Pair endpoints still use the writable current
         // buffer, while pressure, support, and bee attraction read this exact
@@ -3262,6 +3323,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
+        mark_profile(9u);
         bind_compute(command_buffer, movement_pipeline, current_set);
         // One complete fine pair schedule per fixed tick. AUX_MOVED now owns
         // single-tick liquid transactions, so replaying horizontal pairs only
@@ -3306,6 +3368,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         }
 
+        mark_profile(10u);
         // A rare bounded double-buffer phase exchanges a missing Bee's Ash with
         // one local birth medium before any Bee can move. Ordinary ticks pay no
         // copy or dispatch cost.
@@ -3329,6 +3392,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        mark_profile(11u);
         ++simulation_step;
     }
 
@@ -3819,11 +3883,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
         const auto selected_scene = state.selected_scene.load(std::memory_order_relaxed) % scene_count;
         const bool paused = state.paused.load(std::memory_order_relaxed);
-        if (state.save_scene_image.exchange(false, std::memory_order_acq_rel)) {
+        if (state.save_scene_image.exchange(false, std::memory_order_acq_rel) &&
+            config.simulation_profile_report.empty()) {
             if (!needs_reset) save_world_slot(selected_scene);
             else startup_log("World save skipped until the initial scene exists.");
         }
-        const bool explicit_load = state.load_scene_image.exchange(false, std::memory_order_acq_rel);
+        const bool explicit_load =
+            state.load_scene_image.exchange(false, std::memory_order_acq_rel) &&
+            config.simulation_profile_report.empty();
         if (state.fill_region.exchange(false, std::memory_order_acq_rel)) {
             if (!needs_reset) fill_connected_region(state);
             else startup_log("Fill skipped until the initial scene exists.");
@@ -4175,6 +4242,34 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        });
+    }
+
+    void run_acceptance_structural_repair_pass(
+        const std::int32_t active_section_x = 0,
+        const std::int32_t active_section_y = 0,
+        const bool translated_active_window = false) {
+        const auto origin_x = translated_active_window
+            ? static_cast<std::uint32_t>(active_section_x * active_region_width_cells) : 0u;
+        const auto origin_y = translated_active_window
+            ? static_cast<std::uint32_t>(active_section_y * active_region_height_cells) : 0u;
+        const ActiveCellDispatch dispatch{
+            origin_x, origin_y,
+            (std::min)(config.grid_width - origin_x,
+                       translated_active_window ? 640u : 192u),
+            (std::min)(config.grid_height - origin_y,
+                       translated_active_window ? 360u : 192u)};
+        const SimulationPush push{
+            .width = config.grid_width,
+            .height = config.grid_height,
+            .step = simulation_step,
+            .seed = random_seed,
+            .active_section_x = active_section_x,
+            .active_section_y = active_section_y,
+            .active_mode = translated_active_window ? 1u : 0u,
+        };
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
+            record_structural_repair_pass(command_buffer, push, dispatch);
         });
     }
 
@@ -4625,6 +4720,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
+            record_structural_repair_pass(command_buffer, simulation_push,
+                                          acceptance_dispatch);
             const auto snapshot_set = current_set ^ 1u;
             const auto snapshot_dispatch = translated_active_window
                 ? expanded_cell_dispatch(acceptance_dispatch, config.grid_width,
@@ -4848,6 +4945,358 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         if (config.grid_width < 256u || config.grid_height < 256u) {
             append("world_dimensions", false, "acceptance requires at least 256x256 cells");
         } else {
+            {
+                // Exercise the real exclusive repair owner independently of
+                // chemistry/fine motion, checking every canonical payload word.
+                const auto same = [](const SceneCell& a, const SceneCell& b) {
+                    return a.material == b.material && a.age == b.age &&
+                           a.temperature == b.temperature && a.aux == b.aux;
+                };
+                const std::array<const char*, 10> variants{
+                    "gas_payload", "competing_donors", "health_only",
+                    "laser_debris", "already_moved", "foreign_material",
+                    "liquid_destination", "vacuum_payload",
+                    "translated_odd_row", "adjacent_parities"};
+                for (std::size_t variant = 0u; variant < variants.size(); ++variant) {
+                    const bool translated = variant >= 8u;
+                    if (translated && (config.grid_width < 1280u || config.grid_height < 744u))
+                        continue;
+                    const auto x = translated ? 708u : 68u;
+                    const auto top = translated ? 360u : 64u;
+                    auto cells = acceptance_atmosphere_world();
+                    seed_rect(cells, Material::stone, x - 4u, top, 8u,
+                              variant == 9u ? 16u : 8u);
+                    for (auto y = top; y < top + (variant == 9u ? 16u : 8u); ++y)
+                        for (auto sx = x - 4u; sx < x + 4u; ++sx) {
+                            auto& cell = cells[index_of(sx, y)];
+                            cell.age = 180u;
+                            cell.aux = (cell.aux & ~255u) | 200u;
+                        }
+                    SceneCell donor{material_id(Material::stone), 73u, 87, 0x005544adu};
+                    SceneCell medium{material_id(Material::atmosphere), 91u, -17, 0x00032154u};
+                    const auto donor_y = variant == 8u ? top + 1u : top - 1u;
+                    const auto hole_y = top + 7u;
+                    if (variant == 3u) donor.aux |= 0x20000000u;
+                    if (variant == 4u) donor.aux |= fill_aux_moved;
+                    if (variant == 5u) donor.material = material_id(Material::copper);
+                    if (variant == 6u) medium = make_fill_cell(material_id(Material::water), 19u);
+                    if (variant == 7u) medium = SceneCell{material_id(Material::empty), 17u, -4, 0u};
+                    cells[index_of(x, donor_y)] = donor;
+                    if (variant != 2u) cells[index_of(x, hole_y)] = medium;
+                    if (variant == 1u || variant == 9u) {
+                        auto second = donor;
+                        second.age = 89u;
+                        second.temperature = 103;
+                        second.aux = 0x000123bdu;
+                        cells[index_of(x, top + 1u)] = second;
+                    }
+                    if (variant == 8u) {
+                        // A tempting donor just outside the clipped active top
+                        // is not an owner in this dispatch.
+                        cells[index_of(x, top - 1u)] = donor;
+                        seed_rect(cells, Material::stone, x - 4u, 720u, 8u, 16u);
+                        for (auto y = 720u; y < 736u; ++y)
+                            for (auto sx = x - 4u; sx < x + 4u; ++sx)
+                                cells[index_of(sx, y)].aux =
+                                    (cells[index_of(sx, y)].aux & ~255u) | 200u;
+                        cells[index_of(x, 727u)] = medium;
+                        cells[index_of(x, 725u)] = donor;
+                    }
+                    if (variant == 9u) {
+                        cells[index_of(x, hole_y)] = donor;
+                        cells[index_of(x, hole_y + 8u)] = medium;
+                    }
+                    upload_scene_cells(cells);
+                    run_acceptance_tile_pass(translated ? 1 : 0, translated ? 1 : 0, translated);
+                    const auto prefix_count = static_cast<std::size_t>(
+                        translated ? 744u : 192u) * config.grid_width;
+                    auto expected = download_scene_cell_prefix(prefix_count);
+                    const auto transfer = [&](const std::uint32_t from, const std::uint32_t to) {
+                        auto moved = expected[index_of(x, from)];
+                        moved.aux |= fill_aux_structural | fill_aux_supported;
+                        expected[index_of(x, from)] = expected[index_of(x, to)];
+                        expected[index_of(x, to)] = moved;
+                    };
+                    if (variant == 0u || variant == 7u || variant == 8u)
+                        transfer(donor_y, hole_y);
+                    if (variant == 1u) transfer(top + 1u, hole_y);
+                    if (variant == 9u) {
+                        // Global even row46 runs first, then odd row45. Its
+                        // displaced gas can safely be the next phase's hole.
+                        transfer(hole_y, hole_y + 8u);
+                        transfer(top + 1u, hole_y);
+                    }
+                    run_acceptance_structural_repair_pass(
+                        translated ? 1 : 0, translated ? 1 : 0, translated);
+                    auto after = download_scene_cell_prefix(prefix_count);
+                    bool exact = std::equal(expected.begin(), expected.end(), after.begin(), same);
+                    if (variant == 1u || variant == 8u) {
+                        run_acceptance_tile_pass(translated ? 1 : 0,
+                                                 translated ? 1 : 0, translated);
+                        if (variant == 1u) transfer(donor_y, top + 1u);
+                        // The translated outside-top donor must not fill the
+                        // new gas hole after the legitimate inside donor moved.
+                        run_acceptance_structural_repair_pass(
+                            translated ? 1 : 0, translated ? 1 : 0, translated);
+                        after = download_scene_cell_prefix(prefix_count);
+                        exact = exact && std::equal(expected.begin(), expected.end(), after.begin(), same);
+                    }
+                    append(std::string{"structural_repair_"} + variants[variant], exact,
+                           "canonical payload exact=" + std::to_string(exact ? 1u : 0u) +
+                           " checked_cells=" + std::to_string(prefix_count));
+                    if (variant == 2u) {
+                        // The historical pair kernel consumed this loose
+                        // donor solely to heal a full tile. Exercise that exact
+                        // odd-row vertical contact through ordinary fine motion.
+                        run_acceptance_fine_pass(0, 1);
+                        const auto fine = download_scene_cell_prefix(prefix_count);
+                        const auto before_stone = count_material(after, Material::stone);
+                        const auto after_stone = count_material(fine, Material::stone);
+                        const auto before_vacuum = count_material(after, Material::empty);
+                        const auto after_vacuum = count_material(fine, Material::empty);
+                        append("structural_repair_health_only_survives_fine_pair",
+                               before_stone == 65u && before_stone == after_stone &&
+                                   before_vacuum == after_vacuum,
+                               "stone_before/after=" + std::to_string(before_stone) + "/" +
+                                   std::to_string(after_stone) + " vacuum_before/after=" +
+                                   std::to_string(before_vacuum) + "/" + std::to_string(after_vacuum));
+                    }
+                }
+            }
+            {
+                // The focused tick uses the same common repair recorder as
+                // production. Its 360-row scope rounds to 384 repair rows:
+                // without the recorder's height clamp, even phase gid.y=23
+                // selects tile Y736 and swaps these outside owners at 735/741.
+                // Both are below chemistry's rounded Y727 limit. Their solid
+                // enclosure also blocks ordinary fine fall/diagonal/gas motion.
+                if (config.grid_width >= 1280u && config.grid_height >= 768u) {
+                    constexpr std::uint32_t sentinel_x = 708u;
+                    constexpr std::uint32_t donor_y = 735u;
+                    constexpr std::uint32_t hole_y = 741u;
+                    auto cells = acceptance_atmosphere_world();
+                    seed_rect(cells, Material::stone, sentinel_x - 4u, 728u, 8u, 24u);
+                    for (auto y = 728u; y < 752u; ++y)
+                        for (auto x = sentinel_x - 4u; x < sentinel_x + 4u; ++x) {
+                            auto& cell = cells[index_of(x, y)];
+                            cell.age = 180u;
+                            cell.aux = (cell.aux & ~255u) | 200u;
+                        }
+                    const SceneCell donor{
+                        material_id(Material::stone), 73u, 87, 0x005544adu};
+                    const SceneCell medium{
+                        material_id(Material::atmosphere), 91u, -17, 0x00032154u};
+                    cells[index_of(sentinel_x, donor_y)] = donor;
+                    cells[index_of(sentinel_x, hole_y)] = medium;
+                    upload_scene_cells(cells);
+                    run_acceptance_focused_tick(1, 1, true, true);
+                    const auto after = download_scene_cell_prefix(
+                        static_cast<std::size_t>(752u) * config.grid_width);
+                    const auto same = [](const SceneCell& a, const SceneCell& b) {
+                        return a.material == b.material && a.age == b.age &&
+                               a.temperature == b.temperature && a.aux == b.aux;
+                    };
+                    const bool donor_exact = same(after[index_of(sentinel_x, donor_y)], donor);
+                    const bool medium_exact = same(after[index_of(sentinel_x, hole_y)], medium);
+                    append("structural_repair_focused_tick_clips_bottom",
+                           donor_exact && medium_exact,
+                           "declared_y=360..719 outside_donor_y=735 exact=" +
+                               std::to_string(donor_exact ? 1u : 0u) +
+                               " outside_medium_y=741 exact=" +
+                               std::to_string(medium_exact ? 1u : 0u));
+                }
+            }
+            {
+                // Classify real GPU tiles against an independent dense CPU
+                // histogram. Deliberately retain row-order ties, Empty cells,
+                // and every catalog ID rather than mirroring the packed math.
+                constexpr std::uint32_t fixture_side = 192u;
+                constexpr std::uint32_t tile_side = 8u;
+                constexpr std::uint32_t tile_cells = tile_side * tile_side;
+                constexpr std::uint32_t fixture_columns = fixture_side / tile_side;
+                struct HistogramCase final {
+                    std::string name;
+                    std::array<std::uint32_t, tile_cells> materials{};
+                };
+                std::vector<HistogramCase> cases;
+                for (std::uint32_t material = 0u; material < material_count; ++material) {
+                    HistogramCase sample{"uniform_" + std::to_string(material)};
+                    sample.materials.fill(material);
+                    cases.push_back(std::move(sample));
+                }
+                const auto add_tie = [&](const std::uint32_t low,
+                                         const std::uint32_t high,
+                                         const std::string& label) {
+                    HistogramCase sample{label};
+                    for (std::uint32_t cell = 0u; cell < tile_cells; ++cell)
+                        sample.materials[cell] = cell < tile_cells / 2u ? low : high;
+                    cases.push_back(sample);
+                    std::ranges::reverse(sample.materials);
+                    sample.name += "_reversed";
+                    cases.push_back(std::move(sample));
+                };
+                for (std::uint32_t boundary = 4u; boundary < material_count; boundary += 4u)
+                    add_tie(boundary - 1u, boundary,
+                            "word_boundary_" + std::to_string(boundary));
+                add_tie(1u, material_count - 1u, "catalog_extreme_tie");
+                add_tie(material_count - 2u, material_count - 1u, "catalog_tail_tie");
+                for (std::uint32_t first = 0u; first < material_count; first += 4u) {
+                    HistogramCase sample{"same_word_" + std::to_string(first)};
+                    const auto members = (std::min)(4u, material_count - first);
+                    for (std::uint32_t cell = 0u; cell < tile_cells; ++cell)
+                        sample.materials[cell] = first + cell % members;
+                    cases.push_back(std::move(sample));
+                }
+                {
+                    HistogramCase sample{"distinct_nonempty_ids"};
+                    const auto distinct = (std::min)(tile_cells, material_count - 1u);
+                    for (std::uint32_t cell = 0u; cell < tile_cells; ++cell)
+                        sample.materials[cell] = 1u + cell % distinct;
+                    cases.push_back(sample);
+                    std::ranges::reverse(sample.materials);
+                    sample.name += "_reversed";
+                    cases.push_back(std::move(sample));
+                }
+                {
+                    HistogramCase sample{"partial_tie_with_vacuum"};
+                    for (std::uint32_t cell = 0u; cell + 2u < tile_cells; ++cell)
+                        sample.materials[cell] = cell % 2u == 0u
+                            ? material_count - 1u : 1u;
+                    cases.push_back(sample);
+                    std::ranges::reverse(sample.materials);
+                    sample.name += "_reversed";
+                    cases.push_back(std::move(sample));
+                }
+                // Append adversarial lazy-initialization cases without changing
+                // the original 125 samples or the bounded classifier footprint.
+                for (const bool high_first : {false, true}) {
+                    HistogramCase sample{high_first
+                        ? "late_distinct_high_then_low" : "late_distinct_low_then_high"};
+                    sample.materials.fill(high_first ? material_count - 1u : 1u);
+                    sample.materials.back() = high_first ? 1u : material_count - 1u;
+                    cases.push_back(sample);
+                    std::ranges::reverse(sample.materials);
+                    sample.name += "_reversed";
+                    cases.push_back(std::move(sample));
+                }
+                for (const bool high_first : {false, true}) {
+                    HistogramCase sample{high_first
+                        ? "late_tie_first_valid_high" : "late_tie_first_valid_low"};
+                    sample.materials[tile_cells - 2u] = high_first ? material_count - 1u : 1u;
+                    sample.materials.back() = high_first ? 1u : material_count - 1u;
+                    cases.push_back(std::move(sample));
+                }
+                {
+                    HistogramCase sparse{"same_valid_material_sparse_vacuum"};
+                    for (const auto cell : {0u, 31u, 63u})
+                        sparse.materials[cell] = material_count - 1u;
+                    cases.push_back(std::move(sparse));
+                    HistogramCase late{"first_valid_only_at_final_cell"};
+                    late.materials.back() = material_count - 1u;
+                    cases.push_back(std::move(late));
+                }
+                {
+                    constexpr std::uint32_t invalid_high = 0xffffffffu;
+                    HistogramCase invalid{"all_invalid_ids"};
+                    for (std::uint32_t cell = 0u; cell < tile_cells; ++cell)
+                        invalid.materials[cell] = cell % 2u == 0u
+                            ? material_count : invalid_high;
+                    cases.push_back(invalid);
+                    auto late = invalid;
+                    late.name = "invalids_then_one_late_valid";
+                    late.materials.back() = material_count - 1u;
+                    cases.push_back(std::move(late));
+                    auto tie = invalid;
+                    tie.name = "invalids_then_late_valid_high_low_tie";
+                    tie.materials[tile_cells - 2u] = material_count - 1u;
+                    tie.materials.back() = 1u;
+                    cases.push_back(std::move(tie));
+                    HistogramCase sparse{"invalids_and_vacuum_without_valid"};
+                    for (std::uint32_t cell = 0u; cell < tile_cells; cell += 2u)
+                        sparse.materials[cell] = cell % 4u == 0u
+                            ? material_count : invalid_high;
+                    cases.push_back(std::move(sparse));
+                }
+                if (cases.size() > fixture_columns * fixture_columns)
+                    throw std::runtime_error("Tile histogram fixtures exceed the bounded test grid.");
+
+                auto cells = acceptance_atmosphere_world();
+                std::vector<std::uint32_t> expected;
+                expected.reserve(cases.size());
+                for (std::size_t sample = 0u; sample < cases.size(); ++sample) {
+                    const auto origin_x = static_cast<std::uint32_t>(sample % fixture_columns) * tile_side;
+                    const auto origin_y = static_cast<std::uint32_t>(sample / fixture_columns) * tile_side;
+                    std::array<std::uint32_t, material_count> dense{};
+                    for (std::uint32_t cell = 0u; cell < tile_cells; ++cell) {
+                        const auto material = cases[sample].materials[cell];
+                        const auto index = index_of(origin_x + cell % tile_side,
+                                                    origin_y + cell / tile_side);
+                        cells[index] = make_fill_cell(material, static_cast<std::uint32_t>(index));
+                        // The exact acceptance upload does not normalize IDs.
+                        // Bypass the normal constructor's invalid-ID sanitation
+                        // only for this read-only classifier fixture; subsequent
+                        // fixtures replace the whole world before simulating.
+                        if (material >= material_count)
+                            cells[index] = SceneCell{material, 0u, 20, 0u};
+                        cells[index].age = 160u + cell % 7u;
+                        if (material != material_id(Material::empty) && material < material_count)
+                            ++dense[material];
+                    }
+                    std::uint32_t winner = material_id(Material::empty);
+                    std::uint32_t count = 0u;
+                    for (std::uint32_t material = 1u; material < material_count; ++material) {
+                        if (dense[material] > count) {
+                            count = dense[material];
+                            winner = material;
+                        }
+                    }
+                    expected.push_back(winner);
+                }
+                upload_scene_cells(cells);
+                run_acceptance_tile_pass();
+                const auto classified = download_tile_states();
+                const auto world_tile_columns = divide_round_up(config.grid_width, tile_side);
+                std::uint32_t mismatches = 0u;
+                std::string first_mismatch;
+                for (std::size_t sample = 0u; sample < cases.size(); ++sample) {
+                    const auto tile_x = sample % fixture_columns;
+                    const auto tile_y = sample / fixture_columns;
+                    const auto actual = classified[tile_y * world_tile_columns + tile_x].material;
+                    if (actual != expected[sample]) {
+                        ++mismatches;
+                        if (first_mismatch.empty())
+                            first_mismatch = cases[sample].name + " expected=" +
+                                std::to_string(expected[sample]) + " actual=" + std::to_string(actual);
+                    }
+                }
+                // Supplemental A/B evidence over every metadata word in the
+                // bounded region; this digest never replaces the dense oracle.
+                std::uint64_t metadata_digest = 14695981039346656037ull;
+                for (std::uint32_t y = 0u; y < fixture_columns; ++y) {
+                    for (std::uint32_t x = 0u; x < fixture_columns; ++x) {
+                        const auto& tile = classified[y * world_tile_columns + x];
+                        for (const auto word : {tile.material, tile.occupancy, tile.flags, tile.counters}) {
+                            for (std::uint32_t byte = 0u; byte < 4u; ++byte) {
+                                metadata_digest ^= (word >> (byte * 8u)) & 255u;
+                                metadata_digest *= 1099511628211ull;
+                            }
+                        }
+                    }
+                }
+                const auto after = download_scene_cell_prefix(
+                    static_cast<std::size_t>(fixture_side) * config.grid_width);
+                const bool cells_unchanged = std::equal(after.begin(), after.end(), cells.begin(),
+                    [](const SceneCell& a, const SceneCell& b) {
+                        return a.material == b.material && a.age == b.age &&
+                               a.temperature == b.temperature && a.aux == b.aux;
+                    });
+                append("tile_histogram_dense_cpu_parity", mismatches == 0u && cells_unchanged,
+                       "cases=" + std::to_string(cases.size()) +
+                           " mismatches=" + std::to_string(mismatches) +
+                           " cells_unchanged=" + std::to_string(cells_unchanged ? 1u : 0u) +
+                           " metadata_fnv1a64=" + std::to_string(metadata_digest) +
+                           (first_mismatch.empty() ? "" : " first=" + first_mismatch));
+            }
             {
                 // Sample row one starts halfway through a 64-cell chunk.
                 // Run the real observational pipeline, not a CPU count model.
@@ -10191,7 +10640,272 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         return passed ? 0 : 4;
     }
 
+    [[nodiscard]] int run_simulation_profile(const std::atomic_bool& stop_requested,
+                                              const SharedState& application_state) {
+        startup_log("Running isolated GPU material-tick timestamp profile (not FPS)...");
+        using Clock = std::chrono::steady_clock;
+        constexpr std::uint32_t query_count = 12u;
+        constexpr std::array<std::string_view, query_count - 1u> stage_names{
+            "sunlight", "tile_and_chunk_classification", "chemistry",
+            "conservation_corrections", "chemistry_copyback", "tracked_rainfall",
+            "macro_movement", "structural_repair", "movement_snapshot",
+            "fine_movement", "bee_birth_and_movement",
+        };
+        const std::uint32_t warmup_ticks = cpu_physical_device ? 2u : 32u;
+        const std::uint32_t requested_samples = cpu_physical_device ? 8u : 240u;
+
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(physical_device, &properties);
+        std::uint32_t queue_family_count{};
+        vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
+        std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(
+            physical_device, &queue_family_count, queue_families.data());
+        if (graphics_family >= queue_family_count)
+            throw std::runtime_error("Simulation profiler has no selected queue family.");
+        const auto valid_bits = queue_families[graphics_family].timestampValidBits;
+        const auto period_ns = static_cast<double>(properties.limits.timestampPeriod);
+        if (valid_bits == 0u || valid_bits > 64u || !(period_ns > 0.0) ||
+            !(period_ns <= static_cast<double>((std::numeric_limits<float>::max)())))
+            throw std::runtime_error("Selected Vulkan queue does not support usable timestamps.");
+        const std::uint64_t timestamp_mask = valid_bits == 64u
+            ? (std::numeric_limits<std::uint64_t>::max)()
+            : (std::uint64_t{1u} << valid_bits) - 1u;
+        const long double timestamp_wrap_ns =
+            (static_cast<long double>(timestamp_mask) + 1.0L) * period_ns;
+
+        const std::filesystem::path report_path{config.simulation_profile_report};
+        if (!report_path.parent_path().empty())
+            std::filesystem::create_directories(report_path.parent_path());
+
+        // Own every profiling-only Vulkan object locally. If a submitted GPU
+        // command times out, leave its in-use objects to process teardown just
+        // like the renderer's existing stalled-device cleanup policy.
+        struct ProfileResources final {
+            VkDevice device{};
+            VkCommandPool command_pool{};
+            const bool& stalled;
+            VkQueryPool queries{};
+            VkCommandBuffer commands{};
+            VkFence fence{};
+            ~ProfileResources() {
+                if (stalled) return;
+                if (commands != VK_NULL_HANDLE)
+                    vkFreeCommandBuffers(device, command_pool, 1u, &commands);
+                if (fence != VK_NULL_HANDLE) vkDestroyFence(device, fence, nullptr);
+                if (queries != VK_NULL_HANDLE) vkDestroyQueryPool(device, queries, nullptr);
+            }
+        } resources{device, command_pool, gpu_stalled};
+        const VkQueryPoolCreateInfo query_info{
+            .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+            .queryType = VK_QUERY_TYPE_TIMESTAMP,
+            .queryCount = query_count,
+        };
+        check_vk(vkCreateQueryPool(device, &query_info, nullptr, &resources.queries),
+                 "vkCreateQueryPool(simulation profile)");
+        const VkCommandBufferAllocateInfo command_info{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = command_pool,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 1u,
+        };
+        check_vk(vkAllocateCommandBuffers(device, &command_info, &resources.commands),
+                 "vkAllocateCommandBuffers(simulation profile)");
+        const VkFenceCreateInfo fence_info{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        check_vk(vkCreateFence(device, &fence_info, nullptr, &resources.fence),
+                 "vkCreateFence(simulation profile)");
+        const auto submit = [&](auto&& record) {
+            check_vk(vkResetFences(device, 1u, &resources.fence),
+                     "vkResetFences(simulation profile)");
+            check_vk(vkResetCommandBuffer(resources.commands, 0u),
+                     "vkResetCommandBuffer(simulation profile)");
+            const VkCommandBufferBeginInfo begin_info{
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            };
+            check_vk(vkBeginCommandBuffer(resources.commands, &begin_info),
+                     "vkBeginCommandBuffer(simulation profile)");
+            record(resources.commands);
+            check_vk(vkEndCommandBuffer(resources.commands),
+                     "vkEndCommandBuffer(simulation profile)");
+            const VkSubmitInfo submit_info{
+                .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                .commandBufferCount = 1u,
+                .pCommandBuffers = &resources.commands,
+            };
+            const auto submitted_at = Clock::now();
+            check_vk(vkQueueSubmit(graphics_queue, 1u, &submit_info, resources.fence),
+                     "vkQueueSubmit(simulation profile)");
+            const auto wait = vkWaitForFences(device, 1u, &resources.fence, VK_TRUE,
+                cpu_physical_device ? 300'000'000'000ull : 60'000'000'000ull);
+            if (wait == VK_TIMEOUT) {
+                gpu_stalled = true;
+                throw std::runtime_error("Simulation profiler GPU submission timed out.");
+            }
+            check_vk(wait, "vkWaitForFences(simulation profile)");
+            return Clock::now() - submitted_at;
+        };
+
+        // Freeze the normal Camera Home scope independently of native input;
+        // profiling never runs draw_frame(), actor updates, save/load, or MAP
+        // refresh. Reset and its initial sunlight/snapshot are outside timing.
+        SharedState profile_state{};
+        const auto spawn = persistent_world_spawn(config.grid_width, config.grid_height);
+        const auto schedule = make_section_schedule(
+            {static_cast<std::int32_t>(spawn.x / active_region_width_cells),
+             static_cast<std::int32_t>(spawn.y / active_region_height_cells)},
+            divide_round_up(config.grid_width, active_region_width_cells),
+            divide_round_up(config.grid_height, active_region_height_cells),
+            std::thread::hardware_concurrency());
+        profile_state.active_window_origin_x.store(schedule.origin.x);
+        profile_state.active_window_origin_y.store(schedule.origin.y);
+        profile_state.section_worker_count.store(
+            static_cast<std::uint32_t>(schedule.worker_count));
+        const auto dispatch = active_cell_dispatch(
+            config.grid_width, config.grid_height, schedule.origin);
+        submit([&](const VkCommandBuffer command_buffer) {
+            record_reset(command_buffer, static_cast<std::uint32_t>(world_scene));
+        });
+
+        std::array<std::vector<double>, stage_names.size()> stage_samples{};
+        for (auto& samples : stage_samples) samples.reserve(requested_samples);
+        std::vector<double> total_samples;
+        total_samples.reserve(requested_samples);
+        std::uint32_t completed_warmup{};
+        const auto sampling_started_at = Clock::now();
+        for (std::uint32_t tick = 0u; tick < warmup_ticks + requested_samples; ++tick) {
+            if (stop_requested.load(std::memory_order_acquire) ||
+                application_state.quit.load(std::memory_order_acquire)) break;
+            const auto submission_duration = submit([&](const VkCommandBuffer command_buffer) {
+                vkCmdResetQueryPool(command_buffer, resources.queries, 0u, query_count);
+                record_simulation_step<true>(command_buffer, profile_state, false,
+                                             resources.queries);
+            });
+            if (tick < warmup_ticks) {
+                ++completed_warmup;
+                continue;
+            }
+            // Modular subtraction handles one wrap. Refuse an ambiguous
+            // multi-wrap interval rather than silently under-reporting it.
+            if (std::chrono::duration<long double, std::nano>(submission_duration).count() >=
+                timestamp_wrap_ns)
+                throw std::runtime_error("Simulation profiler timestamp wrap interval is ambiguous.");
+            std::array<std::uint64_t, query_count> timestamps{};
+            check_vk(vkGetQueryPoolResults(device, resources.queries, 0u, query_count,
+                sizeof(timestamps), timestamps.data(), sizeof(timestamps.front()),
+                VK_QUERY_RESULT_64_BIT), "vkGetQueryPoolResults(simulation profile)");
+            const auto elapsed_ms = [&](const std::uint32_t first,
+                                        const std::uint32_t last) {
+                return static_cast<double>((timestamps[last] - timestamps[first]) &
+                                           timestamp_mask) * period_ns / 1'000'000.0;
+            };
+            total_samples.push_back(elapsed_ms(0u, query_count - 1u));
+            for (std::uint32_t stage = 0u; stage < stage_names.size(); ++stage)
+                stage_samples[stage].push_back(elapsed_ms(stage, stage + 1u));
+            if (total_samples.size() % 60u == 0u)
+                startup_log("Simulation profile measured " +
+                            std::to_string(total_samples.size()) + " material ticks.");
+        }
+        const auto sampling_seconds =
+            std::chrono::duration<double>(Clock::now() - sampling_started_at).count();
+        const bool completed = total_samples.size() == requested_samples;
+        std::ofstream report{report_path, std::ios::binary | std::ios::trunc};
+        if (!report)
+            throw std::runtime_error("Unable to create simulation profile report: " +
+                                     report_path.string());
+        report.imbue(std::locale::classic());
+        report << std::setprecision(12);
+        const auto write_statistics = [&](const std::vector<double>& values) {
+            report << "{\"samples\": " << values.size();
+            if (values.empty()) {
+                report << ", \"mean_ms\": null, \"p50_ms\": null, \"p95_ms\": null, "
+                          "\"p99_ms\": null, \"max_ms\": null}";
+                return;
+            }
+            auto sorted = values;
+            std::ranges::sort(sorted);
+            double sum{};
+            for (const auto value : values) sum += value;
+            const auto percentile = [&](const std::size_t percent) {
+                return sorted[(sorted.size() * percent + 99u) / 100u - 1u];
+            };
+            report << ", \"mean_ms\": " << sum / static_cast<double>(values.size())
+                   << ", \"p50_ms\": " << percentile(50u)
+                   << ", \"p95_ms\": " << percentile(95u)
+                   << ", \"p99_ms\": " << percentile(99u)
+                   << ", \"max_ms\": " << sorted.back() << '}';
+        };
+        report << "{\n  \"schema\": 1,\n"
+               << "  \"backend\": \"vulkan-timestamps\",\n"
+               << "  \"measurement\": \"isolated-material-tick-not-interactive-fps\",\n"
+               << "  \"version\": \"" << SANDHYBRID_VERSION_STRING << "\",\n"
+               << "  \"device\": \"" << json_escape(properties.deviceName) << "\",\n"
+               << "  \"vendor_id\": " << properties.vendorID << ",\n"
+               << "  \"device_id\": " << properties.deviceID << ",\n"
+               << "  \"driver_version\": " << properties.driverVersion << ",\n"
+               << "  \"api_version\": " << properties.apiVersion << ",\n"
+               << "  \"device_class\": \""
+               << (cpu_physical_device ? "cpu-software" : "hardware") << "\",\n"
+               << "  \"completed\": " << (completed ? "true" : "false") << ",\n"
+               << "  \"performance_gate\": false,\n"
+               << "  \"world_size\": \"" << world_size_name(config.world_size) << "\",\n"
+               << "  \"world_width\": " << config.grid_width << ",\n"
+               << "  \"world_height\": " << config.grid_height << ",\n"
+               << "  \"scope\": \"fixed-camera-home-4x4-window\",\n"
+               << "  \"active_origin_x\": " << dispatch.origin_x << ",\n"
+               << "  \"active_origin_y\": " << dispatch.origin_y << ",\n"
+               << "  \"active_width\": " << dispatch.width << ",\n"
+               << "  \"active_height\": " << dispatch.height << ",\n"
+               << "  \"active_cells\": " << dispatch.cell_count() << ",\n"
+               << "  \"section_workers\": " << schedule.worker_count << ",\n"
+               << "  \"seed\": " << random_seed << ",\n"
+               << "  \"timestamp_queue_family\": " << graphics_family << ",\n"
+               << "  \"timestamp_valid_bits\": " << valid_bits << ",\n"
+               << "  \"timestamp_period_ns\": " << period_ns << ",\n"
+               << "  \"timestamp_markers_per_tick\": " << query_count << ",\n"
+               << "  \"requested_warmup_ticks\": " << warmup_ticks << ",\n"
+               << "  \"completed_warmup_ticks\": " << completed_warmup << ",\n"
+               << "  \"requested_samples\": " << requested_samples << ",\n"
+               << "  \"completed_samples\": " << total_samples.size() << ",\n"
+               << "  \"simulation_ticks\": " << simulation_step << ",\n"
+               << "  \"sampling_wall_seconds_including_warmup\": " << sampling_seconds << ",\n"
+               << "  \"presented_frames\": 0,\n"
+               << "  \"actor_updates\": 0,\n"
+               << "  \"debug_collection\": false,\n"
+               << "  \"autoload\": false,\n"
+               << "  \"world_save_writes\": false,\n"
+               << "  \"percentile_method\": \"nearest-rank\",\n"
+               << "  \"limitations\": [\n"
+                  "    \"GPU marker intervals include barriers and timestamp overhead; bottom-of-pipe markers can perturb overlap.\",\n"
+                  "    \"One material tick per serialized submission; CPU recording, fence wait, query readback, startup, reset and initial MAP snapshot are outside GPU intervals.\",\n"
+                  "    \"No presentation, input edits, player actor, save/load, live MAP refresh or Debug collection; these numbers are not interactive frame times or FPS.\",\n"
+                  "    \"Startup World and fixed Camera Home window only; periodic stages include zero-work ticks, global tracked rainfall/chunk metadata and the 16-cell movement halo remain in their production scope.\",\n"
+                  "    \"This diagnostic does not prove long-cycle behavior or performance acceptance; CPU software Vulkan uses only 2 warmup and 8 measured ticks and is not hardware parity.\"\n"
+                  "  ],\n  \"total\": ";
+        write_statistics(total_samples);
+        report << ",\n  \"stages\": [\n";
+        for (std::size_t stage = 0u; stage < stage_names.size(); ++stage) {
+            report << "    {\"name\": \"" << stage_names[stage] << "\", \"timing\": ";
+            write_statistics(stage_samples[stage]);
+            report << '}' << (stage + 1u == stage_names.size() ? "\n" : ",\n");
+        }
+        report << "  ]\n}\n";
+        report.close();
+        if (!report)
+            throw std::runtime_error("Unable to write simulation profile report: " +
+                                     report_path.string());
+        startup_log(std::string{"Material-tick profile "} +
+                    (completed ? "completed: " : "cancelled: ") + report_path.string());
+        return completed ? 0 : 5;
+    }
+
     void run(const std::atomic_bool& stop_requested, SharedState& state) {
+        if (!config.simulation_profile_report.empty()) {
+            const auto exit_code = run_simulation_profile(stop_requested, state);
+            state.runtime_acceptance_exit_code.store(exit_code, std::memory_order_release);
+            state.quit.store(true, std::memory_order_release);
+            return;
+        }
         startup_log("Entering render loop...");
         if (!config.long_cycle_acceptance_report.empty()) {
             const auto exit_code = run_long_cycle_acceptance();

@@ -8,6 +8,7 @@ rejects every other legacy failure, and then validates the replacement contracts
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -122,6 +123,7 @@ def main() -> int:
     section_scheduler = (ROOT / "include/sandhybrid/section_scheduler.hpp").read_text(encoding="utf-8")
     ui_layout = (ROOT / "include/sandhybrid/ui_layout.hpp").read_text(encoding="utf-8")
     macro_move = (SHADERS / "macro_move.comp").read_text(encoding="utf-8")
+    structural_repair = (SHADERS / "structural_repair.comp").read_text(encoding="utf-8")
     reset = (SHADERS / "reset.comp").read_text(encoding="utf-8")
     chemistry = (SHADERS / "chemistry.comp").read_text(encoding="utf-8")
     conservation_corrections = (SHADERS / "conservation_corrections.comp").read_text(
@@ -142,11 +144,58 @@ def main() -> int:
         "for (int offset = 1; offset <= 8; ++offset)",
         "Interior cells therefore settle",
         "releaseCollapsingStructural",
-        "tileHas(targetTile, TILE_COLLAPSING)",
     ):
         require(move, token, errors, "v2.5.10 liquid/fracture movement contract")
     if "source.age < 18u" in move:
         errors.append("legacy 18-frame liquid surface cutoff remains")
+
+    # Repair owns a separate shallow two-phase footprint, not a remote write
+    # from ordinary fine pairs. These are source guards, not GPU acceptance.
+    repair_code = re.sub(r"//[^\n]*|/\*.*?\*/", "", structural_repair, flags=re.S)
+    for token in (
+        'layout(local_size_x = 16, local_size_y = 8) in;',
+        'layout(std430, binding = 4) readonly buffer Tiles',
+        'TILE_MACRO_MOVABLE | TILE_MACRO_MOVED',
+        'AUX_BEE_POLLEN | AUX_MOVED',
+        '!isReconstructableMaterial(donor.material)',
+        'phase == PHASE_SOLID || phase == PHASE_SOFTENED || phase == PHASE_POWDER',
+        '!isStructural(cell) && (cell.material == MAT_EMPTY || isCellGas(cell))',
+        'firstTileY += int((pc.reserved ^ uint(firstTileY)) & 1u);',
+        'int tileY = firstTileY + 2 * int(gl_GlobalInvocationID.y);',
+        'x >= activeEnd.x || originY >= activeEnd.y',
+        '!tileHas(targetTile, TILE_STRUCTURAL)',
+        '!tileHas(targetTile, TILE_DAMAGED)',
+        'tileHas(targetTile, TILE_COLLAPSING)',
+        'Cell column[9];',
+        'int firstRow = max(-1, activeOrigin.y - originY);',
+        'int lastRow = min(7, activeEnd.y - originY - 1);',
+        'for (int row = 7; row >= 0; --row)',
+        'for (int row = min(6, holeRow - 2); row >= -1; --row)',
+        'contact.material != donor.material || !isStructural(contact)',
+        'repairMacroOwned(tiles[tileIndex(sourcePosition, pc.width)])',
+        'Cell displaced = column[holeRow + 1];',
+        'donor.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;',
+        'cells[indexOf(holePosition)] = donor;',
+        'cells[indexOf(sourcePosition)] = displaced;',
+        'atomicOr(chunks[chunkIndex(holePosition, pc.width)].flags,',
+        'atomicOr(chunks[chunkIndex(sourcePosition, pc.width)].flags,',
+    ):
+        require(repair_code, token, errors, "exclusive conservative structural repair")
+    writes = re.findall(r"\bcells\s*\[[^\n;]+\]\s*=\s*([^;]+);", repair_code)
+    if writes != ["donor", "displaced"]:
+        errors.append("structural repair must write exactly donor and displaced owners")
+    for token in (".age =", ".temperature =", "setStateValue(", "debugStats[",
+                  "snapshotCells["):
+        if token in repair_code:
+            errors.append(f"structural repair changed preserved payload/ownership: {token!r}")
+    if re.search(r"\btiles\s*\[[^\n;]+\]\s*=", repair_code):
+        errors.append("structural repair must leave shared tile metadata readonly")
+    for token in ("repairCandidateAt(", "repairDamagedTileFromLooseCell("):
+        if token in move:
+            errors.append(f"ordinary fine movement retains remote repair writer {token!r}")
+    require((ROOT / "CMakeLists.txt").read_text(encoding="utf-8"),
+            "        structural_repair.comp", errors,
+            "structural repair build/deployment source")
 
     require(actor, "state.shotTimer = plasma ? 6u : 4u", errors,
             "compact tool-burst contract")

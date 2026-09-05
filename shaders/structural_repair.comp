@@ -1,0 +1,107 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "materials.glsl"
+#include "tiles.glsl"
+#include "chunks.glsl"
+
+// One invocation owns one X column and one alternating global tile row.
+// Its only cell footprint is the row immediately above plus the eight target
+// rows. Equal-parity footprints are separated by seven untouched rows; X
+// columns never overlap. Dispatch both parities serially with a compute barrier
+// between them, after macro movement and before the immutable fine snapshot.
+layout(local_size_x = 16, local_size_y = 8) in;
+layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
+layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
+layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
+
+bool repairMacroOwned(TileState tile) {
+    return tileHas(tile, TILE_MACRO_MOVABLE | TILE_MACRO_MOVED);
+}
+
+bool repairLooseDonor(Cell donor, uint material) {
+    if (donor.material != material || isStructural(donor) ||
+        (donor.aux & (AUX_BEE_POLLEN | AUX_MOVED)) != 0u ||
+        !isReconstructableMaterial(donor.material)) return false;
+    // Reconstructable condensed material excludes hive shell/content, bees,
+    // queens, and other biological cargo. Laser provenance remains loose.
+    uint phase = cellPhase(donor);
+    return phase == PHASE_SOLID || phase == PHASE_SOFTENED || phase == PHASE_POWDER;
+}
+
+bool repairOpenHole(Cell cell) {
+    return !isStructural(cell) && (cell.material == MAT_EMPTY || isCellGas(cell));
+}
+
+void main() {
+    ivec2 activeOrigin = activeDispatchCellOrigin(
+        pc.activeSectionX, pc.activeSectionY, pc.activeMode);
+    ivec2 activeEnd = ivec2(pc.width, pc.height);
+    if (pc.activeMode != 0u) {
+        activeEnd = min(activeEnd, activeOrigin + ACTIVE_WINDOW_REGIONS *
+                        ivec2(ACTIVE_REGION_WIDTH_CELLS, ACTIVE_REGION_HEIGHT_CELLS));
+    }
+
+    int x = activeOrigin.x + int(gl_GlobalInvocationID.x);
+    int firstTileY = activeOrigin.y / int(TILE_SIZE);
+    // Section Y=1 starts at cell 360 / tile 45, so parity must be global rather
+    // than relative to the active rectangle. reserved bit 0 selects the phase.
+    firstTileY += int((pc.reserved ^ uint(firstTileY)) & 1u);
+    int tileY = firstTileY + 2 * int(gl_GlobalInvocationID.y);
+    int originY = tileY * int(TILE_SIZE);
+    if (x >= activeEnd.x || originY >= activeEnd.y) return;
+
+    TileState targetTile = tiles[tileIndex(ivec2(x, originY), pc.width)];
+    if (!tileHas(targetTile, TILE_STRUCTURAL) || !tileHas(targetTile, TILE_DAMAGED) ||
+        tileHas(targetTile, TILE_COLLAPSING) || repairMacroOwned(targetTile) ||
+        !isReconstructableMaterial(targetTile.material)) return;
+
+    // Canonical reads are safe without a snapshot: no other invocation in this
+    // phase can write these cells. Clip the donor row too; no hidden halo owner.
+    Cell column[9];
+    int firstRow = max(-1, activeOrigin.y - originY);
+    int lastRow = min(7, activeEnd.y - originY - 1);
+    for (int row = -1; row <= 7; ++row) {
+        column[row + 1] = Cell(MAT_EMPTY, 0u, 20, 0u);
+        if (row >= firstRow && row <= lastRow)
+            column[row + 1] = cells[indexOf(ivec2(x, originY + row))];
+    }
+
+    // Deterministic nearest-contact donor, then lowest eligible hole. Every
+    // donor must touch matching structural material immediately below it, and
+    // can only repair a lower hole in this same tile column. Finding the lowest
+    // hole once is equivalent to rescanning downward holes for each donor.
+    int holeRow = -1;
+    for (int row = 7; row >= 0; --row) {
+        if (row <= lastRow && repairOpenHole(column[row + 1])) {
+            holeRow = row;
+            break;
+        }
+    }
+    if (holeRow < 1) return;
+
+    // A hole cannot also be the structural contact, hence the two-row gap.
+    for (int row = min(6, holeRow - 2); row >= -1; --row) {
+        if (row < firstRow) break;
+        Cell donor = column[row + 1];
+        Cell contact = column[row + 2];
+        if (!repairLooseDonor(donor, targetTile.material) ||
+            contact.material != donor.material || !isStructural(contact)) continue;
+
+        ivec2 sourcePosition = ivec2(x, originY + row);
+        if (repairMacroOwned(tiles[tileIndex(sourcePosition, pc.width)])) continue;
+        ivec2 holePosition = ivec2(x, originY + holeRow);
+        Cell displaced = column[holeRow + 1];
+
+        // Exactly two original owners survive. Preserve age, temperature,
+        // health/state, and auxiliary payload; only attach/support the donor.
+        // A health-only repair has no hole and never consumes loose matter.
+        donor.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
+        cells[indexOf(holePosition)] = donor;
+        cells[indexOf(sourcePosition)] = displaced;
+        atomicOr(chunks[chunkIndex(holePosition, pc.width)].flags,
+                 CHUNK_DIRTY | CHUNK_ACTIVE);
+        atomicOr(chunks[chunkIndex(sourcePosition, pc.width)].flags,
+                 CHUNK_DIRTY | CHUNK_ACTIVE);
+        return;
+    }
+}

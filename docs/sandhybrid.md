@@ -38,7 +38,7 @@ Click **DEBUG** to cycle through REGION, WORLD TOTALS, and off. REGION adds spar
 
 Flags can overlap. The displayed marker uses this priority: damaged, fine active, bulk moved, breakup, bulk ready, settled, enclosed, sleeping, active, stable. Consequently, marker totals need not match each separately counted flag. Markers do not draw a horizontal bottom edge across the material surface.
 
-REGION statistics are a bounded snapshot of **one up-to-640x360 region**, not a census of the whole camera window or World. While running, sampling rotates through the 4x4 active window at a 120-tick cadence; values are retained between samples and while paused. Hidden Debug performs no collection. On small windows the layout reduces text size; `RESIZE FOR STATS` means some statistic rows do not fit, while the marker key remains available.
+REGION statistics are a bounded snapshot of **one up-to-640x360 region**, not a census of the whole camera window or World. While REGION is visible and simulation ticks execute, sampling rotates through the 4x4 active window at a 120-tick cadence; values are retained between samples and while paused. WORLD TOTALS or off resets that rotation, and hidden Debug performs no collection. On smaller windows the layout reduces text size; `RESIZE FOR STATS` means some statistic rows do not fit. The tested standard layouts from 960x720 fit the complete key and statistics; exceptionally short windows can also clip the key, so enlarge the window to read the full panel.
 
 - `SAMPLED CELLS/TILES/CHUNKS` describe the inspected region. Boundary chunks may be only partly inside it. `MATERIAL CELLS` counts non-Vacuum cells, not simulation work; `STRUCT`, `LIQUID`, and `GAS` are sampled material classifications.
 - `ACTIVE WINDOWS` counts the active region grid, not busy tiles. Fine, bulk, settled, gas, and liquid tile counts are ownership flags and can overlap; do not sum them as separate material volumes. `DIRTY CHUNKS` means pending invalidation/reclassification, not corruption.
@@ -77,3 +77,29 @@ sandhybrid --world-size compact --interactive-acceptance-report interactive-acce
 The interactive pass measures adjacent normal/REGION Debug presentation, then captures normal World, REGION Debug, WORLD TOTALS, MAP, Inventory, Designer, a close canonical Ecosystem hive, the brightest high-sky Nuke warning, and the resulting bounded high-sky edit. The sibling `<report-name>-frames` directory contains the real Vulkan swapchain BMPs. Hardware Vulkan enforces frame-time and Debug-overhead gates; CPU software Vulkan records the same pages and visual states without pretending its timing is an interactive hardware result.
 
 Focused, repeated-cycle, and interactive checks cover different risks. None substitutes for explicit packaged visual acceptance or broader cross-district ecology and machinery observation.
+
+## Material-tick profiling
+
+The optional profiler diagnoses where the material simulation spends GPU time. From the installed `bin` directory on Windows:
+
+```powershell
+.\sandhybrid.exe --world-size large --simulation-profile-report material-profile.json
+```
+
+On Linux:
+
+```sh
+./sandhybrid --world-size large --simulation-profile-report=material-profile.json
+```
+
+Both argument forms accept a quoted path with spaces. Choose exactly one report mode per process: profiling cannot be combined with focused, long-cycle, or interactive acceptance. `--world-size compact`, `standard`, and `large` select the resident allocation; keep the same size and machine conditions when comparing reports.
+
+Use a fresh output filename for every run. An existing report path is refused with exit code 2 before native/GPU startup, preserving the earlier file. Only consume a report after the process exits with code 0 and its JSON says `completed: true`. A failed process, cancelled run, or partial JSON is never acceptance evidence; the output-path preflight is not an atomic reservation against another process creating that path during the run.
+
+The hidden-window run generates a fresh canonical World and freezes the normal Camera Home 4x4 active window. It performs no player updates, user edits, presentation, live MAP refresh, Debug collection, save/autoload, or world-save writes. It does not profile an existing saved world. Startup, reset, initial sunlight, and initial MAP snapshot are outside the measured intervals.
+
+Hardware Vulkan uses 32 warmup ticks and 240 measured ticks. CPU software Vulkan uses only 2 warmup ticks and 8 measured ticks; its report is diagnostic, not hardware parity or a performance pass. Ticks execute serially as quickly as each submission completes, without presentation pacing; the production material schedule and step-dependent cadence are retained.
+
+The JSON includes device and timestamp identity, resident and active dimensions, actual sample counts, and mean, nearest-rank p50/p95/p99, and maximum milliseconds for the whole material tick and eleven stages. Stage intervals include their barriers and timestamp overhead. Periodic stages include ticks with no scheduled work; global tracked-rainfall/chunk metadata and the movement snapshot's 16-cell halo keep their production scopes. Bottom-of-pipe timestamps can perturb overlap, and CPU recording, fence waiting, and query readback are excluded from GPU intervals. A cancelled run reports incomplete sample counts; unsupported or ambiguous timestamp clocks fail instead of fabricating measurements.
+
+These numbers are **not FPS or interactive frame times**. They do not measure player, rendering, UI, MAP, or Debug overhead, and do not close long-cycle, visual, or performance acceptance missions. Use the separate interactive report for presented-frame behavior.

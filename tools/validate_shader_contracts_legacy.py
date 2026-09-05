@@ -22,6 +22,7 @@ ENTRY_SHADERS = (
     "chunks.comp",
     "chemistry.comp",
     "macro_move.comp",
+    "structural_repair.comp",
     "move.comp",
     "actor.comp",
     "debug_stats.comp",
@@ -336,7 +337,6 @@ def main() -> int:
         if token not in move:
             errors.append(f"Half Water ambient-Air isolation contract missing {token!r}")
     for token in (
-        "repairDamagedTileFromLooseCell",
         "expandAirIntoVacuum",
         "suppliedSurface",
         "source.material != MAT_HONEY && source.material != MAT_OIL",

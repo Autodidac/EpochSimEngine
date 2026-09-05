@@ -613,74 +613,6 @@ bool movementAllows(Cell cell, uint randomValue) {
     return true;
 }
 
-bool repairCandidateAt(ivec2 candidatePosition, Cell source,
-                       inout ivec2 repairPosition, inout Cell repaired) {
-    if (!moveInside(candidatePosition) || repairPosition.x >= 0) return false;
-    Cell candidate = moveAt(candidatePosition);
-    if (isOpenGas(candidate)) {
-        repaired = source;
-        repaired.age = 0u;
-        repaired.aux &= ~(AUX_MOVED | AUX_STATE_MASK);
-        repaired.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
-        setStateValue(repaired, 255u);
-        repairPosition = candidatePosition;
-        return true;
-    }
-    if (candidate.material == source.material && isStructural(candidate)) {
-        uint health = stateValue(candidate);
-        if (health != 0u && health < 255u) {
-            repaired = candidate;
-            repaired.age = 0u;
-            repaired.aux |= AUX_STRUCTURAL | AUX_SUPPORTED | AUX_MOVED;
-            setStateValue(repaired, 255u);
-            repairPosition = candidatePosition;
-            return true;
-        }
-    }
-    return false;
-}
-
-bool repairDamagedTileFromLooseCell(ivec2 sourcePosition, ivec2 contactPosition,
-                                      Cell source, Cell contact) {
-    if (isStructural(source) || isCellGas(source) || isCellLiquid(source) ||
-        source.material == MAT_EMPTY || source.material == MAT_LAVA ||
-        source.material != contact.material || !isStructural(contact)) return false;
-    // A laser-released unit remains visible world debris. Reattaching it to the
-    // same damaged tile on the next fine pass caused the observed single-cell
-    // juggling loop and hid the conservative ejection.
-    if ((source.aux & AUX_BEE_POLLEN) != 0u) return false;
-
-    uint targetTileIndex = tileIndex(contactPosition, movePc.width);
-    TileState targetTile = tiles[targetTileIndex];
-    if (!tileHas(targetTile, TILE_STRUCTURAL) || !tileHas(targetTile, TILE_DAMAGED) ||
-        tileHas(targetTile, TILE_COLLAPSING) ||
-        targetTile.material != source.material) return false;
-
-    ivec2 origin = (contactPosition / int(TILE_SIZE)) * int(TILE_SIZE);
-    int repairX = clamp(sourcePosition.x, origin.x, origin.x + int(TILE_SIZE) - 1);
-    ivec2 repairPosition = ivec2(-1);
-    Cell repaired = source;
-
-    // One vertical pair owns one tile column. Fixed candidates avoid unbounded
-    // driver loops while preferring lower holes, then damaged represented cells.
-    repairCandidateAt(ivec2(repairX, origin.y + 7), source, repairPosition, repaired);
-    repairCandidateAt(ivec2(repairX, origin.y + 6), source, repairPosition, repaired);
-    repairCandidateAt(ivec2(repairX, origin.y + 5), source, repairPosition, repaired);
-    repairCandidateAt(ivec2(repairX, origin.y + 4), source, repairPosition, repaired);
-    repairCandidateAt(ivec2(repairX, origin.y + 3), source, repairPosition, repaired);
-    repairCandidateAt(ivec2(repairX, origin.y + 2), source, repairPosition, repaired);
-    repairCandidateAt(ivec2(repairX, origin.y + 1), source, repairPosition, repaired);
-    repairCandidateAt(ivec2(repairX, origin.y + 0), source, repairPosition, repaired);
-    if (repairPosition.x < 0) return false;
-
-    cells[moveIndex(repairPosition)] = repaired;
-    cells[moveIndex(sourcePosition)] = Cell(MAT_EMPTY, 0u, 20, 0u);
-    markChunkDirty(repairPosition);
-    markChunkDirty(sourcePosition);
-    if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_FINE_REPAIR_MOVES], 1u);
-    return true;
-}
-
 bool canCellFallInto(Cell moving, Cell target) {
     bool looseSolid = isLooseSolid(moving);
     if (isStructural(moving) || (!looseSolid && isCellImmovable(moving))) return false;
@@ -1309,7 +1241,8 @@ void processVertical(ivec2 top, ivec2 bottom) {
     if (isHalfWaterCell(b)) return;
 
     if (mixAtmospherePair(top, bottom, a, b)) return;
-    if (repairDamagedTileFromLooseCell(top, bottom, a, b)) return;
+    // Remote tile-column repairs belong to structural_repair.comp, whose
+    // disjoint footprints cannot race another fine pair or consume a donor.
     if (expandAirIntoVacuum(top, bottom, a, b) ||
         expandAirIntoVacuum(bottom, top, b, a)) return;
 

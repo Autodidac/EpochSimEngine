@@ -301,6 +301,44 @@ struct Case {
         for (std::uint32_t chunk = 1u; chunk < 4u; ++chunk)
             last_chunk += chunk_header_bytes + u32_at(bytes, last_chunk + 24u);
         const auto actor_payload = bytes.size() - world_save_actor_bytes;
+        if (test.corruption == Corruption::raw_material) {
+            // Prove the valid RAW happy path before damaging its payload. A
+            // rejected unknown material alone cannot establish exact decoding.
+            if (first_encoding != 0u) return fail("healthy RAW fixture encoding");
+            auto raw_loaded = original;
+            WorldSaveOwners raw_owners{};
+            WorldSaveMetadata raw_metadata{};
+            if (!load_world(root, metadata.world_size, metadata.width, metadata.height,
+                            metadata.scene, test.slot, raw_loaded, raw_owners,
+                            raw_metadata, error) || !error.empty() ||
+                !same_cells(raw_loaded, prior_primary) || !raw_owners.actor_present ||
+                !same_actor(raw_owners.actor, primary_owners.actor))
+                return fail("healthy RAW primary round-trip");
+
+            // Use an independent slot so all seven invalid-primary sequences
+            // below still start with their original known-good Water backup.
+            constexpr auto healthy_slot = "healthy_raw_rotation";
+            if (!save_world(root, metadata, healthy_slot, prior_primary, primary_owners, error) ||
+                !save_world(root, metadata, healthy_slot, next_cells, next_owners, error))
+                return fail("rotate healthy RAW generation");
+            const auto raw_primary = world_save_path(
+                root, metadata.world_size, metadata.scene, healthy_slot);
+            const auto raw_backup = world_save_backup_path(
+                root, metadata.world_size, metadata.scene, healthy_slot);
+            if (file_bytes(raw_backup) != bytes)
+                return fail("healthy RAW backup was not byte-identical");
+            raw_loaded = next_cells;
+            raw_owners = next_owners;
+            if (!write(raw_primary, {'b', 'a', 'd'}) ||
+                !load_world(root, metadata.world_size, metadata.width, metadata.height,
+                            metadata.scene, healthy_slot, raw_loaded, raw_owners,
+                            raw_metadata, error) ||
+                error.find("loaded backup") == std::string::npos ||
+                !same_cells(raw_loaded, prior_primary) || !raw_owners.actor_present ||
+                !same_actor(raw_owners.actor, primary_owners.actor) ||
+                file_bytes(raw_backup) != bytes)
+                return fail("healthy RAW backup recovery");
+        }
         switch (test.corruption) {
         case Corruption::raw_material:
             if (first_encoding != 0u) return fail("raw fixture was not encoded raw");

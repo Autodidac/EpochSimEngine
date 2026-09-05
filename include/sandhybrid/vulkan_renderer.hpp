@@ -20,6 +20,7 @@ struct SimulationConfig final {
     std::string runtime_acceptance_report{};
     std::string long_cycle_acceptance_report{};
     std::string interactive_acceptance_report{};
+    std::string simulation_profile_report{};
 };
 
 class VulkanRenderer final {

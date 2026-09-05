@@ -3,13 +3,15 @@
 
 #include <cstdio>
 #include <exception>
+#include <filesystem>
 #include <string_view>
+#include <system_error>
 
 namespace {
 
 void print_usage() {
     std::fprintf(stderr,
-        "Usage: sandhybrid [--world-size SIZE] [--save-slot NAME] [--runtime-acceptance-report FILE] [--long-cycle-acceptance-report FILE] [--interactive-acceptance-report FILE]\n"
+        "Usage: sandhybrid [--world-size SIZE] [--save-slot NAME] [--runtime-acceptance-report FILE] [--long-cycle-acceptance-report FILE] [--interactive-acceptance-report FILE] [--simulation-profile-report FILE]\n"
         "World sizes: compact, standard, large\n"
         "Aliases: small=compact, medium=standard\n"
         "Save slots are portable named folders; the default is quick.\n");
@@ -127,20 +129,60 @@ int main(const int argc, char** argv) {
             }
             continue;
         }
+        if (argument == "--simulation-profile-report") {
+            if (index + 1 >= argc || std::string_view{argv[index + 1]}.empty() ||
+                std::string_view{argv[index + 1]}.starts_with("--")) {
+                std::fprintf(stderr, "[SandHybrid] --simulation-profile-report requires a path.\n");
+                print_usage();
+                return 2;
+            }
+            options.simulation_profile_report = argv[++index];
+            continue;
+        }
+        constexpr std::string_view profile_prefix{"--simulation-profile-report="};
+        if (argument.starts_with(profile_prefix)) {
+            options.simulation_profile_report = argument.substr(profile_prefix.size());
+            if (options.simulation_profile_report.empty()) {
+                std::fprintf(stderr, "[SandHybrid] --simulation-profile-report requires a path.\n");
+                return 2;
+            }
+            continue;
+        }
         std::fprintf(stderr, "[SandHybrid] Unknown option: %.*s\n",
                      static_cast<int>(argument.size()), argument.data());
         print_usage();
         return 2;
     }
 
-    const auto acceptance_modes =
+    const auto report_modes =
         static_cast<unsigned>(!options.runtime_acceptance_report.empty()) +
         static_cast<unsigned>(!options.long_cycle_acceptance_report.empty()) +
-        static_cast<unsigned>(!options.interactive_acceptance_report.empty());
-    if (acceptance_modes > 1u) {
+        static_cast<unsigned>(!options.interactive_acceptance_report.empty()) +
+        static_cast<unsigned>(!options.simulation_profile_report.empty());
+    if (report_modes > 1u) {
         std::fprintf(stderr,
-                     "[SandHybrid] Select only one acceptance-report mode per process.\n");
+                     "[SandHybrid] Select only one report mode (acceptance or simulation profiling) per process.\n");
         return 2;
+    }
+
+    if (!options.simulation_profile_report.empty()) {
+        std::error_code path_error;
+        const auto status = std::filesystem::symlink_status(
+            std::filesystem::path{options.simulation_profile_report}, path_error);
+        // A symlink is also an existing output, even if its target is missing.
+        // Refuse stale-report replacement before native or GPU startup.
+        if (std::filesystem::exists(status)) {
+            std::fprintf(stderr,
+                "[SandHybrid] Simulation profile report already exists; choose a fresh path: %s\n",
+                options.simulation_profile_report.c_str());
+            return 2;
+        }
+        if (path_error && status.type() != std::filesystem::file_type::not_found) {
+            std::fprintf(stderr,
+                "[SandHybrid] Unable to inspect simulation profile report path: %s\n",
+                options.simulation_profile_report.c_str());
+            return 2;
+        }
     }
 
     try {

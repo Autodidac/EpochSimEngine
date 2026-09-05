@@ -127,6 +127,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         Autodidac::EpochGui
     )
     target_compile_definitions(SandHybrid_VulkanRuntime PRIVATE
+        SANDHYBRID_VERSION_STRING="${PROJECT_VERSION}"
         $<$<PLATFORM_ID:Windows>:VK_USE_PLATFORM_WIN32_KHR>
         $<$<PLATFORM_ID:Windows>:WIN32_LEAN_AND_MEAN>
         $<$<PLATFORM_ID:Windows>:NOMINMAX>
@@ -160,6 +161,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         bee_move.comp
         rainfall.comp
         macro_move.comp
+        structural_repair.comp
         move.comp
         actor.comp
         debug_stats.comp
@@ -493,6 +495,26 @@ if(BUILD_TESTING)
     target_compile_features(sandhybrid_machinery_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_machinery_contract)
     add_test(NAME sandhybrid_machinery_contract COMMAND sandhybrid_machinery_contract)
+
+    if(SANDHYBRID_BUILD_APP)
+        # These argument contracts must return before native/Vulkan startup.
+        # Use a wrapper to require the exact exit code and diagnostic rather
+        # than treating an unrelated crash as a successful WILL_FAIL test.
+        foreach(profile_cli_case IN ITEMS
+                missing_path empty_equals flag_as_path existing_path existing_path_help
+                runtime_separate runtime_equals
+                long_cycle_separate long_cycle_equals
+                interactive_separate interactive_equals
+                separate_help equals_help)
+            add_test(NAME sandhybrid_profile_cli_${profile_cli_case}
+                COMMAND ${CMAKE_COMMAND}
+                    "-DSANDHYBRID_EXECUTABLE=$<TARGET_FILE:SandHybrid_Demo>"
+                    "-DSANDHYBRID_CLI_CASE=${profile_cli_case}"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_profile_cli.cmake")
+            set_tests_properties(sandhybrid_profile_cli_${profile_cli_case}
+                PROPERTIES TIMEOUT 10 LABELS "cli;no-gpu")
+        endforeach()
+    endif()
 
     if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         add_executable(sandhybrid_ui_layout_contract tests/ui_layout_contract.cpp)

@@ -1,0 +1,92 @@
+# No build or GPU launch belongs to this contract: every command must finish
+# in main's argument parser, and native startup is independently rejected.
+if(NOT DEFINED SANDHYBRID_EXECUTABLE OR NOT EXISTS "${SANDHYBRID_EXECUTABLE}")
+    message(FATAL_ERROR "A built SandHybrid executable is required.")
+endif()
+
+set(expected_result "2")
+set(expected_text "--simulation-profile-report requires a path.")
+if(SANDHYBRID_CLI_CASE STREQUAL "missing_path")
+    set(arguments --simulation-profile-report)
+elseif(SANDHYBRID_CLI_CASE STREQUAL "empty_equals")
+    set(arguments "--simulation-profile-report=")
+elseif(SANDHYBRID_CLI_CASE STREQUAL "flag_as_path")
+    set(arguments --simulation-profile-report --world-size compact)
+elseif(SANDHYBRID_CLI_CASE STREQUAL "existing_path" OR
+       SANDHYBRID_CLI_CASE STREQUAL "existing_path_help")
+    # Own a unique fixture; never overwrite a report left by another test/run.
+    string(RANDOM LENGTH 24 ALPHABET 0123456789abcdef sentinel_suffix)
+    set(sentinel_path "${CMAKE_CURRENT_BINARY_DIR}/profile-cli-sentinel-${sentinel_suffix}.json")
+    if(EXISTS "${sentinel_path}")
+        message(FATAL_ERROR "Unexpected existing sentinel path: ${sentinel_path}")
+    endif()
+    file(WRITE "${sentinel_path}" "{\"sentinel\": \"preserve these exact bytes\"}\n")
+    file(READ "${sentinel_path}" sentinel_before HEX)
+    if(SANDHYBRID_CLI_CASE STREQUAL "existing_path_help")
+        set(arguments "--simulation-profile-report=${sentinel_path}" --help)
+        set(expected_result "0")
+        set(expected_text "[--simulation-profile-report FILE]")
+    else()
+        set(arguments --simulation-profile-report "${sentinel_path}")
+        set(expected_text "Simulation profile report already exists; choose a fresh path")
+    endif()
+elseif(SANDHYBRID_CLI_CASE MATCHES "^(runtime|long_cycle|interactive)_(separate|equals)$")
+    set(other_mode "${CMAKE_MATCH_1}")
+    set(argument_form "${CMAKE_MATCH_2}")
+    if(other_mode STREQUAL "long_cycle")
+        set(other_mode "long-cycle")
+    endif()
+    if(argument_form STREQUAL "separate")
+        set(arguments --simulation-profile-report "profile must not run.json"
+            "--${other_mode}-acceptance-report" "acceptance must not run.json")
+    else()
+        # Reverse order as well as syntax so all three competitors are covered
+        # on either side of the new option without creating any report file.
+        set(arguments "--${other_mode}-acceptance-report=acceptance must not run.json"
+            "--simulation-profile-report=profile must not run.json")
+    endif()
+    set(expected_text "Select only one report mode")
+elseif(SANDHYBRID_CLI_CASE STREQUAL "separate_help")
+    set(arguments --simulation-profile-report "profile path with spaces.json" --help)
+    set(expected_result "0")
+    set(expected_text "[--simulation-profile-report FILE]")
+elseif(SANDHYBRID_CLI_CASE STREQUAL "equals_help")
+    set(arguments "--simulation-profile-report=profile path with spaces.json" --help)
+    set(expected_result "0")
+    set(expected_text "[--simulation-profile-report FILE]")
+else()
+    message(FATAL_ERROR "Unknown profile CLI case: ${SANDHYBRID_CLI_CASE}")
+endif()
+
+execute_process(
+    COMMAND "${SANDHYBRID_EXECUTABLE}" ${arguments}
+    RESULT_VARIABLE actual_result
+    OUTPUT_VARIABLE standard_output
+    ERROR_VARIABLE standard_error
+    TIMEOUT 5)
+if(DEFINED sentinel_path)
+    if(NOT EXISTS "${sentinel_path}")
+        message(FATAL_ERROR "${SANDHYBRID_CLI_CASE}: the existing report was removed.")
+    endif()
+    file(READ "${sentinel_path}" sentinel_after HEX)
+    file(REMOVE "${sentinel_path}")
+    if(NOT "${sentinel_after}" STREQUAL "${sentinel_before}")
+        message(FATAL_ERROR "${SANDHYBRID_CLI_CASE}: existing report bytes were changed.")
+    endif()
+endif()
+set(output "${standard_output}${standard_error}")
+if(NOT "${actual_result}" STREQUAL "${expected_result}")
+    message(FATAL_ERROR
+        "${SANDHYBRID_CLI_CASE}: expected exit ${expected_result}, got ${actual_result}\n${output}")
+endif()
+string(FIND "${output}" "${expected_text}" diagnostic_position)
+if(diagnostic_position LESS 0)
+    message(FATAL_ERROR
+        "${SANDHYBRID_CLI_CASE}: expected diagnostic '${expected_text}'\n${output}")
+endif()
+string(FIND "${output}" "Creating native window" native_startup_position)
+string(FIND "${output}" "Vulkan initialization started" vulkan_startup_position)
+if(NOT native_startup_position LESS 0 OR NOT vulkan_startup_position LESS 0)
+    message(FATAL_ERROR "${SANDHYBRID_CLI_CASE}: argument validation entered native/GPU startup.")
+endif()
+message(STATUS "${SANDHYBRID_CLI_CASE}: exact parser result and no native/GPU startup")

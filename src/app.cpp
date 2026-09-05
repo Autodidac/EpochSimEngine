@@ -323,7 +323,8 @@ int run_application(const ApplicationOptions& options) {
         application_title, 1280, 720,
         options.runtime_acceptance_report.empty() &&
             options.long_cycle_acceptance_report.empty() &&
-            options.interactive_acceptance_report.empty()};
+            options.interactive_acceptance_report.empty() &&
+            options.simulation_profile_report.empty()};
     window.show_startup_message("Compiling Shaders...");
     std::fprintf(stderr, "[SandHybrid] Native window created.\n");
     SharedState shared_state{};
@@ -341,6 +342,7 @@ int run_application(const ApplicationOptions& options) {
         .runtime_acceptance_report = options.runtime_acceptance_report,
         .long_cycle_acceptance_report = options.long_cycle_acceptance_report,
         .interactive_acceptance_report = options.interactive_acceptance_report,
+        .simulation_profile_report = options.simulation_profile_report,
     };
     reset_camera_home(shared_state, simulation_config);
     reset_map_view(shared_state, simulation_config);
