@@ -171,12 +171,20 @@ uint nearestBeeTile(ivec2 originPosition, uint requiredFlags, uint forbiddenFlag
     ivec2 originTile = ivec2(tileCoordinate(originPosition));
     uint bestIndex = BEE_TARGET_NONE;
     int bestDistance = 0x3fffffff;
-    for (uint y = 0u; y < rows; ++y) {
-        for (uint x = 0u; x < columns; ++x) {
-            ivec2 delta = ivec2(int(x), int(y)) - originTile;
+    if (maximumTileDistance < 0 || minimumTileDistance > maximumTileDistance)
+        return bestIndex;
+    // All accepted candidates lie inside this clipped square. Preserve the
+    // Manhattan filter, squared-distance ranking and global row-major tie
+    // order without walking every resident tile for each local bee query.
+    ivec2 searchBegin = max(ivec2(0), originTile - ivec2(maximumTileDistance));
+    ivec2 searchEnd = min(ivec2(int(columns), int(rows)) - ivec2(1),
+                         originTile + ivec2(maximumTileDistance));
+    for (int y = searchBegin.y; y <= searchEnd.y; ++y) {
+        for (int x = searchBegin.x; x <= searchEnd.x; ++x) {
+            ivec2 delta = ivec2(x, y) - originTile;
             int tileDistance = abs(delta.x) + abs(delta.y);
             if (tileDistance < minimumTileDistance || tileDistance > maximumTileDistance) continue;
-            uint candidateIndex = y * columns + x;
+            uint candidateIndex = uint(y) * columns + uint(x);
             if (!beeTileMatches(candidateIndex, requiredFlags, forbiddenFlags)) continue;
             int distanceSquared = delta.x * delta.x + delta.y * delta.y;
             if (distanceSquared < bestDistance ||

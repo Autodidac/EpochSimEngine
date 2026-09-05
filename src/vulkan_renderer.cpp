@@ -1742,6 +1742,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
         auto bee_birth_push = simulation_push;
+        // Birth alone owns these otherwise-unused brush fields. Preserve the
+        // full World dimensions for home decoding, while both transaction
+        // endpoints must belong to this exact copied/committed rectangle.
+        bee_birth_push.brush_x = static_cast<std::int32_t>(dispatch.origin_x);
+        bee_birth_push.brush_y = static_cast<std::int32_t>(dispatch.origin_y);
+        bee_birth_push.radius = dispatch.width;
+        bee_birth_push.reserved = dispatch.height;
         bee_birth_push.material = 1u;
         bind_compute(command_buffer, bee_movement_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout,
@@ -6823,6 +6830,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     };
 
                 bool replacement_cycles_passed = true;
+                std::array<bool, 3u> clipped_birth_cells_exact{};
+                bool complete_birth_pair_exact = false;
+                std::string clipped_birth_detail{"valid hazard/birth fixture not reached"};
                 std::array<bool, fix29_bee_formation_count> removed_slots{};
                 std::string replacement_detail;
                 auto chained_cycle_cells = result;
@@ -6984,6 +6994,132 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                 classified_bees +=
                                     (classified_tiles[tile_y * classified_tile_columns + tile_x]
                                          .occupancy >> 25u) & 127u;
+                            }
+                        }
+                        if (cycle == 0u) {
+                            // Reuse this real 59-Bee hazard fixture, without
+                            // chemistry/movement masking a half-birth. The Ash
+                            // is above the chamber medium (currently Y798/819).
+                            const ActiveCellDispatch full_birth_scope{
+                                static_cast<std::uint32_t>(active_section_x) * 640u,
+                                static_cast<std::uint32_t>(active_section_y) * 360u,
+                                640u, 360u};
+                            const auto split_y = birth_y & ~7u;
+                            const auto far_y = full_birth_scope.origin_y +
+                                full_birth_scope.height;
+                            bool ash_near_nest_tile = false;
+                            for (std::int32_t dy = -1; dy <= 1; ++dy) {
+                                for (std::int32_t dx = -1; dx <= 1; ++dx) {
+                                    const auto tile_x = static_cast<std::int32_t>(removed_x / 8u) + dx;
+                                    const auto tile_y = static_cast<std::int32_t>(removed_y / 8u) + dy;
+                                    if (tile_x < 0 || tile_y < 0 ||
+                                        tile_x >= static_cast<std::int32_t>(classified_tile_columns) ||
+                                        tile_y >= static_cast<std::int32_t>((config.grid_height + 7u) / 8u))
+                                        continue;
+                                    // TILE_HAS_QUEEN | TILE_HAS_HIVE: the old
+                                    // birth guard incorrectly rejected this
+                                    // outer-crescent endpoint before spending it.
+                                    ash_near_nest_tile = ash_near_nest_tile ||
+                                        (classified_tiles[static_cast<std::size_t>(tile_y) *
+                                            classified_tile_columns + static_cast<std::uint32_t>(tile_x)]
+                                             .flags & 0x00000300u) != 0u;
+                                }
+                            }
+                            const bool fixture_straddles_split =
+                                classified_bees == fix29_bee_formation_count - 1u &&
+                                !ash_near_nest_tile &&
+                                removed_y >= full_birth_scope.origin_y &&
+                                removed_y < split_y && split_y <= birth_y &&
+                                birth_y < far_y &&
+                                removed_x >= full_birth_scope.origin_x &&
+                                removed_x < full_birth_scope.origin_x + full_birth_scope.width &&
+                                birth_x >= full_birth_scope.origin_x &&
+                                birth_x < full_birth_scope.origin_x + full_birth_scope.width;
+                            clipped_birth_detail =
+                                "ash=" + std::to_string(removed_x) + "," +
+                                std::to_string(removed_y) + " medium=" +
+                                std::to_string(birth_x) + "," +
+                                std::to_string(birth_y) + " split=" +
+                                std::to_string(split_y) + " ash_near_nest=" +
+                                std::to_string(ash_near_nest_tile ? 1u : 0u) + " fixture=" +
+                                std::to_string(fixture_straddles_split ? 1u : 0u);
+                            if (fixture_straddles_split) {
+                                auto birth_ledger_cells = replacement_cells;
+                                // Distinct age, temperature and packed gas state
+                                // prove that the medium is transferred intact,
+                                // not reconstructed at baseline pressure/heat.
+                                birth_ledger_cells[index_of(birth_x, birth_y)] =
+                                    SceneCell{material_id(Material::atmosphere), 91u, -17,
+                                        0x40000000u | (3u << 15u) |
+                                        (material_id(Material::carbon_dioxide) << 8u) | 84u};
+                                const std::array<ActiveCellDispatch, 3u> clipped_scopes{{
+                                    {full_birth_scope.origin_x, full_birth_scope.origin_y,
+                                     full_birth_scope.width, split_y - full_birth_scope.origin_y},
+                                    {full_birth_scope.origin_x, split_y,
+                                     full_birth_scope.width, far_y - split_y},
+                                    // Non-workgroup-aligned exclusive end puts
+                                    // the medium in dispatched padding only.
+                                    {full_birth_scope.origin_x, full_birth_scope.origin_y,
+                                     full_birth_scope.width, birth_y - full_birth_scope.origin_y},
+                                }};
+                                const auto run_birth_scope = [&](const ActiveCellDispatch scope) {
+                                    upload_scene_cells(birth_ledger_cells);
+                                    run_acceptance_tile_pass(
+                                        active_section_x, active_section_y, true);
+                                    simulation_step = birth_step;
+                                    const SimulationPush birth_push{
+                                        .width = config.grid_width,
+                                        .height = config.grid_height,
+                                        .step = simulation_step,
+                                        .seed = random_seed,
+                                        .active_section_x = active_section_x,
+                                        .active_section_y = active_section_y,
+                                        .active_mode = 1u,
+                                    };
+                                    immediate_submit([&](const VkCommandBuffer command_buffer) {
+                                        record_bee_birth_pass(command_buffer, birth_push, scope);
+                                    });
+                                    return download_scene_cells();
+                                };
+                                for (std::size_t clip = 0u; clip < clipped_scopes.size(); ++clip) {
+                                    const auto clipped = run_birth_scope(clipped_scopes[clip]);
+                                    clipped_birth_cells_exact[clip] =
+                                        clipped.size() == birth_ledger_cells.size() &&
+                                        std::memcmp(clipped.data(), birth_ledger_cells.data(),
+                                            birth_ledger_cells.size() * sizeof(SceneCell)) == 0 &&
+                                        count_material(clipped, Material::bee) ==
+                                            fix29_bee_formation_count - 1u;
+                                }
+                                const auto complete = run_birth_scope(full_birth_scope);
+                                const SceneCell expected_newborn{
+                                    material_id(Material::bee),
+                                    fix29_bee_pack_age(
+                                        (static_cast<std::uint32_t>(queen_x) & 7u) |
+                                        ((static_cast<std::uint32_t>(queen_y) & 7u) << 3u),
+                                        fix29_bee_target_newborn),
+                                    20,
+                                    0x18000000u | expected_home_x | (expected_home_y << 7u) |
+                                        (static_cast<std::uint32_t>(removed_slot) << 13u) |
+                                        (sandbox_district << 20u),
+                                };
+                                complete_birth_pair_exact =
+                                    complete.size() == birth_ledger_cells.size() &&
+                                    count_material(complete, Material::bee) == fix29_bee_formation_count;
+                                for (std::size_t cell = 0u;
+                                     cell < complete.size() && complete_birth_pair_exact; ++cell) {
+                                    const auto& expected = cell == index_of(birth_x, birth_y)
+                                        ? expected_newborn
+                                        : (cell == index_of(removed_x, removed_y)
+                                            ? birth_ledger_cells[index_of(birth_x, birth_y)]
+                                            : birth_ledger_cells[cell]);
+                                    complete_birth_pair_exact = std::memcmp(
+                                        &complete[cell], &expected, sizeof(SceneCell)) == 0;
+                                }
+                                // Continue the original chemistry/lifecycle
+                                // acceptance from its unchanged 59-owner seed.
+                                upload_scene_cells(replacement_cells);
+                                run_acceptance_tile_pass(
+                                    active_section_x, active_section_y, true);
                             }
                         }
                         simulation_step = birth_step;
@@ -7246,6 +7382,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     lifecycle_round_trips_passed &&
                     !lifecycle_cleanup_error;
                 simulation_step = saved_lifecycle_step;
+                append("bee_birth_ash_only_scope_preserves_exact_cells",
+                       clipped_birth_cells_exact[0], clipped_birth_detail);
+                append("bee_birth_medium_only_scope_preserves_exact_cells",
+                       clipped_birth_cells_exact[1], clipped_birth_detail);
+                append("bee_birth_workgroup_padding_preserves_exact_cells",
+                       clipped_birth_cells_exact[2], clipped_birth_detail);
+                append("bee_birth_complete_scope_commits_exact_two_cell_pair",
+                       complete_birth_pair_exact, clipped_birth_detail + " expected_bees=60");
                 append("bee_hazard_replacement_and_strict_60_cap",
                        replacement_cycles_passed, replacement_detail);
                 append("bee_repeated_lifecycle_schema2_round_trip",
@@ -10714,6 +10858,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         const VkFenceCreateInfo fence_info{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
         check_vk(vkCreateFence(device, &fence_info, nullptr, &resources.fence),
                  "vkCreateFence(simulation profile)");
+        bool queries_initialized{};
+        bool first_tick_in_flight{};
         const auto submit = [&](auto&& record) {
             check_vk(vkResetFences(device, 1u, &resources.fence),
                      "vkResetFences(simulation profile)");
@@ -10740,6 +10886,33 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 cpu_physical_device ? 300'000'000'000ull : 60'000'000'000ull);
             if (wait == VK_TIMEOUT) {
                 gpu_stalled = true;
+                // Only inspect the first tick: the completed reset submission
+                // initialized these queries, and no older tick can make their
+                // availability stale. Never wait again, request PARTIAL
+                // timestamps, or turn an unfinished submission into a sample.
+                if (queries_initialized && first_tick_in_flight) {
+                    std::array<std::array<std::uint64_t, 2u>, query_count> markers{};
+                    const auto result = vkGetQueryPoolResults(device, resources.queries,
+                        0u, query_count, sizeof(markers), markers.data(),
+                        sizeof(markers.front()),
+                        VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+                    if (result == VK_SUCCESS || result == VK_NOT_READY) {
+                        std::string diagnostic{
+                            "Simulation profile timeout: available first-tick markers:"};
+                        std::uint32_t available{};
+                        for (std::uint32_t index = 0u; index < query_count; ++index) {
+                            if (markers[index][1u] == 0u) continue;
+                            ++available;
+                            diagnostic += index == 0u ? " BEGIN" :
+                                " AFTER_" + std::string{stage_names[index - 1u]};
+                        }
+                        if (available == 0u) diagnostic += " NONE";
+                        startup_log(diagnostic + " (unfinished; no timing report).");
+                    } else {
+                        startup_log("Simulation profile timeout: marker query failed (VkResult " +
+                                    std::to_string(static_cast<int>(result)) + ").");
+                    }
+                }
                 throw std::runtime_error("Simulation profiler GPU submission timed out.");
             }
             check_vk(wait, "vkWaitForFences(simulation profile)");
@@ -10763,9 +10936,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             static_cast<std::uint32_t>(schedule.worker_count));
         const auto dispatch = active_cell_dispatch(
             config.grid_width, config.grid_height, schedule.origin);
+        startup_log("Simulation profile: submitting fresh World reset (outside timing).");
         submit([&](const VkCommandBuffer command_buffer) {
+            vkCmdResetQueryPool(command_buffer, resources.queries, 0u, query_count);
             record_reset(command_buffer, static_cast<std::uint32_t>(world_scene));
         });
+        queries_initialized = true;
+        startup_log("Simulation profile: fresh World reset completed; beginning warmup.");
 
         std::array<std::vector<double>, stage_names.size()> stage_samples{};
         for (auto& samples : stage_samples) samples.reserve(requested_samples);
@@ -10776,11 +10953,20 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         for (std::uint32_t tick = 0u; tick < warmup_ticks + requested_samples; ++tick) {
             if (stop_requested.load(std::memory_order_acquire) ||
                 application_state.quit.load(std::memory_order_acquire)) break;
+            if (cpu_physical_device)
+                startup_log("Simulation profile: submitting software material tick " +
+                            std::to_string(tick) +
+                            (tick < warmup_ticks ? " (warmup)." : " (measured)."));
+            first_tick_in_flight = tick == 0u;
             const auto submission_duration = submit([&](const VkCommandBuffer command_buffer) {
                 vkCmdResetQueryPool(command_buffer, resources.queries, 0u, query_count);
                 record_simulation_step<true>(command_buffer, profile_state, false,
                                              resources.queries);
             });
+            first_tick_in_flight = false;
+            if (cpu_physical_device)
+                startup_log("Simulation profile: software material tick " +
+                            std::to_string(tick) + " completed.");
             if (tick < warmup_ticks) {
                 ++completed_warmup;
                 continue;

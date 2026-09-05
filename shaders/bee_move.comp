@@ -278,6 +278,16 @@ bool beeMovePassable(Cell target) {
            (isCellGas(target) && target.material != MAT_CLOUD);
 }
 
+bool beeBirthInsideDispatch(ivec2 position) {
+    // Birth-only push fields carry the exact copied/committed rectangle.
+    // The normal movement pass does not use these brush fields.
+    ivec2 local = position - ivec2(pc.brushX, pc.brushY);
+    return inside(position) && all(greaterThanEqual(local, ivec2(0))) &&
+        uint(local.x) < pc.radius && uint(local.y) < pc.reserved &&
+        sectionActiveAt(position, pc.activeSectionX,
+                        pc.activeSectionY, pc.activeMode);
+}
+
 void markBeeMoveDirty(ivec2 position) {
     atomicOr(chunks[chunkIndex(position, pc.width)].flags,
              CHUNK_DIRTY | CHUNK_ACTIVE | CHUNK_FINE_ACTIVE);
@@ -295,11 +305,14 @@ bool beeMoveAcceptedBirth(ivec2 queenPosition,
         missingSlot >= BEE_FORMATION_COUNT) return false;
 
     ivec2 missingPosition = queenPosition + beeFormationOffset(missingSlot);
-    if (!inside(missingPosition) ||
+    if (!beeBirthInsideDispatch(missingPosition) ||
         beeMoveSourceAt(missingPosition).material != MAT_ASH) return false;
 
     birthOwner = beeMoveBirthOwner(queenPosition);
-    return birthOwner != 0xffffffffu &&
+    if (birthOwner == 0xffffffffu) return false;
+    ivec2 birthPosition = ivec2(int(birthOwner % pc.width),
+                               int(birthOwner / pc.width));
+    return beeBirthInsideDispatch(birthPosition) &&
         beeMoveBirthMedium(cells[birthOwner]);
 }
 
@@ -322,12 +335,12 @@ bool beeMoveAshFormationOwner(ivec2 position,
 
 void runBeeBirth(ivec2 position, Cell source) {
     if ((pc.step & 4095u) != 0u) return;
-    if (!beeMoveNearNestTile(position)) return;
 
     ivec2 queenPosition = ivec2(0);
     uint missingSlot = BEE_FORMATION_COUNT;
     uint birthOwner = 0xffffffffu;
     if (beeMoveBirthMedium(source)) {
+        if (!beeMoveNearNestTile(position)) return;
         bool queenFound = false;
         queenPosition = beeMoveNearestQueen(position, queenFound);
         if (!queenFound ||
@@ -347,6 +360,10 @@ void runBeeBirth(ivec2 position, Cell source) {
         return;
     }
 
+    // A missing outer-crescent slot can be several tiles from its queen.
+    // The chamber-only near-nest shortcut must not suppress the elected Ash
+    // endpoint while the medium endpoint commits. Only Ash performs this
+    // bounded exact formation-owner lookup; normal bee movement is unchanged.
     uint formationSlot = BEE_FORMATION_COUNT;
     if (source.material != MAT_ASH ||
         !beeMoveAshFormationOwner(position, queenPosition, formationSlot) ||
@@ -387,15 +404,18 @@ bool tryBeeMove(ivec2 sourcePosition, Cell bee, ivec2 offset) {
 }
 
 void main() {
-    ivec2 position = ivec2(gl_GlobalInvocationID.xy) + activeDispatchCellOrigin(
-        pc.activeSectionX, pc.activeSectionY, pc.activeMode);
+    bool birthPass = pc.material == BEE_PASS_BIRTH;
+    ivec2 dispatchOrigin = birthPass ? ivec2(pc.brushX, pc.brushY) :
+        activeDispatchCellOrigin(pc.activeSectionX, pc.activeSectionY, pc.activeMode);
+    ivec2 position = ivec2(gl_GlobalInvocationID.xy) + dispatchOrigin;
     if (!inside(position) ||
         !sectionActiveAt(position, pc.activeSectionX,
                          pc.activeSectionY, pc.activeMode)) return;
+    if (birthPass && !beeBirthInsideDispatch(position)) return;
 
     uint index = indexOf(position);
     Cell bee = cells[index];
-    if (pc.material == BEE_PASS_BIRTH) {
+    if (birthPass) {
         runBeeBirth(position, bee);
         return;
     }

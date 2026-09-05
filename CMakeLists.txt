@@ -435,6 +435,11 @@ if(BUILD_TESTING)
     sandhybrid_configure_warnings(sandhybrid_hive_recovery_contract)
     add_test(NAME sandhybrid_hive_recovery_contract COMMAND sandhybrid_hive_recovery_contract)
 
+    add_executable(sandhybrid_bee_tile_search_contract tests/bee_tile_search_contract.cpp)
+    target_compile_features(sandhybrid_bee_tile_search_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_bee_tile_search_contract)
+    add_test(NAME sandhybrid_bee_tile_search_contract COMMAND sandhybrid_bee_tile_search_contract)
+
     add_executable(sandhybrid_world_save_contract tests/world_save_contract.cpp)
     target_link_libraries(sandhybrid_world_save_contract PRIVATE SandHybrid)
     target_compile_features(sandhybrid_world_save_contract PRIVATE cxx_std_23)
