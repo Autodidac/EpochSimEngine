@@ -3,11 +3,11 @@
 #include "materials.glsl"
 #include "tiles.glsl"
 #include "chunks.glsl"
+#include "rain_membership.glsl"
 
 layout(local_size_x = 64) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
-layout(std430, binding = 10) buffer RainColumns { uint rainColumns[]; };
 
 bool rainPassable(Cell cell) {
     // A finite-system vacancy is open space, not a landing surface. Keep its
@@ -25,37 +25,49 @@ void rebuildRainTracker() {
     ivec2 position = ivec2(gl_GlobalInvocationID.xy);
     if (!inside(position)) return;
     Cell cell = cells[indexOf(position)];
-    if (isTrackedRain(cell))
-        atomicCompSwap(rainColumns[uint(position.x)], 0u,
-                       uint(position.y) + 1u);
+    // Full-load mode requires the entire derived tracker to have been cleared
+    // and made visible first. Register every tag, including same-column owners.
+    if (isTrackedRain(cell)) rainRegister(position, pc.width);
 }
 
-void advanceRainColumn(uint x) {
-    uint encodedY = rainColumns[x];
-    if (encodedY == 0u) return;
-    uint y = encodedY - 1u;
+void reconcileRainRectangle() {
+    uvec2 offset = gl_GlobalInvocationID.xy;
+    if (offset.x >= pc.radius || offset.y >= pc.material) return;
+    ivec2 position = ivec2(pc.brushX, pc.brushY) + ivec2(offset);
+    if (inside(position))
+        rainReconcile(position, cells[indexOf(position)], pc.width);
+}
+
+void reconcileRainLinearRange() {
+    uint offset = gl_GlobalInvocationID.x;
+    if (pc.brushX < 0 || offset >= pc.radius) return;
+    uint first = uint(pc.brushX);
+    uint cellCount = pc.width * pc.height;
+    if (first >= cellCount || offset >= cellCount - first) return;
+    uint index = first + offset;
+    ivec2 position = ivec2(int(index % pc.width), int(index / pc.width));
+    rainReconcile(position, cells[index], pc.width);
+}
+
+void advanceRainOwner(uint x, uint y) {
     if (y >= pc.height) {
-        rainColumns[x] = 0u;
+        rainRemove(ivec2(int(x), int(y)), pc.width);
         return;
     }
     ivec2 sourcePosition = ivec2(int(x), int(y));
     uint sourceIndex = indexOf(sourcePosition);
     Cell source = cells[sourceIndex];
     if (!isTrackedRain(source)) {
-        rainColumns[x] = 0u;
+        rainRemove(sourcePosition, pc.width);
         return;
     }
-
-    // Fifteen cells per second at the fixed 60 Hz cadence. This is independent
-    // of presentation rate and applies only to already-emitted rain.
-    if (((pc.step + x) & 3u) != 0u) return;
 
     ivec2 targetPosition = sourcePosition + ivec2(0, 1);
     if (!inside(targetPosition)) {
         source.aux &= ~AUX_RAIN_DROP;
         source.aux |= AUX_MOVED;
         cells[sourceIndex] = source;
-        rainColumns[x] = 0u;
+        rainRemove(sourcePosition, pc.width);
         markRainChunkDirty(sourcePosition);
         return;
     }
@@ -67,7 +79,8 @@ void advanceRainColumn(uint x) {
         source.aux |= AUX_MOVED | AUX_RAIN_DROP;
         cells[sourceIndex] = target;
         cells[targetIndex] = source;
-        rainColumns[x] = uint(targetPosition.y) + 1u;
+        rainRemove(sourcePosition, pc.width);
+        rainRegister(targetPosition, pc.width);
         markRainChunkDirty(sourcePosition);
         markRainChunkDirty(targetPosition);
         return;
@@ -78,13 +91,94 @@ void advanceRainColumn(uint x) {
     source.aux &= ~AUX_RAIN_DROP;
     source.aux |= AUX_MOVED;
     cells[sourceIndex] = source;
-    rainColumns[x] = 0u;
+    rainRemove(sourcePosition, pc.width);
     markRainChunkDirty(sourcePosition);
 }
 
+void pruneRainColumn(uint x) {
+    // This consumer alone owns the column after producer barriers. It may
+    // remove stale positive summary bits; concurrent producer helpers may not.
+    uvec2 publishedSummary = uvec2(rainColumns[pc.width + x],
+                                   rainColumns[2u * pc.width + x]);
+    uvec2 summary = uvec2(0u);
+    uint count = 0u;
+    uint rowWords = (pc.height + 31u) / 32u;
+    // Registration above may have published a newly occupied lower word.
+    // Read the current summaries, not the original traversal snapshot; no
+    // producer can clear a nonempty word's summary before this exclusive pass.
+    for (uint summaryHalf = 0u; summaryHalf < 2u; ++summaryHalf) {
+        uint pendingWords = publishedSummary[summaryHalf];
+        while (pendingWords != 0u) {
+            uint wordBit = uint(findMSB(pendingWords));
+            pendingWords &= ~(1u << wordBit);
+            uint rowWord = summaryHalf * 32u + wordBit;
+            if (rowWord >= rowWords) continue;
+            uint wordIndex = (3u + rowWord) * pc.width + x;
+            uint bits = rainColumns[wordIndex];
+            if (rowWord + 1u == rowWords && (pc.height & 31u) != 0u) {
+                bits &= (1u << (pc.height & 31u)) - 1u;
+                rainColumns[wordIndex] = bits;
+            }
+            if (bits != 0u) summary[summaryHalf] |= 1u << wordBit;
+            count += uint(bitCount(bits));
+        }
+    }
+    rainColumns[pc.width + x] = summary.x;
+    rainColumns[2u * pc.width + x] = summary.y;
+    rainColumns[x] = count;
+}
+
+void advanceRainColumn(uint x) {
+    // Fifteen cells per second at fixed 60 Hz. The other three ticks do not
+    // traverse membership or canonical cells; edits reconcile tags directly.
+    if (((pc.step + x) & 3u) != 0u) return;
+    if (rainColumns[x] == 0u) return;
+    // Snapshot the original summary and consume each original row word from
+    // bottom to top. A downward insertion is either in this word's snapshot or
+    // an already-visited word, so no drop can move twice in the same dispatch.
+    uvec2 originalSummary = uvec2(rainColumns[pc.width + x],
+                                  rainColumns[2u * pc.width + x]);
+    uint rowWords = (pc.height + 31u) / 32u;
+    for (int summaryHalf = 1; summaryHalf >= 0; --summaryHalf) {
+        uint pendingWords = originalSummary[summaryHalf];
+        while (pendingWords != 0u) {
+            uint wordBit = uint(findMSB(pendingWords));
+            pendingWords &= ~(1u << wordBit);
+            uint rowWord = uint(summaryHalf) * 32u + wordBit;
+            if (rowWord >= rowWords) continue;
+            uint originalRows = rainColumns[(3u + rowWord) * pc.width + x];
+            while (originalRows != 0u) {
+                uint rowBit = uint(findMSB(originalRows));
+                originalRows &= ~(1u << rowBit);
+                advanceRainOwner(x, rowWord * 32u + rowBit);
+            }
+        }
+    }
+    pruneRainColumn(x);
+}
+
 void main() {
+    uint rowWords = (pc.height + 31u) / 32u;
+    if (pc.width == 0u || pc.height == 0u || pc.height > 2048u ||
+        pc.width > uint(rainColumns.length()) / (4u + rowWords)) return;
+    if (pc.activeMode == 5u) {
+        // One invocation per column, before correction and behind a barrier.
+        // The correction pass only reads this appended admission snapshot.
+        uint x = gl_GlobalInvocationID.x;
+        if (x < pc.width)
+            rainColumns[uint(rainColumns.length()) - pc.width + x] = rainColumns[x];
+        return;
+    }
     if (pc.activeMode == 2u) {
         rebuildRainTracker();
+        return;
+    }
+    if (pc.activeMode == 3u) {
+        reconcileRainRectangle();
+        return;
+    }
+    if (pc.activeMode == 4u) {
+        reconcileRainLinearRange();
         return;
     }
     uint x = gl_GlobalInvocationID.x;

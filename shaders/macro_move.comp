@@ -19,6 +19,7 @@ layout(push_constant) uniform MovementPush {
 } macroPc;
 
 shared uint macroMoveAllowed;
+shared uint macroCellVeto;
 shared ivec2 sourceTileShared;
 shared ivec2 targetTileShared;
 shared uint sourceTileIndexShared;
@@ -115,6 +116,7 @@ TileState advanceMediumPacket(TileState state) {
 void main() {
     if (gl_LocalInvocationIndex == 0u) {
         macroMoveAllowed = 0u;
+        macroCellVeto = 0u;
         ivec2 sourceTile;
         ivec2 targetTile;
         if (pairCoordinates(sourceTile, targetTile)) {
@@ -166,10 +168,24 @@ void main() {
     ivec2 local = ivec2(gl_LocalInvocationID.xy);
     ivec2 sourcePosition = sourceTileShared * int(TILE_SIZE) + local;
     ivec2 targetPosition = targetTileShared * int(TILE_SIZE) + local;
+    // Tile classification predates rainfall. Every lane must reject a tracked
+    // or just-landed owner before any part of this exact 8x8 transaction writes;
+    // testing only the representative lane would move an unrelated rain cell.
+    bool validLane = macroInside(sourcePosition) && macroInside(targetPosition);
+    Cell a = Cell(MAT_STONE, 0u, 20, AUX_STRUCTURAL);
+    Cell b = a;
+    if (validLane) {
+        a = cells[macroIndex(sourcePosition)];
+        b = cells[macroIndex(targetPosition)];
+        if (isTrackedRain(a) || isTrackedRain(b) ||
+            ((a.aux | b.aux) & AUX_MOVED) != 0u)
+            atomicOr(macroCellVeto, 1u);
+    } else atomicOr(macroCellVeto, 1u);
+    barrier();
+    if (macroCellVeto != 0u) return;
+
     uint sourceIndex = macroIndex(sourcePosition);
     uint targetIndex = macroIndex(targetPosition);
-    Cell a = cells[sourceIndex];
-    Cell b = cells[targetIndex];
     a.age = 0u; b.age = 0u;
     a.aux |= AUX_MOVED; b.aux |= AUX_MOVED;
     cells[sourceIndex] = b;

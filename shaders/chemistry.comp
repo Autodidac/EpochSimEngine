@@ -1067,6 +1067,10 @@ bool sleepingStructuralNeighborhood(ivec2 position, Cell source) {
 }
 
 void main() {
+    // Optional exact dispatch extent for clipped acceptance/embedding calls;
+    // retain the real world dimensions for district-local actor ownership.
+    if (pc.radius != 0u && (gl_GlobalInvocationID.x >= pc.radius ||
+                           gl_GlobalInvocationID.y >= pc.material)) return;
     ivec2 p = ivec2(gl_GlobalInvocationID.xy) + activeDispatchCellOrigin(
         pc.activeSectionX, pc.activeSectionY, pc.activeMode);
     if (!inside(p)) return;

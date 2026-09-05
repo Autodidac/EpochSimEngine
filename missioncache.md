@@ -1,5 +1,85 @@
 # SandHybrid Mission Cache
 
+## 2026-09-05 falling-rain membership: implemented, CPU validated, GPU pending
+
+The current governing/source review is pinned to `657f8b1811772a024e2acdafc69f665606f1fd94`. All 137 mission IDs, including the 123 active missions (70 PARTIAL, 16 OPEN, 36 REGRESSION, one DEFERRED), and their original criteria remain intact. The reviewed objective attachment requires all missions complete before its final release; historical permission for an incremental v2.5.28 release is not permission to publish this unfinished pass.
+
+Contradictions resolved before this implementation:
+- MC-066's frozen off-window ordinary cells and the later MC-062 falling-rain exception coexist: only already-tagged Water/Dirty Water advances off-window; PAUSED freezes both. Clouds remain schedule-owned and ordinary pools are not globally animated.
+- MC-012/013/017/018/053/104 exact macro ownership is retained for ordinary complete 8x8 packets. A tagged or just-landed owner vetoes a stale packet transaction at any of its 64 positions; the exception is not applied to all Water.
+- MC-145/148 exact canonical cells can reconstruct derived rain membership. Schema 2 does not preserve the weather clock and loading resets the step; this fix cannot close MC-151/154 clock continuity.
+- Current repository AGENTS 21/28/32 qualify earlier pasted frame/formation/laser wording: fixed-tick scheduler ownership (not render-rate ownership), six live foragers within exactly 60 owners, and moving-cell target exclusion remain. This rain stage changes none of those behaviors or accepted artwork.
+- Historical immediate packet fallback, Wood perch/100 Bees, four-Hz MAP and laser collection passages in legacy documents describe superseded behavior, not current acceptance. Structural-collapse versus durable-authored-block criteria remain unresolved and are not changed by this stage.
+- The legacy v2.5.26 GitHub workflows and optional-Python test discovery do not satisfy the current Site-only immutable release/required-gate policy (MC-116/123). No workflow or publication is run here.
+
+Implemented scope (MC-012/062/087/145/154): replace the lossy one-Y-per-column slot with derived counts, two nonempty-row-word summaries, exact row bits, and an immutable pre-correction admission-count plane. The Large allocation is 2,007,040 bytes; supported heights are checked through 2048, and canonical linear indices must fit the signed push-constant range. The rainfall iterator visits original occupied rows bottom-up once, on the unchanged 15-Hz cadence, without scanning off-window ordinary cells. A preoccupied column cannot emit merely because another invocation phases its last Water to Steam in the same correction pass. The admission snapshot dispatch is omitted outside the unchanged scheduled rain interval. This does not make dry Cloud or settled pools globally active, nor save the weather clock.
+
+Final committed chemistry, actor, Smoke/paint rectangles, MapChunk/Blueprint and bounded upload writes reconcile derived membership. Loads rebuild every saved tag. Large contiguous edit ranges split at the portable 65,535-workgroup dispatch limit. Every lane of an exact macro pair vetoes a tagged or just-landed owner before any pair write. Clipped chemistry/correction acceptance dispatches now reject padded invocations before either scratch output or derived-index/stat writes; focused global rainfall retains the full resident height. These are source changes, not a completed broad weather/material mission.
+
+Retained CPU evidence: `build/evidence/post28-rain-membership-windows-ctest.log` (72/72, 4.63 s, SHA-256 `0b5709a7e1427bf289b4a4e9c669bb4cae15369e0022f8781cd30b5d7bbbddb4`) and `build/evidence/post28-rain-membership-linux-ctest.log` (62/62, 9.81 s, SHA-256 `e6d67f00716272a6f18378ee6b18b6d572ea29a1dbb92d937b8ce688b9c54c9b`). All seventeen SPIR-V names match exactly across Windows generated/runtime and Linux generated/runtime directories. Source/shader/mission-registry checks pass. These are build/CPU/deployment-hygiene results only.
+
+Windows/Linux Release builds pass, and CPU/contract suites pass 72/72 and 62/62. The independent rain model passes 8,448,263 assertions: literal layout/address witnesses, exact dense membership and movement comparisons, row/summary boundaries, duplicate edits, 4,780 registration/removal interleavings, and immutable-admission interleavings. Compiler warnings exposed by the new fixtures were corrected without relaxing warning policy. Eight new production GPU fixtures are compiled but NOT RUN: multi-drop sparse movement, batched Large ranges, schema-2 canonical/actor restoration, paused Smoke/erase/MapChunk updates, stale macro metadata, actor cross-column displacement, evaporation/admission ordering, and 360-to-368 padded clipping. The save fixture explicitly supplies its comparison clock; it does not claim clock persistence. GPU memory was externally occupied (roughly 240-300 MiB free of 16 GiB); no user application was closed and no GPU benchmark was launched. Runtime, installed-package, visual, Linux chemistry-timeout and measured-speed acceptance remain open. No mission is marked COMPLETE, no version changes, and no Site/public artifact mutation occur in this stage.
+
+Independent follow-up findings retained, not fixed by rain reconciliation:
+- MC-087/112/145/154: multi-row Smoke painting currently has overlapping in-place column shifts; adjacent columns also compete for gas receivers. A derived-index rebuild cannot repair a lost canonical owner. Proposed separate repair: bottom-up exclusive X owners in three globally phased column sets with barriers; preserve displaced Water-family payloads and fail closed on unsupported phase-gas holes. Full packed-Atmosphere composition/heat conservation still needs its own proof.
+- MC-004/040/064/085/125/152: adjacent same-stage macro/fine buffer barriers can be batched without dropping dependencies (19 fewer API calls on macro ticks, seven on alternate ticks); hidden-Debug presentation barriers can be gated using one shared mode snapshot. These are audited proposals, not implemented or measured improvements.
+- Fixture-only `upload_scene_cell_prefix` clears the whole tracker; callers must not use it as a partial persistent-world load. Production partial edits use explicit reconciliation. Existing 123 active missions and their acceptance criteria remain unchanged.
+
+Full main-agent reads in this continuation, with exact Git blob provenance (history named in inaccessible tasks is not claimed read):
+<details>
+<summary>Reviewed governing files</summary>
+
+- `.gitattributes`: `dfdb8b771ce07609491fa2e83698969fd917a135`.
+- `.github/workflows/ci-release.yml`: `a8a985d77fb47e362e47777b5ad9f849463f98a2`.
+- `.github/workflows/core-hygiene-contracts.yml`: `e2c852ba53f3220a86dbff800ee0445fc2539707`.
+- `.github/workflows/library-pr-ci.yml`: `11bd07e6789f11079ee194c27ad80bd79b60f98e`.
+- `.github/workflows/source-export.yml`: `ddba77dcb6b590c861caa712f59b7bc9b6b0810d`.
+- `.gitignore`: `4743941eb2b7c4cfb6e31b2c1b3b59f9bbd234f0`.
+- `AGENTS.md`: `239d72f986d3644456a5d7ad0933fb313e6e23f5`.
+- `CHANGELOG.md`: `8fc92af0ea929efb61506dfd2b36763e000677de`.
+- `CMakeLists.txt`: `bcbfe8cc767b756e7b53be7e61e50d4ffb2da51f`.
+- `CMakePresets.json`: `36d097e33e35e4d8f56facf4731dcbb808ed69fe`.
+- `HALF_WATER.md`: `4d73957386acbb3426a0c27a2be046553ea50c37`.
+- `HIERARCHICAL_SIMULATION.md`: `711fd02db55e8484fcfaccfbd7c0925f3110bfc0`.
+- `LIBRARY.md`: `44709863a83fa2f80228417419db7cecb9e0cd4a`.
+- `LICENSE`: `7094a19684677474b9d7c1dbb668eb8dd0ff837d`.
+- `MAP_VIEW.md`: `9641b2c30d0c30527e91485c3883df6a5eb1143d`.
+- `MISSION_LEDGER.md`: `30a48ea86d7306a858218190599bb122f002713f`.
+- `README.md`: `79559baa0e42b674f996ca97c173fbfecb9e4a38`.
+- `RELEASE_NOTES.md`: `be660c7baddc2393638e86535e6bfb5ac6cd33a1`.
+- `REWRITE_PLAN.md`: `6091527065dac0d25d21717e2973c427df08658d`.
+- `SAVE_LAYOUT.md`: `404daf97b0b94659a5fc74947d0ae53c122e1e1c`.
+- `SCENE_LAYOUT.md`: `f81a816fbd923439ddeee520b818afaced2c4f77`.
+- `VALIDATION.md`: `7805614a251549efefa2d1d1aad22ac17cd129dd`.
+- `build_linux.sh`: `53d2dff8051f869aa83b5347776ea46b42669e1f`.
+- `build_windows.bat`: `c1cef927b6d5dcbc9d1891b5360975518d44ef09`.
+- `cmake/EpochSimEngineConfig.cmake.in`: `24d70c4a83edea503d239d92bd9ad79e24e32426`.
+- `cmake/SandHybridConfig.cmake.in`: `7e8074072a65bca50bf5bb4aba89f2a5e4eb983b`.
+- `cmake/check_profile_cli.cmake`: `5893929bb70a2708b34eda3463f896e772bed0e5`.
+- `cmake/run_downstream_smoke.cmake`: `789bbd9b6232e66f848577ca99a5f2b5b0997b1a`.
+- `docs/development.md`: `979250031daf80de304898958a0afbadc5e8bd14`.
+- `docs/library.md`: `f72958f1151c16c3212b7587c7fa5798a1530d5e`.
+- `docs/sandhybrid.md`: `d806846d28d9238ea1825826f08a8c5f91bc9f44`.
+- `missioncache.md`: `d6ca1b0bc01212a60c94f2fb72f8554f88a884f3`.
+- `run-compact.bat`: `da4c621820486a51cf7d78ada8df80ff496b1786`.
+- `run-compact.sh`: `f74825d2ef2f03ac399c8395d5dce2ebb692871d`.
+- `run-large.bat`: `897f5bfa349fa435720f81a7b5a78efbd6c9677d`.
+- `run-large.sh`: `99d33d5d2b6ed2ceea2a708e344cfd3308db0ccc`.
+- `run-standard.bat`: `df33aebd6f9e2139e57ca2d455ba6adfe9e4416a`.
+- `run-standard.sh`: `c5c2fc1502954646950bc9d6e6ceab3601601825`.
+- `run.bat`: `5c9d613bf79680d77278b98b38d7d50c25cf15bf`.
+- `run_linux.sh`: `bb46a4d6568afcc577024992244b34646d5ba7c1`.
+- `run_windows.bat`: `f17a596c30fe60f8b42945476bcbd5b206b2d0bf`.
+- `scenes/README.txt`: `6bf9b6d26a8b6fef47cf9f9beb3d94746d8f23bc`.
+- `tests/downstream/CMakeLists.txt`: `9bd0d39d14787b692c7e9b66c2229b6475a453ea`.
+- `third_party/EpochGui/CMakeLists.txt`: `19e13fdf694deb1e79abef9a2cd84af1df323d58`.
+- `third_party/EpochGui/README.md`: `cd01053f37c2f2b24a0164a3a024ea38ac599773`.
+- `third_party/EpochGui/SNAPSHOT.md`: `25c6ec60597773f35c66297aa3007d5779605299`.
+- `third_party/EpochGui/docs/font-sizing.md`: `209dfe0d7ae91aac17e852f6e9e4c49aad97b3a9`.
+- `validate_windows.bat`: `6bfc94f30e59f7727d9c34e7b8200d555cf88e76`.
+
+</details>
+
 - 2026-09-05 final stage verification: latest Windows/Linux Release CTest passes 71/71 (5.00 s) / 61/61 (9.80 s). All seventeen shader names have identical SHA-256 across Windows generated/runtime and Linux generated/runtime directories, including the restored optimized chemistry and original fine movement. No native or WSL simulation/compiler process remains after the bounded experiments. This closes only the stage's build/deployment hygiene checks; 123 active mission statuses and all broader runtime, finite-system, visual, Linux performance and release criteria remain unchanged.
 
 - 2026-09-05 stage attribution and rejected compiler experiments (MC-004/040/064/085/125/152): the default-off `--simulation-profile-stage-trace` reuses the exact eleven production material spans in separately fenced submissions for one fresh tick, with explicit non-performance output and cancellation between completed spans. Ordinary runtime/profile scheduling is unchanged. Windows/Linux Release builds pass; Windows CTest passes 71/71 (5.00 s), including 23 no-GPU CLI cases. The final Windows trace completes all eleven spans (`post28-serial-stage-windows-final.json`, 3,976 bytes, SHA-256 `edb1a307fc4bdb3901d556806c54bad655435e1e16fd42c07d341856dec8e918`); ordinary profiling still completes 32 warmup/240 samples, and final build-tree RTX 5080 acceptance is byte-identical 117/117 (`post28-trace-final-windows.json`, SHA-256 `e01f15ef1fa425e0533604dde95b79e052a0c048e67031e8193e001c6ad7c03a`). The native Linux trace completes sunlight and tile/chunk classification, then chemistry exceeds the 300-second fence bound: exit 1, 5:42.70 elapsed, 4,871,472 KiB peak RSS, no swap/report. This attributes the unfinished span, not its driver-internal cause. A diagnostic-only `-O0` chemistry binary is REJECTED: Windows chemistry mean rises to 17.3132 ms (total 21.0708 ms) versus roughly 3.66/7.39 ms with normal `-O`; Linux still times out in chemistry (exit 1, 5:45.35, 5,838,640 KiB, no swap/report). Normal generated/runtime chemistry was restored in both platforms. A separate `-Os` compile is larger and unadopted. All release compiler settings remain unchanged. Full Linux GPU parity, large-world steady-state performance, broad finite cycles and installed/user acceptance remain open; no mission closure or release/Site mutation.

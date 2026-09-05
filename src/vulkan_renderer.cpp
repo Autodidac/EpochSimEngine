@@ -973,6 +973,10 @@ save_slot(normalize_world_slot(requested_save_slot)) {
     void create_buffers() {
         constexpr VkDeviceSize cell_size = sizeof(std::uint32_t) * 4u;
         const auto cell_count = static_cast<VkDeviceSize>(config.grid_width) * config.grid_height;
+        if (config.grid_width == 0u || config.grid_height == 0u ||
+            config.grid_height > 2048u ||
+            cell_count > static_cast<VkDeviceSize>((std::numeric_limits<std::int32_t>::max)()))
+            throw std::runtime_error("World dimensions exceed simulation indexing capacity.");
         const auto cells_size = cell_count * cell_size;
         // Keep per-cell intensity unchanged; one extra word per column records
         // direct skylight exposure without another per-cell or CPU scan.
@@ -999,8 +1003,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         chunk_buffer = create_buffer(chunk_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         conservation_buffer = create_buffer(sizeof(std::uint32_t) * debug_stat_word_count, storage_usage,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        // Derived membership, never a second owner of canonical Water. Two
+        // summary words cover up to 64 row words (2048 rows). Checked before
+        // allocation and shader uint indexing, independent of byte-size limits.
+        const auto rain_row_words = divide_round_up(config.grid_height, 32u);
+        const auto rain_words = static_cast<VkDeviceSize>(config.grid_width) *
+                                (4u + rain_row_words);
+        if (config.grid_height == 0u || config.grid_height > 2048u ||
+            rain_words > (std::numeric_limits<std::uint32_t>::max)())
+            throw std::runtime_error("World dimensions exceed rain membership capacity.");
         rainfall_buffer = create_buffer(
-            static_cast<VkDeviceSize>(config.grid_width) * sizeof(std::uint32_t),
+            rain_words * sizeof(std::uint32_t),
             storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         const auto ui_text_size = static_cast<VkDeviceSize>(ui::text_storage.size() * sizeof(std::uint32_t));
@@ -1973,6 +1986,60 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     };
     static_assert(sizeof(TileStateReadback) == 16u);
 
+    [[nodiscard]] std::vector<std::uint32_t> download_rain_membership() {
+        std::vector<std::uint32_t> words(rainfall_buffer.size / sizeof(std::uint32_t));
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
+            buffer_barrier(command_buffer, rainfall_buffer,
+                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT);
+            const VkBufferCopy copy{.size = rainfall_buffer.size};
+            vkCmdCopyBuffer(command_buffer, rainfall_buffer.handle,
+                            scene_staging_buffer.handle, 1u, &copy);
+            buffer_barrier(command_buffer, scene_staging_buffer,
+                VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT);
+            buffer_barrier(command_buffer, rainfall_buffer,
+                VK_ACCESS_TRANSFER_READ_BIT,
+                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        });
+        void* mapped = nullptr;
+        check_vk(vkMapMemory(device, scene_staging_buffer.memory, 0,
+                             rainfall_buffer.size, 0, &mapped),
+                 "vkMapMemory(rain membership acceptance)");
+        std::memcpy(words.data(), mapped, static_cast<std::size_t>(rainfall_buffer.size));
+        vkUnmapMemory(device, scene_staging_buffer.memory);
+        return words;
+    }
+
+    [[nodiscard]] bool rain_membership_matches(const std::span<const SceneCell> cells) {
+        // Acceptance only: independent dense canonical scan, exact counts and
+        // row words, and conservative (never false-negative) summary hints.
+        const auto actual = download_rain_membership();
+        std::vector<std::uint32_t> expected(actual.size(), 0u);
+        for (std::size_t i = 0u; i < cells.size(); ++i) {
+            const auto& cell = cells[i];
+            if ((cell.material != static_cast<std::uint32_t>(Material::water) &&
+                 cell.material != static_cast<std::uint32_t>(Material::dirty_water)) ||
+                (cell.aux & 0x10000000u) == 0u) continue;
+            const auto x = i % config.grid_width;
+            const auto y = i / config.grid_width;
+            ++expected[x];
+            expected[(3u + y / 32u) * config.grid_width + x] |= 1u << (y % 32u);
+            expected[(1u + y / 1024u) * config.grid_width + x] |= 1u << ((y / 32u) % 32u);
+        }
+        for (std::size_t i = 0u; i < actual.size(); ++i) {
+            // The appended admission snapshot is pre-correction state, not
+            // canonical membership; it is validated by weather-order fixtures.
+            if (i >= actual.size() - config.grid_width) continue;
+            const bool summary = i >= config.grid_width && i < 3u * config.grid_width;
+            if (summary ? (actual[i] & expected[i]) != expected[i] : actual[i] != expected[i])
+                return false;
+        }
+        return true;
+    }
+
     [[nodiscard]] std::vector<TileStateReadback> download_tile_states() {
         std::vector<TileStateReadback> states(
             tile_buffer.size / sizeof(TileStateReadback));
@@ -2027,6 +2094,88 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             if (y + 1u < config.grid_height) enqueue(index + config.grid_width);
         }
         return queue;
+    }
+
+    void rain_membership_barrier(const VkCommandBuffer command_buffer) {
+        // Registration/removal producers complete before another producer or
+        // the exclusive per-column iterator may consume counts or prune hints.
+        buffer_barrier(command_buffer, rainfall_buffer,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    }
+
+    void record_rain_admission_snapshot(const VkCommandBuffer command_buffer) {
+        // No correction invocation can emit outside this schedule. Avoid an
+        // otherwise pointless dispatch and two barriers on dry ticks.
+        const auto weather_tick = simulation_step % 7200u;
+        if (weather_tick < 4800u || weather_tick >= 5400u) return;
+        const SimulationPush push{
+            .width = config.grid_width, .height = config.grid_height,
+            .active_mode = 5u,
+        };
+        rain_membership_barrier(command_buffer);
+        bind_compute(command_buffer, rainfall_pipeline, current_set);
+        vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                           VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+        vkCmdDispatch(command_buffer, divide_round_up(config.grid_width, 64u), 1u, 1u);
+        rain_membership_barrier(command_buffer);
+    }
+
+    void record_rain_rectangle(const VkCommandBuffer command_buffer,
+                               const std::int32_t min_x, const std::int32_t min_y,
+                               const std::int32_t max_x, const std::int32_t max_y) {
+        const auto x = (std::max)(0, min_x);
+        const auto y = (std::max)(0, min_y);
+        const auto right = (std::min)(static_cast<std::int32_t>(config.grid_width), max_x);
+        const auto bottom = (std::min)(static_cast<std::int32_t>(config.grid_height), max_y);
+        if (right <= x || bottom <= y) return;
+        const SimulationPush push{
+            .width = config.grid_width, .height = config.grid_height,
+            .brush_x = x, .brush_y = y,
+            .radius = static_cast<std::uint32_t>(right - x),
+            .material = static_cast<std::uint32_t>(bottom - y),
+            .active_mode = 3u,
+        };
+        rain_membership_barrier(command_buffer);
+        bind_compute(command_buffer, rainfall_pipeline, current_set);
+        vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                           VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+        vkCmdDispatch(command_buffer, divide_round_up(push.radius, 64u), push.material, 1u);
+        rain_membership_barrier(command_buffer);
+    }
+
+    void record_rain_ranges(const VkCommandBuffer command_buffer,
+                            const std::span<const VkBufferCopy> regions) {
+        // Explicit CPU edits already own these validated, disjoint ranges.
+        // Read only their committed canonical destinations, never staging or
+        // the duplicate scratch buffer; rejected edits never reach this call.
+        rain_membership_barrier(command_buffer);
+        bind_compute(command_buffer, rainfall_pipeline, current_set);
+        for (const auto& region : regions) {
+            auto first = region.dstOffset / sizeof(SceneCell);
+            auto remaining = region.size / sizeof(SceneCell);
+            // Vulkan guarantees at least 65535 X workgroups. Large contiguous
+            // fills exceed that in one dispatch; disjoint batches retain exact
+            // once-only reconciliation without relying on a vendor limit.
+            constexpr VkDeviceSize max_batch_cells = 65535u * 64u;
+            while (remaining != 0u) {
+                const auto count = (std::min)(remaining, max_batch_cells);
+                const SimulationPush push{
+                    .width = config.grid_width, .height = config.grid_height,
+                    .brush_x = static_cast<std::int32_t>(first),
+                    .radius = static_cast<std::uint32_t>(count),
+                    .active_mode = 4u,
+                };
+                vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                                   VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+                vkCmdDispatch(command_buffer, divide_round_up(push.radius, 64u), 1u, 1u);
+                first += count;
+                remaining -= count;
+            }
+        }
+        rain_membership_barrier(command_buffer);
     }
 
     void upload_bounded_cells(const std::span<const SceneCell> cells,
@@ -2088,6 +2237,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
                                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
             }
+            record_rain_ranges(command_buffer, regions);
             vkCmdFillBuffer(command_buffer, tile_buffer.handle, 0, tile_buffer.size, 0u);
             vkCmdFillBuffer(command_buffer, chunk_buffer.handle, 0, chunk_buffer.size, 0u);
             buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
@@ -2254,6 +2404,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
             // Conservative metadata invalidation is GPU-only and cheap compared
             // with the former 236 MiB world readback/re-upload.
+            record_rain_ranges(command_buffer, regions);
             vkCmdFillBuffer(command_buffer, tile_buffer.handle, 0, tile_buffer.size, 0u);
             vkCmdFillBuffer(command_buffer, chunk_buffer.handle, 0, chunk_buffer.size, 0u);
             buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
@@ -2984,6 +3135,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        // Smoke may shift an entire liquid column above the brush. Reconcile
+        // the final committed strip after all paint writers finish, rather
+        // than publishing intermediate shifted positions. No tick or readback.
+        const auto extent = static_cast<std::int32_t>(radius);
+        record_rain_rectangle(command_buffer, grid_x - extent,
+            material == static_cast<std::uint32_t>(Material::smoke) ? 0 : grid_y - extent,
+            grid_x + extent + 1, grid_y + extent + 1);
         buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -3202,6 +3360,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         mark_profile(3u);
+        record_rain_admission_snapshot(command_buffer);
         bind_compute(command_buffer, conservation_corrections_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
                            0, sizeof(simulation_push), &simulation_push);
@@ -3230,9 +3389,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
         mark_profile(5u);
-        // Only one uint per world column is inspected here. Already-emitted
-        // rain therefore continues outside the 4x4 active window without a
-        // complete-world cell scan or any global Water wake-up.
+        // Inspect one count per column, then only occupied row words and tagged
+        // owners. All already-emitted rain continues outside the active window
+        // without a complete-world cell scan or any global Water wake-up.
         const SimulationPush rainfall_push{
             .width = config.grid_width,
             .height = config.grid_height,
@@ -3448,6 +3607,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        rain_membership_barrier(command_buffer);
         buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -4371,6 +4531,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 .height = translated_active_window ? config.grid_height : acceptance_height,
                 .step = simulation_step,
                 .seed = random_seed,
+                .radius = acceptance_width,
+                .material = acceptance_height,
                 .active_section_x = active_section_x,
                 .active_section_y = active_section_y,
                 .active_mode = translated_active_window ? 1u : 0u,
@@ -4393,6 +4555,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            record_rain_admission_snapshot(command_buffer);
             bind_compute(command_buffer, conservation_corrections_pipeline, current_set);
             vkCmdPushConstants(command_buffer, compute_pipeline_layout,
                                VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
@@ -4641,6 +4804,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 .height = translated_active_window ? config.grid_height : acceptance_height,
                 .step = simulation_step,
                 .seed = random_seed,
+                .radius = acceptance_width,
+                .material = acceptance_height,
                 .active_section_x = active_section_x,
                 .active_section_y = active_section_y,
                 .active_mode = translated_active_window ? 1u : 0u,
@@ -4677,6 +4842,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            record_rain_admission_snapshot(command_buffer);
             bind_compute(command_buffer, conservation_corrections_pipeline, current_set);
             vkCmdPushConstants(command_buffer, compute_pipeline_layout,
                                VK_SHADER_STAGE_COMPUTE_BIT, 0,
@@ -4711,10 +4877,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
+            auto rainfall_push = simulation_push;
+            rainfall_push.height = config.grid_height;
+            rainfall_push.active_mode = 0u;
             bind_compute(command_buffer, rainfall_pipeline, current_set);
             vkCmdPushConstants(command_buffer, compute_pipeline_layout,
                                VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                               sizeof(simulation_push), &simulation_push);
+                               sizeof(rainfall_push), &rainfall_push);
             vkCmdDispatch(command_buffer,
                           divide_round_up(config.grid_width, 64u), 1, 1);
             buffer_barrier(command_buffer, rainfall_buffer,
@@ -4866,6 +5035,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            const auto extent = static_cast<std::int32_t>(radius);
+            record_rain_rectangle(command_buffer, center_x - extent,
+                material == Material::smoke ? 0 : center_y - extent,
+                center_x + extent + 1, center_y + extent + 1);
             buffer_barrier(command_buffer, chunk_buffer,
                            VK_ACCESS_SHADER_WRITE_BIT,
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
@@ -9299,6 +9472,433 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                rained[index_of(rain_x, rain_y)].age));
             }
 
+            {
+                // Independent dense, bottom-up reference. These columns lie
+                // outside the ordinary 192-cell acceptance window. Tight
+                // chains cross row-word and summary boundaries; every payload
+                // and displaced vacancy/gas is compared, not just Water count.
+                const auto saved_step = simulation_step;
+                constexpr std::uint32_t rain_bit = 0x10000000u;
+                constexpr std::uint32_t moved_bit = 0x01000000u;
+                auto expected = acceptance_atmosphere_world();
+                const std::array<std::uint32_t, 3> columns{252u, 253u, 254u};
+                const auto tagged = [&](const SceneCell& cell) {
+                    return (cell.material == material_id(Material::water) ||
+                            cell.material == material_id(Material::dirty_water)) &&
+                           (cell.aux & rain_bit) != 0u;
+                };
+                for (const auto x : columns) {
+                    for (std::uint32_t y = 1u; y + 1u < config.grid_height; ++y) {
+                        auto& medium = expected[index_of(x, y)];
+                        medium = make_fill_cell(material_id(y % 2u == 0u
+                            ? Material::empty : Material::atmosphere),
+                            static_cast<std::uint32_t>(index_of(x, y)));
+                        medium.age = y + x;
+                        medium.temperature = static_cast<std::int32_t>(y % 53u) - 17;
+                    }
+                    for (const auto y : {30u, 31u, 62u, 63u, 1022u, 1023u,
+                                         config.grid_height - 2u}) {
+                        if (y + 1u >= config.grid_height) continue;
+                        auto drop = make_fill_cell(material_id(x == 253u
+                            ? Material::dirty_water : Material::water),
+                            static_cast<std::uint32_t>(index_of(x, y)));
+                        drop.aux |= rain_bit;
+                        drop.age = 19u + y;
+                        drop.temperature = 5 + static_cast<std::int32_t>(y % 37u);
+                        expected[index_of(x, y)] = drop;
+                    }
+                }
+                expected[index_of(248u, 40u)] = make_fill_cell(material_id(Material::cloud), 40u);
+                expected[index_of(249u, 40u)] = make_fill_cell(material_id(Material::water), 41u);
+                const auto dense_tick = [&](const std::uint32_t step) {
+                    for (const auto x : columns) {
+                        if ((step + x) % 4u != 0u) continue;
+                        for (auto y = config.grid_height; y-- > 0u;) {
+                            auto& source = expected[index_of(x, y)];
+                            if (!tagged(source)) continue;
+                            const bool inside_target = y + 1u < config.grid_height;
+                            if (inside_target) {
+                                auto& target = expected[index_of(x, y + 1u)];
+                                // The fixture's open media are only these two
+                                // explicit species; this is not a shader helper.
+                                if (target.material == material_id(Material::empty) ||
+                                    target.material == material_id(Material::atmosphere)) {
+                                    auto drop = source;
+                                    ++drop.age;
+                                    drop.aux |= moved_bit;
+                                    source = target;
+                                    target = drop;
+                                    continue;
+                                }
+                            }
+                            source.aux = (source.aux & ~rain_bit) | moved_bit;
+                        }
+                    }
+                };
+                upload_scene_cells(expected, true);
+                const bool initial_membership = rain_membership_matches(expected);
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    record_rain_rectangle(command_buffer, 252, 0, 255,
+                        static_cast<std::int32_t>(config.grid_height));
+                    record_rain_rectangle(command_buffer, 252, 0, 255,
+                        static_cast<std::int32_t>(config.grid_height));
+                });
+                const bool idempotent = rain_membership_matches(expected);
+                // Actual linear producer path, including a contiguous Large
+                // range exceeding Vulkan's portable single-dispatch limit.
+                const std::array<VkBufferCopy, 1> whole_range{{{
+                    .srcOffset = 0u, .dstOffset = 0u,
+                    .size = static_cast<VkDeviceSize>(expected.size()) * sizeof(SceneCell),
+                }}};
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    record_rain_ranges(command_buffer, whole_range);
+                });
+                append("rain_large_linear_range_batched_membership",
+                    rain_membership_matches(expected), "canonical cells reconciled=" +
+                        std::to_string(expected.size()) + "; max 65535 workgroups per batch");
+                for (std::uint32_t tick = 0u; tick < 12u; ++tick) {
+                    dense_tick(simulation_step);
+                    run_acceptance_rainfall_pass();
+                }
+                auto actual = download_scene_cells();
+                bool exact = std::memcmp(expected.data(), actual.data(),
+                                         expected.size() * sizeof(SceneCell)) == 0;
+                append("rain_multiple_same_column_exact_sparse_movement",
+                    initial_membership && idempotent && exact && rain_membership_matches(actual),
+                    "columns=3 ticks=12 word/summary chains and payload/media exact=" +
+                        std::to_string(exact ? 1u : 0u) + " initial/index=" +
+                        std::to_string(initial_membership ? 1u : 0u) + "/" +
+                        std::to_string(idempotent ? 1u : 0u));
+
+                // The actual schema-2 path, not serialization of derived
+                // metadata. Retain clock explicitly ONLY in this comparison:
+                // weather-clock persistence is a separate unimplemented gate.
+                const auto resume_step = simulation_step;
+                const auto actor_before = download_actor_state();
+                const WorldSaveOwners owners{.actor_present = true, .actor = actor_before};
+                const WorldSaveMetadata metadata{
+                    .world_size = config.world_size, .width = config.grid_width,
+                    .height = config.grid_height, .scene = world_scene};
+                auto save_root = std::filesystem::path{config.runtime_acceptance_report};
+                save_root += ".rain-save";
+                std::string error;
+                const bool saved = save_world(save_root, metadata, "membership", actual, owners, error);
+                std::vector<SceneCell> loaded(actual.size());
+                WorldSaveOwners loaded_owners{};
+                WorldSaveMetadata loaded_metadata{};
+                const bool restored = saved && load_world(save_root, config.world_size,
+                    config.grid_width, config.grid_height, world_scene, "membership",
+                    loaded, loaded_owners, loaded_metadata, error);
+                bool restored_exact = restored && loaded_owners.actor_present &&
+                    std::memcmp(&actor_before, &loaded_owners.actor, sizeof(actor_before)) == 0 &&
+                    std::memcmp(actual.data(), loaded.data(), actual.size() * sizeof(SceneCell)) == 0;
+                if (restored) {
+                    upload_scene_cells(loaded, true);
+                    upload_actor_state(loaded_owners.actor);
+                    restored_exact = restored_exact && rain_membership_matches(loaded);
+                    simulation_step = resume_step;
+                    for (std::uint32_t tick = 0u; tick < 4u; ++tick) {
+                        dense_tick(simulation_step);
+                        run_acceptance_rainfall_pass();
+                    }
+                    actual = download_scene_cells();
+                    restored_exact = restored_exact &&
+                        std::memcmp(expected.data(), actual.data(),
+                                    expected.size() * sizeof(SceneCell)) == 0 &&
+                        rain_membership_matches(actual);
+                }
+                append("rain_schema2_restores_all_tags_and_exact_owners",
+                    restored_exact, "cells/actor/membership and next 4 ticks exact=" +
+                        std::to_string(restored_exact ? 1u : 0u) +
+                        "; weather clock deliberately supplied, not saved; " + error);
+                simulation_step = saved_step;
+            }
+
+            {
+                const auto saved_step = simulation_step;
+                constexpr std::uint32_t rain_bit = 0x10000000u;
+                auto cells = acceptance_atmosphere_world();
+                for (const auto y : {90u, 100u, 102u}) {
+                    auto drop = make_fill_cell(material_id(Material::water), y);
+                    drop.aux |= rain_bit;
+                    drop.temperature = 13 + static_cast<std::int32_t>(y);
+                    cells[index_of(252u, y)] = drop;
+                }
+                cells[index_of(252u, 99u)] = make_fill_cell(material_id(Material::empty), 99u);
+                cells[index_of(252u, 101u)] = make_fill_cell(material_id(Material::water), 101u);
+                upload_scene_cells(cells, true);
+                SharedState edit_state{};
+                edit_state.brush_radius.store(0u);
+                edit_state.brush_shape.store(0u);
+                const auto paused_step = simulation_step;
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    record_paint_at_grid(command_buffer, edit_state, false, true,
+                        252, 102, material_id(Material::smoke));
+                });
+                auto after = download_scene_cells();
+                const bool shifted = simulation_step == paused_step &&
+                    (after[index_of(252u, 99u)].aux & rain_bit) != 0u &&
+                    (after[index_of(252u, 101u)].aux & rain_bit) != 0u &&
+                    after[index_of(252u, 102u)].material == material_id(Material::smoke) &&
+                    after[index_of(252u, 99u)].temperature == cells[index_of(252u, 100u)].temperature &&
+                    rain_membership_matches(after);
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    record_paint_at_grid(command_buffer, edit_state, false, true,
+                        252, 99, material_id(Material::atmosphere));
+                });
+                after = download_scene_cells();
+                const bool erased = (after[index_of(252u, 99u)].aux & rain_bit) == 0u &&
+                    rain_membership_matches(after);
+                // Exercise actual MapChunk destination commit and validation,
+                // including a second owner in an already occupied column.
+                auto& blueprint = edit_state.blueprints[0u];
+                blueprint.occupied = true;
+                blueprint.kind = BlueprintKind::map_chunk;
+                blueprint.width = 1u;
+                blueprint.height = 1u;
+                blueprint.cells[0u] = cells[index_of(252u, 100u)];
+                edit_state.selected_blueprint_slot.store(0u);
+                edit_state.last_world_cursor_x.store(252);
+                edit_state.last_world_cursor_y.store(120);
+                place_selected_blueprint(edit_state);
+                after = download_scene_cells();
+                const bool pasted = rain_membership_matches(after) &&
+                    std::memcmp(&after[index_of(252u, 120u)], &blueprint.cells[0u],
+                                sizeof(SceneCell)) == 0;
+                const auto before_rejected = after;
+                blueprint.cells[0u].material = material_count;
+                place_selected_blueprint(edit_state);
+                after = download_scene_cells();
+                const bool rejected = rain_membership_matches(after) &&
+                    std::memcmp(after.data(), before_rejected.data(),
+                                after.size() * sizeof(SceneCell)) == 0;
+                // Bounded Fill/upload removal must not leave an admission
+                // count behind or drop another position in that column.
+                after[index_of(252u, 120u)] = make_fill_cell(material_id(Material::atmosphere), 120u);
+                upload_bounded_cells(after, {static_cast<std::uint32_t>(index_of(252u, 120u))},
+                                     "rain acceptance bounded erase");
+                const bool bounded = rain_membership_matches(download_scene_cells());
+                append("rain_paused_smoke_erase_map_chunk_reconcile_final_owners",
+                    shifted && erased && pasted && rejected && bounded && simulation_step == paused_step,
+                    "shift/erase/paste/reject/bounded=" + std::to_string(shifted) + "/" +
+                        std::to_string(erased) + "/" + std::to_string(pasted) + "/" +
+                        std::to_string(rejected) + "/" + std::to_string(bounded));
+                simulation_step = saved_step;
+            }
+
+            {
+                const auto saved_step = simulation_step;
+                bool vetoes_exact = true;
+                for (const auto variant : {0u, 1u, 2u}) {
+                    auto cells = acceptance_atmosphere_world();
+                    seed_rect(cells, Material::water, 64u, 64u, 8u, 8u);
+                    upload_scene_cells(cells);
+                    run_acceptance_tile_pass();
+                    // Inject AFTER classification so a nonrepresentative
+                    // tagged/landed owner tests stale metadata, not a fresh
+                    // classifier's rejection. Both possible packet endpoints.
+                    const auto y = variant == 1u ? 79u : 71u;
+                    auto cell = make_fill_cell(material_id(Material::water), y);
+                    cell.aux |= variant == 2u ? 0x01000000u : 0x10000000u;
+                    cell.temperature = 73;
+                    cells[index_of(71u, y)] = cell;
+                    immediate_submit([&](const VkCommandBuffer command_buffer) {
+                        const auto offset = static_cast<VkDeviceSize>(index_of(71u, y)) * sizeof(SceneCell);
+                        for (const auto& buffer : cell_buffers) {
+                            buffer_barrier(command_buffer, buffer,
+                                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                                VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                VK_PIPELINE_STAGE_TRANSFER_BIT);
+                            vkCmdUpdateBuffer(command_buffer, buffer.handle, offset, sizeof(cell), &cell);
+                            buffer_barrier(command_buffer, buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                        }
+                        record_rain_rectangle(command_buffer, 71, static_cast<std::int32_t>(y),
+                            72, static_cast<std::int32_t>(y + 1u));
+                    });
+                    run_acceptance_macro_pass(0, 0);
+                    const auto after = download_scene_cells();
+                    // Other gas packets are free to move. Compare the exact
+                    // source/target pair, with membership globally coherent.
+                    for (std::uint32_t row = 64u; row < 80u; ++row)
+                        vetoes_exact = vetoes_exact && std::memcmp(
+                            &cells[index_of(64u, row)], &after[index_of(64u, row)],
+                            8u * sizeof(SceneCell)) == 0;
+                    vetoes_exact = vetoes_exact && rain_membership_matches(after);
+                }
+                append("rain_nonrepresentative_and_landed_owners_veto_stale_macro",
+                    vetoes_exact, "source tag, target tag, source landed: exact 128-cell pairs; ordinary64 control separate");
+                simulation_step = saved_step;
+            }
+
+            {
+                const auto saved_step = simulation_step;
+                auto cells = acceptance_atmosphere_world();
+                seed_rect(cells, Material::stone, 240u, 181u, 16u, 1u);
+                auto drop = make_fill_cell(material_id(Material::dirty_water), 178u);
+                drop.aux |= 0x10000000u;
+                drop.temperature = 37;
+                cells[index_of(254u, 178u)] = drop;
+                upload_scene_cells(cells, true);
+                const auto original_actor = download_actor_state();
+                auto rain_actor = original_actor;
+                rain_actor.x = 248; rain_actor.y = 180; rain_actor.enabled = 1u;
+                rain_actor.velocity_y = 0; rain_actor.move_cooldown = 0u;
+                rain_actor.health = 255u; rain_actor.oxygen = 255u;
+                rain_actor.scene = static_cast<std::uint32_t>(world_scene);
+                upload_actor_state(rain_actor);
+                SharedState actor_state{};
+                actor_state.selected_scene.store(static_cast<std::uint32_t>(world_scene));
+                actor_state.move_x.store(1);
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    record_actor(command_buffer, actor_state, false, true, false);
+                });
+                const auto after = download_scene_cells();
+                const auto moved_actor = download_actor_state();
+                const auto& displaced = after[index_of(255u, 178u)];
+                const bool exact = moved_actor.x == 249 && moved_actor.y == 180 &&
+                    displaced.material == material_id(Material::dirty_water) &&
+                    displaced.temperature == 37 && displaced.age == 0u &&
+                    (displaced.aux & 0x10000000u) != 0u &&
+                    after[index_of(254u, 178u)].material == material_id(Material::atmosphere) &&
+                    rain_membership_matches(after);
+                append("rain_actor_cross_column_displacement_reconciles_both_ends",
+                    exact, "actor=" + std::to_string(moved_actor.x) + "," +
+                        std::to_string(moved_actor.y) + " destination=" +
+                        std::to_string(displaced.material) + " exact_index=" + std::to_string(exact));
+                upload_actor_state(original_actor);
+                simulation_step = saved_step;
+            }
+
+            {
+                const auto saved_step = simulation_step;
+                constexpr std::uint32_t rain_bit = 0x10000000u;
+                constexpr std::uint32_t cloud_y = 100u;
+                const auto candidate = find_scheduled_rain_candidate(2u, 189u);
+                bool first_pass_exact = candidate.has_value();
+                bool next_pass_exact = candidate.has_value();
+                if (candidate) {
+                    // Exercise both relative invocation-row orders. Hardware
+                    // scheduling itself is not forced; the CPU atomic-event
+                    // oracle separately enumerates operation interleavings.
+                    for (const auto water_y : {80u, 120u}) {
+                        auto cells = acceptance_atmosphere_world();
+                        auto water = make_fill_cell(material_id(Material::water), water_y);
+                        water.temperature = 125;
+                        water.aux |= rain_bit;
+                        cells[index_of(candidate->x, water_y)] = water;
+                        auto cloud = make_fill_cell(material_id(Material::cloud), cloud_y);
+                        cloud.age = 700u;
+                        cloud.temperature = 12;
+                        cells[index_of(candidate->x, cloud_y)] = cloud;
+                        upload_scene_cells(cells, true);
+                        first_pass_exact = first_pass_exact && rain_membership_matches(cells);
+                        simulation_step = candidate->step;
+                        run_acceptance_chemistry_pass();
+                        const auto first = download_scene_cells();
+                        const auto first_index = download_rain_membership();
+                        const auto admission = first_index.size() - config.grid_width + candidate->x;
+                        first_pass_exact = first_pass_exact &&
+                            first[index_of(candidate->x, water_y)].material == material_id(Material::steam) &&
+                            first[index_of(candidate->x, cloud_y)].material == material_id(Material::cloud) &&
+                            count_material(first, Material::water) == 0u &&
+                            count_material(first, Material::steam) == 1u &&
+                            first_index[candidate->x] == 0u && first_index[admission] == 1u &&
+                            rain_membership_matches(first);
+
+                        // Hold eligibility at the same scheduled step so this
+                        // second real pass isolates newly empty admission. It
+                        // is not evidence of elapsed weather-clock continuity.
+                        run_acceptance_chemistry_pass();
+                        const auto next = download_scene_cells();
+                        const auto next_index = download_rain_membership();
+                        const auto& emitted = next[index_of(candidate->x, cloud_y)];
+                        next_pass_exact = next_pass_exact &&
+                            emitted.material == material_id(Material::water) &&
+                            (emitted.aux & rain_bit) != 0u &&
+                            count_material(next, Material::water) == 1u &&
+                            count_material(next, Material::steam) == 1u &&
+                            count_material(next, Material::cloud) == 0u &&
+                            next_index[candidate->x] == 1u && next_index[admission] == 0u &&
+                            rain_membership_matches(next);
+                    }
+                }
+                append("rain_admission_snapshot_survives_same_pass_evaporation",
+                    first_pass_exact && next_pass_exact,
+                    "Water above/below Cloud; occupied snapshot blocks first pass=" +
+                        std::to_string(first_pass_exact) + "; empty next-pass admission=" +
+                        std::to_string(next_pass_exact) +
+                        "; eligibility step deliberately held, not a weather-clock test");
+                simulation_step = saved_step;
+            }
+
+            {
+                const auto saved_step = simulation_step;
+                constexpr std::uint32_t rain_bit = 0x10000000u;
+                constexpr std::uint32_t clipped_height = 360u;
+                const auto candidate = find_scheduled_rain_candidate(2u, 189u);
+                bool exact = candidate.has_value() && config.grid_height >= 368u;
+                if (exact) {
+                    auto cells = acceptance_atmosphere_world();
+                    const auto water_x = candidate->x == 32u ? 33u : 32u;
+                    auto outside_water = make_fill_cell(material_id(Material::water), 360u);
+                    outside_water.temperature = 125;
+                    outside_water.aux |= rain_bit;
+                    cells[index_of(water_x, 360u)] = outside_water;
+                    auto outside_cloud = make_fill_cell(material_id(Material::cloud), 367u);
+                    outside_cloud.age = 700u;
+                    outside_cloud.temperature = 12;
+                    cells[index_of(candidate->x, 367u)] = outside_cloud;
+                    auto inside_water = make_fill_cell(material_id(Material::water), 100u);
+                    inside_water.temperature = 125;
+                    cells[index_of(100u, 100u)] = inside_water;
+                    upload_scene_cells(cells, true);
+                    exact = rain_membership_matches(cells);
+                    // Distinct padded scratch payloads make an accidentally
+                    // rounded copy-back observable even if the compute guards
+                    // correctly leave the padded invocations untouched.
+                    auto poison = make_fill_cell(material_id(Material::stone), 367u);
+                    poison.age = 123u;
+                    poison.temperature = 777;
+                    immediate_submit([&](const VkCommandBuffer command_buffer) {
+                        const auto& scratch = cell_buffers[current_set ^ 1u];
+                        buffer_barrier(command_buffer, scratch,
+                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                            VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT);
+                        for (const auto index : {index_of(water_x, 360u), index_of(candidate->x, 367u)}) {
+                            vkCmdUpdateBuffer(command_buffer, scratch.handle,
+                                static_cast<VkDeviceSize>(index) * sizeof(SceneCell),
+                                sizeof(poison), &poison);
+                        }
+                        buffer_barrier(command_buffer, scratch, VK_ACCESS_TRANSFER_WRITE_BIT,
+                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                    });
+                    simulation_step = candidate->step;
+                    // The translated helper requests exactly 640x360 (clipped
+                    // to world width), rounded to 16x16 groups through row367.
+                    // No later rainfall/fine pass can hide a padded invocation
+                    // removing row360's tag or publishing row367's phantom tag.
+                    run_acceptance_chemistry_pass(0, 0, true);
+                    const auto after = download_scene_cells();
+                    const auto membership = download_rain_membership();
+                    const auto outside_first = static_cast<std::size_t>(clipped_height) * config.grid_width;
+                    const bool outside_identical = std::memcmp(
+                        cells.data() + outside_first, after.data() + outside_first,
+                        (cells.size() - outside_first) * sizeof(SceneCell)) == 0;
+                    exact = exact && outside_identical &&
+                        after[index_of(100u, 100u)].material == material_id(Material::steam) &&
+                        membership[water_x] == 1u && membership[candidate->x] == 0u &&
+                        rain_membership_matches(after);
+                }
+                append("rain_correction_clips_360_rows_before_membership_commit",
+                    exact, "rows360/367 remain canonical/index-exact; rounded dispatch reaches368; inside Steam positive control=" +
+                        std::to_string(exact));
+                simulation_step = saved_step;
+            }
+
             for (const bool vacuum_path : {false, true}) {
                 const auto saved_step = simulation_step;
                 constexpr std::uint32_t tracked_rain_bit = 0x10000000u;
@@ -10288,6 +10888,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                        VK_SHADER_STAGE_COMPUTE_BIT, 0,
                                        sizeof(push), &push);
                     vkCmdDispatch(command_buffer, 1, 1, 1);
+                    rain_membership_barrier(command_buffer);
                     buffer_barrier(command_buffer, cell_buffers[current_set],
                                    VK_ACCESS_SHADER_WRITE_BIT,
                                    VK_ACCESS_SHADER_READ_BIT |
@@ -10339,6 +10940,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                        VK_SHADER_STAGE_COMPUTE_BIT, 0,
                                        sizeof(push), &push);
                     vkCmdDispatch(command_buffer, 1, 1, 1);
+                    rain_membership_barrier(command_buffer);
                     buffer_barrier(command_buffer, cell_buffers[current_set],
                                    VK_ACCESS_SHADER_WRITE_BIT,
                                    VK_ACCESS_SHADER_READ_BIT |
@@ -10648,6 +11250,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                        VK_SHADER_STAGE_COMPUTE_BIT, 0,
                                        sizeof(push), &push);
                     vkCmdDispatch(command_buffer, 1, 1, 1);
+                    rain_membership_barrier(command_buffer);
                     buffer_barrier(command_buffer, cell_buffers[current_set],
                                    VK_ACCESS_SHADER_WRITE_BIT,
                                    VK_ACCESS_SHADER_READ_BIT |

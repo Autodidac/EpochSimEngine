@@ -7,6 +7,7 @@
 #include "tiles.glsl"
 #include "chunks.glsl"
 #include "debug_stats.glsl"
+#include "rain_membership.glsl"
 
 layout(local_size_x = 1, local_size_y = 1) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
@@ -54,6 +55,9 @@ uint actorIndex(ivec2 p) {
 
 void markActorChunkDirty(ivec2 p) {
     if (!actorInside(p)) return;
+    // The actor is one exclusive invocation. Reconcile both committed swap
+    // endpoints here, including cross-column rain displaced by its body.
+    rainReconcile(p, cells[actorIndex(p)], actorPc.width);
     atomicOr(chunks[chunkIndex(p, actorPc.width)].flags, CHUNK_DIRTY | CHUNK_ACTIVE);
 }
 

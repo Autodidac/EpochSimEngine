@@ -5,13 +5,13 @@
 #include "chunks.glsl"
 #include "bee_swarm.glsl"
 #include "conservation.glsl"
+#include "rain_membership.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 1) buffer NextCells { Cell nextCells[]; };
 layout(std430, binding = 2) readonly buffer Sunlight { uint light[]; };
 layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
-layout(std430, binding = 10) buffer RainColumns { uint rainColumns[]; };
 
 const uint CORRECTION_BEE_TIMER_BITS = 14u;
 const uint CORRECTION_BEE_TIMER_MAX = 0x3fffu;
@@ -310,6 +310,10 @@ void addConvertedStat() {
 }
 
 void main() {
+    // Do not publish metadata or counters for padded scratch invocations that
+    // are outside the exact rectangle subsequently copied to canonical cells.
+    if (pc.radius != 0u && (gl_GlobalInvocationID.x >= pc.radius ||
+                           gl_GlobalInvocationID.y >= pc.material)) return;
     ivec2 position = ivec2(gl_GlobalInvocationID.xy) + activeDispatchCellOrigin(
         pc.activeSectionX, pc.activeSectionY, pc.activeMode);
     if (!inside(position) ||
@@ -319,6 +323,7 @@ void main() {
     Cell source = cells[index];
     Cell proposed = nextCells[index];
     Cell corrected = proposed;
+    bool rainEmissionReserved = false;
 
     // The frozen chemistry kernel retains its historical Empty -> Bee birth
     // path only to preserve the proven software-Vulkan control-flow shape.
@@ -503,9 +508,9 @@ void main() {
         bool oldRain = proposed.material == MAT_WATER ||
             proposed.material == MAT_DIRTY_WATER;
         bool ownsColumn = candidate &&
-            atomicCompSwap(rainColumns[uint(position.x)], 0u,
-                           uint(position.y) + 1u) == 0u;
+            rainTryReserveEmission(uint(position.x), pc.width);
         if (ownsColumn) {
+            rainEmissionReserved = true;
             corrected = makeCell((source.aux & AUX_WET) != 0u
                                      ? MAT_DIRTY_WATER : MAT_WATER);
             corrected.aux |= AUX_RAIN_DROP;
@@ -516,13 +521,6 @@ void main() {
             undoConvertedStat();
         }
     }
-
-    // Exact save/load may restore an in-flight tagged Water owner before its
-    // derived column tracker is rebuilt. Re-register it when its active region
-    // next participates, without changing the canonical cell.
-    if (isTrackedRain(source))
-        atomicCompSwap(rainColumns[uint(position.x)], 0u,
-                       uint(position.y) + 1u);
 
     // Grass is a shallow skin, not a full authored 8x8 dirt substitute. The
     // correction stays shallow and deterministic so the proven chemistry
@@ -581,4 +579,16 @@ void main() {
         corrected.aux |= AUX_MOVED;
 
     nextCells[index] = corrected;
+    // Membership follows the final committed proposal, not the immutable
+    // source: a phase change can remove a tag and rain emission can add one.
+    // Ordinary non-rain chemistry performs no tracker atomic operation.
+    if (rainEmissionReserved) {
+        if (isTrackedRain(corrected)) rainRegisterReserved(position, pc.width);
+        else {
+            rainCancelEmission(uint(position.x), pc.width);
+            rainReconcile(position, corrected, pc.width);
+        }
+    } else if (isTrackedRain(source) || isTrackedRain(corrected)) {
+        rainReconcile(position, corrected, pc.width);
+    }
 }

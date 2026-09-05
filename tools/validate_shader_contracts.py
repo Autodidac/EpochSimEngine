@@ -110,6 +110,7 @@ def main() -> int:
     terrain_hpp = (ROOT / "include/sandhybrid/terrain_generation.hpp").read_text(encoding="utf-8")
     fullscreen = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
     rainfall = (SHADERS / "rainfall.comp").read_text(encoding="utf-8")
+    rain_membership = (SHADERS / "rain_membership.glsl").read_text(encoding="utf-8")
     renderer = (ROOT / "src/vulkan_renderer.cpp").read_text(encoding="utf-8")
     app = (ROOT / "src/app.cpp").read_text(encoding="utf-8")
     window_header = (ROOT / "include/sandhybrid/window.hpp").read_text(encoding="utf-8")
@@ -509,7 +510,8 @@ def main() -> int:
         "const uint emissionCadence = 360u",
         "const uint sectorWidth = 256u",
         "bool rainScheduled =",
-        "atomicCompSwap(rainColumns[uint(position.x)]",
+        "rainTryReserveEmission(uint(position.x), pc.width)",
+        "rainReconcile(position, corrected, pc.width)",
         "corrected.aux |= AUX_RAIN_DROP",
         "sourceAt(position + ivec2(0, 1)).material != MAT_CLOUD",
         "source.material == MAT_STEAM || source.material == MAT_DIRTY_STEAM",
@@ -542,7 +544,7 @@ def main() -> int:
         require(bee_move, token, errors,
                 "conserved two-cell Bee replacement transaction")
     for token in (
-        "layout(std430, binding = 10) buffer RainColumns",
+        '#include "rain_membership.glsl"',
         "if (pc.activeMode == 2u)",
         "if (((pc.step + x) & 3u) != 0u) return",
         "source.aux &= ~AUX_RAIN_DROP",
@@ -550,6 +552,14 @@ def main() -> int:
     ):
         require(rainfall, token, errors,
                 "scheduled off-window rain ownership contract")
+    for token in (
+        "layout(std430, binding = 10) buffer RainColumns",
+        "atomicOr(rainColumns[wordIndex], bitMask)",
+        "atomicAnd(rainColumns[wordIndex], ~bitMask)",
+        "rainRegisterReserved",
+        "rainTryReserveEmission",
+    ):
+        require(rain_membership, token, errors, "complete derived rain membership contract")
     for token in (
         "auto chained_cycle_cells = result",
         "auto hazard_cells = chained_cycle_cells",

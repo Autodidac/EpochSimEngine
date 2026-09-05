@@ -191,6 +191,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
                     "${SHADER_SOURCE_DIR}/tiles.glsl"
                     "${SHADER_SOURCE_DIR}/chunks.glsl"
                     "${SHADER_SOURCE_DIR}/conservation.glsl"
+                    "${SHADER_SOURCE_DIR}/rain_membership.glsl"
                     "${SHADER_SOURCE_DIR}/debug_stats.glsl"
                     "${SHADER_SOURCE_DIR}/debug_geometry.glsl"
                     "${SHADER_SOURCE_DIR}/actor.glsl"
@@ -444,6 +445,11 @@ if(BUILD_TESTING)
     target_compile_features(sandhybrid_chemistry_gate_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_chemistry_gate_contract)
     add_test(NAME sandhybrid_chemistry_gate_contract COMMAND sandhybrid_chemistry_gate_contract)
+
+    add_executable(sandhybrid_rain_membership_contract tests/rain_membership_contract.cpp)
+    target_compile_features(sandhybrid_rain_membership_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_rain_membership_contract)
+    add_test(NAME sandhybrid_rain_membership_contract COMMAND sandhybrid_rain_membership_contract)
 
     add_executable(sandhybrid_world_save_contract tests/world_save_contract.cpp)
     target_link_libraries(sandhybrid_world_save_contract PRIVATE SandHybrid)
