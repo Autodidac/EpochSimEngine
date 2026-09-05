@@ -13,6 +13,7 @@
 #include "sandhybrid/world_layout.hpp"
 #include "sandhybrid/world_save.hpp"
 #include "sandhybrid/ui_text_data.hpp"
+#include "vulkan_barriers.hpp"
 
 #include <vulkan/vulkan.h>
 
@@ -1672,6 +1673,16 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         };
         vkCmdPipelineBarrier(command_buffer, source_stage, destination_stage, 0,
                              0, nullptr, 1, &barrier, 0, nullptr);
+    }
+
+    template<std::size_t Count>
+    void compute_barrier_batch(const VkCommandBuffer command_buffer,
+                               const std::array<VkBuffer, Count>& buffers) const {
+        const auto barriers = detail::compute_storage_barriers(buffers);
+        vkCmdPipelineBarrier(command_buffer,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0u, 0u, nullptr, static_cast<std::uint32_t>(barriers.size()),
+            barriers.data(), 0u, nullptr);
     }
 
     void copy_cell_rectangle(const VkCommandBuffer command_buffer,
@@ -3457,15 +3468,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
       } else {
           vkCmdDispatch(command_buffer, divide_round_up(tile_columns, 2u), tile_rows, 1);
       }
-      buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
-                     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-      buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
-                     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-      buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
-                     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+      // Identical stage/access dependencies, submitted together. No command
+      // previously separated these three per-buffer barriers.
+      compute_barrier_batch(command_buffer, std::array{
+          cell_buffers[current_set].handle, tile_buffer.handle, chunk_buffer.handle});
             }
         }
 
@@ -3532,12 +3538,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 vkCmdDispatch(command_buffer, divide_round_up(active_dispatch.width, simulation_local_size),
                               divide_round_up(divide_round_up(active_dispatch.height, 2u), simulation_local_size), 1);
             }
-            buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-            buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            compute_barrier_batch(command_buffer, std::array{
+                cell_buffers[current_set].handle, chunk_buffer.handle});
         }
 
         mark_profile(10u);
@@ -3679,23 +3681,30 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
     void record_render(const VkCommandBuffer command_buffer, const std::uint32_t image_index,
                        const SharedState& state) {
+        // The dependency decision and fragment push must see the same mode,
+        // even if the UI toggles Debug while this command buffer is recorded.
+        const auto debug_mode = state.debug_visualization.load(std::memory_order_relaxed)
+            ? 1u + (state.debug_page.load(std::memory_order_relaxed) & 1u) : 0u;
         buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
         buffer_barrier(command_buffer, actor_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-        buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
-                       VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-        buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
-                       VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-        buffer_barrier(command_buffer, conservation_buffer,
-                       VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
-                       VK_ACCESS_SHADER_READ_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        if (debug_mode != 0u) {
+            buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            // Both Region and World Totals construct values from this buffer.
+            buffer_barrier(command_buffer, conservation_buffer,
+                           VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_ACCESS_SHADER_READ_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        }
 
         VkClearValue clear_value{};
         clear_value.color.float32[0] = 0.02f;
@@ -3856,9 +3865,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .scene_count = scene_count,
             .mining_mode = state.mining_mode.load(std::memory_order_relaxed) ? 1u : 0u,
             .inspect_mode = inspect_visible ? 1u : 0u,
-            .debug_mode = state.debug_visualization.load(std::memory_order_relaxed)
-                ? 1u + (state.debug_page.load(std::memory_order_relaxed) & 1u)
-                : 0u,
+            .debug_mode = debug_mode,
             .tile_columns = divide_round_up(config.grid_width, 8u),
             .tile_rows = divide_round_up(config.grid_height, 8u),
             .viewport_left = static_cast<std::uint32_t>(simulation_viewport.rect.position.x),

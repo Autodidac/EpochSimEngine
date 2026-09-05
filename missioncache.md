@@ -1,5 +1,13 @@
 # SandHybrid Mission Cache
 
+## 2026-09-05 synchronization submission stage: CPU verified, GPU timing pending
+
+Separate from rain checkpoint `a192ed7e5012dc81fb1e513313cf1edbf48a0618`, this MC-004/040/064/085/125/152 stage batches adjacent compute buffer barriers after each of the same six macro and seven fine movement dispatches. The private stack-only helper preserves every buffer, ordering, access mask, ignored queue family, offset and full range; callers preserve compute-to-compute stages, dependency flags and exact command position. It removes 19 Vulkan API calls on a macro tick and seven on an alternate tick, not any required buffer dependency. No phase, parity, fixed cadence, payload, shader or accepted visual is changed.
+
+`record_render` snapshots Debug mode once for both dependency selection and fragment push constants. Three presentation-only barriers are skipped when Debug is hidden; both visible pages retain the original dependencies, including World Totals' debug-buffer reads. Material, actor, active-region and hidden-debug collection scheduling remain unchanged. This is an API-submission reduction, not measured FPS or completed performance acceptance.
+
+Windows/Linux Release builds and CTest pass 73/73 (4.69 s) and 63/63 (9.71 s). The real private helper passes 78 no-GPU field/order/input-preservation assertions. Retained logs: `build/evidence/post28-barriers-windows-ctest.log`, SHA-256 `8211bfde09cbcff52669d9ae1c6f2595b9e8de962c90e41763ef03c6ce98b21c`; `build/evidence/post28-barriers-linux-ctest.log`, SHA-256 `03dd46145b4a5c6349bbfae2522696d5a1b3479e07fe611f17a99185a8b02ddb`. Required next validation remains synchronization/runtime parity, hidden/Region/Totals transitions during running/paused/render-only/tick-only iterations, and idle interactive/material timing. External GPU memory occupancy still prevents these checks; no application was closed. All 123 active statuses, earlier failed evidence, Smoke canonical-race follow-up and final release criteria remain. No release/Site mutation.
+
 ## 2026-09-05 falling-rain membership: implemented, CPU validated, GPU pending
 
 The current governing/source review is pinned to `657f8b1811772a024e2acdafc69f665606f1fd94`. All 137 mission IDs, including the 123 active missions (70 PARTIAL, 16 OPEN, 36 REGRESSION, one DEFERRED), and their original criteria remain intact. The reviewed objective attachment requires all missions complete before its final release; historical permission for an incremental v2.5.28 release is not permission to publish this unfinished pass.

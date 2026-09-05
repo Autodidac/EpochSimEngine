@@ -537,6 +537,15 @@ if(BUILD_TESTING)
     endif()
 
     if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
+        add_executable(sandhybrid_vulkan_barrier_contract tests/vulkan_barrier_contract.cpp)
+        target_include_directories(sandhybrid_vulkan_barrier_contract PRIVATE src)
+        target_link_libraries(sandhybrid_vulkan_barrier_contract PRIVATE Vulkan::Vulkan)
+        target_compile_features(sandhybrid_vulkan_barrier_contract PRIVATE cxx_std_23)
+        sandhybrid_configure_warnings(sandhybrid_vulkan_barrier_contract)
+        add_test(NAME sandhybrid_vulkan_barrier_contract COMMAND sandhybrid_vulkan_barrier_contract)
+        set_tests_properties(sandhybrid_vulkan_barrier_contract
+            PROPERTIES TIMEOUT 10 LABELS "cpu;no-gpu")
+
         add_executable(sandhybrid_ui_layout_contract tests/ui_layout_contract.cpp)
         target_link_libraries(sandhybrid_ui_layout_contract PRIVATE Autodidac::EpochGui)
         target_include_directories(sandhybrid_ui_layout_contract PRIVATE include)
