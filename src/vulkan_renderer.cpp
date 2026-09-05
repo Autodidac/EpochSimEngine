@@ -4991,9 +4991,16 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             record_bee_birth_pass(command_buffer, simulation_push,
                                   acceptance_dispatch);
             bind_compute(command_buffer, bee_movement_pipeline, current_set);
+            // Chemistry uses material/radius as the clipped dispatch extent.
+            // The Bee kernel instead uses material as its pass selector; never
+            // pass the chemistry height as a movement mode (which disables it).
+            auto bee_movement_push = simulation_push;
+            bee_movement_push.material = 0u;
+            bee_movement_push.radius = 0u;
+            bee_movement_push.reserved = 0u;
             vkCmdPushConstants(command_buffer, compute_pipeline_layout,
                                VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                               sizeof(simulation_push), &simulation_push);
+                               sizeof(bee_movement_push), &bee_movement_push);
             vkCmdDispatch(command_buffer,
                           divide_round_up(acceptance_width,
                                           simulation_local_size),
@@ -9638,11 +9645,34 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 edit_state.brush_radius.store(0u);
                 edit_state.brush_shape.store(0u);
                 const auto paused_step = simulation_step;
+                // Keep the original hot-Water counterexample. Thermal vapor
+                // remains canonical Water, so the named-gas compressor must
+                // reject it without losing an owner or publishing a hole.
                 immediate_submit([&](const VkCommandBuffer command_buffer) {
                     record_paint_at_grid(command_buffer, edit_state, false, true,
                         252, 102, material_id(Material::smoke));
                 });
                 auto after = download_scene_cells();
+                const bool hot_rejected = simulation_step == paused_step &&
+                    std::memcmp(cells.data(), after.data(),
+                                cells.size() * sizeof(SceneCell)) == 0 &&
+                    rain_membership_matches(after);
+                append("rain_paused_smoke_preserves_unsupported_hot_water_owners",
+                    hot_rejected,
+                    "original 103/113/115 C tagged-Water counterexample; all cells, index and clock unchanged=" +
+                        std::to_string(hot_rejected ? 1u : 0u));
+
+                // Separate positive control: ordinary liquid Water must still
+                // shift into the real Empty row and reconcile every rain tag.
+                for (const auto y : {90u, 100u, 102u})
+                    cells[index_of(252u, y)].temperature =
+                        13 + static_cast<std::int32_t>(y % 20u);
+                upload_scene_cells(cells, true);
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    record_paint_at_grid(command_buffer, edit_state, false, true,
+                        252, 102, material_id(Material::smoke));
+                });
+                after = download_scene_cells();
                 const bool shifted = simulation_step == paused_step &&
                     (after[index_of(252u, 99u)].aux & rain_bit) != 0u &&
                     (after[index_of(252u, 101u)].aux & rain_bit) != 0u &&

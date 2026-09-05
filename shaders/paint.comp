@@ -32,7 +32,11 @@ uint paintRepresentedGasVolume(Cell medium) {
 }
 
 bool displacePaintGas(ivec2 p, Cell medium) {
-    if (!isGas(medium.material)) return true;
+    // A thermally vaporized Water/metal cell is still its exact canonical
+    // material owner, not a pressure-packed named gas. This compressor cannot
+    // vacate it: fail before any write instead of reporting a nonexistent hole
+    // that the upward shift would overwrite.
+    if (!isGas(medium.material)) return false;
     uint remaining = paintRepresentedGasVolume(medium);
     uint capacity = 0u;
     for (uint i = 0u; i < 8u; ++i) {
