@@ -104,7 +104,10 @@ for token in (
     "fixed simulation ticks",
 ):
     require("missioncache.md", token)
-for token in ("aligned `8x8`", "Designer exposes an explicit sidebar `CLEAR`", "A presented frame submits at most one complete tick"):
+for token in ("aligned `8x8`", "Designer exposes an explicit sidebar `CLEAR`",
+              "Each scheduler iteration submits at most one complete tick",
+              "intervening scheduler iterations may simulate without presenting",
+              "presentations may be render-only"):
     require("AGENTS.md", token)
 
 # Every release carries the complete current EpochGui dependency and an exact upstream pin.

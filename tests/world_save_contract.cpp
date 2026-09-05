@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -41,6 +43,141 @@ static_assert(world_dimensions(WorldSizePreset::large).width == 10240u);
            a.exposure_ticks == b.exposure_ticks && a.aluminum == b.aluminum &&
            a.copper == b.copper && a.unlocks == b.unlocks &&
            a.drill_level == b.drill_level;
+}
+
+[[nodiscard]] bool same_metadata(const WorldSaveMetadata& a, const WorldSaveMetadata& b) {
+    return a.format_version == b.format_version && a.world_size == b.world_size &&
+           a.width == b.width && a.height == b.height && a.scene == b.scene &&
+           a.chunk_edge == b.chunk_edge && a.chunk_count == b.chunk_count &&
+           a.cell_count == b.cell_count && a.payload_bytes == b.payload_bytes &&
+           a.payload_hash == b.payload_hash && a.owner_payload_bytes == b.owner_payload_bytes;
+}
+
+[[nodiscard]] std::vector<char> file_bytes(const std::filesystem::path& path) {
+    std::ifstream stream{path, std::ios::binary};
+    return {std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
+}
+
+[[nodiscard]] bool rejected_saves_preserve_slot(const std::filesystem::path& root) {
+    WorldSaveMetadata metadata{
+        .world_size = WorldSizePreset::compact, .width = 69u, .height = 67u, .scene = world_scene};
+    std::vector<SceneCell> cells(69u * 67u,
+        SceneCell{static_cast<std::uint32_t>(Material::water), 11u, 73, 96u});
+    std::string error;
+    constexpr auto slot = "rejected_saves";
+    if (!save_world(root, metadata, slot, cells, error)) return false;
+    cells.back().temperature = 91;
+    if (!save_world(root, metadata, slot, cells, error)) return false;
+    const auto primary = world_save_path(root, metadata.world_size, metadata.scene, slot);
+    const auto backup = world_save_backup_path(root, metadata.world_size, metadata.scene, slot);
+    const auto manifest = primary.parent_path() / "manifest.txt";
+    const auto original_primary = file_bytes(primary);
+    const auto original_backup = file_bytes(backup);
+    const auto original_manifest = file_bytes(manifest);
+    const auto unchanged = [&] {
+        return file_bytes(primary) == original_primary && file_bytes(backup) == original_backup &&
+               file_bytes(manifest) == original_manifest;
+    };
+    cells.back().material = material_count;
+    if (save_world(root, metadata, slot, cells, error) || !unchanged()) return false;
+    cells.back().material = static_cast<std::uint32_t>(Material::water);
+    auto invalid = metadata;
+    invalid.world_size = static_cast<WorldSizePreset>(255u);
+    if (save_world(root, invalid, slot, cells, error) || !unchanged()) return false;
+    invalid = metadata;
+    invalid.scene = static_cast<Scene>(255u);
+    if (save_world(root, invalid, slot, cells, error) || !unchanged()) return false;
+
+    // A backup-staging I/O failure must not remove either healthy generation.
+    const auto obstruction = primary.parent_path() / "world.bak.tmp";
+    std::filesystem::create_directory(obstruction);
+    if (save_world(root, metadata, slot, cells, error) || !unchanged()) return false;
+    std::filesystem::remove(obstruction);
+    if (!save_world(root, metadata, slot, cells, error)) return false;
+
+    auto decoded = cells;
+    WorldSaveOwners owners{.actor_present = true, .actor = {.gold = 47u}};
+    const auto original_owners = owners;
+    WorldSaveMetadata output = metadata;
+    output.payload_hash = 0xabcdefu;
+    const auto original_output = output;
+    if (load_world(root, metadata.world_size, metadata.width + 1u, metadata.height,
+                    metadata.scene, slot, decoded, owners, output, error) ||
+        !same_cells(decoded, cells) || !same_actor(owners.actor, original_owners.actor) ||
+        owners.actor_present != original_owners.actor_present ||
+        !same_metadata(output, original_output)) return false;
+    // Header parsing also publishes metadata only on success.
+    auto corrupt_header = file_bytes(primary);
+    corrupt_header[8] = 127;
+    {
+        std::ofstream stream{primary, std::ios::binary | std::ios::trunc};
+        stream.write(corrupt_header.data(), static_cast<std::streamsize>(corrupt_header.size()));
+    }
+    if (read_world_save_metadata(primary, output, error) ||
+        !same_metadata(output, original_output)) return false;
+    return true;
+}
+
+// Exercise recovery as a sequence, not just one load of the previous generation.
+[[nodiscard]] bool repeated_backup_recovery(const std::filesystem::path& root) {
+    WorldSaveMetadata metadata{
+        .world_size = WorldSizePreset::compact,
+        .width = 69u,
+        .height = 67u,
+        .scene = world_scene,
+    };
+    const std::vector<SceneCell> original(69u * 67u,
+        SceneCell{static_cast<std::uint32_t>(Material::water), 11u, 73, 96u});
+    auto newer = original;
+    newer.back() = SceneCell{static_cast<std::uint32_t>(Material::stone), 9u, 101, 17u};
+    WorldSaveOwners owners{.actor_present = true, .actor = {.gold = 37u}};
+    std::string error;
+    constexpr auto slot = "recovery_sequence";
+    const auto primary = world_save_path(root, metadata.world_size, metadata.scene, slot);
+    const auto backup = world_save_backup_path(root, metadata.world_size, metadata.scene, slot);
+    if (!save_world(root, metadata, slot, original, owners, error) ||
+        !save_world(root, metadata, slot, newer, owners, error)) return false;
+    const auto corrupt_primary = [&] {
+        std::ofstream corrupt{primary, std::ios::binary | std::ios::trunc};
+        corrupt << "interrupted save";
+    };
+    const auto recover_original = [&] {
+        auto decoded = newer;
+        WorldSaveOwners decoded_owners{};
+        WorldSaveMetadata decoded_metadata{};
+        return load_world(root, metadata.world_size, metadata.width, metadata.height,
+                          metadata.scene, slot, decoded, decoded_owners,
+                          decoded_metadata, error) &&
+               error.find("loaded backup") != std::string::npos &&
+               same_cells(decoded, original) && decoded_owners.actor_present &&
+               same_actor(decoded_owners.actor, owners.actor);
+    };
+    corrupt_primary();
+    if (!recover_original()) return false;
+    for (int iteration = 0; iteration < 3; ++iteration) {
+        if (!save_world(root, metadata, slot, newer, owners, error)) return false;
+        corrupt_primary();
+        if (!recover_original()) {
+            std::cerr << "good backup lost after recovery/save/corruption: " << error << '\n';
+            return false;
+        }
+    }
+    std::filesystem::remove(primary);
+    if (!save_world(root, metadata, slot, newer, owners, error)) return false;
+    corrupt_primary();
+    if (!recover_original()) return false;
+
+    // A later healthy generation must still rotate normally.
+    if (!save_world(root, metadata, slot, newer, owners, error) ||
+        !save_world(root, metadata, slot, original, owners, error)) return false;
+    corrupt_primary();
+    auto decoded = original;
+    WorldSaveOwners decoded_owners{};
+    WorldSaveMetadata decoded_metadata{};
+    if (!load_world(root, metadata.world_size, metadata.width, metadata.height,
+                    metadata.scene, slot, decoded, decoded_owners,
+                    decoded_metadata, error) || !same_cells(decoded, newer)) return false;
+    return std::filesystem::is_regular_file(backup);
 }
 
 int main() {
@@ -189,6 +326,9 @@ int main() {
                     loaded_metadata, error)) return 26;
     if (loaded_metadata.format_version != 1u || loaded_owners.actor_present ||
         !same_cells(first, loaded)) return 27;
+
+    if (!repeated_backup_recovery(root)) return 28;
+    if (!rejected_saves_preserve_slot(root)) return 29;
 
     std::error_code cleanup_error;
     std::filesystem::remove_all(root, cleanup_error);

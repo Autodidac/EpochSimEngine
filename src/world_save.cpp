@@ -15,6 +15,14 @@
 #include <utility>
 #include <vector>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 namespace sandhybrid {
 namespace {
 
@@ -204,33 +212,25 @@ void append_actor(std::vector<std::uint8_t>& bytes,
         error = "failed while writing " + path.string();
         return false;
     }
-    return true;
+    stream.close();
+    if (!stream) error = "failed while closing " + path.string();
+    return static_cast<bool>(stream);
 }
 
-[[nodiscard]] bool replace_atomically(const std::filesystem::path& temporary,
-                                      const std::filesystem::path& destination,
-                                      const std::filesystem::path& backup,
-                                      std::string& error) {
+[[nodiscard]] bool publish_file(const std::filesystem::path& temporary,
+                                const std::filesystem::path& destination,
+                                std::string& error) {
+#ifdef _WIN32
+    // std::filesystem::rename cannot replace an existing file on Windows.
+    if (MoveFileExW(temporary.c_str(), destination.c_str(),
+                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return true;
+    const std::error_code filesystem_error{
+        static_cast<int>(GetLastError()), std::system_category()};
+#else
     std::error_code filesystem_error;
-    std::filesystem::remove(backup, filesystem_error);
-    filesystem_error.clear();
-    if (std::filesystem::is_regular_file(destination, filesystem_error)) {
-        filesystem_error.clear();
-        std::filesystem::rename(destination, backup, filesystem_error);
-        if (filesystem_error) {
-            error = "unable to rotate existing save: " + filesystem_error.message();
-            return false;
-        }
-    }
-    filesystem_error.clear();
     std::filesystem::rename(temporary, destination, filesystem_error);
     if (!filesystem_error) return true;
-
-    std::error_code restore_error;
-    if (std::filesystem::is_regular_file(backup, restore_error)) {
-        restore_error.clear();
-        std::filesystem::rename(backup, destination, restore_error);
-    }
+#endif
     error = "unable to publish save: " + filesystem_error.message();
     return false;
 }
@@ -266,15 +266,11 @@ void append_actor(std::vector<std::uint8_t>& bytes,
         return false;
     }
     stream.close();
-    std::error_code filesystem_error;
-    std::filesystem::remove(destination, filesystem_error);
-    filesystem_error.clear();
-    std::filesystem::rename(temporary, destination, filesystem_error);
-    if (filesystem_error) {
-        error = "unable to publish save manifest: " + filesystem_error.message();
+    if (!stream) {
+        error = "failed while closing save manifest";
         return false;
     }
-    return true;
+    return publish_file(temporary, destination, error);
 }
 
 [[nodiscard]] bool read_file(const std::filesystem::path& path,
@@ -373,11 +369,13 @@ void append_actor(std::vector<std::uint8_t>& bytes,
                                      const Scene expected_scene,
                                      const std::span<SceneCell> cells,
                                      WorldSaveOwners& owners,
-                                     WorldSaveMetadata& metadata,
-                                     std::string& error) {
+                                     WorldSaveMetadata& output_metadata,
+                                     std::string& error,
+                                     const bool validate_only = false) {
     std::vector<std::uint8_t> bytes;
     if (!read_file(path, bytes, error)) return false;
     std::size_t offset{};
+    WorldSaveMetadata metadata{};
     if (!decode_header(bytes, metadata, offset, error)) return false;
     if (metadata.world_size != expected_size || metadata.width != expected_width ||
         metadata.height != expected_height || metadata.scene != expected_scene) {
@@ -386,7 +384,7 @@ void append_actor(std::vector<std::uint8_t>& bytes,
                 " scene " + std::string{scene_save_name(metadata.scene)};
         return false;
     }
-    if (cells.size() != metadata.cell_count) {
+    if (!validate_only && cells.size() != metadata.cell_count) {
         error = "destination cell span does not match the save dimensions";
         return false;
     }
@@ -397,14 +395,15 @@ void append_actor(std::vector<std::uint8_t>& bytes,
         return false;
     }
 
-    const auto chunk_columns = (metadata.width + metadata.chunk_edge - 1u) / metadata.chunk_edge;
-    const auto chunk_rows = (metadata.height + metadata.chunk_edge - 1u) / metadata.chunk_edge;
-    if (metadata.chunk_count != chunk_columns * chunk_rows) {
+    const auto chunk_columns = 1u + (metadata.width - 1u) / metadata.chunk_edge;
+    const auto chunk_rows = 1u + (metadata.height - 1u) / metadata.chunk_edge;
+    if (metadata.chunk_count != static_cast<std::uint64_t>(chunk_columns) * chunk_rows ||
+        metadata.chunk_count > (cell_payload_end - offset) / chunk_header_bytes) {
         error = "save chunk count is invalid";
         return false;
     }
 
-    std::vector<SceneCell> decoded(cells.size());
+    std::vector<SceneCell> decoded(validate_only ? 0u : cells.size());
     for (std::uint32_t chunk_index = 0u; chunk_index < metadata.chunk_count; ++chunk_index) {
         std::uint32_t chunk_x{};
         std::uint32_t chunk_y{};
@@ -477,6 +476,13 @@ void append_actor(std::vector<std::uint8_t>& bytes,
             return false;
         }
 
+        for (const auto& cell : chunk_cells) {
+            if (cell.material >= material_count) {
+                error = "save contains an unknown material id";
+                return false;
+            }
+        }
+        if (validate_only) continue;
         std::size_t source_index{};
         for (std::uint32_t local_y = 0u; local_y < chunk_height; ++local_y) {
             const auto destination = static_cast<std::size_t>(chunk_y + local_y) * metadata.width + chunk_x;
@@ -521,15 +527,38 @@ void append_actor(std::vector<std::uint8_t>& bytes,
         return false;
     }
 
-    for (const auto& cell : decoded) {
-        if (cell.material >= material_count) {
-            error = "save contains an unknown material id";
-            return false;
-        }
-    }
     std::copy(decoded.begin(), decoded.end(), cells.begin());
     owners = decoded_owners;
+    output_metadata = metadata;
     return true;
+}
+
+[[nodiscard]] bool replace_atomically(const std::filesystem::path& temporary,
+                                      const std::filesystem::path& destination,
+                                      const std::filesystem::path& backup,
+                                      const WorldSaveMetadata& metadata,
+                                      std::string& error) {
+    // A recovered corrupt primary is not a backup generation. Validate every
+    // chunk/material/owner without allocating another resident cell field.
+    WorldSaveMetadata previous_metadata{};
+    WorldSaveOwners previous_owners{};
+    std::string validation_error;
+    if (decode_world_file(destination, metadata.world_size, metadata.width,
+                          metadata.height, metadata.scene, {}, previous_owners,
+                          previous_metadata, validation_error, true)) {
+        const auto staged_backup = backup.parent_path() / "world.bak.tmp";
+        std::error_code filesystem_error;
+        std::filesystem::copy_file(destination, staged_backup,
+            std::filesystem::copy_options::overwrite_existing, filesystem_error);
+        if (filesystem_error) {
+            error = "unable to stage save backup: " + filesystem_error.message();
+            return false;
+        }
+        // Neither the previous backup nor primary is removed before its
+        // replacement is ready. Failure leaves at least the old primary intact.
+        if (!publish_file(staged_backup, backup, error)) return false;
+    }
+    return publish_file(temporary, destination, error);
 }
 
 } // namespace
@@ -622,7 +651,11 @@ bool read_world_save_metadata(const std::filesystem::path& path,
     std::vector<std::uint8_t> bytes;
     if (!read_file(path, bytes, error)) return false;
     std::size_t offset{};
-    return decode_header(bytes, metadata, offset, error);
+    WorldSaveMetadata decoded{};
+    if (!decode_header(bytes, decoded, offset, error)) return false;
+    metadata = decoded;
+    error.clear();
+    return true;
 }
 
 bool save_world(const std::filesystem::path& application_directory,
@@ -637,7 +670,9 @@ bool save_world(const std::filesystem::path& application_directory,
     metadata.chunk_edge = world_save_chunk_edge;
     metadata.cell_count = static_cast<std::uint64_t>(metadata.width) * metadata.height;
     if (metadata.width == 0u || metadata.height == 0u || cells.size() != metadata.cell_count ||
-        metadata.scene == Scene::count) {
+        static_cast<std::uint32_t>(metadata.scene) >= legacy_scene_count ||
+        static_cast<std::uint32_t>(metadata.world_size) >
+            static_cast<std::uint32_t>(WorldSizePreset::large)) {
         error = "world save metadata does not match the supplied cell span";
         return false;
     }
@@ -671,6 +706,10 @@ bool save_world(const std::filesystem::path& application_directory,
                 const auto row = static_cast<std::size_t>(chunk_y + local_y) * metadata.width + chunk_x;
                 for (std::uint32_t local_x = 0u; local_x < chunk_width; ++local_x) {
                     const auto& cell = cells[row + local_x];
+                    if (cell.material >= material_count) {
+                        error = "world save contains an unknown material id";
+                        return false;
+                    }
                     append_cell(raw, cell);
                     if (!have_current) {
                         current = cell;
@@ -747,7 +786,7 @@ bool save_world(const std::filesystem::path& application_directory,
     const auto destination = directory / "world.shw";
     const auto backup = directory / "world.bak";
     if (!write_bytes(temporary, header, body, error)) return false;
-    if (!replace_atomically(temporary, destination, backup, error)) return false;
+    if (!replace_atomically(temporary, destination, backup, metadata, error)) return false;
     return write_manifest(directory, metadata, slot, error);
 }
 
