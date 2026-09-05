@@ -105,3 +105,17 @@ The JSON includes device and timestamp identity, resident and active dimensions,
 Startup logs distinguish reset from the first material tick. Software Vulkan also logs when queue submission returns, separating a driver call from the subsequent fence wait. A hardware first-tick fence timeout may log completed GPU marker boundaries; software timeout paths do not call back into query retrieval, because even a non-WAIT query can be serialized behind driver work. A marker identifies completed work, not the cause of an unfinished stage. Later-tick timeouts do not reuse potentially stale marker availability. A stalled run produces no successful timing report. The fence timeout does not bound time spent inside other driver calls, so automated software-driver runs should additionally use an external process deadline. The normal runtime does not collect these markers.
 
 These numbers are **not FPS or interactive frame times**. They do not measure player, rendering, UI, MAP, or Debug overhead, and do not close long-cycle, visual, or performance acceptance missions. Use the separate interactive report for presented-frame behavior.
+
+### Serial stage tracing
+
+For a stalled material tick, opt in to a more intrusive diagnostic using the same report path option:
+
+```powershell
+.\sandhybrid.exe --world-size compact --simulation-profile-report material-stage-trace.json --simulation-profile-stage-trace
+```
+
+On Linux use `./sandhybrid` with the same arguments. `--simulation-profile-stage-trace` requires `--simulation-profile-report`; it cannot run alone or alongside any acceptance-report mode. The existing fresh-filename refusal and exit-code-0 plus `completed: true` requirements still apply.
+
+Stage tracing starts one fresh material tick with zero warmup ticks and one sample. It submits the existing eleven production stages separately, in their original order and scope, using a separate bounded submission for each stage. The output is labeled `serial-stage-diagnostic-not-performance`. These forced submission boundaries change scheduling and synchronization: results are not comparable to normal material profiling, interactive timing, or FPS, and cannot establish a performance improvement or acceptance pass. This option is off by default and retains the profiler's hidden window and exclusions for rendering, actors, input, save/autoload, and live MAP/Debug work.
+
+"Cold" in its log means a freshly reset simulation with no warmup, not an emptied driver shader cache; the diagnostic never clears that cache. Cancellation observed after a completed stage prevents the next stage submission and produces no partial-tick report. A timed-out stage may still be compiling or executing inside the driver: its name narrows the investigation but does not identify the internal cause.

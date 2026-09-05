@@ -343,6 +343,7 @@ int run_application(const ApplicationOptions& options) {
         .long_cycle_acceptance_report = options.long_cycle_acceptance_report,
         .interactive_acceptance_report = options.interactive_acceptance_report,
         .simulation_profile_report = options.simulation_profile_report,
+        .simulation_profile_stage_trace = options.simulation_profile_stage_trace,
     };
     reset_camera_home(shared_state, simulation_config);
     reset_map_view(shared_state, simulation_config);

@@ -515,7 +515,11 @@ if(BUILD_TESTING)
                 runtime_separate runtime_equals
                 long_cycle_separate long_cycle_equals
                 interactive_separate interactive_equals
-                separate_help equals_help)
+                separate_help equals_help
+                stage_trace_standalone stage_trace_existing_path
+                stage_trace_runtime stage_trace_long_cycle stage_trace_interactive
+                stage_trace_runtime_profile stage_trace_long_cycle_profile
+                stage_trace_interactive_profile stage_trace_help stage_trace_profile_help)
             add_test(NAME sandhybrid_profile_cli_${profile_cli_case}
                 COMMAND ${CMAKE_COMMAND}
                     "-DSANDHYBRID_EXECUTABLE=$<TARGET_FILE:SandHybrid_Demo>"

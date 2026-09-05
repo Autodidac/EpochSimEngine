@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <cstdio>
@@ -41,6 +42,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -3114,17 +3116,21 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
     }
 
-    template<bool Profile = false>
+    template<bool Profile = false, typename StageBoundary = std::nullptr_t>
     void record_simulation_step(const VkCommandBuffer command_buffer,
                                 const SharedState& state,
                                 const bool /*collect_debug_stats*/,
-                                const VkQueryPool profile_queries = VK_NULL_HANDLE) {
+                                const VkQueryPool profile_queries = VK_NULL_HANDLE,
+                                StageBoundary stage_boundary = nullptr) {
         // The normal instantiation emits no profiling commands or resources.
         // Profiling is an explicit isolated run, never hidden Debug overhead.
         const auto mark_profile = [&]([[maybe_unused]] const std::uint32_t boundary) {
-            if constexpr (Profile)
+            if constexpr (Profile) {
                 vkCmdWriteTimestamp(command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                                     profile_queries, boundary);
+                if constexpr (!std::is_same_v<StageBoundary, std::nullptr_t>)
+                    stage_boundary(boundary);
+            }
         };
         mark_profile(0u);
         const auto active_section_x = state.active_window_origin_x.load(std::memory_order_relaxed);
@@ -11247,8 +11253,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             "macro_movement", "structural_repair", "movement_snapshot",
             "fine_movement", "bee_birth_and_movement",
         };
-        const std::uint32_t warmup_ticks = cpu_physical_device ? 2u : 32u;
-        const std::uint32_t requested_samples = cpu_physical_device ? 8u : 240u;
+        const bool serial_stage_trace = config.simulation_profile_stage_trace;
+        const std::uint32_t warmup_ticks = serial_stage_trace ? 0u :
+            (cpu_physical_device ? 2u : 32u);
+        const std::uint32_t requested_samples = serial_stage_trace ? 1u :
+            (cpu_physical_device ? 8u : 240u);
+        if (serial_stage_trace)
+            startup_log("Serial stage trace: one cold material tick, NOT performance timing.");
 
         VkPhysicalDeviceProperties properties{};
         vkGetPhysicalDeviceProperties(physical_device, &properties);
@@ -11312,7 +11323,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                  "vkCreateFence(simulation profile)");
         bool queries_initialized{};
         bool first_tick_in_flight{};
-        const auto submit = [&](auto&& record) {
+        const auto begin_commands = [&] {
             check_vk(vkResetFences(device, 1u, &resources.fence),
                      "vkResetFences(simulation profile)");
             check_vk(vkResetCommandBuffer(resources.commands, 0u),
@@ -11323,7 +11334,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             };
             check_vk(vkBeginCommandBuffer(resources.commands, &begin_info),
                      "vkBeginCommandBuffer(simulation profile)");
-            record(resources.commands);
+        };
+        const auto finish_commands = [&](const std::string_view stage_name = {}) {
+            if (!stage_name.empty())
+                startup_log("Serial stage trace: submitting " + std::string{stage_name} + '.');
             check_vk(vkEndCommandBuffer(resources.commands),
                      "vkEndCommandBuffer(simulation profile)");
             const VkSubmitInfo submit_info{
@@ -11374,7 +11388,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 throw std::runtime_error("Simulation profiler GPU submission timed out.");
             }
             check_vk(wait, "vkWaitForFences(simulation profile)");
+            if (!stage_name.empty())
+                startup_log("Serial stage trace: completed " + std::string{stage_name} + '.');
             return Clock::now() - submitted_at;
+        };
+        const auto submit = [&](auto&& record) {
+            begin_commands();
+            record(resources.commands);
+            return finish_commands();
         };
 
         // Freeze the normal Camera Home scope independently of native input;
@@ -11416,11 +11437,41 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                             std::to_string(tick) +
                             (tick < warmup_ticks ? " (warmup)." : " (measured)."));
             first_tick_in_flight = tick == 0u;
-            const auto submission_duration = submit([&](const VkCommandBuffer command_buffer) {
-                vkCmdResetQueryPool(command_buffer, resources.queries, 0u, query_count);
-                record_simulation_step<true>(command_buffer, profile_state, false,
-                                             resources.queries);
-            });
+            Clock::duration submission_duration{};
+            if (serial_stage_trace) {
+                const auto trace_started_at = Clock::now();
+                begin_commands();
+                vkCmdResetQueryPool(resources.commands, resources.queries, 0u, query_count);
+                std::uint32_t next_boundary = 1u;
+                const auto checkpoint = [&](const std::uint32_t boundary) {
+                    if (boundary == 0u) return;
+                    if (boundary != next_boundary || boundary >= query_count)
+                        throw std::runtime_error("Serial stage trace boundary order is invalid.");
+                    finish_commands(stage_names[boundary - 1u]);
+                    ++next_boundary;
+                    // Every top-level span rebinds its pipeline/descriptors and
+                    // push values. Do not split inside a fine/macro phase loop:
+                    // those loops intentionally keep their binding between phases.
+                    if (boundary + 1u < query_count) {
+                        if (stop_requested.load(std::memory_order_acquire) ||
+                            application_state.quit.load(std::memory_order_acquire))
+                            throw std::runtime_error(
+                                "Serial stage trace cancelled after a completed stage; no report.");
+                        begin_commands();
+                    }
+                };
+                record_simulation_step<true>(resources.commands, profile_state, false,
+                                             resources.queries, checkpoint);
+                if (next_boundary != query_count)
+                    throw std::runtime_error("Serial stage trace did not finish every stage.");
+                submission_duration = Clock::now() - trace_started_at;
+            } else {
+                submission_duration = submit([&](const VkCommandBuffer command_buffer) {
+                    vkCmdResetQueryPool(command_buffer, resources.queries, 0u, query_count);
+                    record_simulation_step<true>(command_buffer, profile_state, false,
+                                                 resources.queries);
+                });
+            }
             first_tick_in_flight = false;
             if (cpu_physical_device)
                 startup_log("Simulation profile: software material tick " +
@@ -11481,7 +11532,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         };
         report << "{\n  \"schema\": 1,\n"
                << "  \"backend\": \"vulkan-timestamps\",\n"
-               << "  \"measurement\": \"isolated-material-tick-not-interactive-fps\",\n"
+               << "  \"measurement\": \""
+               << (serial_stage_trace ? "serial-stage-diagnostic-not-performance" :
+                                        "isolated-material-tick-not-interactive-fps") << "\",\n"
+               << "  \"serial_stage_submissions\": "
+               << (serial_stage_trace ? "true" : "false") << ",\n"
                << "  \"version\": \"" << SANDHYBRID_VERSION_STRING << "\",\n"
                << "  \"device\": \"" << json_escape(properties.deviceName) << "\",\n"
                << "  \"vendor_id\": " << properties.vendorID << ",\n"
@@ -11521,10 +11576,13 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                << "  \"percentile_method\": \"nearest-rank\",\n"
                << "  \"limitations\": [\n"
                   "    \"GPU marker intervals include barriers and timestamp overhead; bottom-of-pipe markers can perturb overlap.\",\n"
-                  "    \"One material tick per serialized submission; CPU recording, fence wait, query readback, startup, reset and initial MAP snapshot are outside GPU intervals.\",\n"
+               << (serial_stage_trace ?
+                  "    \"One cold tick in eleven separately fenced stages; timestamps include intervening host/queue gaps and may include driver JIT. These are stage-completion diagnostics, NOT performance comparisons.\",\n" :
+                  "    \"One material tick per serialized submission; CPU recording, fence wait, query readback, startup, reset and initial MAP snapshot are outside GPU intervals.\",\n")
+               <<
                   "    \"No presentation, input edits, player actor, save/load, live MAP refresh or Debug collection; these numbers are not interactive frame times or FPS.\",\n"
                   "    \"Startup World and fixed Camera Home window only; periodic stages include zero-work ticks, global tracked rainfall/chunk metadata and the 16-cell movement halo remain in their production scope.\",\n"
-                  "    \"This diagnostic does not prove long-cycle behavior or performance acceptance; CPU software Vulkan uses only 2 warmup and 8 measured ticks and is not hardware parity.\"\n"
+                  "    \"No long-cycle behavior or performance acceptance: serial stage trace uses zero warmup and one tick; ordinary software profiling uses 2 warmup and 8 ticks, neither is hardware parity.\"\n"
                   "  ],\n  \"total\": ";
         write_statistics(total_samples);
         report << ",\n  \"stages\": [\n";

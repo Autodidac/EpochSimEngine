@@ -11,10 +11,11 @@ namespace {
 
 void print_usage() {
     std::fprintf(stderr,
-        "Usage: sandhybrid [--world-size SIZE] [--save-slot NAME] [--runtime-acceptance-report FILE] [--long-cycle-acceptance-report FILE] [--interactive-acceptance-report FILE] [--simulation-profile-report FILE]\n"
+        "Usage: sandhybrid [--world-size SIZE] [--save-slot NAME] [--runtime-acceptance-report FILE] [--long-cycle-acceptance-report FILE] [--interactive-acceptance-report FILE] [--simulation-profile-report FILE] [--simulation-profile-stage-trace]\n"
         "World sizes: compact, standard, large\n"
         "Aliases: small=compact, medium=standard\n"
-        "Save slots are portable named folders; the default is quick.\n");
+        "Save slots are portable named folders; the default is quick.\n"
+        "Stage tracing requires --simulation-profile-report and is diagnostic, not performance timing.\n");
 }
 
 [[nodiscard]] bool apply_world_size(const std::string_view value,
@@ -129,6 +130,10 @@ int main(const int argc, char** argv) {
             }
             continue;
         }
+        if (argument == "--simulation-profile-stage-trace") {
+            options.simulation_profile_stage_trace = true;
+            continue;
+        }
         if (argument == "--simulation-profile-report") {
             if (index + 1 >= argc || std::string_view{argv[index + 1]}.empty() ||
                 std::string_view{argv[index + 1]}.starts_with("--")) {
@@ -151,6 +156,12 @@ int main(const int argc, char** argv) {
         std::fprintf(stderr, "[SandHybrid] Unknown option: %.*s\n",
                      static_cast<int>(argument.size()), argument.data());
         print_usage();
+        return 2;
+    }
+
+    if (options.simulation_profile_stage_trace && options.simulation_profile_report.empty()) {
+        std::fprintf(stderr,
+            "[SandHybrid] --simulation-profile-stage-trace requires --simulation-profile-report.\n");
         return 2;
     }
 
