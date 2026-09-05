@@ -1,5 +1,7 @@
 # SandHybrid Mission Cache
 
+- 2026-09-05 Debug/registry stage (MC-042/080/085/125/128/116/156): the real Vulkan sample at Y360 previously reported 286720 sleeping cells inside a 230400-cell region. Clipped chunk intersections now report exactly 230400 with canonical bytes unchanged. `SLEEP CELLS` names sampled capacity, not executed skipped work; unwired movement/pair metrics show `N/A`. Shared CPU/GLSL geometry fits all ten exact glyph/key entries at supported sizes; the fresh 1280x720 presented capture is agent-reviewed without clipping. Windows 1920-frame unchanged-gate timing passes: normal/REGION cadence p95 17.0181/17.0164 ms, draw p95 delta 1.7498 ms. The 137-ID registry and 18 mutation tests reject missing/duplicate/malformed missions while permitting explicit additions and evidence-backed transitions. Integrated Windows/Linux CTest passes 46/46 and 36/36; integrated Windows production with the concurrent weather fixes passes 90/90. Actual movement instrumentation, broader scheduling/device/size visuals, and personal user acceptance remain open. All 123 active statuses and frozen v2.5.28 release bytes remain unchanged.
+
 ### 2026-09-05 staged native reliability pass (after frozen v2.5.28)
 
 - The user requests continued improvements beyond the cache. The exact v2.5.28 source/artifact handoff remains frozen; subsequent local work is not a new release or Site publication instruction. Accepted hive/crescent/Nuke visuals remain unchanged. All 123 active missions and their statuses remain carried forward.

@@ -190,6 +190,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
                     "${SHADER_SOURCE_DIR}/chunks.glsl"
                     "${SHADER_SOURCE_DIR}/conservation.glsl"
                     "${SHADER_SOURCE_DIR}/debug_stats.glsl"
+                    "${SHADER_SOURCE_DIR}/debug_geometry.glsl"
                     "${SHADER_SOURCE_DIR}/actor.glsl"
                     "${SHADER_SOURCE_DIR}/terrain_generation.glsl"
                     "${SHADER_SOURCE_DIR}/epochgui_font.glsl"
@@ -349,6 +350,8 @@ if(BUILD_TESTING)
     if(Python3_Interpreter_FOUND)
         add_test(NAME sandhybrid_mission_cache_contract
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_mission_cache.py)
+        add_test(NAME sandhybrid_mission_registry_contract
+       COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_mission_cache.py)
         add_test(NAME sandhybrid_v2510_source_contract
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_v2510_contract.py)
         add_test(NAME sandhybrid_v2511_source_contract
@@ -382,6 +385,12 @@ if(BUILD_TESTING)
     target_compile_features(sandhybrid_input_routing_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_input_routing_contract)
     add_test(NAME sandhybrid_input_routing_contract COMMAND sandhybrid_input_routing_contract)
+
+    add_executable(sandhybrid_debug_geometry_contract tests/debug_geometry_contract.cpp)
+    target_include_directories(sandhybrid_debug_geometry_contract PRIVATE include shaders)
+    target_compile_features(sandhybrid_debug_geometry_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(sandhybrid_debug_geometry_contract)
+    add_test(NAME sandhybrid_debug_geometry_contract COMMAND sandhybrid_debug_geometry_contract)
 
     add_executable(sandhybrid_material_contract tests/material_contract.cpp)
     target_include_directories(sandhybrid_material_contract PRIVATE include)

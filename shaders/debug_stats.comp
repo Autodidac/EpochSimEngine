@@ -4,6 +4,7 @@
 #include "tiles.glsl"
 #include "chunks.glsl"
 #include "debug_stats.glsl"
+#include "debug_geometry.glsl"
 
 layout(local_size_x = 256) in;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
@@ -98,11 +99,12 @@ void main() {
         atomicAdd(debugStats[STAT_TOTAL_CHUNKS], 1u);
         if (chunkHas(chunk, CHUNK_SLEEPING)) {
             atomicAdd(debugStats[STAT_SLEEPING_CHUNKS], 1u);
-            uint originX = chunkPosition.x * CHUNK_CELL_SIZE;
-            uint originY = chunkPosition.y * CHUNK_CELL_SIZE;
-            uint width = min(CHUNK_CELL_SIZE, pc.width - originX);
-            uint height = min(CHUNK_CELL_SIZE, pc.height - originY);
-            atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], width * height);
+            // A 360-cell sample crosses partial 64-cell chunk rows. Counting
+            // entire chunks overstates this sample and can exceed SCOPE CELLS.
+            uint sleepingCells = debugSleepingChunkSampleCells(
+                chunkPosition.x, chunkPosition.y, CHUNK_CELL_SIZE, pc.width, pc.height,
+                uint(sampleOrigin.x), uint(sampleOrigin.y), sampleWidth, sampleHeight);
+            atomicAdd(debugStats[STAT_CHUNK_SKIPPED_CELLS], sleepingCells);
         } else {
             atomicAdd(debugStats[STAT_ACTIVE_CHUNKS], 1u);
         }

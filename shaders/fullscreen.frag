@@ -8,6 +8,7 @@
 #include "epochgui_font.glsl"
 #include "ui_text.glsl"
 #include "debug_stats.glsl"
+#include "debug_geometry.glsl"
 #include "material_appearance.glsl"
 
 layout(location = 0) out vec4 outColor;
@@ -194,8 +195,8 @@ vec3 debugStatColor(uint row) {
     const vec3 scope = vec3(0.38, 0.84, 0.94);
     if (row <= 7u) return neutral;                        // dimensions / memory
     if (row <= 13u) return scope;                         // active scope / material counts
-    if (row == 14u) return vec3(1.00, 0.62, 0.18);       // pair tests
-    if (row == 15u) return vec3(0.48, 0.58, 0.68);       // skipped work
+    if (row == 14u) return vec3(1.00, 0.62, 0.18);       // actual pair work not yet instrumented
+    if (row == 15u) return vec3(0.48, 0.58, 0.68);       // sampled sleeping capacity, not skipped work
     if (row == 16u || row == 23u) return neutral;        // hierarchy totals
     if (row == 17u || row == 24u) return debugKeyColor(1u); // active
     if (row == 18u || row == 25u) return debugKeyColor(8u); // sleeping
@@ -258,11 +259,15 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
 
     bool textHit = false;
     vec3 textColor = vec3(0.90, 0.94, 0.98);
-    if (fixedPixel(pixel, ivec2(int(panelLeft + 10u), int(panelTop + 5u)), textScale, 75u)) {
+    bool regionPage = renderPc.debugMode == 1u;
+    uint statCount = debugVisibleStatCount(panelRight - panelLeft, panelBottom - panelTop,
+                                           uint(textScale), regionPage);
+    bool allStatsFit = statCount == (regionPage ? 26u : 8u);
+    if (fixedPixel(pixel, ivec2(int(panelLeft + 10u), int(panelTop + 5u)), textScale,
+                   allStatsFit ? 75u : 201u)) {
         textHit = true;
         textColor = vec3(0.96);
     }
-    bool regionPage = renderPc.debugMode == 1u;
     uint scopeLabel = regionPage ? 197u : 198u;
     uint scopeLabelWidth = fixedTextLength(scopeLabel) * 6u;
     uint scopeLabelX = panelRight > panelLeft + scopeLabelWidth + 10u
@@ -275,9 +280,8 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
 
     const uint allStatCount = 34u;
     uint firstStat = regionPage ? 8u : 0u;
-    uint statCount = regionPage ? 26u : 8u;
-    uint rowHeight = textScale == 2 ? 18u : 12u;
-    uint headerHeight = textScale == 2 ? 24u : 15u;
+    uint rowHeight = debugStatRowHeight(uint(textScale));
+    uint headerHeight = debugHeaderHeight(uint(textScale));
     uint fixedLabels[allStatCount] = uint[allStatCount](
         1u, 174u, 175u, 176u, 177u, 178u, 179u, 143u, 137u,
         160u, 161u, 94u, 95u, 96u, 144u, 145u,
@@ -305,9 +309,20 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
     if (y >= statsTop && y < statsTop + statCount * rowHeight) {
         uint displayStat = (y - statsTop) / rowHeight;
         uint stat = firstStat + displayStat;
-        if (statPixel(pixel, ivec2(int(panelLeft + 10u),
-            int(statsTop + displayStat * rowHeight)), textScale,
-            fixedLabels[stat], fixedValues[stat])) {
+        ivec2 statOrigin = ivec2(int(panelLeft + 10u), int(statsTop + displayStat * rowHeight));
+        // Production does not instrument these movement events yet. The pair
+        // field is an old dispatch estimate, not measured work. Keep its ABI,
+        // but neither it nor empty event counters may pose as measured work.
+        bool unavailable = stat == 14u || (stat >= 28u && stat <= 30u) || stat == 33u;
+        bool statHit;
+        if (unavailable) {
+            int valueX = int(fixedTextLength(fixedLabels[stat])) * 6 * textScale + 4 * textScale;
+            statHit = fixedPixel(pixel, statOrigin, textScale, fixedLabels[stat]) ||
+                      fixedPixel(pixel, statOrigin + ivec2(valueX, 0), textScale, 200u);
+        } else {
+            statHit = statPixel(pixel, statOrigin, textScale, fixedLabels[stat], fixedValues[stat]);
+        }
+        if (statHit) {
             textHit = true;
             textColor = debugStatColor(stat);
         }
@@ -317,15 +332,17 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
         uint separators[4] = uint[4](3u, 8u, 15u, 19u);
         for (uint separator = 0u; separator < 4u; ++separator) {
             uint separatorY = statsTop + separators[separator] * rowHeight - 4u;
-            if (y == separatorY && x >= panelLeft + 8u && x < panelRight - 8u)
+            if (separators[separator] < statCount && y == separatorY &&
+                x >= panelLeft + 8u && x < panelRight - 8u)
                 color = vec3(0.09, 0.16, 0.22);
         }
     }
 
-    uint keyRows = 5u;
-    uint cardHeight = textScale == 2 ? 36u : 28u;
-    uint keyTitleHeight = textScale == 2 ? 22u : 14u;
-    uint cardsHeight = keyTitleHeight + keyRows * cardHeight + 10u;
+    uint keyColumns = debugLegendColumns(panelRight - panelLeft, uint(textScale));
+    uint keyRows = debugLegendRows(panelRight - panelLeft, uint(textScale));
+    uint cardHeight = debugLegendCardHeight(uint(textScale));
+    uint keyTitleHeight = debugLegendTitleHeight(uint(textScale));
+    uint cardsHeight = debugLegendHeight(panelRight - panelLeft, uint(textScale));
     uint keyTop = max(statsTop + statCount * rowHeight + 8u,
                       panelBottom > cardsHeight ? panelBottom - cardsHeight : panelTop);
     if (regionPage &&
@@ -333,12 +350,17 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
         textHit = true;
         textColor = vec3(0.96);
     }
+    uint unavailableLabelWidth = fixedTextLength(202u) * 6u;
+    if (regionPage && fixedPixel(pixel,
+        ivec2(int(panelRight - unavailableLabelWidth - 10u), int(keyTop + 2u)), 1, 202u)) {
+        textHit = true;
+        textColor = vec3(0.62, 0.76, 0.90);
+    }
     const uint keyCount = 10u;
     uint keyLabels[keyCount] = uint[keyCount](
         128u, 29u, 131u, 130u, 132u, 135u, 133u, 134u, 28u, 129u);
-    uint keyColumns = panelRight - panelLeft >= 330u ? 2u : 1u;
     uint keyColumnWidth = max((panelRight - panelLeft - 20u) / keyColumns, 1u);
-    uint swatchSize = textScale == 2 ? 24u : 18u;
+    uint swatchSize = debugLegendSwatchSize(uint(textScale));
     if (regionPage && y >= keyTop + keyTitleHeight) {
         uint row = (y - keyTop - keyTitleHeight) / cardHeight;
         uint localX = x > panelLeft + 10u ? x - panelLeft - 10u : 0u;
@@ -365,9 +387,8 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
                 vec3 keyColor = debugKeyColor(key);
                 color = debugStateMarkerPixel(key, markerLocal)
                     ? mix(keyColor, vec3(1.0), 0.86) : keyColor;
-                if (borderPixel(x, y, keyLeft + 4u, swatchTop,
-                                keyLeft + 4u + swatchSize, swatchTop + swatchSize))
-                    color = vec3(0.92);
+                // The card owns the border. A border over this 8x8 sample
+                // hides the exact edge/corner glyphs the key must explain.
             }
             if (keyY + 7u * uint(textScale) < panelBottom &&
                 fixedPixel(pixel, ivec2(int(keyLeft + swatchSize + 12u), int(keyY + 7u)),
@@ -705,7 +726,10 @@ void main() {
     if (renderPc.debugMode != 0u && sidebarWidth >= 300u && x >= sidebarLeft &&
         y >= renderPc.statusHeight) {
         vec3 debugColor = vec3(0.006, 0.010, 0.018);
-        int debugScale = renderPc.windowHeight > renderPc.statusHeight + 560u ? 2 : 1;
+        uint panelHeight = renderPc.windowHeight > renderPc.statusHeight + 8u
+            ? renderPc.windowHeight - renderPc.statusHeight - 8u : 0u;
+        int debugScale = int(debugPanelTextScale(sidebarWidth - 8u, panelHeight,
+                                                 renderPc.debugMode == 1u));
         debugPanelPixel(pixel, x, y, sidebarLeft + 4u, renderPc.statusHeight + 4u,
                         renderPc.windowWidth - 4u, renderPc.windowHeight - 4u,
                         debugScale, debugColor);
