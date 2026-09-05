@@ -2,13 +2,17 @@
 #include "sandhybrid/world_save.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace sandhybrid;
@@ -180,6 +184,191 @@ static_assert(world_dimensions(WorldSizePreset::large).width == 10240u);
     return std::filesystem::is_regular_file(backup);
 }
 
+// Deliberately repair the schema-2 wire checksums after fixture mutations. A
+// rejected magic/hash would not exercise backup rotation's validate_only path
+// through decoded materials, chunk layout, RLE runs, and actor-owner semantics.
+namespace semantic_save_fixture {
+constexpr std::size_t header_bytes = 72u;
+constexpr std::size_t chunk_header_bytes = 32u;
+constexpr std::size_t owner_header_bytes = 16u;
+constexpr std::size_t payload_hash_offset = 56u;
+
+[[nodiscard]] std::uint32_t u32_at(const std::vector<char>& bytes, const std::size_t offset) {
+    std::uint32_t value{};
+    for (std::size_t byte = 0u; byte < 4u; ++byte)
+        value |= static_cast<std::uint32_t>(static_cast<unsigned char>(bytes.at(offset + byte)))
+                 << (byte * 8u);
+    return value;
+}
+
+void put_u32(std::vector<char>& bytes, const std::size_t offset, const std::uint32_t value) {
+    for (std::size_t byte = 0u; byte < 4u; ++byte)
+        bytes.at(offset + byte) = static_cast<char>((value >> (byte * 8u)) & 0xffu);
+}
+
+void refresh_checksums(std::vector<char>& bytes) {
+    auto offset = header_bytes;
+    const auto chunk_count = u32_at(bytes, 36u);
+    for (std::uint32_t chunk = 0u; chunk < chunk_count; ++chunk) {
+        const auto payload_size = u32_at(bytes, offset + 24u);
+        std::uint32_t chunk_hash = 2166136261u;
+        for (const auto byte : std::span<const char>{bytes}.subspan(
+                 offset + chunk_header_bytes, payload_size)) {
+            chunk_hash ^= static_cast<unsigned char>(byte);
+            chunk_hash *= 16777619u;
+        }
+        put_u32(bytes, offset + 28u, chunk_hash);
+        offset += chunk_header_bytes + payload_size;
+    }
+    std::uint64_t payload_hash = 14695981039346656037ull;
+    for (const auto byte : std::span<const char>{bytes}.subspan(header_bytes)) {
+        payload_hash ^= static_cast<unsigned char>(byte);
+        payload_hash *= 1099511628211ull;
+    }
+    for (std::size_t byte = 0u; byte < 8u; ++byte)
+        bytes.at(payload_hash_offset + byte) =
+            static_cast<char>((payload_hash >> (byte * 8u)) & 0xffu);
+}
+
+[[nodiscard]] bool write(const std::filesystem::path& path, const std::vector<char>& bytes) {
+    std::ofstream stream{path, std::ios::binary | std::ios::trunc};
+    stream.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    stream.close();
+    return static_cast<bool>(stream);
+}
+
+enum class Corruption {
+    raw_material, rle_material, actor_inventory, actor_position,
+    chunk_origin, partial_chunk_extent, zero_rle_run,
+};
+
+struct Case {
+    Corruption corruption;
+    std::string_view slot;
+    std::string_view expected_error;
+};
+} // namespace semantic_save_fixture
+
+[[nodiscard]] bool semantic_corruption_preserves_backup(const std::filesystem::path& root) {
+    using namespace semantic_save_fixture;
+    constexpr std::array cases{
+        Case{Corruption::raw_material, "semantic_raw_material", "save contains an unknown material id"},
+        Case{Corruption::rle_material, "semantic_rle_material", "save contains an unknown material id"},
+        Case{Corruption::actor_inventory, "semantic_actor_inventory", "save actor owner state is out of range"},
+        Case{Corruption::actor_position, "semantic_actor_position", "save actor owner state is out of range"},
+        Case{Corruption::chunk_origin, "semantic_chunk_origin", "save chunk layout is invalid"},
+        Case{Corruption::partial_chunk_extent, "semantic_chunk_extent", "save chunk layout is invalid"},
+        Case{Corruption::zero_rle_run, "semantic_zero_rle_run", "run-length save chunk is invalid"},
+    };
+    const WorldSaveMetadata metadata{
+        .world_size = WorldSizePreset::compact, .width = 69u, .height = 67u, .scene = world_scene};
+    const std::vector<SceneCell> original(69u * 67u,
+        SceneCell{static_cast<std::uint32_t>(Material::water), 11u, 73, 96u});
+    const WorldSaveOwners original_owners{
+        .actor_present = true, .actor = {.x = 23, .y = 31, .enabled = 1u, .gold = 37u}};
+    std::string error;
+    for (const auto& test : cases) {
+        const auto fail = [&](const std::string_view stage) {
+            std::cerr << test.slot << ": " << stage << ": " << error << '\n';
+            return false;
+        };
+        auto prior_primary = original;
+        prior_primary.back().temperature = 91;
+        if (test.corruption == Corruption::raw_material) {
+            // Unique ages force raw encoding in the first complete 64x64 chunk.
+            for (std::size_t index = 0u; index < prior_primary.size(); ++index)
+                prior_primary[index].age = static_cast<std::uint32_t>(index);
+        }
+        auto primary_owners = original_owners;
+        primary_owners.actor.gold = 47u;
+        auto next_cells = original;
+        next_cells.front() = SceneCell{static_cast<std::uint32_t>(Material::stone), 9u, 101, 17u};
+        auto next_owners = original_owners;
+        next_owners.actor.gold = 57u;
+        if (!save_world(root, metadata, test.slot, original, original_owners, error) ||
+            !save_world(root, metadata, test.slot, prior_primary, primary_owners, error))
+            return fail("prepare two healthy generations");
+        const auto primary = world_save_path(root, metadata.world_size, metadata.scene, test.slot);
+        const auto backup = world_save_backup_path(root, metadata.world_size, metadata.scene, test.slot);
+        const auto good_backup = file_bytes(backup);
+        auto bytes = file_bytes(primary);
+        if (good_backup.empty() || bytes.size() < header_bytes + chunk_header_bytes +
+                owner_header_bytes + world_save_actor_bytes || u32_at(bytes, 36u) != 4u)
+            return fail("fixture wire layout");
+        const auto first_payload = header_bytes + chunk_header_bytes;
+        const auto first_encoding = u32_at(bytes, header_bytes + 16u);
+        auto last_chunk = header_bytes;
+        for (std::uint32_t chunk = 1u; chunk < 4u; ++chunk)
+            last_chunk += chunk_header_bytes + u32_at(bytes, last_chunk + 24u);
+        const auto actor_payload = bytes.size() - world_save_actor_bytes;
+        switch (test.corruption) {
+        case Corruption::raw_material:
+            if (first_encoding != 0u) return fail("raw fixture was not encoded raw");
+            put_u32(bytes, first_payload, material_count);
+            break;
+        case Corruption::rle_material:
+            if (first_encoding != 1u) return fail("RLE fixture was not encoded RLE");
+            put_u32(bytes, first_payload + 4u, material_count);
+            break;
+        case Corruption::actor_inventory:
+            put_u32(bytes, actor_payload + 4u * 4u, 10000u); // Gold owner exceeds 9999.
+            break;
+        case Corruption::actor_position:
+            put_u32(bytes, actor_payload, metadata.width); // Enabled actor lies just outside.
+            break;
+        case Corruption::chunk_origin:
+            put_u32(bytes, last_chunk, 0u); // Final x must be 64, not an overlapping x=0.
+            break;
+        case Corruption::partial_chunk_extent:
+            if (u32_at(bytes, last_chunk + 8u) != 5u ||
+                u32_at(bytes, last_chunk + 12u) != 3u)
+                return fail("partial-edge fixture dimensions");
+            put_u32(bytes, last_chunk + 8u, 4u); // Final chunk is exactly 5x3.
+            break;
+        case Corruption::zero_rle_run:
+            if (first_encoding != 1u) return fail("RLE fixture was not encoded RLE");
+            put_u32(bytes, first_payload, 0u);
+            break;
+        }
+        refresh_checksums(bytes);
+        if (!write(primary, bytes)) return fail("write checksummed semantic corruption");
+        WorldSaveMetadata checked_header{};
+        if (!read_world_save_metadata(primary, checked_header, error))
+            return fail("corruption failed before semantic decode");
+
+        auto recovered = next_cells;
+        WorldSaveOwners recovered_owners{};
+        WorldSaveMetadata recovered_metadata{};
+        const auto recovers_original = [&] {
+            return load_world(root, metadata.world_size, metadata.width, metadata.height,
+                              metadata.scene, test.slot, recovered, recovered_owners,
+                              recovered_metadata, error) &&
+                   error.find("loaded backup") != std::string::npos &&
+                   same_cells(recovered, original) && recovered_owners.actor_present &&
+                   same_actor(recovered_owners.actor, original_owners.actor);
+        };
+        if (!recovers_original() || error.find(test.expected_error) == std::string::npos ||
+            file_bytes(backup) != good_backup)
+            return fail("semantic rejection and exact backup recovery");
+
+        // save_world must perform the same semantic rejection with validate_only
+        // rather than rotate the checksummed-but-invalid primary over this backup.
+        if (!save_world(root, metadata, test.slot, next_cells, next_owners, error) ||
+            file_bytes(backup) != good_backup)
+            return fail("valid save rotated an invalid primary");
+        if (!load_world(root, metadata.world_size, metadata.width, metadata.height,
+                        metadata.scene, test.slot, recovered, recovered_owners,
+                        recovered_metadata, error) || !error.empty() ||
+            !same_cells(recovered, next_cells) || !recovered_owners.actor_present ||
+            !same_actor(recovered_owners.actor, next_owners.actor))
+            return fail("new primary was not published exactly");
+        if (!write(primary, {'b', 'a', 'd'}) || !recovers_original() ||
+            file_bytes(backup) != good_backup)
+            return fail("good backup lost after semantic recovery/save/corruption");
+    }
+    return true;
+}
+
 int main() {
     if (parse_world_size("small") != WorldSizePreset::compact) return 1;
     if (parse_world_size("MEDIUM") != WorldSizePreset::standard) return 2;
@@ -329,6 +518,7 @@ int main() {
 
     if (!repeated_backup_recovery(root)) return 28;
     if (!rejected_saves_preserve_slot(root)) return 29;
+    if (!semantic_corruption_preserves_backup(root)) return 30;
 
     std::error_code cleanup_error;
     std::filesystem::remove_all(root, cleanup_error);
