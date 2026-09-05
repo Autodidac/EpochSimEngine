@@ -19,6 +19,33 @@ The World is a finite closed material system except for explicit user edits and 
 
 The in-app KEYMAP is authoritative for the complete current bindings.
 
+## Reading Debug
+
+Click **DEBUG** to cycle through REGION, WORLD TOTALS, and off. REGION adds sparse tile-edge markers; WORLD TOTALS and MAP do not add those markers. The material colors remain underneath them. The sidebar MARKER KEY shows the same shapes as the world, not a second color-only coding system.
+
+| Marker label | Shape within an 8x8 tile | Meaning |
+| --- | --- | --- |
+| DAMAGED | Top and both side edges | Damage or collapse flag is set. |
+| ACTIVE | Upper-left corner | Active tile without a higher-priority marker. |
+| FINE ACTIVE | Three separated top-edge dots | Fine-cell work owns this tile. |
+| BULK MOVED | Short lower-right side | A macro movement flag is set. |
+| BULK READY | Upper-right corner | Bulk-ready or macro-movable ownership. Eligibility is not proof of a move. |
+| BREAKUP | Short middle bars on both sides | An awake packet is marked for fine fallback. |
+| SETTLED | Short central top bar | Settled-medium ownership. |
+| ENCLOSED | Upper corners and short lower sides | Enclosed-medium ownership. |
+| SLEEPING | Short lower-left side | Sleeping tile. |
+| STABLE | No overlay | None of the displayed state markers applies. |
+
+Flags can overlap. The displayed marker uses this priority: damaged, fine active, bulk moved, breakup, bulk ready, settled, enclosed, sleeping, active, stable. Consequently, marker totals need not match each separately counted flag. Markers do not draw a horizontal bottom edge across the material surface.
+
+REGION statistics are a bounded snapshot of **one up-to-640x360 region**, not a census of the whole camera window or World. While running, sampling rotates through the 4x4 active window at a 120-tick cadence; values are retained between samples and while paused. Hidden Debug performs no collection. On small windows the layout reduces text size; `RESIZE FOR STATS` means some statistic rows do not fit, while the marker key remains available.
+
+- `SAMPLED CELLS/TILES/CHUNKS` describe the inspected region. Boundary chunks may be only partly inside it. `MATERIAL CELLS` counts non-Vacuum cells, not simulation work; `STRUCT`, `LIQUID`, and `GAS` are sampled material classifications.
+- `ACTIVE WINDOWS` counts the active region grid, not busy tiles. Fine, bulk, settled, gas, and liquid tile counts are ownership flags and can overlap; do not sum them as separate material volumes. `DIRTY CHUNKS` means pending invalidation/reclassification, not corruption.
+- `SLEEP CELLS` is the sampled cell capacity inside sleeping chunks, clipped to the sample. It is **not** the number of instructions or movement attempts skipped. `CELLS MOVED` counts cells carrying the moved/handled flag in that snapshot, not a measured displacement rate.
+- `PAIR WORK`, `FINE SWAPS`, `BULK MOVES`, `BULK CELLS`, and `FINE REPAIR` currently show `N/A`: these production event counts are not instrumented. `N/A` does not mean zero activity.
+- WORLD TOTALS contains FPS and resident grid dimensions/capacities. `CELL MEMORY MB` is an approximate MiB estimate for the two cell buffers and per-cell light prefix, not total process/GPU memory; hierarchy, column metadata, images, staging, and driver allocations are additional.
+
 ## World and weather
 
 Every district shares one aligned grass surface. The high sky contains one continuous conserved Cloud deck. Steam joins Cloud one-for-one; mature Cloud returns staggered equal-temperature Water-family units as rain without waking the whole deck at once. Acid, corrosion, ecology, weather, and phase rules may change a material only through a declared source/sink transaction. Volcano, Waterworks, experiments, and terrain are examples of the same material APIs rather than separate scripted worlds.
