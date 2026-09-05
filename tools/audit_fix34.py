@@ -224,7 +224,8 @@ for token in ("aux_bee_swarm", "home_x != queen_x",
               "fix29_bee_target_from_age", "fix29_bee_target_none"):
     if token not in test:
         errors.append(f"scene-image regression test missing {token!r}")
-for token in ("beehive_button_tool_map_payload_exact", "download_map_snapshot_cells",
+for token in ("beehive_parallel_cleanup_full_footprint", "far_edges_cleared",
+              "beehive_button_tool_map_payload_exact", "download_map_snapshot_cells",
               "record_map_snapshot(command_buffer)", "map_payload_exact",
               "bee_lifecycle_gpu_transitions", "flower_target_acquired",
               "pollen_picked_up", "pollen_deposited", "honey_fed"):

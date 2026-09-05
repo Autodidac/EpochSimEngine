@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.5.28
+
+- Replaced Windows presentation sleeps with a private high-resolution one-shot waitable timer to avoid coarse-clock pacing spikes, without busy spinning, changing global timer policy, or changing fixed simulation ticks.
+
+- Fixed repeated Beehive stamps from a held click. Each press now places one complete canonical hive and 60 Bees across all cursor shapes and Cells/Tiles modes; placing again replaces the previous tool colony.
+- Added bounded recognition and cleanup of the obsolete hive/perch, preserving unrelated material, and prevented retired random nest growth from adding a second body.
+- Replaced the oversized single-invocation cleanup scan with bounded immutable snapshots and one destination writer per cell, covering the complete old-colony forager footprint on software Vulkan as well as hardware GPUs.
+- Staggered the six foragers into independent departures while preserving the other 54 formation owners, with unique home/slot metadata and single-tick movement ownership.
+- Stopped schema-2 loads from injecting a third hive. Exact recognizable v2.5.27 phantom bodies and metadata-free Bee remnants receive logged recovery in memory; ambiguous saves and all opening payloads remain untouched.
+- Rebuilt schema-1 hive migration with the correct persistent district origins, all 60 live Bee timers, and clean lifecycle flags.
+- Strengthened installed-library validation to execute both consumer identities against API 4, and included the exact EpochGui and bundled Vulkan-loader license notices in runtime packages.
+
 ## 2.5.27
 
 - Reproduced the accepted photographed no-perch Fix29 wasp hive with its exact `22x25` ragged body presentation and three outward-open 20-bee crescents, while keeping canonical shell, chamber, Queen, right-exit, Honey, and Pollen owners authoritative.

@@ -1,37 +1,39 @@
-# SandHybrid v2.5.27
+# SandHybrid v2.5.28
 
-Incremental hive, Debug, hierarchy, weather, mining, conservation, and performance correction for the SandHybrid example/runtime bundled with EpochSimEngine. This release preserves every unfinished mission as active work; it does not claim the complete backlog is finished.
+Hive placement, colony lifecycle, and save recovery correction for the SandHybrid example/runtime bundled with the EpochSimEngine library.
 
 ## Corrected behavior
 
-- Presents the exact accepted photographed saturated-golden, no-perch Fix29 hive from one fixed `22x25` ragged body mask with a compact bright comb, torn fibres, and an irregular right opening; the same canonical body is used by reset, the Beehive tool, MAP, and load normalization.
-- Retains exactly 60 live district-home SandHybrid bees in three separate outward-open 20-bee crescents and chains three distinct hazard, autonomous replacement, strict-cap, and public schema-2 save/load cycles through the prior loaded colony.
-- Separates Debug into `REGION` and `WORLD TOTALS`, leaves MAP material-only, names measured scopes plainly, and draws the marker key with the same sparse glyphs used over the World.
-- Replaces bursty MAP snapshots with a 64-band rolling refresh and measures hidden Debug through balanced interleaved normal/REGION samples against identical frozen state.
-- Makes ordinary mining acquire one stationary damageable owner from every approach, including exposed undersides; moving cells are ignored, terminal debris ejects through the impact face, player pickup is forbidden, and the radial spark burst is removed.
-- Keeps `NUKE FROM SPACE` above the intact continuous Cloud deck. A readable near-white warning flash precedes one bounded GPU Atmosphere-to-Fire edit, and affected hierarchy ownership is reclassified immediately.
-- Slows and sparsifies the scheduled rain interval. Dry Cloud does not animate rain; only tagged Water already falling continues outside the active window, clears its tag on landing, and cannot disturb an unrelated settled pool.
-- Keeps Fire, Ember, and Lava active for bounded heat/reaction work; limits skylight Grass to a shallow surface layer and preserves exact Water ownership through earth percolation toward rock.
-- Corrects Half Water split/merge ownership so exactly one displaced Atmosphere marker is carried and restored, the reserved carrier state cannot enter salinity, and temperature/pressure remain conserved.
-- Repeats finite Half Water, Water-Steam-Cloud-rain, Lava-Stone-Lava, actor-owner, and schema-2 save/load cycles without Empty/Vacuum or family-count drift.
+- Each Beehive press creates one complete photographed saturated-golden, no-perch Fix29 hive. Holding the button or moving the pointer no longer stamps duplicate colonies. Cells/Tiles mode and line-shaped brushes use the same complete prefab.
+- A recognizable obsolete body/perch is cleaned within the placement footprint, and a subsequent placement replaces the prior tool colony. Unrelated materials and authored colonies outside the overlap remain intact.
+- Cleanup uses an immutable bounded snapshot and parallel single-cell ownership, including far-ranging old-colony foragers. This replaces a serial scan that failed to reach the old body on Linux software Vulkan.
+- Exactly 60 live district-home SandHybrid bees retain unique home and formation slots. Six foragers depart independently while 54 resting Bees retain the accepted three outward-open crescents; movement claims prevent repeated movement within one dispatch.
+- Exact schema-2 loads no longer run the retired single-scene normalizer. The uniquely recognizable v2.5.27 phantom body and stale Bee remnants are repaired in memory with a log entry; ambiguous saves and all Empty/Atmosphere opening payloads are preserved.
+- Schema-1 migration reconstructs the correct district origins, live timers, and all 60 Bee owners. Retired random circular-nest growth is rejected while current queen migration and replacement lifecycle paths remain available.
 
-## Release verification
+The accepted hive/crescent artwork and high-sky Nuke presentation are unchanged.
 
-The final pre-release source checkpoint passes Windows Release CTest `43/43` and native Linux Release CTest `33/33`. Fresh installed Windows/RTX 5080 and Linux/Xvfb/llvmpipe reports pass `76/76`, including three chained colony hazard/replacement/save-load cycles with exact canonical cells, the 20-word actor owner, GPU bytes, homes, slots, and strict 60 cap. Repeated finite-ledger reports pass `12/12` on both platforms, and three installed Windows hidden Debug runs each present 1,920 frames with 208/208 balanced pairs inside the absolute draw/cadence budgets. The installed Linux chained gate exits zero in `43:01.92`, peaks at `4,172,208` KiB RSS, and uses zero swap.
+Windows presentation now uses a private high-resolution one-shot timer, avoiding dependence on other applications' ordinary-sleep timer settings. Fixed simulation ticks and presentation caps are unchanged; no global timer setting or busy wait is used.
 
-The release remains an incremental feature-boundary build. `missioncache.md` retains 122 active missions (70 PARTIAL, 35 REGRESSION, 16 OPEN, one DEFERRED), including broader bee aging/migration, longer visual recurrence, complete cross-district acceptance, and architectural backlog. Those limitations are not represented as completed work.
+## Verification and remaining work
 
-## Dependency snapshot
+Final Release builds pass 44/44 Windows and 34/34 Linux CTests, including execution of both installed API-4 library consumers and the ten supported Windows EpochGui suites. Installed RTX 5080 and Linux Xvfb/llvmpipe production reports each pass 84/84 with identical results; both installed finite-ledger/save-load reports pass 12/12. Repeat placement and the new far-edge cleanup case retain one Queen, 60 Bees, and 193 shell cells. The autonomous fixture observes six independent foragers and 54 resting owners; three chained hazard/save-load cycles recover distinct missing slots without exceeding 60.
 
-The complete vendored EpochGui dependency is synchronized from the canonical GitHub-independent Site mirror to v0.89.30 at `b97167423373b9a7af3f821dcf91d8a71613dbf2`. The current 113,598-byte Site source alias verifies SHA-256 `c42bcdaa91953ef7b59a38453733431a5a73c5109df6ab151f6d78d68d734026` and matches the 53-file tagged tree. The documented CMake 3.28/GNU module-compatibility boundary remains the only integration delta.
+Two final installed Windows presentation passes each capture 1,920 frames and all nine visual states under unchanged acceptance gates. Normal/REGION cadence p95 is 17.0189/16.9651 ms and 17.0428/16.9811 ms; draw p95 deltas are 1.4828 and 1.3834 ms. Linux captures all nine states in 15 presented frames; its software-renderer performance is explicitly ungated. Agent-reviewed hive captures preserve the accepted artwork. These bounded results do not establish that every workload is jitter-free or replace personal user visual acceptance.
+
+The Linux production run exits zero in 57:49.33, peaks at 9,773,760 KiB RSS, and uses zero swap (elapsed time includes one brief intentional pause for Windows timing isolation). Linux finite/save cycles take 0:50.06 with 1,417,384 KiB maximum RSS; presentation takes 7:45.47 with 1,530,868 KiB maximum RSS, both with zero swap. Earlier failed cleanup and timing reports are retained; no acceptance threshold was relaxed.
+
+The mission cache retains 123 active missions (70 PARTIAL, 36 REGRESSION, 16 OPEN, one DEFERRED). Broader bee aging/migration, long visual recurrence, cross-district acceptance, and the architectural backlog remain active. The user has authorized release after the package gates, but has not personally visually checked this correction.
+
+## Dependency
+
+The complete canonical EpochGui snapshot remains v0.89.30 at b97167423373b9a7af3f821dcf91d8a71613dbf2, confirmed against the Site mirror on 2026-09-04. Its CMake/GNU compatibility boundary remains documented in third_party/EpochGui/SNAPSHOT.md.
 
 ## Stable release assets
 
-- SandHybrid-Windows-x64-v2.5.27.zip
-- SandHybrid-Windows-x64-v2.5.27.zip.sha256
-- SandHybrid-Linux-x64-v2.5.27.tar.gz
-- SandHybrid-Linux-x64-v2.5.27.tar.gz.sha256
-- SandHybrid-v2.5.27-source.tar.gz
-- SandHybrid-v2.5.27-source.tar.gz.sha256
+- SandHybrid-Windows-x64-v2.5.28.zip
+- SandHybrid-Linux-x64-v2.5.28.tar.gz
+- SandHybrid-v2.5.28-source.tar.gz
+- EpochSimEngine-v2.5.28-source.zip (the same platform-neutral committed source in Windows-friendly ZIP form)
 
-Updater-facing aliases remain `SandHybrid-Windows-x64-current.zip`, `SandHybrid-Linux-x64-current.tar.gz`, and `simengine-source.tar.gz`; each must be byte-identical to its immutable v2.5.27 object and carry a matching checksum sidecar. The public release is a normal visible Site release. GitHub repository, tags, and releases remain outside this publication scope.
+Each archive has a sibling SHA-256 record. Current aliases retain their existing names and are updated only after matching immutable objects verify. Site publication is a normal visible release; GitHub publication is out of scope.

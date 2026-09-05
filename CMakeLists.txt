@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(EpochSimEngine VERSION 2.5.27 LANGUAGES CXX)
+project(EpochSimEngine VERSION 2.5.28 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -331,6 +331,18 @@ install(FILES
 )
 install(FILES README.md LICENSE CHANGELOG.md DESTINATION .)
 install(FILES docs/library.md docs/sandhybrid.md docs/development.md DESTINATION docs)
+if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
+    install(FILES third_party/EpochGui/LICENSE
+        DESTINATION docs/licenses RENAME EpochGui.txt)
+    if(WIN32 AND DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
+        set(SANDHYBRID_LOADER_NOTICE
+            "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/vulkan-loader/copyright")
+        if(EXISTS "${SANDHYBRID_LOADER_NOTICE}")
+            install(FILES "${SANDHYBRID_LOADER_NOTICE}"
+                DESTINATION docs/licenses RENAME VulkanLoader.txt)
+        endif()
+    endif()
+endif()
 
 if(BUILD_TESTING)
     find_package(Python3 COMPONENTS Interpreter QUIET)
@@ -490,6 +502,7 @@ if(BUILD_TESTING)
             "-DSANDHYBRID_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
             "-DSANDHYBRID_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"
             "-DSANDHYBRID_CONFIG=$<CONFIG>"
+            "-DSANDHYBRID_CTEST_COMMAND=${CMAKE_CTEST_COMMAND}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run_downstream_smoke.cmake"
     )
     set_tests_properties(sandhybrid_downstream_package_contract PROPERTIES RUN_SERIAL TRUE)

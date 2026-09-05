@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.28)
 project(EpochSimEngineDownstreamConsumer LANGUAGES CXX)
 
+enable_testing()
+
 find_package(EpochSimEngine CONFIG REQUIRED)
 
 add_executable(epochsimengine_downstream_consumer main.cpp)
@@ -10,3 +12,6 @@ target_compile_features(epochsimengine_downstream_consumer PRIVATE cxx_std_23)
 add_executable(sandhybrid_compat_downstream_consumer main.cpp)
 target_link_libraries(sandhybrid_compat_downstream_consumer PRIVATE SandHybrid::SandHybrid)
 target_compile_features(sandhybrid_compat_downstream_consumer PRIVATE cxx_std_23)
+
+add_test(NAME epochsimengine_installed_consumer COMMAND epochsimengine_downstream_consumer)
+add_test(NAME sandhybrid_compat_installed_consumer COMMAND sandhybrid_compat_downstream_consumer)

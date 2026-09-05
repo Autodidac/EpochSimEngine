@@ -32,3 +32,9 @@ The installed package exports `EpochSimEngineConfig.cmake` plus the compatibilit
 - Runtime-only headers are not installed with the core public API.
 
 The current implementation is evolving behind preserved mission acceptance. API or behavior claims are complete only when their platform contracts, runtime evidence, and package checks pass.
+
+## Licenses and binary requirements
+
+EpochSimEngine's own code uses the root MIT license. The optional SandHybrid runtime also incorporates EpochGui under its separate `LicenseRef-MIT-NoSell` terms; runtime installs carry the exact notice in `docs/licenses/EpochGui.txt`. The Windows package includes the Vulkan loader and its notice in `docs/licenses/VulkanLoader.txt`. These dependency terms are not replaced by the library's MIT license.
+
+The native example needs an x64 system and a Vulkan-capable driver. Windows binaries are unsigned and require the Microsoft Visual C++ v14 x64 runtime (`MSVCP140.dll`, `VCRUNTIME140.dll`, and `VCRUNTIME140_1.dll`); those system redistributables are not included in the archive. Linux binaries use the system Vulkan loader, XCB, and C++ runtime; software Vulkan/Xvfb validation is functional evidence, not a hardware frame-rate promise. Keep each package's executable, shaders, and dependency files together.

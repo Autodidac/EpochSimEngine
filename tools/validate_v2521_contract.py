@@ -24,7 +24,7 @@ def reject(relative: str, *tokens: str) -> None:
         raise SystemExit(f"{relative} retains rejected v2.5.26 tokens: {found}")
 
 
-require("CMakeLists.txt", "VERSION 2.5.27", "validate_v2521_contract.py")
+require("CMakeLists.txt", "VERSION 2.5.28", "validate_v2521_contract.py")
 require(
     ".github/workflows/ci-release.yml",
     "refs/tags/v2.5.26",

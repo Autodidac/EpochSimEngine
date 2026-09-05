@@ -12,7 +12,7 @@
 
 The native event thread owns Win32/XCB input and window events. A dedicated Vulkan thread owns fixed-rate simulation, compute dispatch, readback, and presentation. Canonical 16-byte cells are globally authoritative. Aligned tile and chunk metadata provide macro movement, stability, active-area rejection, and sleep without replacing cells.
 
-The runtime submits at most one complete 60 Hz tick per presented frame, discards stale debt, and never suppresses a requested presentation merely because the tick was late. Debug collection is disabled when hidden and must remain read-only. Live MAP refresh rolls across 16 contiguous resident row bands so no presented frame copies the complete Large field; explicit save/export may still copy its declared payload. Normal fixed ticks may not copy the complete resident world.
+The runtime submits at most one complete 60 Hz tick per presented frame, discards stale debt, and never suppresses a requested presentation merely because the tick was late. Debug collection is disabled when hidden and must remain read-only. Live MAP refresh rolls across 64 contiguous resident row bands so no presented frame copies the complete Large field; explicit save/export may still copy its declared payload. Normal fixed ticks may not copy the complete resident world.
 
 Chemistry keeps its software-Vulkan-safe monolithic kernel shallow. Conservation corrections that would expand its selector graph run in a separate compact post-pass over the same clipped active rectangle before scratch is copied back to the canonical buffer. `sandhybrid_runtime_shaders` always copies generated SPIR-V beside the executable, including incremental shader-only builds; generated/runtime hash equality is part of native validation.
 
@@ -23,6 +23,7 @@ Chemistry keeps its software-Vulkan-safe monolithic kernel shallow. Conservation
 - Production Vulkan acceptance reads back actual GPU state on Windows and Linux.
 - The repeated finite-ledger gate runs twelve production-shader and public schema-2 save/load cycles in an isolated temporary fixture; it is separate from the fast state report and must agree on Windows and Linux.
 - Package audits verify native binaries, shaders, public headers, documentation, paths, and checksums.
+- The downstream package gate installs the library, builds both canonical and compatibility-target consumers, then executes both through CTest against the declared API version.
 - Manual packaged observation covers visuals, input ownership, frame pacing, and long finite cycles.
 
 Typical local commands:

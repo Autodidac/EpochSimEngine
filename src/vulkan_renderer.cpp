@@ -53,6 +53,39 @@ constexpr std::uint32_t debug_stat_word_count = 128;
 constexpr std::uint32_t nuke_high_sky_bottom_y =
     persistent_world_weather_cloud_tile_y;
 
+#ifdef _WIN32
+// Presentation deadlines must not depend on another process keeping Windows'
+// ordinary sleep clock at high resolution. This timer changes no global clock
+// policy and performs no busy wait; fixed simulation deadlines remain separate.
+class PresentationWait final {
+public:
+    PresentationWait() noexcept
+        : timer_(CreateWaitableTimerExW(nullptr, nullptr,
+              CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_MODIFY_STATE | SYNCHRONIZE)) {}
+    ~PresentationWait() { if (timer_ != nullptr) CloseHandle(timer_); }
+    PresentationWait(const PresentationWait&) = delete;
+    PresentationWait& operator=(const PresentationWait&) = delete;
+
+    void until(const std::chrono::steady_clock::time_point deadline) const {
+        const auto remaining = deadline - std::chrono::steady_clock::now();
+        if (remaining <= std::chrono::steady_clock::duration::zero()) return;
+        if (timer_ != nullptr) {
+            using TimerDuration = std::chrono::duration<LONGLONG, std::ratio<1, 10'000'000>>;
+            LARGE_INTEGER due{};
+            due.QuadPart = -std::chrono::ceil<TimerDuration>(remaining).count();
+            if (SetWaitableTimer(timer_, &due, 0, nullptr, nullptr, FALSE) != FALSE &&
+                WaitForSingleObject(timer_, INFINITE) == WAIT_OBJECT_0) return;
+        }
+        // Older/unsupported Windows or a failed timer retains the prior safe
+        // waiting behavior instead of changing cadence or spinning a CPU core.
+        std::this_thread::sleep_until(deadline);
+    }
+
+private:
+    HANDLE timer_{};
+};
+#endif
+
 static_assert(nuke_high_sky_bottom_y == 536u);
 static_assert(nuke_high_sky_bottom_y % authored_scene_foundation_cells == 0u);
 
@@ -2807,16 +2840,45 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 return;
             }
             const auto cleanup = [&](std::int32_t x, std::int32_t y, std::uint32_t mode) {
+                const auto extent = mode == 4u ? 192u : 64u;
+                // Legacy witnesses/perches can reach beyond the edited 129x129
+                // square. Snapshot their bounded read halo before parallel
+                // cleanup so neither signature nor ownership sees torn data.
+                const auto snapshot_extent = mode == 4u ? 192 : 128;
+                const auto min_x = (std::max)(0, x - snapshot_extent);
+                const auto min_y = (std::max)(0, y - snapshot_extent);
+                const auto max_x = (std::min)(static_cast<std::int32_t>(config.grid_width),
+                                             x + snapshot_extent + 1);
+                const auto max_y = (std::min)(static_cast<std::int32_t>(config.grid_height),
+                                             y + snapshot_extent + 1);
+                const auto snapshot_set = current_set ^ 1u;
+                buffer_barrier(command_buffer, cell_buffers[current_set],
+                    VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                buffer_barrier(command_buffer, cell_buffers[snapshot_set],
+                    VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                copy_cell_rectangle(command_buffer, current_set, snapshot_set,
+                    {static_cast<std::uint32_t>(min_x), static_cast<std::uint32_t>(min_y),
+                     static_cast<std::uint32_t>(max_x - min_x), static_cast<std::uint32_t>(max_y - min_y)});
+                buffer_barrier(command_buffer, cell_buffers[current_set],
+                    VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                buffer_barrier(command_buffer, cell_buffers[snapshot_set],
+                    VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
                 const SimulationPush cleanup_push{
                     .width = config.grid_width, .height = config.grid_height,
                     .step = simulation_step, .seed = random_seed,
-                    .brush_x = x, .brush_y = y, .radius = 64u,
+                    .brush_x = x, .brush_y = y, .radius = extent,
                     .active_mode = mode,
                 };
                 bind_compute(command_buffer, paint_pipeline, current_set);
                 vkCmdPushConstants(command_buffer, compute_pipeline_layout,
                     VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(cleanup_push), &cleanup_push);
-                vkCmdDispatch(command_buffer, 1u, 1u, 1u);
+                const auto diameter = extent * 2u + 1u;
+                vkCmdDispatch(command_buffer, divide_round_up(diameter, simulation_local_size),
+                    divide_round_up(diameter, simulation_local_size), 1u);
                 buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
                     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -5639,6 +5701,46 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                 count_material(result, Material::queen_bee)) +
                             " bees=" + std::to_string(
                                 count_material(result, Material::bee)));
+
+                // Exercise both ends of the explicit 385x385 cleanup before
+                // the slow lifecycle checks. A serial shader scan previously
+                // stopped before the old Queen on software Vulkan.
+                const auto original_tool_anchor = tool_hive_anchor;
+                auto far_foragers = result;
+                std::array<std::size_t, 2u> far_indices{};
+                for (std::size_t edge = 0u; edge < far_indices.size(); ++edge) {
+                    const auto slot = edge == 0u ? 0u : fix29_bee_formation_count - 1u;
+                    const auto offset = fix29_bee_formation_offset(slot);
+                    const auto source = index_of(static_cast<std::uint32_t>(queen_x + offset.x),
+                        static_cast<std::uint32_t>(queen_y + offset.y));
+                    const auto distance = edge == 0u ? -190 : 190;
+                    far_indices[edge] = index_of(static_cast<std::uint32_t>(queen_x + distance),
+                        static_cast<std::uint32_t>(queen_y + distance));
+                    std::swap(far_foragers[source], far_foragers[far_indices[edge]]);
+                }
+                upload_scene_cells(far_foragers);
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    record_paint_at_grid(command_buffer, state, false, true,
+                        queen_x + 144, queen_y, material_id(Material::beehive));
+                });
+                const auto parallel_cleanup = download_scene_cells();
+                const bool far_edges_cleared = std::all_of(far_indices.begin(), far_indices.end(),
+                    [&](const std::size_t index) {
+                        return parallel_cleanup[index].material == material_id(Material::atmosphere);
+                    });
+                append("beehive_parallel_cleanup_full_footprint",
+                    far_edges_cleared && count_material(parallel_cleanup, Material::queen_bee) == 1u &&
+                    count_material(parallel_cleanup, Material::bee) == 60u &&
+                    count_material(parallel_cleanup, Material::beehive) == 193u &&
+                    std::memcmp(&parallel_cleanup[unrelated_index], &result[unrelated_index], sizeof(SceneCell)) == 0 &&
+                    canonical_fix29_hive_signature_at(parallel_cleanup, config.grid_width, config.grid_height,
+                        static_cast<std::uint32_t>(queen_x + 144), static_cast<std::uint32_t>(queen_y)),
+                    "far_edges_cleared=" + std::to_string(far_edges_cleared ? 1u : 0u) +
+                    " queens=" + std::to_string(count_material(parallel_cleanup, Material::queen_bee)) +
+                    " bees=" + std::to_string(count_material(parallel_cleanup, Material::bee)) +
+                    " shell=" + std::to_string(count_material(parallel_cleanup, Material::beehive)));
+                upload_scene_cells(result);
+                tool_hive_anchor = original_tool_anchor;
 
                 for (std::uint32_t tick = 0u; tick < 120u; ++tick)
                     run_acceptance_focused_tick(
@@ -9928,6 +10030,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         std::uint32_t rendered_frames = 0;
         std::uint32_t thirty_fps_divider = 0;
         std::uint32_t active_limit = state.presentation_limit.load(std::memory_order_relaxed) & 3u;
+#ifdef _WIN32
+        const PresentationWait presentation_wait;
+#endif
 
         while (!stop_requested.load(std::memory_order_acquire) &&
                !state.quit.load(std::memory_order_acquire)) {
@@ -10135,7 +10240,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 next_frame += frame_interval;
                 const auto frame_end = Clock::now();
                 if (frame_end < next_frame) {
+#ifdef _WIN32
+                    presentation_wait.until(next_frame);
+#else
                     std::this_thread::sleep_until(next_frame);
+#endif
                 } else if (frame_end - next_frame > frame_interval * 4) {
                     next_frame = frame_end;
                 }

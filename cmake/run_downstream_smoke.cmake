@@ -57,3 +57,16 @@ execute_process(
 if(NOT build_result EQUAL 0)
     message(FATAL_ERROR "Building the downstream EpochSimEngine consumer failed: ${build_result}")
 endif()
+
+if(NOT DEFINED SANDHYBRID_CTEST_COMMAND OR SANDHYBRID_CTEST_COMMAND STREQUAL "")
+    get_filename_component(cmake_program_dir "${CMAKE_COMMAND}" DIRECTORY)
+    find_program(SANDHYBRID_CTEST_COMMAND NAMES ctest
+        PATHS "${cmake_program_dir}" NO_DEFAULT_PATH REQUIRED)
+endif()
+execute_process(
+    COMMAND "${SANDHYBRID_CTEST_COMMAND}" --test-dir "${consumer_binary}"
+            -C "${SANDHYBRID_CONFIG}" --output-on-failure --no-tests=error
+    RESULT_VARIABLE runtime_result)
+if(NOT runtime_result EQUAL 0)
+    message(FATAL_ERROR "Running the installed EpochSimEngine consumers failed: ${runtime_result}")
+endif()

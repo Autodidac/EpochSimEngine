@@ -9,6 +9,7 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
+layout(std430, binding = 1) readonly buffer PaintSnapshot { Cell paintSnapshot[]; };
 layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
 
 void markPaintChunkDirty(ivec2 p) {
@@ -94,14 +95,14 @@ bool displacePaintMediumUpward(ivec2 p) {
 
 bool paintColonySignature(ivec2 queen) {
     if (!inside(queen - ivec2(10)) || !inside(queen + ivec2(10)) ||
-        cells[indexOf(queen)].material != MAT_QUEEN_BEE) return false;
+        paintSnapshot[indexOf(queen)].material != MAT_QUEEN_BEE) return false;
     // Both the accepted Fix29 and obsolete round body contain these seven
     // shell witnesses. A lone Queen or unrelated Honey/Pollen is not a colony.
     const ivec2 witnesses[7] = ivec2[7](
         ivec2(-8, 0), ivec2(0, -8), ivec2(0, 8),
         ivec2(-6, -6), ivec2(6, -6), ivec2(-6, 6), ivec2(6, 6));
     for (int i = 0; i < 7; ++i)
-        if (cells[indexOf(queen + witnesses[i])].material != MAT_BEEHIVE)
+        if (paintSnapshot[indexOf(queen + witnesses[i])].material != MAT_BEEHIVE)
             return false;
     return true;
 }
@@ -114,63 +115,69 @@ void erasePaintColonyCell(ivec2 p) {
     markPaintChunkDirty(p);
 }
 
-void cleanupPaintColony(ivec2 queen, ivec2 clipCenter, bool explicitOwner) {
+bool paintColonyOwnsCell(ivec2 queen, ivec2 p, Cell candidate, bool explicitOwner) {
+    ivec2 delta = p - queen;
+    bool body = delta.x * delta.x + delta.y * delta.y < 100 &&
+        (candidate.material == MAT_BEEHIVE ||
+         candidate.material == MAT_HONEY || candidate.material == MAT_POLLEN ||
+         (all(equal(p, queen)) && candidate.material == MAT_QUEEN_BEE));
+    if (body) return true;
     uint packedHome = beePackMetadata(0u, queen, 0u, pc.width, pc.height);
     ivec2 home = beeHomeCenterFromAux(packedHome, pc.width, pc.height);
+    if (candidate.material == MAT_BEE)
+        return ((candidate.aux & BEE_AUX_SWARM) != 0u &&
+                all(equal(beeHomeCenterFromAux(candidate.aux, pc.width, pc.height), home))) ||
+               (!explicitOwner && (candidate.aux & ~AUX_RANDOM_MASK) == 0u &&
+                candidate.age == 0u && candidate.temperature == 20);
     // Only a complete old 72x8 supported Wood perch is recognizable as the
     // retired prefab. Partial/unrelated Wood is deliberately preserved.
     ivec2 perch = (queen / 8) * 8 + ivec2(-40, -16);
+    if (candidate.material != MAT_WOOD ||
+        any(lessThan(p, perch)) || any(greaterThanEqual(p, perch + ivec2(72, 8))))
+        return false;
     bool legacyPerch = inside(perch) && inside(perch + ivec2(71, 7));
     for (int y = 0; y < 8 && legacyPerch; ++y)
         for (int x = 0; x < 72 && legacyPerch; ++x) {
-            Cell candidate = cells[indexOf(perch + ivec2(x, y))];
+            Cell perchCell = paintSnapshot[indexOf(perch + ivec2(x, y))];
             ivec2 offset = perch + ivec2(x, y) - queen;
             bool bodyOverlap = offset.x * offset.x + offset.y * offset.y < 100 &&
-                candidate.material == MAT_BEEHIVE;
-            bool swarmOverlap = candidate.material == MAT_BEE &&
+                perchCell.material == MAT_BEEHIVE;
+            bool swarmOverlap = perchCell.material == MAT_BEE &&
                 beeFormationSlotFromOffset(offset) >= 0;
-            legacyPerch = bodyOverlap || swarmOverlap || (candidate.material == MAT_WOOD &&
-                (candidate.aux & (AUX_STRUCTURAL | AUX_SUPPORTED)) ==
+            legacyPerch = bodyOverlap || swarmOverlap || (perchCell.material == MAT_WOOD &&
+                (perchCell.aux & (AUX_STRUCTURAL | AUX_SUPPORTED)) ==
                     (AUX_STRUCTURAL | AUX_SUPPORTED));
         }
-    int extent = explicitOwner ? 192 : 64;
-    for (int y = -extent; y <= extent; ++y) {
-        for (int x = -extent; x <= extent; ++x) {
-            ivec2 p = clipCenter + ivec2(x, y);
-            if (!inside(p)) continue;
-            Cell candidate = cells[indexOf(p)];
-            ivec2 delta = p - queen;
-            bool body = delta.x * delta.x + delta.y * delta.y < 100 &&
-                (candidate.material == MAT_BEEHIVE ||
-                 candidate.material == MAT_HONEY || candidate.material == MAT_POLLEN ||
-                 (all(equal(p, queen)) && candidate.material == MAT_QUEEN_BEE));
-            bool oldPerch = legacyPerch && candidate.material == MAT_WOOD &&
-                all(greaterThanEqual(p, perch)) && all(lessThan(p, perch + ivec2(72, 8)));
-            bool bee = candidate.material == MAT_BEE &&
-                (((candidate.aux & BEE_AUX_SWARM) != 0u &&
-                  all(equal(beeHomeCenterFromAux(candidate.aux, pc.width, pc.height), home))) ||
-                 (!explicitOwner && (candidate.aux & ~AUX_RANDOM_MASK) == 0u &&
-                  candidate.age == 0u && candidate.temperature == 20));
-            if (body || oldPerch || bee) erasePaintColonyCell(p);
-        }
-    }
+    return legacyPerch;
 }
 
 void main() {
     ivec2 local = ivec2(gl_GlobalInvocationID.xy);
     if (pc.activeMode == 3u || pc.activeMode == 4u) {
-        // Exactly one invocation owns signature reads and cleanup writes.
-        // A dispatch barrier separates this transaction from the prefab stamp.
-        if (any(notEqual(local, ivec2(0)))) return;
+        // Each invocation owns one destination; all signature/perch reads use
+        // the immutable bounded snapshot, never concurrently erased cells.
+        // No invocation scans the former 385x385 explicit-owner footprint.
+        int diameter = int(pc.radius * 2u + 1u);
+        if (local.x >= diameter || local.y >= diameter) return;
         ivec2 center = ivec2(pc.brushX, pc.brushY);
+        ivec2 p = center + local - ivec2(int(pc.radius));
+        if (!inside(p)) return;
+        Cell candidate = paintSnapshot[indexOf(p)];
+        if (candidate.material != MAT_BEEHIVE && candidate.material != MAT_HONEY &&
+            candidate.material != MAT_POLLEN && candidate.material != MAT_QUEEN_BEE &&
+            candidate.material != MAT_BEE && candidate.material != MAT_WOOD) return;
         if (pc.activeMode == 4u) {
-            cleanupPaintColony(center, center, true);
+            if (paintColonyOwnsCell(center, p, candidate, true))
+                erasePaintColonyCell(p);
         } else {
             for (int y = -54; y <= 54; ++y)
                 for (int x = -54; x <= 54; ++x) {
                     ivec2 queen = center + ivec2(x, y);
-                    if (paintColonySignature(queen))
-                        cleanupPaintColony(queen, center, false);
+                    if (paintColonySignature(queen) &&
+                        paintColonyOwnsCell(queen, p, candidate, false)) {
+                        erasePaintColonyCell(p);
+                        return;
+                    }
                 }
         }
         return;
