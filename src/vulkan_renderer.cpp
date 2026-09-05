@@ -8667,6 +8667,233 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             }
 
             {
+                // Pack independent hash-boundary probes into one production
+                // chemistry tick. Only source ages are searched on the CPU;
+                // actual neighbor demand and every transition remain GPU-owned.
+                const auto saved_step = simulation_step;
+                constexpr std::uint32_t probe_step = 37u;
+                constexpr std::array<std::pair<std::int32_t, std::int32_t>, 8u>
+                    neighbors{{{-1, -1}, {0, -1}, {1, -1}, {-1, 0},
+                               {1, 0}, {-1, 1}, {0, 1}, {1, 1}}};
+                constexpr std::array<Material, 6u> other_life{
+                    Material::ant, Material::beetle, Material::seed,
+                    Material::grass, Material::plant_stem, Material::flower};
+                struct RespirationProbe final {
+                    std::uint32_t group{}, bees{}, life{}, roll_kind{}, wanted{};
+                    Material heat{Material::empty};
+                    SceneCell source{static_cast<std::uint32_t>(Material::atmosphere), 0u, 20, 54u};
+                    std::uint32_t x{}, y{};
+                    bool input_found{};
+                    SceneCell expected{};
+                };
+                std::vector<RespirationProbe> probes;
+                for (std::uint32_t group = 0u; group < 4u; ++group) {
+                    for (std::uint32_t demand = 0u; demand <= 8u; ++demand) {
+                        for (const auto roll : {0u, 7u, 8u}) {
+                            const auto bees = group == 0u ? demand : group == 1u ? 0u :
+                                (demand + (group == 2u ? 1u : 0u)) / 2u;
+                            probes.push_back({group, bees, demand - bees,
+                                group == 0u || group == 2u ? 0u : 1u, roll});
+                        }
+                    }
+                }
+                for (const auto heat : {Material::fire, Material::ember}) {
+                    // Ember also participates in the existing nearFire event.
+                    for (const auto roll : {0u, 1u})
+                        probes.push_back({4u, 0u, 0u, 2u, roll, heat});
+                }
+                for (const auto roll : {0u, 1u})
+                    probes.push_back({4u, 0u, 0u, 3u, roll, Material::ember});
+                probes.push_back({4u, 0u, 0u, 3u, 0u, Material::empty});
+                probes.push_back({4u, 0u, 0u, 2u, 0u, Material::empty});
+                const auto packed_gas = [&](const std::uint32_t oxygen,
+                                            const Material component,
+                                            const std::uint32_t volume) {
+                    return SceneCell{material_id(Material::atmosphere), 0u, 87,
+                        oxygen | 0x40000000u | (material_id(component) << 8u) |
+                        (volume << 15u)};
+                };
+                for (const auto oxygen : {0u, 1u, 2u, 54u}) {
+                    probes.push_back({5u, 0u, 0u, 2u, 0u, Material::fire,
+                        SceneCell{material_id(Material::atmosphere), 0u, 87, oxygen}});
+                    probes.push_back({5u, 0u, 0u, 2u, 0u, Material::fire,
+                        SceneCell{material_id(Material::oxygen), 0u, 87, oxygen}});
+                }
+                for (const auto component : {Material::carbon_dioxide, Material::smoke,
+                                              Material::hydrogen, Material::steam})
+                    probes.push_back({5u, 0u, 0u, 2u, 0u, Material::fire,
+                        packed_gas(54u, component, 3u)});
+                probes.push_back({5u, 0u, 0u, 2u, 0u, Material::fire,
+                    packed_gas(54u, Material::carbon_dioxide, 255u)});
+
+                auto cells = acceptance_atmosphere_world();
+                bool all_inputs_found = true;
+                std::uint64_t input_digest = 1469598103934665603ull;
+                std::uint32_t expected_conversions = 0u;
+                for (std::size_t number = 0u; number < probes.size(); ++number) {
+                    auto& probe = probes[number];
+                    probe.x = 8u + static_cast<std::uint32_t>(number % 12u) * 14u;
+                    probe.y = 8u + static_cast<std::uint32_t>(number / 12u) * 14u;
+                    for (std::uint32_t age = 0u; age < 16'777'216u; ++age) {
+                        const auto random_value = fill_hash(probe.x * 73856093u ^
+                            probe.y * 19349663u ^ probe_step * 83492791u ^
+                            random_seed ^ age ^ probe.source.aux);
+                        const auto bee_roll = fill_hash(random_value ^ 0xb33a71u) & 0x3ffffu;
+                        const auto life_roll = fill_hash(random_value ^ 0x11fe21u) & 0xffffu;
+                        const auto ember_roll = fill_hash(random_value ^ 0xe6be2u) & 2047u;
+                        const auto fire_roll = random_value & 127u;
+                        const bool wanted = probe.roll_kind == 0u
+                            ? bee_roll == probe.wanted && life_roll >= 8u
+                            : probe.roll_kind == 1u
+                                ? life_roll == probe.wanted && bee_roll >= 8u
+                                : probe.roll_kind == 2u
+                                    ? fire_roll == probe.wanted && ember_roll != 0u &&
+                                        bee_roll >= 8u && life_roll >= 8u
+                                    : ember_roll == probe.wanted && fire_roll != 0u &&
+                                        bee_roll >= 8u && life_roll >= 8u;
+                        if (!wanted) continue;
+                        probe.source.age = age;
+                        probe.input_found = true;
+                        const bool event = bee_roll < probe.bees || life_roll < probe.life ||
+                            (probe.heat != Material::empty && fire_roll == 0u) ||
+                            (probe.heat == Material::ember && ember_roll == 0u);
+                        probe.expected = probe.source;
+                        if (!event) {
+                            ++probe.expected.age;
+                            // All cardinal neighbors start at 20 C. Thermal
+                            // owners occupy only a diagonal source neighbor.
+                            const auto divisor = std::clamp(36 - static_cast<int>(
+                                material_profile(static_cast<Material>(probe.source.material))
+                                    .thermal_conductivity) / 9, 6, 36);
+                            probe.expected.temperature += std::clamp(
+                                (20 - probe.source.temperature) / divisor, -20, 20);
+                        } else if (probe.source.material == material_id(Material::oxygen)) {
+                            const auto oxygen = (std::max)(probe.source.aux & 255u, 1u);
+                            probe.expected.material = material_id(oxygen == 1u
+                                ? Material::carbon_dioxide : Material::atmosphere);
+                            probe.expected.aux = oxygen == 1u ? 1u :
+                                (oxygen - 1u) | 0x40000000u |
+                                (material_id(Material::carbon_dioxide) << 8u) | (1u << 15u);
+                        } else {
+                            const auto oxygen = probe.source.aux & 255u;
+                            const auto volume = (probe.source.aux >> 15u) & 255u;
+                            const auto component = (probe.source.aux >> 8u) & 127u;
+                            if (oxygen > 1u && volume < 255u &&
+                                (volume == 0u || component == material_id(Material::carbon_dioxide))) {
+                                probe.expected.aux = (oxygen - 1u) | 0x40000000u |
+                                    (material_id(Material::carbon_dioxide) << 8u) |
+                                    ((volume + 1u) << 15u);
+                            }
+                        }
+                        expected_conversions +=
+                            probe.expected.material != probe.source.material ? 1u : 0u;
+                        break;
+                    }
+                    all_inputs_found = all_inputs_found && probe.input_found;
+                    for (const auto word : {probe.x, probe.y, probe.source.age,
+                                           probe.source.aux, probe.bees, probe.life,
+                                           probe.roll_kind, probe.wanted}) {
+                        input_digest ^= word;
+                        input_digest *= 1099511628211ull;
+                    }
+                    cells[index_of(probe.x, probe.y)] = probe.source;
+                    for (std::uint32_t neighbor = 0u; neighbor < probe.bees + probe.life; ++neighbor) {
+                        const auto [dx, dy] = neighbors[neighbor];
+                        const auto material = neighbor < probe.bees
+                            ? (neighbor % 2u == 0u ? Material::bee : Material::queen_bee)
+                            : other_life[(neighbor - probe.bees) % other_life.size()];
+                        cells[index_of(static_cast<std::uint32_t>(static_cast<std::int32_t>(probe.x) + dx),
+                                       static_cast<std::uint32_t>(static_cast<std::int32_t>(probe.y) + dy))] =
+                            SceneCell{material_id(material), 0u, 20, 0u};
+                    }
+                    if (probe.heat != Material::empty)
+                        cells[index_of(probe.x - 1u, probe.y - 1u)] = make_fill_cell(
+                            material_id(probe.heat),
+                            static_cast<std::uint32_t>(index_of(probe.x - 1u, probe.y - 1u)));
+                }
+                upload_scene_cells(cells);
+                simulation_step = probe_step; // Upload must not choose the hash epoch.
+                run_acceptance_chemistry_pass();
+                const auto respired = download_scene_cells();
+                const auto counters = download_conservation_counters();
+                simulation_step = saved_step;
+                std::array<bool, 6u> exact{};
+                exact.fill(all_inputs_found);
+                std::array<std::uint32_t, 6u> case_counts{};
+                std::array<std::string, 6u> mismatch_details{};
+                bool neighbor_owners_preserved = true;
+                for (const auto& probe : probes) {
+                    ++case_counts[probe.group];
+                    const auto& actual = respired[index_of(probe.x, probe.y)];
+                    const bool same = probe.input_found &&
+                        std::memcmp(&actual, &probe.expected, sizeof(SceneCell)) == 0;
+                    exact[probe.group] = exact[probe.group] && same;
+                    if (!same && mismatch_details[probe.group].empty()) {
+                        mismatch_details[probe.group] = " mismatch=" + std::to_string(probe.x) +
+                            "," + std::to_string(probe.y) + " age=" + std::to_string(probe.source.age) +
+                            " demand=" + std::to_string(probe.bees) + "/" + std::to_string(probe.life) +
+                            " expected=" + std::to_string(probe.expected.material) + "/" +
+                            std::to_string(probe.expected.age) + "/" +
+                            std::to_string(probe.expected.temperature) + "/" +
+                            std::to_string(probe.expected.aux) + " actual=" +
+                            std::to_string(actual.material) + "/" + std::to_string(actual.age) + "/" +
+                            std::to_string(actual.temperature) + "/" + std::to_string(actual.aux);
+                    }
+                    for (const auto& [dx, dy] : neighbors) {
+                        const auto index = index_of(
+                            static_cast<std::uint32_t>(static_cast<std::int32_t>(probe.x) + dx),
+                            static_cast<std::uint32_t>(static_cast<std::int32_t>(probe.y) + dy));
+                        neighbor_owners_preserved = neighbor_owners_preserved &&
+                            respired[index].material == cells[index].material;
+                    }
+                }
+                const auto gas_units = [&](const std::vector<SceneCell>& source) {
+                    std::uint64_t units = 0u;
+                    for (std::uint32_t y = 0u; y < 192u; ++y) {
+                        for (std::uint32_t x = 0u; x < 192u; ++x) {
+                            const auto& cell = source[index_of(x, y)];
+                            if (cell.material == material_id(Material::atmosphere)) {
+                                units += cell.aux & 255u;
+                                if ((cell.aux & 0x40000000u) != 0u)
+                                    units += (cell.aux >> 15u) & 255u;
+                            } else if (cell.material == material_id(Material::oxygen) ||
+                                       cell.material == material_id(Material::carbon_dioxide)) {
+                                units += (std::max)(cell.aux & 255u, 1u);
+                            }
+                        }
+                    }
+                    return units;
+                };
+                const auto before_units = gas_units(cells);
+                const auto after_units = gas_units(respired);
+                const std::string input_detail = " cases=" + std::to_string(probes.size()) +
+                    " step=" + std::to_string(probe_step) + " seed=" + std::to_string(random_seed) +
+                    " input_digest=" + std::to_string(input_digest) +
+                    " inputs_found=" + std::to_string(all_inputs_found ? 1u : 0u);
+                constexpr std::array<const char*, 6u> names{
+                    "respiration_bee_roll_0_7_8_demand_0_to_8",
+                    "respiration_life_roll_0_7_8_demand_0_to_8",
+                    "respiration_mixed_bee_roll_boundaries",
+                    "respiration_mixed_life_roll_boundaries",
+                    "respiration_fire_ember_independent_events",
+                    "respiration_exhausted_oxygen_and_component_capacity"};
+                for (std::size_t group = 0u; group < names.size(); ++group)
+                    append(names[group], exact[group], "group_cases=" +
+                        std::to_string(case_counts[group]) + input_detail + mismatch_details[group]);
+                append("respiration_probe_neighbors_and_gas_ledger_conserved",
+                       all_inputs_found && neighbor_owners_preserved && before_units == after_units &&
+                           counters[0] == 0u && counters[1] == 0u &&
+                           counters[2] == expected_conversions && counters[3] == 0u && counters[7] == 0u,
+                       "owners=" + std::to_string(neighbor_owners_preserved ? 1u : 0u) +
+                           " gas_units=" + std::to_string(before_units) + "/" + std::to_string(after_units) +
+                           " created/destroyed/converted/boundary/errors=" +
+                           std::to_string(counters[0]) + "/" + std::to_string(counters[1]) + "/" +
+                           std::to_string(counters[2]) + "/" + std::to_string(counters[3]) + "/" +
+                           std::to_string(counters[7]) + " expected_converted=" +
+                           std::to_string(expected_conversions) + input_detail);
+            }
+
+            {
                 const auto saved_step = simulation_step;
                 constexpr std::uint32_t fertilizer_x = 100u;
                 constexpr std::uint32_t fertilizer_y = 100u;
@@ -9804,6 +10031,231 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                result[index_of(99u, 99u)].aux & fill_aux_random_mask));
             }
             {
+                // Two 192x192 batches exercise the production machine transaction,
+                // including all coordinate residues, without one dispatch per probe.
+                constexpr std::uint32_t side = 192u;
+                constexpr std::uint32_t fixture_step = 19u;
+                constexpr std::uint32_t charged_bit = 0x40000000u;
+                const auto saved_step = simulation_step;
+                const auto prefix_count = static_cast<std::size_t>(config.grid_width) * side;
+                const SceneCell air{
+                    .material = material_id(Material::atmosphere),
+                    .age = 41u, .temperature = 20, .aux = 54u};
+                const auto inventory_bits = [](const std::uint32_t x,
+                                               const std::uint32_t y,
+                                               const std::uint32_t z,
+                                               const std::uint32_t w) {
+                    return (x << 8u) | (y << 12u) | (z << 16u) | (w << 20u);
+                };
+                const std::array machines{
+                    Material::smelter, Material::assembler,
+                    Material::sluice_box, Material::insect_habitat};
+                const std::array ready_inventory{
+                    inventory_bits(4u, 0u, 0u, 0u),
+                    inventory_bits(2u, 1u, 1u, 1u),
+                    inventory_bits(0u, 0u, 1u, 0u),
+                    inventory_bits(2u, 1u, 1u, 0u)};
+                const std::array products{
+                    Material::steel, Material::plasma_ammo,
+                    Material::gold, Material::beetle};
+                const auto product_cell = [&](const Material material) {
+                    const auto id = material_id(material);
+                    auto aux = fill_hash(id ^ random_seed ^ fixture_step) &
+                               fill_aux_random_mask;
+                    if (material == Material::steel || material == Material::plasma_ammo ||
+                        material == Material::gold || material == Material::silt) aux |= 255u;
+                    if (material == Material::beetle)
+                        aux |= 1u + (fill_hash(random_seed ^ fixture_step ^ id) & 1u);
+                    return SceneCell{
+                        .material = id, .age = 0u, .temperature = 20, .aux = aux};
+                };
+                for (std::uint32_t batch = 0u; batch < 2u; ++batch) {
+                    std::vector<SceneCell> cells(prefix_count, air);
+                    auto expected = cells;
+                    for (std::uint32_t y = 0u; y < side; ++y)
+                        for (std::uint32_t x = 0u; x < side; ++x)
+                            ++expected[index_of(x, y)].age;
+                    std::uint32_t expected_outputs = 0u;
+                    std::uint32_t expected_created = 0u;
+                    std::uint32_t expected_converted = 0u;
+                    std::uint32_t expected_heat_changes = 0u;
+                    const auto put = [&](const std::uint32_t x, const std::uint32_t y,
+                                         const SceneCell source, const SceneCell after) {
+                        cells[index_of(x, y)] = source;
+                        expected[index_of(x, y)] = after;
+                    };
+                    const auto place_probe = [&](const std::uint32_t x,
+                                                 const std::uint32_t y,
+                                                 const Material machine,
+                                                 const std::uint32_t inventory,
+                                                 const std::uint32_t age,
+                                                 const Material product,
+                                                 const SceneCell output,
+                                                 const SceneCell vent,
+                                                 const bool emits) {
+                        const bool aligned = (x & 7u) == 3u && (y & 7u) == 3u;
+                        const SceneCell controller{
+                            .material = material_id(machine), .age = age,
+                            .temperature = 20,
+                            .aux = charged_bit | fill_aux_structural | 255u | inventory};
+                        auto controller_after = controller;
+                        ++controller_after.age;
+                        // No resources are present: a successful probe consumes
+                        // exactly its preloaded recipe, never an incoming owner.
+                        if (emits) controller_after.aux &= ~fill_aux_random_mask;
+                        if (aligned && machine == Material::smelter) {
+                            controller_after.temperature = 260;
+                            ++expected_heat_changes;
+                        }
+                        if (machine == Material::insect_habitat)
+                            controller_after.aux |= fill_aux_supported;
+                        auto output_after = output;
+                        auto vent_after = vent;
+                        ++output_after.age;
+                        ++vent_after.age;
+                        if (emits) {
+                            ++expected_outputs;
+                            output_after = product_cell(product);
+                            if (output.material == material_id(Material::empty)) {
+                                ++expected_created;
+                            } else {
+                                ++expected_converted;
+                                // The accepted vent retains its original age and
+                                // temperature while receiving the output pressure.
+                                vent_after = vent;
+                                const auto pressure = (std::max)(output.aux & 255u, 1u) +
+                                    (std::max)(vent.aux & 255u, 1u);
+                                vent_after.aux = (vent.aux & ~255u) | pressure | fill_aux_moved;
+                            }
+                        }
+                        put(x, y, controller, controller_after);
+                        put(x + 5u, y, output, output_after);
+                        put(x + 5u, y - 1u, vent, vent_after);
+                    };
+                    const auto probe_count = batch == 0u ? 43u : 64u;
+                    for (std::uint32_t probe = 0u; probe < probe_count; ++probe) {
+                        const auto slot_x = (probe % 8u) * 24u;
+                        const auto slot_y = (probe / 8u) * 24u;
+                        const auto family = batch == 0u
+                            ? (probe < 40u ? probe / 10u : (probe == 40u ? 0u : 2u))
+                            : probe % static_cast<std::uint32_t>(machines.size());
+                        const auto variant = batch == 0u && probe < 40u ? probe % 10u : 0u;
+                        const auto x = slot_x + 8u + (batch == 0u ? 3u : probe % 8u);
+                        const auto y = slot_y + 8u + (batch == 0u ? 3u : probe / 8u);
+                        auto inventory = ready_inventory[family];
+                        auto product = products[family];
+                        auto output = air;
+                        auto vent = air;
+                        std::uint32_t age = 0u;
+                        bool emits = batch == 0u || ((x & 7u) == 3u && (y & 7u) == 3u);
+                        if (batch == 0u) {
+                            if (variant == 1u) {
+                                output.material = material_id(Material::empty);
+                                output.aux = 0u;
+                                // Empty output needs no pressure vent at all.
+                                vent.material = material_id(Material::stone);
+                                vent.aux = 255u;
+                            } else if (variant == 2u) {
+                                inventory = 0u;
+                                emits = false;
+                            } else if (variant == 3u) {
+                                age = 23u;
+                                emits = false;
+                            } else if (variant == 4u || variant == 5u) {
+                                output.material = material_id(variant == 4u
+                                    ? Material::stone : Material::oxygen);
+                                output.aux = variant == 4u ? 255u : 220u;
+                                emits = false;
+                            } else if (variant == 6u) {
+                                vent.material = material_id(Material::stone);
+                                vent.aux = 255u;
+                                emits = false;
+                            } else if (variant >= 7u) {
+                                output.aux = variant == 7u ? 1u : (variant == 8u ? 2u : 0u);
+                                vent.aux = 254u;
+                                emits = variant != 8u; // 255 accepted, 256 rejected; zero encodes one.
+                            }
+                            if (probe == 40u) {
+                                inventory = inventory_bits(0u, 4u, 0u, 0u);
+                                product = Material::aluminum;
+                            } else if (probe == 41u || probe == 42u) {
+                                inventory = inventory_bits(0u, 0u, 0u, probe - 40u);
+                                product = probe == 41u ? Material::sand : Material::silt;
+                            }
+                        }
+                        place_probe(x, y, machines[family], inventory, age, product,
+                                    output, vent, emits);
+                    }
+                    // x=0 output/vent probes query a controller at x=-5. No
+                    // wrapped or out-of-bounds controller may emit into the World.
+                    for (std::uint32_t row = 0u; row < 8u; ++row) {
+                        auto edge = air;
+                        edge.aux = row == 0u ? 0u : 54u;
+                        auto edge_after = edge;
+                        ++edge_after.age;
+                        put(0u, row * 24u + 3u, edge, edge_after);
+                        put(0u, row * 24u + 2u, edge, edge_after);
+                    }
+                    upload_acceptance_cell_prefix(cells);
+                    simulation_step = fixture_step;
+                    run_acceptance_chemistry_pass(0, 0, false, true);
+                    const auto after = download_scene_cell_prefix(prefix_count);
+                    std::size_t mismatches = 0u;
+                    std::size_t first_mismatch = prefix_count;
+                    for (std::size_t index = 0u; index < prefix_count; ++index) {
+                        const auto& wanted = expected[index];
+                        const auto& actual = after[index];
+                        if (wanted.material != actual.material || wanted.age != actual.age ||
+                            wanted.temperature != actual.temperature || wanted.aux != actual.aux) {
+                            if (mismatches == 0u) first_mismatch = index;
+                            ++mismatches;
+                        }
+                    }
+                    immediate_submit([&](const VkCommandBuffer command_buffer) {
+                        buffer_barrier(command_buffer, conservation_buffer,
+                                       VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
+                                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                       VK_PIPELINE_STAGE_HOST_BIT);
+                    });
+                    std::array<std::uint32_t, debug_stat_word_count> stats{};
+                    void* mapped = nullptr;
+                    check_vk(vkMapMemory(device, conservation_buffer.memory, 0,
+                                        conservation_buffer.size, 0, &mapped),
+                             "vkMapMemory(machine pruning acceptance)");
+                    std::memcpy(stats.data(), mapped, sizeof(stats));
+                    vkUnmapMemory(device, conservation_buffer.memory);
+                    const bool exact_counters = stats[0] == expected_created &&
+                        stats[1] == 0u && stats[2] == expected_converted &&
+                        stats[3] == 0u && stats[7] == 0u && stats[116] == 0u &&
+                        stats[117] == expected_outputs &&
+                        stats[122] == expected_outputs + expected_heat_changes;
+                    const auto first_detail = first_mismatch == prefix_count ? "none" :
+                        std::to_string(first_mismatch % config.grid_width) + "," +
+                        std::to_string(first_mismatch / config.grid_width) +
+                        " expected=" + std::to_string(expected[first_mismatch].material) + "/" +
+                        std::to_string(expected[first_mismatch].age) + "/" +
+                        std::to_string(expected[first_mismatch].temperature) + "/" +
+                        std::to_string(expected[first_mismatch].aux) + " actual=" +
+                        std::to_string(after[first_mismatch].material) + "/" +
+                        std::to_string(after[first_mismatch].age) + "/" +
+                        std::to_string(after[first_mismatch].temperature) + "/" +
+                        std::to_string(after[first_mismatch].aux);
+                    append(batch == 0u ? "engineering_machine_output_gate_exact_transactions"
+                                       : "engineering_machine_output_all_coordinate_residues",
+                           mismatches == 0u && exact_counters,
+                           "probes=" + std::to_string(probe_count) +
+                               " left_edge_pairs=8 mismatches=" + std::to_string(mismatches) +
+                               " first=" + first_detail + " outputs=" +
+                               std::to_string(stats[117]) + "/" + std::to_string(expected_outputs) +
+                               " created=" + std::to_string(stats[0]) + "/" +
+                               std::to_string(expected_created) + " converted=" +
+                               std::to_string(stats[2]) + "/" + std::to_string(expected_converted) +
+                               " chemistry_changes=" + std::to_string(stats[122]) + "/" +
+                               std::to_string(expected_outputs + expected_heat_changes));
+                }
+                simulation_step = saved_step;
+            }
+            {
                 auto cells = acceptance_atmosphere_world();
                 const auto target_x = static_cast<std::uint32_t>(actor.x + 24);
                 const auto target_y = static_cast<std::uint32_t>(
@@ -10882,15 +11334,21 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const auto submitted_at = Clock::now();
             check_vk(vkQueueSubmit(graphics_queue, 1u, &submit_info, resources.fence),
                      "vkQueueSubmit(simulation profile)");
+            if (cpu_physical_device)
+                startup_log("Simulation profile: software queue submission returned; waiting for fence.");
             const auto wait = vkWaitForFences(device, 1u, &resources.fence, VK_TRUE,
                 cpu_physical_device ? 300'000'000'000ull : 60'000'000'000ull);
             if (wait == VK_TIMEOUT) {
                 gpu_stalled = true;
+                startup_log("Simulation profile: submission fence timed out.");
                 // Only inspect the first tick: the completed reset submission
                 // initialized these queries, and no older tick can make their
                 // availability stale. Never wait again, request PARTIAL
                 // timestamps, or turn an unfinished submission into a sample.
-                if (queries_initialized && first_tick_in_flight) {
+                // Software drivers may serialize even a non-WAIT query behind
+                // shader compilation. Do not enter another driver query on
+                // their timeout path; process teardown owns stalled resources.
+                if (!cpu_physical_device && queries_initialized && first_tick_in_flight) {
                     std::array<std::array<std::uint64_t, 2u>, query_count> markers{};
                     const auto result = vkGetQueryPoolResults(device, resources.queries,
                         0u, query_count, sizeof(markers), markers.data(),

@@ -658,6 +658,8 @@ bool machineOutputMediumAvailable(ivec2 controller) {
 
 bool machineOutputTransition(ivec2 p, Cell source, inout Cell result) {
     if (source.material != MAT_EMPTY && source.material != MAT_ATMOSPHERE) return false;
+    // Controllers occupy (3, 3) within each tile; their output is five cells right.
+    if ((p.x & 7) != 0 || (p.y & 7) != 3) return false;
     ivec2 controllerPosition = p - ivec2(5, 0);
     Cell machine = at(controllerPosition);
     if (!isMachineController(controllerPosition, machine.material) ||
@@ -671,14 +673,17 @@ bool machineOutputTransition(ivec2 p, Cell source, inout Cell result) {
 
 bool machineOutputVentTransition(ivec2 p, Cell source, inout Cell result) {
     if (source.material != MAT_ATMOSPHERE) return false;
+    // The vent is directly above the aligned output, never another tile cell.
+    if ((p.x & 7) != 0 || (p.y & 7) != 2) return false;
     ivec2 controllerPosition = p + ivec2(-5, 1);
     Cell machine = at(controllerPosition);
-    Cell outputMedium = at(machineOutputPosition(controllerPosition));
     if (!isMachineController(controllerPosition, machine.material) ||
         !all(equal(machineOutputVentPosition(controllerPosition), p)) ||
-        outputMedium.material != MAT_ATMOSPHERE ||
         !machineReady(machine.material, machineInventory(machine)) ||
-        (machine.age % 24u) != 0u || !machineOutputMediumAvailable(controllerPosition)) return false;
+        (machine.age % 24u) != 0u) return false;
+    Cell outputMedium = at(machineOutputPosition(controllerPosition));
+    if (outputMedium.material != MAT_ATMOSPHERE ||
+        !machineOutputMediumAvailable(controllerPosition)) return false;
     result = source;
     setStateValue(result, representedAtmosphereUnits(source) +
                           representedAtmosphereUnits(outputMedium));
@@ -1416,14 +1421,16 @@ void main() {
             photosynthesizePackedMedium(result);
         } else {
             uint volume = representedOxygenVolume(source);
-            uvec2 demand = respiringNeighborDemand(p);
             uint beeRoll = hash32(randomValue ^ 0xb33a71u) & 0x0003ffffu;
             uint lifeRoll = hash32(randomValue ^ 0x11fe21u) & 0x0000ffffu;
+            // Each demand is at most the eight neighbors; larger rolls cannot breathe.
+            uvec2 demand = uvec2(0u);
+            if (beeRoll < 8u || lifeRoll < 8u) demand = respiringNeighborDemand(p);
             bool beeRespiration = demand.x > 0u && beeRoll < demand.x;       // 128x slower than v2.4.0
             bool otherRespiration = demand.y > 0u && lifeRoll < demand.y;  // 32x slower than v2.4.0
             bool fireRespiration = nearFire && (randomValue & 127u) == 0u;
-            bool emberRespiration = hasNeighbor(p, MAT_EMBER) &&
-                                    (hash32(randomValue ^ 0xe6be2u) & 2047u) == 0u;
+            bool emberRespiration = (hash32(randomValue ^ 0xe6be2u) & 2047u) == 0u &&
+                                    hasNeighbor(p, MAT_EMBER);
             if (beeRespiration || otherRespiration || fireRespiration || emberRespiration) {
                 result = source;
                 // If another stored component occupies the single-component Air
