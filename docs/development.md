@@ -16,6 +16,8 @@ Each scheduler iteration submits at most one complete fixed 60 Hz tick and disca
 
 Chemistry keeps its software-Vulkan-safe monolithic kernel shallow. Conservation corrections that would expand its selector graph run in a separate compact post-pass over the same clipped active rectangle before scratch is copied back to the canonical buffer. `sandhybrid_runtime_shaders` always copies generated SPIR-V beside the executable, including incremental shader-only builds; generated/runtime hash equality is part of native validation.
 
+Sunlight keeps attenuated per-cell intensity and a width-word tail encoding each column's first opaque row plus one (zero means uninitialized). The same top-down pass calculates both; grass checks direct exterior exposure rather than treating cave gas as sky. Only the complete eight-Stone top containment shell is exempt from shading; interior roofs, incomplete top strips, and weather attenuation remain effective. Already-emitted tracked rain swaps its exact Water payload through gas or Vacuum on its existing fixed cadence, without advancing dry Cloud or waking settled pools.
+
 ## Validation layers
 
 - C++ unit/contract tests cover the platform-neutral library and CPU policies.

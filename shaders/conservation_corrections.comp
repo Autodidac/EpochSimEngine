@@ -9,6 +9,7 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 1) buffer NextCells { Cell nextCells[]; };
+layout(std430, binding = 2) readonly buffer Sunlight { uint light[]; };
 layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
 layout(std430, binding = 10) buffer RainColumns { uint rainColumns[]; };
 
@@ -260,10 +261,12 @@ bool openSkylightMedium(uint material) {
     return material == MAT_EMPTY || isGas(material);
 }
 
-bool shallowSkylightSurface(ivec2 position) {
+bool shallowSkylightSurface(ivec2 position, uint firstOpaqueRow) {
     for (int distance = 1; distance <= 3; ++distance) {
-        uint material = sourceAt(position + ivec2(0, -distance)).material;
-        if (openSkylightMedium(material)) return true;
+        ivec2 above = position + ivec2(0, -distance);
+        uint material = sourceAt(above).material;
+        if (openSkylightMedium(material))
+            return uint(above.y) < firstOpaqueRow;
         if (material != MAT_GRASS && material != MAT_DIRT) return false;
     }
     return false;
@@ -525,18 +528,27 @@ void main() {
     // correction stays shallow and deterministic so the proven chemistry
     // kernel remains unchanged. Wet earth may regrow only within three cells
     // of an open sky column; buried Grass immediately returns to Dirt.
-    if (corrected.material == source.material) {
-        bool shallowSurface = shallowSkylightSurface(position);
-        if (source.material == MAT_GRASS && !shallowSurface) {
+    if ((source.material == MAT_GRASS || source.material == MAT_DIRT) &&
+        (corrected.material == MAT_GRASS || corrected.material == MAT_DIRT)) {
+        uint encodedOpaqueRow = light[uint(light.length()) - pc.width +
+                                      uint(position.x)];
+        // A reset/edit may invalidate sunlight before its next production
+        // dispatch. Missing derived metadata must not manufacture exposure.
+        bool exposureReady = encodedOpaqueRow != 0u;
+        bool shallowSurface = exposureReady &&
+            shallowSkylightSurface(position, encodedOpaqueRow - 1u);
+        if (exposureReady && corrected.material == MAT_GRASS && !shallowSurface) {
+            undoMaterialChangeStat(source, corrected);
             corrected = makeCell(MAT_DIRT);
-            corrected.aux = source.aux & ~AUX_WET;
+            corrected.aux = source.aux & ~AUX_MOVED;
             corrected.temperature = source.temperature;
-            addConvertedStat();
-        } else if (source.material == MAT_DIRT && shallowSurface &&
+            if (source.material != MAT_DIRT) addConvertedStat();
+        } else if (corrected.material == source.material &&
+                   source.material == MAT_DIRT && shallowSurface &&
                    sourceHasAnyWater(position) && source.age > 1200u &&
                    (reactionRandom & 1023u) == 0u) {
             corrected = makeCell(MAT_GRASS);
-            corrected.aux = source.aux & ~AUX_WET;
+            corrected.aux = source.aux & ~AUX_MOVED;
             corrected.temperature = source.temperature;
             addConvertedStat();
         }

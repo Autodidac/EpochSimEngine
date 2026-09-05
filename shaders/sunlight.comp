@@ -15,9 +15,20 @@ void main() {
     if (x >= pc.width) return;
 
     uint intensity = 255u;
+    uint firstOpaqueRow = pc.height;
+    bool topContainment = true;
     for (uint y = 0u; y < pc.height; ++y) {
         uint index = y * pc.width + x;
         uint material = cells[index].material;
+        if (blocksSun(material) && firstOpaqueRow == pc.height)
+            firstOpaqueRow = y;
+        // The exact eight-Stone top shell is the finite World's external
+        // boundary, not an authored interior roof. Recognize it in this same
+        // column traversal; every opaque cell below it still blocks skylight.
+        if (y < 8u) {
+            topContainment = topContainment && material == MAT_STONE;
+            if (y == 7u && topContainment) firstOpaqueRow = pc.height;
+        }
         if (sectionActiveAt(ivec2(int(x), int(y)), pc.activeSectionX, pc.activeSectionY, pc.activeMode))
             light[index] = intensity;
 
@@ -35,5 +46,14 @@ void main() {
         } else if (material != MAT_EMPTY && !isGas(material)) {
             intensity = intensity > 8u ? intensity - 8u : 0u;
         }
+        // Confirm the complete external shell before restoring incident light
+        // below it. Do this after attenuation so row eight receives full light;
+        // partial/non-Stone bands and every interior roof keep normal shading.
+        if (y == 7u && topContainment) intensity = 255u;
     }
+    // Preserve the intensity prefix and descriptor binding. The width-word
+    // tail carries direct exposure separately from attenuated brightness.
+    // Zero means not initialized; row+1 also permits a real opaque row zero.
+    // Buffer length, not pc.height, keeps clipped acceptance dispatches safe.
+    light[uint(light.length()) - pc.width + x] = firstOpaqueRow + 1u;
 }

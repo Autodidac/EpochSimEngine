@@ -967,7 +967,10 @@ save_slot(normalize_world_slot(requested_save_slot)) {
         constexpr VkDeviceSize cell_size = sizeof(std::uint32_t) * 4u;
         const auto cell_count = static_cast<VkDeviceSize>(config.grid_width) * config.grid_height;
         const auto cells_size = cell_count * cell_size;
-        const auto light_size = cell_count * sizeof(std::uint32_t);        const auto tile_columns = divide_round_up(config.grid_width, 8u);
+        // Keep per-cell intensity unchanged; one extra word per column records
+        // direct skylight exposure without another per-cell or CPU scan.
+        const auto light_size = (cell_count + config.grid_width) * sizeof(std::uint32_t);
+        const auto tile_columns = divide_round_up(config.grid_width, 8u);
         const auto tile_rows = divide_round_up(config.grid_height, 8u);
         const auto tile_count = static_cast<VkDeviceSize>(tile_columns) * tile_rows;
         const auto tile_size = tile_count * sizeof(std::uint32_t) * 4u;
@@ -4846,6 +4849,53 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             append("world_dimensions", false, "acceptance requires at least 256x256 cells");
         } else {
             {
+                // Sample row one starts halfway through a 64-cell chunk.
+                // Run the real observational pipeline, not a CPU count model.
+                const auto cells = acceptance_atmosphere_world();
+                upload_scene_cells(cells);
+                const auto saved_origin_x = state.active_window_origin_x.load();
+                const auto saved_origin_y = state.active_window_origin_y.load();
+                const auto saved_sample_frame = debug_sample_frame;
+                state.active_window_origin_x.store(0);
+                state.active_window_origin_y.store(0);
+                debug_sample_frame = 4u * 120u;
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    vkCmdFillBuffer(command_buffer, chunk_buffer.handle, 0,
+                                    chunk_buffer.size, 2u); // CHUNK_SLEEPING
+                    buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                   VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                    reset_debug_stats(command_buffer);
+                    record_debug_stats(command_buffer, state, 0u);
+                    buffer_barrier(command_buffer, conservation_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                                   VK_ACCESS_HOST_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_HOST_BIT);
+                });
+                std::array<std::uint32_t, debug_stat_word_count> stats{};
+                void* mapped = nullptr;
+                check_vk(vkMapMemory(device, conservation_buffer.memory, 0,
+                                    conservation_buffer.size, 0, &mapped),
+                         "vkMapMemory(debug sample acceptance)");
+                std::memcpy(stats.data(), mapped, sizeof(stats));
+                vkUnmapMemory(device, conservation_buffer.memory);
+                const auto after = download_scene_cells();
+                const bool unchanged = std::equal(cells.begin(), cells.end(), after.begin(),
+                    [](const SceneCell& a, const SceneCell& b) {
+                        return a.material == b.material && a.age == b.age &&
+                               a.temperature == b.temperature && a.aux == b.aux;
+                    });
+                state.active_window_origin_x.store(saved_origin_x);
+                state.active_window_origin_y.store(saved_origin_y);
+                debug_sample_frame = saved_sample_frame;
+                append("debug_sleeping_cells_match_clipped_region",
+                       stats[123u] == 230400u && stats[103u] == 230400u &&
+                           stats[126u] == 70u && stats[30u] == 70u && unchanged,
+                       "scope/sleep=" + std::to_string(stats[123u]) + "/" +
+                           std::to_string(stats[103u]) + " chunks=" +
+                           std::to_string(stats[126u]) + " cells_unchanged=" +
+                           std::to_string(unchanged ? 1u : 0u));
+            }
+            {
                 const auto previous_selected_material =
                     state.selected_material.load(std::memory_order_acquire);
                 state.selected_material.store(material_id(Material::sand),
@@ -8423,7 +8473,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                rained[index_of(rain_x, rain_y)].age));
             }
 
-            {
+            for (const bool vacuum_path : {false, true}) {
                 const auto saved_step = simulation_step;
                 constexpr std::uint32_t tracked_rain_bit = 0x10000000u;
                 constexpr std::uint32_t moved_bit = 0x01000000u;
@@ -8439,6 +8489,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 drop.aux |= tracked_rain_bit;
                 drop.temperature = 11;
                 cells[index_of(drop_x, drop_y)] = drop;
+                if (vacuum_path) {
+                    for (auto y = drop_y + 1u; y <= landing_y; ++y) {
+                        auto vacancy = make_fill_cell(
+                            material_id(Material::empty),
+                            static_cast<std::uint32_t>(index_of(drop_x, y)));
+                        vacancy.age = 30u + y;
+                        vacancy.temperature = -7 + static_cast<std::int32_t>(y - drop_y);
+                        vacancy.aux = (y << 8u) & 0x007fff00u;
+                        cells[index_of(drop_x, y)] = vacancy;
+                    }
+                }
                 cells[index_of(drop_x, landing_y + 1u)] = make_fill_cell(
                     material_id(Material::stone),
                     static_cast<std::uint32_t>(
@@ -8472,8 +8533,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     pool_unchanged = pool_unchanged &&
                         same_cell(before[index_of(x, landing_y)],
                                   after[index_of(x, landing_y)]);
+                bool displaced_medium_exact = true;
+                for (auto y = drop_y; y < landing_y; ++y)
+                    displaced_medium_exact = displaced_medium_exact &&
+                        same_cell(before[index_of(drop_x, y + 1u)],
+                                  after[index_of(drop_x, y)]);
                 const auto& landed = after[index_of(drop_x, landing_y)];
-                append("scheduled_rain_continues_off_window_without_pool_disturbance",
+                append(vacuum_path
+                           ? "scheduled_rain_crosses_off_window_vacuum_without_pool_disturbance"
+                           : "scheduled_rain_continues_off_window_without_pool_disturbance",
                        drop_x >= 192u &&
                            landed.material == material_id(Material::water) &&
                            landed.temperature == 11 &&
@@ -8481,10 +8549,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            (landed.aux & moved_bit) != 0u &&
                            same_cell(before[index_of(isolated_x, drop_y)],
                                      after[index_of(isolated_x, drop_y)]) &&
-                           pool_unchanged &&
+                           pool_unchanged && displaced_medium_exact &&
                            count_material(before, Material::water) ==
                                count_material(after, Material::water) &&
-                           count_material(after, Material::empty) == 0u,
+                           count_material(before, Material::empty) ==
+                               count_material(after, Material::empty),
                        "drop=" + std::to_string(drop_x) + "," +
                            std::to_string(landing_y) +
                            " material/temp/aux=" +
@@ -8493,6 +8562,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            std::to_string(landed.aux) +
                            " pool_unchanged=" +
                            std::to_string(pool_unchanged ? 1u : 0u) +
+                           " displaced_medium_exact=" +
+                           std::to_string(displaced_medium_exact ? 1u : 0u) +
                            " water_before/after=" +
                            std::to_string(count_material(before, Material::water)) +
                            "/" +
@@ -8553,28 +8624,194 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            "/" + std::to_string(descended_water.temperature));
             }
             {
+                // The finite World's eight-Stone ceiling is containment, not
+                // an opaque roof over every plant. Exercise the real sunlight
+                // output separately from the direct-exposure grass metadata.
+                auto cells = acceptance_atmosphere_world();
+                constexpr std::array<std::uint32_t, 8u> columns{
+                    64u, 80u, 96u, 112u, 128u, 144u, 160u, 176u};
+                for (std::size_t i = 1u; i < columns.size(); ++i)
+                    seed_rect(cells, Material::stone, columns[i], 0u, 1u, 8u);
+                seed_rect(cells, Material::cloud, columns[2], 40u, 1u, 8u);
+                seed_rect(cells, Material::stone, columns[3], 80u, 1u, 3u);
+                cells[index_of(columns[4], 7u)] = cells[index_of(columns[0], 7u)];
+                seed_rect(cells, Material::water, columns[5], 4u, 1u, 1u);
+                seed_rect(cells, Material::stone, columns[6], 8u, 1u, 1u);
+                seed_rect(cells, Material::glass, columns[7], 80u, 1u, 1u);
+                upload_scene_cells(cells);
+                run_acceptance_sunlight_pass();
+                std::array<std::uint32_t, 16u> samples{};
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    buffer_barrier(command_buffer, sunlight_buffer,
+                                   VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT,
+                                   VK_ACCESS_TRANSFER_READ_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT);
+                    buffer_barrier(command_buffer, scene_staging_buffer,
+                                   VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT |
+                                       VK_ACCESS_TRANSFER_READ_BIT,
+                                   VK_ACCESS_TRANSFER_WRITE_BIT,
+                                   VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT);
+                    std::array<VkBufferCopy, 16u> copies{};
+                    const auto tail = static_cast<VkDeviceSize>(config.grid_width) *
+                                      config.grid_height;
+                    for (std::size_t i = 0u; i < columns.size(); ++i) {
+                        copies[i] = VkBufferCopy{
+                            .srcOffset = static_cast<VkDeviceSize>(index_of(columns[i], 96u)) * 4u,
+                            .dstOffset = i * 4u, .size = 4u};
+                        copies[i + 8u] = VkBufferCopy{
+                            .srcOffset = (tail + columns[i]) * 4u,
+                            .dstOffset = (i + 8u) * 4u, .size = 4u};
+                    }
+                    // Bounded acceptance-only scalar readback, never a fixed-tick copy.
+                    vkCmdCopyBuffer(command_buffer, sunlight_buffer.handle,
+                                    scene_staging_buffer.handle,
+                                    static_cast<std::uint32_t>(copies.size()), copies.data());
+                    buffer_barrier(command_buffer, scene_staging_buffer,
+                                   VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT);
+                });
+                void* mapped = nullptr;
+                check_vk(vkMapMemory(device, scene_staging_buffer.memory, 0u,
+                                    sizeof(samples), 0u, &mapped),
+                         "vkMapMemory(acceptance sunlight samples)");
+                std::memcpy(samples.data(), mapped, sizeof(samples));
+                vkUnmapMemory(device, scene_staging_buffer.memory);
+                constexpr std::array<std::uint32_t, 16u> expected{
+                    255u, 255u, 239u, 15u, 0u, 0u, 175u, 252u,
+                    193u, 193u, 193u, 81u, 1u, 1u, 9u, 193u};
+                std::string detail{"intensity="};
+                for (std::size_t i = 0u; i < columns.size(); ++i)
+                    detail += (i == 0u ? "" : "/") + std::to_string(samples[i]);
+                detail += " exposure=";
+                for (std::size_t i = 8u; i < samples.size(); ++i)
+                    detail += (i == 8u ? "" : "/") + std::to_string(samples[i]);
+                const auto after = download_scene_cells();
+                const bool cells_unchanged = std::equal(cells.begin(), cells.end(), after.begin(),
+                    [](const SceneCell& a, const SceneCell& b) {
+                        return a.material == b.material && a.age == b.age &&
+                               a.temperature == b.temperature && a.aux == b.aux;
+                    });
+                append("sunlight_distinguishes_world_containment_from_authored_roofs",
+                       samples == expected && cells_unchanged,
+                       detail + " cells_unchanged=" + std::to_string(cells_unchanged ? 1u : 0u));
+            }
+            for (const std::uint32_t sky_case : {0u, 1u, 2u}) {
                 constexpr std::uint32_t grass_x = 120u;
                 constexpr std::uint32_t grass_top = 96u;
+                constexpr std::uint32_t wet_bit = 0x80000000u;
                 auto cells = acceptance_atmosphere_world();
                 for (std::uint32_t y = grass_top; y < grass_top + 8u; ++y) {
-                    cells[index_of(grass_x, y)] = make_fill_cell(
+                    auto grass = make_fill_cell(
                         material_id(Material::grass),
                         static_cast<std::uint32_t>(index_of(grass_x, y)));
+                    grass.aux |= wet_bit;
+                    grass.temperature = 20;
+                    cells[index_of(grass_x, y)] = grass;
+                }
+                if (sky_case == 1u) {
+                    // A single opaque cell must reject cave grass even when
+                    // nearby Air and attenuated brightness remain available.
+                    cells[index_of(grass_x, 80u)] = make_fill_cell(
+                        material_id(Material::stone),
+                        static_cast<std::uint32_t>(index_of(grass_x, 80u)));
+                } else if (sky_case == 2u) {
+                    // The declared World containment shell and weather deck
+                    // do not turn the outdoor surface into an interior cave.
+                    seed_rect(cells, Material::stone, grass_x, 0u, 1u, 8u);
+                    seed_rect(cells, Material::cloud, grass_x, 40u, 1u, 8u);
                 }
                 upload_scene_cells(cells);
+                run_acceptance_sunlight_pass();
                 run_acceptance_chemistry_pass();
                 const auto result = download_scene_cells();
                 std::uint32_t shallow_grass = 0u;
                 std::uint32_t buried_dirt = 0u;
+                bool soil_payload_preserved = true;
                 for (std::uint32_t y = grass_top; y < grass_top + 8u; ++y) {
-                    const auto material = result[index_of(grass_x, y)].material;
+                    const auto& soil = result[index_of(grass_x, y)];
+                    const auto material = soil.material;
                     if (material == material_id(Material::grass)) ++shallow_grass;
                     if (material == material_id(Material::dirt)) ++buried_dirt;
+                    soil_payload_preserved = soil_payload_preserved &&
+                        (soil.aux & wet_bit) != 0u && soil.temperature == 20;
                 }
-                append("grass_is_three_cell_skylight_skin",
-                       shallow_grass == 3u && buried_dirt == 5u,
+                const auto expected_grass = sky_case == 1u ? 0u : 3u;
+                const char* const test_name = sky_case == 0u
+                    ? "grass_is_three_cell_skylight_skin"
+                    : (sky_case == 1u
+                        ? "grass_rejects_roofed_cave_and_retains_moisture"
+                        : "grass_skylight_ignores_world_shell_and_cloud_deck");
+                append(test_name,
+                       shallow_grass == expected_grass &&
+                           buried_dirt == 8u - expected_grass &&
+                           soil_payload_preserved &&
+                           count_material(result, Material::water) ==
+                               count_material(cells, Material::water) &&
+                           count_material(result, Material::empty) ==
+                               count_material(cells, Material::empty),
                        "grass=" + std::to_string(shallow_grass) +
-                           " buried_dirt=" + std::to_string(buried_dirt));
+                           " buried_dirt=" + std::to_string(buried_dirt) +
+                           " moisture_and_temperature_preserved=" +
+                           std::to_string(soil_payload_preserved ? 1u : 0u));
+            }
+            for (const bool roofed : {false, true}) {
+                const auto saved_step = simulation_step;
+                constexpr std::uint32_t soil_x = 144u;
+                constexpr std::uint32_t soil_y = 96u;
+                constexpr std::uint32_t wet_bit = 0x80000000u;
+                auto cells = acceptance_atmosphere_world();
+                auto soil = make_fill_cell(
+                    material_id(Material::dirt),
+                    static_cast<std::uint32_t>(index_of(soil_x, soil_y)));
+                soil.age = 1201u;
+                soil.aux |= wet_bit;
+                soil.temperature = 20;
+                cells[index_of(soil_x, soil_y)] = soil;
+                cells[index_of(soil_x - 1u, soil_y)] = make_fill_cell(
+                    material_id(Material::water),
+                    static_cast<std::uint32_t>(index_of(soil_x - 1u, soil_y)));
+                if (roofed)
+                    cells[index_of(soil_x, 80u)] = make_fill_cell(
+                        material_id(Material::stone),
+                        static_cast<std::uint32_t>(index_of(soil_x, 80u)));
+                bool growth_opportunity = false;
+                std::uint32_t growth_step = 0u;
+                for (std::uint32_t step = 0u; step < 65536u; ++step) {
+                    const auto random = fill_hash(soil_x * 73856093u ^
+                        soil_y * 19349663u ^ step * 83492791u ^ random_seed ^
+                        soil.age ^ soil.aux);
+                    if ((random & 1023u) == 0u) {
+                        growth_step = step;
+                        growth_opportunity = true;
+                        break;
+                    }
+                }
+                upload_scene_cells(cells);
+                // Upload resets the simulation clock; select the actual
+                // deterministic growth tick after that reset.
+                simulation_step = growth_step;
+                run_acceptance_sunlight_pass();
+                run_acceptance_chemistry_pass();
+                const auto result = download_scene_cells();
+                simulation_step = saved_step;
+                const auto& grown = result[index_of(soil_x, soil_y)];
+                const auto expected = roofed ? Material::dirt : Material::grass;
+                append(roofed ? "wet_cave_soil_cannot_regrow_grass"
+                              : "wet_skylight_soil_regrows_grass_without_losing_moisture",
+                       growth_opportunity &&
+                           grown.material == material_id(expected) &&
+                           (grown.aux & wet_bit) != 0u && grown.temperature == 20 &&
+                           count_material(result, Material::water) == 1u &&
+                           count_material(result, Material::dirt) +
+                               count_material(result, Material::grass) == 1u &&
+                           count_material(result, Material::empty) == 0u,
+                       "growth_opportunity=" +
+                           std::to_string(growth_opportunity ? 1u : 0u) +
+                           " material=" + std::to_string(grown.material) +
+                           " aux=" + std::to_string(grown.aux) +
+                           " temperature=" + std::to_string(grown.temperature));
             }
             {
                 constexpr std::uint32_t thermal_y = 80u;
