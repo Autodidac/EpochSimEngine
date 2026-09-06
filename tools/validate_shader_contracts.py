@@ -420,13 +420,45 @@ def main() -> int:
         "Nuke from Space committed one GPU high-sky Atmosphere-to-Fire edit above Cloud",
         "nuke_from_space_gpu_high_sky_edit",
         "authored_structures_start_without_false_damage_or_bulk_state",
-        "map_snapshot_slice = (map_snapshot_slice + 1u) % slice_count",
-        "constexpr std::uint32_t slice_count = 64u",
+        "map_snapshot_slice = (slice + 1u) % slice_count",
+        "const auto slice_count = (std::min)(64u, tile_rows)",
         "constexpr std::uint32_t map_refresh_steps = 4u",
         "const bool present_frame = present_requested",
     ):
         require(renderer, token, errors,
                 "staged Nuke and smooth-frame contract")
+    # The previous 64 independently rounded cell bands split tile metadata.
+    # Check the replacement's bounded, gap-free aligned partition, not the
+    # retired spelling. This CPU model is not Vulkan/visual acceptance.
+    for token in (
+        "const auto slice = map_snapshot_slice % slice_count",
+        "const auto first_row = (slice * tile_rows / slice_count) * 8u",
+        "((slice + 1u) * tile_rows / slice_count) * 8u",
+        "record_map_snapshot_rows(command_buffer, first_row,",
+        "first_row % 8u != 0u",
+        "map_tile_snapshot_buffer.handle, 1, &tile_copy",
+        "record_map_snapshot_rows(command_buffer, 0u, config.grid_height, 0u)",
+    ):
+        require(renderer, token, errors, "paired cell/tile MAP snapshot contract")
+    require(fullscreen, "readonly buffer MapTiles { TileState mapTiles[]; }",
+            errors, "typed frozen MAP tile snapshot contract")
+    require(fullscreen, "mapOverlayPixel() ? mapTiles[index] : tiles[index]",
+            errors, "MAP hive index snapshot isolation contract")
+    for height in range(1, 2049):
+        rows = (height + 7) // 8
+        bands = min(64, rows)
+        previous_end = 0
+        for band in range(bands):
+            first = (band * rows // bands) * 8
+            end = min(height, ((band + 1) * rows // bands) * 8)
+            if (first != previous_end or first % 8 or end <= first or
+                    (end != height and end % 8) or end > height or
+                    end - first > ((rows + bands - 1) // bands) * 8):
+                errors.append(f"MAP tile-row partition invalid at {height}/{band}")
+                break
+            previous_end = end
+        if previous_end != height:
+            errors.append(f"MAP tile-row partition incomplete at height {height}")
     for forbidden in (
         "void ignite_air_region()",
         "pending_scene_export",

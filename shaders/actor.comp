@@ -12,6 +12,7 @@
 layout(local_size_x = 1, local_size_y = 1) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 3) buffer ActorBuffer { ActorState actor; };
+layout(std430, binding = 4) buffer Tiles { TileState tiles[]; };
 layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };
 layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
 
@@ -254,8 +255,19 @@ bool releaseDamagedFragment(ActorState state, ivec2 sourcePosition,
         // weather/plasma gas is itself a physical material owner. If no stable
         // destination exists, retain the exact source.
         if (!stableLaserMedium(target.material)) continue;
+        // Bee aux and age are persistent home/role/lifecycle ownership, never
+        // loose-material health. Add only this tick's movement marker, and
+        // only once a real world-to-world destination has accepted the owner.
+        if (fragment.material == MAT_BEE) fragment.aux |= AUX_MOVED;
         cells[actorIndex(sourcePosition)] = target;
         cells[actorIndex(targetPosition)] = fragment;
+        if (fragment.material == MAT_BEE) {
+            // Classification can precede the actor and the camera may leave
+            // before it runs again. Preserve a conservative search candidate
+            // at both endpoints without claiming a current cached Bee count.
+            atomicOr(tiles[tileIndex(sourcePosition, actorPc.width)].flags, TILE_HAS_BEES);
+            atomicOr(tiles[tileIndex(targetPosition, actorPc.width)].flags, TILE_HAS_BEES);
+        }
         markActorChunkDirty(sourcePosition);
         markActorChunkDirty(targetPosition);
         return true;
@@ -269,6 +281,14 @@ void damageCell(inout ActorState state, ivec2 p, uint damage) {
     Cell cell = cells[index];
     if (toolTransparent(cell)) return;
     markActorChunkDirty(p);
+
+    if (cell.material == MAT_BEE) {
+        // A live owner has no generic low-byte damage counter. A blocked hit
+        // keeps the exact canonical owner; an accepted hit swaps its complete
+        // payload with real gas and retains its home, slot and lifecycle.
+        releaseDamagedFragment(state, p, cell);
+        return;
+    }
 
     if (cell.material == MAT_BEETLE) {
         uint health = stateValue(cell);

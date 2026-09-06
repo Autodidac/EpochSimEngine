@@ -181,6 +181,7 @@ def main() -> int:
         errors.append("obsolete Wood-perch Beehive contract remains")
 
     scene_image_cpp = (ROOT / "src/scene_image.cpp").read_text(encoding="utf-8")
+    bee_colony_hpp = (ROOT / "include/sandhybrid/bee_colony.hpp").read_text(encoding="utf-8")
     move = (SHADERS / "move.comp").read_text(encoding="utf-8")
     tiles = (SHADERS / "tiles.comp").read_text(encoding="utf-8")
     for token in ("material_color.hpp", "material_editor_color", "material_from_editor_color"):
@@ -196,8 +197,27 @@ def main() -> int:
     ):
         if token not in bee_swarm:
             errors.append(f"authored bee-home origin contract missing {token!r}")
+    # The import constructor now delegates to the shared CPU home encoder.
+    # Retain the legacy authored-home flag/slot contract at that source of
+    # truth, and require the actual import call rather than a retired local
+    # constant name or an unused forwarding include.
     for token in (
-        "bee_authored_home_slot_bit",
+        '#include "sandhybrid/bee_colony.hpp"',
+        "return pack_bee_home_metadata(aux, {home_x, home_y}, slot, width, height);",
+    ):
+        if token not in scene_image_cpp:
+            errors.append(f"loaded Beehive shared home encoder contract missing {token!r}")
+    for token in (
+        "bee_home_metadata_mask = 0x00ffffffu",
+        "pack_bee_home_metadata(",
+        "home.x / 4u, 255u",
+        "home.y / 4u, 127u) << 8u",
+        "((slot & 127u) | 128u) << 15u",
+        "return (aux & ~bee_home_metadata_mask) | metadata;",
+    ):
+        if token not in bee_colony_hpp:
+            errors.append(f"loaded Beehive legacy authored-home encoding contract missing {token!r}")
+    for token in (
         "normalize_pre_pr19_hives",
         "pre_pr19_beehive_material",
         "beehive_shell_min_radius_squared = 24",

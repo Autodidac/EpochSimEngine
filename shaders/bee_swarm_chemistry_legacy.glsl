@@ -10,6 +10,10 @@ const uint BEE_AUX_FED = 0x10000000u;
 const uint BEE_AUX_SWARM = 0x08000000u;
 const uint BEE_AUX_MIGRATING = 0x02000000u;
 const uint BEE_METADATA_MASK = 0x00ffffffu;
+// Old district homes keep their exact bytes. This formerly clear persistent
+// metadata bit admits independently placed colonies throughout the resident sky
+// and gaps: global 16-cell home X10/Y7 plus six-bit slot.
+const uint BEE_AUX_GLOBAL_HOME = 0x00800000u;
 const uint BEE_AUTHORED_HOME_SLOT_BIT = 0x80u;
 
 const ivec2 BEE_AUTHORED_WORLD_CELLS = ivec2(640, 360);
@@ -63,6 +67,8 @@ bool beeUsesPersistentWorldHome(uint width, uint height) {
 }
 
 uint beeRawSlotFromAux(uint aux, uint width, uint height) {
+    if (beeUsesPersistentWorldHome(width, height) &&
+        (aux & BEE_AUX_GLOBAL_HOME) != 0u) return (aux >> 17u) & 63u;
     return beeUsesPersistentWorldHome(width, height)
         ? ((aux >> 13u) & 127u)
         : ((aux >> 15u) & 255u);
@@ -139,6 +145,8 @@ bool beePersistentAddress(ivec2 homeCenter, uint width, uint height,
 
 ivec2 beeHomeCenterFromAux(uint aux, uint width, uint height) {
     if (beeUsesPersistentWorldHome(width, height)) {
+        if ((aux & BEE_AUX_GLOBAL_HOME) != 0u)
+            return ivec2(int(aux & 1023u) * 16, int((aux >> 10u) & 127u) * 16);
         uint district = (aux >> 20u) & 7u;
         ivec2 origin = beePersistentDistrictOrigin(width, height, district);
         ivec2 local = ivec2(int(aux & 127u) * 8,
@@ -166,6 +174,13 @@ uint beePackMetadata(uint aux, ivec2 homeCenter, uint slot, uint width, uint hei
         return (aux & ~BEE_METADATA_MASK) | metadata;
     }
 
+    if (beeUsesPersistentWorldHome(width, height)) {
+        uint metadata = BEE_AUX_GLOBAL_HOME |
+            uint(clamp(homeCenter.x / 16, 0, 1023)) |
+            (uint(clamp(homeCenter.y / 16, 0, 127)) << 10u) |
+            ((slot & 63u) << 17u);
+        return (aux & ~BEE_METADATA_MASK) | metadata;
+    }
     ivec2 authoredOrigin = beeAuthoredWorldOrigin(width, height);
     bool authored = all(greaterThanEqual(homeCenter, authoredOrigin)) &&
                     all(lessThan(homeCenter, authoredOrigin + BEE_AUTHORED_WORLD_CELLS));

@@ -307,6 +307,7 @@ set(SANDHYBRID_CORE_PUBLIC_HEADERS
     include/sandhybrid/scene_spawn.hpp
     include/sandhybrid/scene_image.hpp
     include/sandhybrid/hive_recovery.hpp
+    include/sandhybrid/bee_colony.hpp
     include/sandhybrid/world_save.hpp
     include/sandhybrid/section_grid.hpp
     include/sandhybrid/section_scheduler.hpp
@@ -469,6 +470,12 @@ if(BUILD_TESTING)
     target_compile_features(sandhybrid_hive_recovery_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_hive_recovery_contract)
     add_test(NAME sandhybrid_hive_recovery_contract COMMAND sandhybrid_hive_recovery_contract)
+
+    add_executable(epochsimengine_bee_colony_contract tests/bee_colony_contract.cpp)
+    target_link_libraries(epochsimengine_bee_colony_contract PRIVATE EpochSimEngine::EpochSimEngine)
+    target_compile_features(epochsimengine_bee_colony_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(epochsimengine_bee_colony_contract)
+    add_test(NAME epochsimengine_bee_colony_contract COMMAND epochsimengine_bee_colony_contract)
 
     add_executable(sandhybrid_bee_tile_search_contract tests/bee_tile_search_contract.cpp)
     target_compile_features(sandhybrid_bee_tile_search_contract PRIVATE cxx_std_23)

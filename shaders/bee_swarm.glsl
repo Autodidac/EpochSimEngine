@@ -6,6 +6,7 @@ const uint BEE_COLONY_MAX = 60u;
 const uint BEE_TIMER_BITS = 14u;
 const uint BEE_TIMER_MAX = 0x3fffu;
 const uint BEE_TARGET_NEWBORN = 0x3fffeu;
+const uint BEE_TARGET_SEARCH = 0x3fffdu;
 const uint BEE_TARGET_NONE = 0x3ffffu;
 const uint BEE_AUX_QUEEN = 0x40000000u;
 const uint BEE_AUX_POLLEN = 0x20000000u;
@@ -13,6 +14,10 @@ const uint BEE_AUX_FED = 0x10000000u;
 const uint BEE_AUX_SWARM = 0x08000000u;
 const uint BEE_AUX_MIGRATING = 0x02000000u;
 const uint BEE_METADATA_MASK = 0x00ffffffu;
+// Old district homes keep their exact bytes. This formerly clear persistent
+// metadata bit admits independently placed colonies throughout the resident sky
+// and gaps: global 16-cell home X10/Y7 plus six-bit slot.
+const uint BEE_AUX_GLOBAL_HOME = 0x00800000u;
 const uint BEE_AUTHORED_HOME_SLOT_BIT = 0x80u;
 
 const ivec2 BEE_AUTHORED_WORLD_CELLS = ivec2(640, 360);
@@ -63,6 +68,8 @@ bool beeUsesPersistentWorldHome(uint width, uint height) {
 }
 
 uint beeRawSlotFromAux(uint aux, uint width, uint height) {
+    if (beeUsesPersistentWorldHome(width, height) &&
+        (aux & BEE_AUX_GLOBAL_HOME) != 0u) return (aux >> 17u) & 63u;
     return beeUsesPersistentWorldHome(width, height)
         ? ((aux >> 13u) & 127u)
         : ((aux >> 15u) & 255u);
@@ -139,6 +146,8 @@ bool beePersistentAddress(ivec2 homeCenter, uint width, uint height,
 
 ivec2 beeHomeCenterFromAux(uint aux, uint width, uint height) {
     if (beeUsesPersistentWorldHome(width, height)) {
+        if ((aux & BEE_AUX_GLOBAL_HOME) != 0u)
+            return ivec2(int(aux & 1023u) * 16, int((aux >> 10u) & 127u) * 16);
         uint district = (aux >> 20u) & 7u;
         ivec2 origin = beePersistentDistrictOrigin(width, height, district);
         ivec2 local = ivec2(int(aux & 127u) * 8,
@@ -166,6 +175,13 @@ uint beePackMetadata(uint aux, ivec2 homeCenter, uint slot, uint width, uint hei
         return (aux & ~BEE_METADATA_MASK) | metadata;
     }
 
+    if (beeUsesPersistentWorldHome(width, height)) {
+        uint metadata = BEE_AUX_GLOBAL_HOME |
+            uint(clamp(homeCenter.x / 16, 0, 1023)) |
+            (uint(clamp(homeCenter.y / 16, 0, 127)) << 10u) |
+            ((slot & 63u) << 17u);
+        return (aux & ~BEE_METADATA_MASK) | metadata;
+    }
     ivec2 authoredOrigin = beeAuthoredWorldOrigin(width, height);
     bool authored = all(greaterThanEqual(homeCenter, authoredOrigin)) &&
                     all(lessThan(homeCenter, authoredOrigin + BEE_AUTHORED_WORLD_CELLS));
@@ -197,14 +213,30 @@ uint beeInitialTimer(uint slot) {
 // A replacement bee must retain the Queen's exact intra-tile position while
 // it owns the reserved newborn route. Persistent metadata intentionally stores
 // only the home tile, so the otherwise-unused newborn timer carries the exact
-// 3-bit x/y remainder until the bee reaches its assigned formation cell.
-uint beeNewbornHomeTimer(ivec2 homeCenter) {
+// 3-bit x/y remainder (legacy district) or tagged 4-bit remainder (global16)
+// until the bee reaches its assigned formation cell.
+uint beeNewbornHomeTimer(ivec2 homeCenter, uint metadata) {
+    if ((metadata & BEE_AUX_GLOBAL_HOME) != 0u)
+        return 256u | uint(homeCenter.x & 15) | (uint(homeCenter.y & 15) << 4u);
     return uint(homeCenter.x & 7) | (uint(homeCenter.y & 7) << 3u);
 }
 
 ivec2 beeNewbornExactHome(uint age, ivec2 alignedHome) {
     uint packed = beeTimerFromAge(age);
+    if ((packed & 256u) != 0u)
+        return alignedHome + ivec2(int(packed & 15u), int((packed >> 4u) & 15u));
     return alignedHome + ivec2(int(packed & 7u), int((packed >> 3u) & 7u));
+}
+
+int beeHomeSearchExtent(uint aux, uint width, uint height) {
+    return beeUsesPersistentWorldHome(width, height) &&
+        (aux & BEE_AUX_GLOBAL_HOME) != 0u ? 15 : 7;
+}
+
+bool beeOwnsHome(uint aux, ivec2 queen, uint width, uint height) {
+    uint expected = beePackMetadata(0u, queen, 0u, width, height);
+    return all(equal(beeHomeCenterFromAux(aux, width, height),
+                     beeHomeCenterFromAux(expected, width, height)));
 }
 
 bool beeIsForager(uint aux, uint width, uint height) {

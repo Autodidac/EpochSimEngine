@@ -2,6 +2,7 @@
 #include "sandhybrid/world_layout.hpp"
 
 #include "sandhybrid/actor_medium.hpp"
+#include "sandhybrid/bee_colony.hpp"
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/material_color.hpp"
 
@@ -33,8 +34,6 @@ constexpr std::uint32_t minimum_cohesive_cells = 32u;
 constexpr std::uint32_t full_strength_cells = 52u;
 constexpr std::uint32_t bee_formation_count =
     static_cast<std::uint32_t>(fix29_bee_formation_count);
-constexpr std::uint32_t bee_metadata_mask = 0x00ffffffu;
-constexpr std::uint32_t bee_authored_home_slot_bit = 0x80u;
 constexpr std::int32_t beehive_shell_min_radius_squared = 24;
 constexpr std::int32_t beehive_shell_max_radius_squared = 88;
 constexpr std::int32_t beehive_chamber_radius_squared = 24;
@@ -64,29 +63,7 @@ std::uint32_t pack_bee_metadata(std::uint32_t aux, const std::uint32_t home_x,
                                 const std::uint32_t home_y, const std::uint32_t slot,
                                 const std::uint32_t width,
                                 const std::uint32_t height) noexcept {
-    if (width >= persistent_world_width && height >= persistent_world_height) {
-        for (std::uint32_t district = 0u;
-             district < persistent_world_district_count; ++district) {
-            const auto origin_x = persistent_world_district_origin_x(width, district);
-            const auto origin_y = persistent_world_district_origin_y(height, district);
-            if (home_x < origin_x || home_y < origin_y ||
-                home_x >= origin_x + pre_expansion_world_width ||
-                home_y >= origin_y + pre_expansion_world_height)
-                continue;
-            const auto local_x = (home_x - origin_x) / tile_size;
-            const auto local_y = (home_y - origin_y) / tile_size;
-            const auto metadata = std::min(local_x, 127u) |
-                (std::min(local_y, 63u) << 7u) |
-                ((slot & 127u) << 13u) | (district << 20u);
-            return (aux & ~bee_metadata_mask) | metadata;
-        }
-    }
-
-    const auto packed_home_x = std::min(home_x / 4u, 255u);
-    const auto packed_home_y = std::min(home_y / 4u, 127u);
-    const auto packed_slot = (slot & 127u) | bee_authored_home_slot_bit;
-    const auto metadata = packed_home_x | (packed_home_y << 8u) | (packed_slot << 15u);
-    return (aux & ~bee_metadata_mask) | metadata;
+    return pack_bee_home_metadata(aux, {home_x, home_y}, slot, width, height);
 }
 
 Material pre_pr19_beehive_material(const std::int32_t offset_x,

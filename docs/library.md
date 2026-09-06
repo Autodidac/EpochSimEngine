@@ -37,6 +37,10 @@ Existing `find_package(SandHybrid)`, `SandHybrid::SandHybrid`, `<sandhybrid/...>
 - The persistent-world layout and scene-image/save formats are deterministic and platform-neutral.
 - Runtime-only headers are not installed with the core public API.
 
+`<epochsimengine/bee_colony.hpp>` exposes the deterministic Bee home/slot codec and exact Beehive placement-footprint policy. Call `bee_home_encodable` before constructing a new address. Persistent authored districts retain their original 8-cell home bins and bytes; sky/gap homes use a tagged 16-cell global bin within the supported 16384x2048 envelope. The runtime resolves each bin to its Queen's exact position and rejects overlapping colony footprints. These are Bee-specific bits, not Water state. Schema-2 serialization continues to preserve the complete canonical cell payload unchanged.
+
+The nonpersistent packer's historical PPM constructor bytes are retained for import compatibility, not corrected in place. New-address admission rejects offset legacy canvases such as 1280x360, whose old absolute coordinates plus authored-origin flag would decode to a different home. The canonical zero-origin 640x360 map and current persistent presets remain supported.
+
 The current implementation is evolving behind preserved mission acceptance. API or behavior claims are complete only when their platform contracts, runtime evidence, and package checks pass.
 
 ## Licenses and binary requirements

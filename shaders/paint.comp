@@ -9,7 +9,7 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
-layout(std430, binding = 1) readonly buffer PaintSnapshot { Cell paintSnapshot[]; };
+layout(std430, binding = 1) buffer PaintSnapshot { Cell paintSnapshot[]; };
 layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
 
 void markPaintChunkDirty(ivec2 p) {
@@ -119,6 +119,14 @@ void erasePaintColonyCell(ivec2 p) {
     markPaintChunkDirty(p);
 }
 
+bool paintLegacyColonySignature(ivec2 queen) {
+    // Only the obsolete closed round body is cleanup input. The accepted
+    // photographed colony's right exit is open and must never be erased just
+    // because another hive is placed nearby.
+    return paintColonySignature(queen) &&
+        paintSnapshot[indexOf(queen + ivec2(5, 0))].material == MAT_BEEHIVE;
+}
+
 bool paintColonyOwnsCell(ivec2 queen, ivec2 p, Cell candidate, bool explicitOwner) {
     ivec2 delta = p - queen;
     bool body = delta.x * delta.x + delta.y * delta.y < 100 &&
@@ -157,6 +165,22 @@ bool paintColonyOwnsCell(ivec2 queen, ivec2 p, Cell candidate, bool explicitOwne
 
 void main() {
     ivec2 local = ivec2(gl_GlobalInvocationID.xy);
+    if (pc.activeMode == 5u) {
+        // One preflight owner writes only scratch. Painting and legacy cleanup
+        // both read this admission after a barrier, so overlap rejection is
+        // atomic without a full-world readback or a per-cell neighborhood scan.
+        if (any(notEqual(local, ivec2(0)))) return;
+        ivec2 center = ivec2(pc.brushX, pc.brushY);
+        uint admitted = 1u;
+        for (int y = -36; y <= 36 && admitted != 0u; ++y)
+            for (int x = -40; x <= 40 && admitted != 0u; ++x) {
+                ivec2 queen = center + ivec2(x, y);
+                if (inside(queen) && paintSnapshot[indexOf(queen)].material == MAT_QUEEN_BEE &&
+                    !paintLegacyColonySignature(queen)) admitted = 0u;
+            }
+        paintSnapshot[indexOf(center)].age = admitted;
+        return;
+    }
     if (pc.activeMode == 3u || pc.activeMode == 4u) {
         // Each invocation owns one destination; all signature/perch reads use
         // the immutable bounded snapshot, never concurrently erased cells.
@@ -164,6 +188,7 @@ void main() {
         int diameter = int(pc.radius * 2u + 1u);
         if (local.x >= diameter || local.y >= diameter) return;
         ivec2 center = ivec2(pc.brushX, pc.brushY);
+        if (pc.activeMode == 3u && paintSnapshot[indexOf(center)].age == 0u) return;
         ivec2 p = center + local - ivec2(int(pc.radius));
         if (!inside(p)) return;
         Cell candidate = paintSnapshot[indexOf(p)];
@@ -177,7 +202,7 @@ void main() {
             for (int y = -54; y <= 54; ++y)
                 for (int x = -54; x <= 54; ++x) {
                     ivec2 queen = center + ivec2(x, y);
-                    if (paintColonySignature(queen) &&
+                    if (paintLegacyColonySignature(queen) &&
                         paintColonyOwnsCell(queen, p, candidate, false)) {
                         erasePaintColonyCell(p);
                         return;
@@ -260,6 +285,7 @@ void main() {
     Cell cell;
     int colonySlot = -1;
     if (material == MAT_BEEHIVE) {
+        if (paintSnapshot[indexOf(center)].age == 0u) return;
         ivec2 prefabQueen = center;
         uint prefabDistrict = 0u;
         ivec2 prefabDistrictLocal = ivec2(0);

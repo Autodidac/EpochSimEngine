@@ -128,16 +128,78 @@ bool tileLiquidCanSpread(ivec2 sourcePosition,
                      cells[indexOf(sourceAbovePosition)].material == source.material);
     return supplied && forwardOpen;
 }
+void indexColonyTile(uint index, ivec2 origin) {
+    // Explicit edits/load need a no-false-negative colony index even while
+    // paused. They must not start macro ownership, advance its failed-attempt
+    // budget, age stability, or decrement a cooldown as a side effect.
+    const uint featureMask = TILE_HAS_QUEEN | TILE_HAS_HIVE | TILE_HAS_FLOWER |
+        TILE_HAS_HONEY | TILE_HAS_BEES | TILE_HAS_MIGRATING_QUEEN | TILE_BEE_HAZARD;
+    uint features = 0u;
+    uint locations = 0u;
+    uint bees = 0u;
+    for (uint y = 0u; y < TILE_SIZE; ++y) {
+        for (uint x = 0u; x < TILE_SIZE; ++x) {
+            ivec2 p = origin + ivec2(x, y);
+            if (!tileInside(p)) continue;
+            Cell cell = cells[indexOf(p)];
+            if (cell.material == MAT_QUEEN_BEE) {
+                if ((features & TILE_HAS_QUEEN) == 0u) {
+                    locations &= ~((7u << TILE_QUEEN_X_SHIFT) | (7u << TILE_QUEEN_Y_SHIFT));
+                    locations |= (x << TILE_QUEEN_X_SHIFT) | (y << TILE_QUEEN_Y_SHIFT);
+                }
+                features |= TILE_HAS_QUEEN;
+            }
+            if (cell.material == MAT_BEEHIVE) features |= TILE_HAS_HIVE;
+            if (cell.material == MAT_FLOWER) {
+                if ((features & TILE_HAS_FLOWER) == 0u)
+                    locations |= (x << TILE_FLOWER_X_SHIFT) | (y << TILE_FLOWER_Y_SHIFT);
+                features |= TILE_HAS_FLOWER;
+            }
+            if (cell.material == MAT_HONEY) {
+                if ((features & TILE_HAS_HONEY) == 0u)
+                    locations |= (x << TILE_HONEY_X_SHIFT) | (y << TILE_HONEY_Y_SHIFT);
+                features |= TILE_HAS_HONEY;
+            }
+            if (cell.material == MAT_BEE) {
+                ++bees;
+                features |= TILE_HAS_BEES;
+                if ((cell.aux & AUX_CHARGED) != 0u) {
+                    if ((features & (TILE_HAS_QUEEN | TILE_HAS_MIGRATING_QUEEN)) == 0u)
+                        locations |= (x << TILE_QUEEN_X_SHIFT) | (y << TILE_QUEEN_Y_SHIFT);
+                    features |= TILE_HAS_MIGRATING_QUEEN;
+                }
+            }
+            if (cell.material == MAT_FIRE || cell.material == MAT_LAVA ||
+                cell.material == MAT_ACID || cell.material == MAT_SMOKE ||
+                cell.material == MAT_DIRTY_STEAM || cell.material == MAT_LIGHTNING ||
+                cell.material == MAT_RADIATION) features |= TILE_BEE_HAZARD;
+        }
+    }
+    TileState previous = tiles[index];
+    previous.flags = (previous.flags & ~featureMask) | features;
+    previous.occupancy = (previous.occupancy & TILE_OCCUPANCY_MASK) |
+        locations | (bees << TILE_BEE_COUNT_SHIFT);
+    tiles[index] = previous;
+}
+
 void main() {
+    bool editRectangle = pc.activeMode == 3u;
+    if (editRectangle && (gl_GlobalInvocationID.x >= pc.radius ||
+                          gl_GlobalInvocationID.y >= pc.material)) return;
     uvec2 tile = gl_GlobalInvocationID.xy + uvec2(activeDispatchTileOrigin(
         pc.activeSectionX, pc.activeSectionY, pc.activeMode));
+    if (editRectangle) tile = gl_GlobalInvocationID.xy + uvec2(pc.brushX, pc.brushY);
     uint columns = tileColumns(pc.width);
     uint rows = (pc.height + TILE_SIZE - 1u) / TILE_SIZE;
     if (tile.x >= columns || tile.y >= rows) return;
 
     uint index = tile.y * columns + tile.x;
     ivec2 origin = ivec2(tile * TILE_SIZE);
-    if (!sectionActiveAt(origin, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) return;
+    if (!editRectangle && !sectionActiveAt(origin, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) return;
+    if (editRectangle) {
+        indexColonyTile(index, origin);
+        return;
+    }
     TileState previous = tiles[index];
     uint counts[MATERIAL_COUNT];
     for (uint i = 0u; i < MATERIAL_COUNT; ++i) counts[i] = 0u;

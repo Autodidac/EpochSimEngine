@@ -50,7 +50,7 @@ if(EPOCHSIMENGINE_PACKAGE_ORDER STREQUAL "canonical_only")
     # prerequisites or an omitted install rule. No graphics SDK is configured.
     set(header_sources)
     foreach(header IN ITEMS actor_medium atmosphere blueprint camera_policy
-            hive_recovery input_routing inventory library machinery material
+            bee_colony hive_recovery input_routing inventory library machinery material
             material_color namespace packet_transaction scene scene_image
             scene_spawn section_grid section_scheduler simulation_policy
             terrain_generation world_layout world_save)

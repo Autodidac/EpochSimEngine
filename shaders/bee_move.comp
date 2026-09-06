@@ -9,7 +9,7 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 1) buffer NextCells { Cell nextCells[]; };
-layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
+layout(std430, binding = 4) buffer Tiles { TileState tiles[]; };
 layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };
 layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
 
@@ -79,16 +79,27 @@ ivec2 beeMoveDistrictOrigin(ivec2 homeCenter) {
 }
 
 uint beeMoveDistrictPopulation(ivec2 homeCenter) {
-    ivec2 origin = beeMoveDistrictOrigin(homeCenter);
-    ivec2 firstTile = max(origin / int(TILE_SIZE), ivec2(0));
-    ivec2 finalCell = min(origin + BEE_AUTHORED_WORLD_CELLS - ivec2(1),
-                          ivec2(int(pc.width) - 1, int(pc.height) - 1));
-    ivec2 finalTile = finalCell / int(TILE_SIZE);
+    // Replacement is capped per home, never per district. On the rare birth
+    // opportunity, skip empty tile summaries and inspect only Bee-bearing
+    // canonical tiles, including foragers beyond the active camera window.
     uint columns = tileColumns(pc.width);
     uint count = 0u;
-    for (int tileY = firstTile.y; tileY <= finalTile.y; ++tileY) {
-        for (int tileX = firstTile.x; tileX <= finalTile.x; ++tileX)
-            count += tileBeeCount(tiles[uint(tileY) * columns + uint(tileX)]);
+    uint tileCount = columns * ((pc.height + TILE_SIZE - 1u) / TILE_SIZE);
+    for (uint tile = 0u; tile < tileCount; ++tile) {
+        // Counts are a previous classification snapshot. Movement publishes a
+        // conservative candidate bit at both endpoints, so a newly occupied
+        // off-camera tile is never skipped before its next classification.
+        if (tileBeeCount(tiles[tile]) == 0u &&
+            !tileHas(tiles[tile], TILE_HAS_BEES | TILE_HAS_HIVE | TILE_HAS_QUEEN)) continue;
+        ivec2 origin = brickOriginFromIndex(tile, pc.width);
+        for (int y = 0; y < int(TILE_SIZE); ++y)
+            for (int x = 0; x < int(TILE_SIZE); ++x) {
+                ivec2 p = origin + ivec2(x, y);
+                if (!inside(p)) continue;
+                Cell bee = beeMoveSourceAt(p);
+                if (bee.material == MAT_BEE && (bee.aux & BEE_AUX_SWARM) != 0u &&
+                    beeOwnsHome(bee.aux, homeCenter, pc.width, pc.height)) ++count;
+            }
     }
     return count;
 }
@@ -102,8 +113,7 @@ uint beeMoveStationaryPopulation(ivec2 homeCenter, out uint firstMissingSlot) {
         bool exact = bee.material == MAT_BEE &&
             (bee.aux & BEE_AUX_SWARM) != 0u &&
             beeFormationSlotFromAux(bee.aux, pc.width, pc.height) == slot &&
-            all(equal(storedHome / int(TILE_SIZE),
-                      homeCenter / int(TILE_SIZE)));
+            beeOwnsHome(bee.aux, homeCenter, pc.width, pc.height);
         if (exact) ++count;
         else if (firstMissingSlot == BEE_FORMATION_COUNT)
             firstMissingSlot = slot;
@@ -166,7 +176,16 @@ uint beeMoveTileCount() {
 }
 
 bool beeMoveTargetValid(uint index, uint requiredFlags) {
-    return index < beeMoveTileCount() && tileHas(tiles[index], requiredFlags);
+    // Other movement invocations may publish only the conservative Bee bit.
+    // Read the shared flag word atomically even when testing a different bit.
+    return index < beeMoveTileCount() &&
+        (atomicOr(tiles[index].flags, 0u) & requiredFlags) != 0u;
+}
+
+TileState beeMoveTileFeatures(uint index) {
+    // Feature positions live solely in occupancy, which this pass never writes.
+    // Avoid a whole-struct load racing another mover's atomic flag publication.
+    return TileState(0u, tiles[index].occupancy, 0u, 0u);
 }
 
 ivec2 beeMoveExactHome(Cell bee) {
@@ -175,8 +194,9 @@ ivec2 beeMoveExactHome(Cell bee) {
         return beeNewbornExactHome(bee.age, approximate);
     ivec2 exact = approximate;
     int bestDistance = 0x3fffffff;
-    for (int dy = -2; dy <= 7; ++dy) {
-        for (int dx = -2; dx <= 7; ++dx) {
+    int extent = beeHomeSearchExtent(bee.aux, pc.width, pc.height);
+    for (int dy = -2; dy <= extent; ++dy) {
+        for (int dx = -2; dx <= extent; ++dx) {
             ivec2 candidate = approximate + ivec2(dx, dy);
             if (!inside(candidate) ||
                 cells[indexOf(candidate)].material != MAT_QUEEN_BEE) continue;
@@ -190,9 +210,133 @@ ivec2 beeMoveExactHome(Cell bee) {
     return exact;
 }
 
-ivec2 beeNewbornTransitTarget(ivec2 position, ivec2 home, uint slot) {
+bool beeMovePassable(Cell target);
+
+// At a true footprint edge, the normal x=+23/y=-24/+16 outside lanes
+// need not exist. These compressed, axis-aligned routes stay inside the exact
+// accepted footprint [-20,+20] x [-22,+14]. Each starts at the right exit
+// (11,0), avoids the fixed body and the other59 formation cells, and ends at
+// its own slot. Coordinates use two12-bit (x+32,y+32) pairs per word;
+// duplicate final waypoints pad shorter paths. No runtime graph search or
+// alternative hive artwork is involved.
+const uvec3 BEE_FOOTPRINT_ROUTES[60] = uvec3[](
+    uvec3(0x2ab82bu, 0x29d29du, 0x29d29du), // 0
+    uvec3(0x2ab82bu, 0x2de29eu, 0x2dc2dcu), // 1
+    uvec3(0x2eb82bu, 0x2e42e4u, 0x2e42e4u), // 2
+    uvec3(0x2ab82bu, 0x31e29eu, 0x31b31bu), // 3
+    uvec3(0x32b82bu, 0x325325u, 0x325325u), // 4
+    uvec3(0x4ab82bu, 0x359499u, 0x35a35au), // 5
+    uvec3(0x36b82bu, 0x366366u, 0x366366u), // 6
+    uvec3(0x4ab82bu, 0x39a49au, 0x39a39au), // 7
+    uvec3(0x3ab82bu, 0x3a63a6u, 0x3a63a6u), // 8
+    uvec3(0x4ab82bu, 0x3db49bu, 0x3db3dbu), // 9
+    uvec3(0x3eb82bu, 0x3e53e5u, 0x3e53e5u), // 10
+    uvec3(0x4ab82bu, 0x41c49cu, 0x41c41cu), // 11
+    uvec3(0x4ab82bu, 0x41d49du, 0x41d41du), // 12
+    uvec3(0x46b82bu, 0x423463u, 0x423423u), // 13
+    uvec3(0x42b82bu, 0x424424u, 0x424424u), // 14
+    uvec3(0x4ab82bu, 0x45e49eu, 0x45e45eu), // 15
+    uvec3(0x4ab82bu, 0x45f49fu, 0x45f45fu), // 16
+    uvec3(0x4ab82bu, 0x4604a0u, 0x460460u), // 17
+    uvec3(0x4ab82bu, 0x4614a1u, 0x461461u), // 18
+    uvec3(0x46b82bu, 0x462462u, 0x462462u), // 19
+    uvec3(0x5ab82bu, 0x88f58fu, 0x88f88fu), // 20
+    uvec3(0x5ab82bu, 0x890590u, 0x890890u), // 21
+    uvec3(0x5ab82bu, 0x891591u, 0x891891u), // 22
+    uvec3(0x82f82bu, 0x8af8afu, 0x8af8afu), // 23
+    uvec3(0x83082bu, 0x8b08b0u, 0x8b08b0u), // 24
+    uvec3(0x83182bu, 0x8b18b1u, 0x8b18b1u), // 25
+    uvec3(0x5ab82bu, 0x8d2592u, 0x8d28d2u), // 26
+    uvec3(0x8eb82bu, 0x8ee8eeu, 0x8ee8eeu), // 27
+    uvec3(0x5ab82bu, 0x913593u, 0x913913u), // 28
+    uvec3(0x92b82bu, 0x92d92du, 0x92d92du), // 29
+    uvec3(0x5ab82bu, 0x954594u, 0x954954u), // 30
+    uvec3(0x82c82bu, 0x96c96cu, 0x96c96cu), // 31
+    uvec3(0x5ab82bu, 0x995595u, 0x995995u), // 32
+    uvec3(0x9ab82bu, 0x9ab9abu, 0x9ab9abu), // 33
+    uvec3(0x5ab82bu, 0x9d6596u, 0x9d69d6u), // 34
+    uvec3(0x96b82bu, 0x9ea96au, 0x9ea9eau), // 35
+    uvec3(0x5ab82bu, 0xa0e58eu, 0xa16a16u), // 36
+    uvec3(0x83282bu, 0xa2aa32u, 0xa2aa2au), // 37
+    uvec3(0x96b82bu, 0xaa8968u, 0xa56a96u), // 38
+    uvec3(0x83282bu, 0xa6aa72u, 0xa6aa6au), // 39
+    uvec3(0x96b82bu, 0xaa8968u, 0xa95a95u), // 40
+    uvec3(0x83282bu, 0xaabab2u, 0xaabaabu), // 41
+    uvec3(0x5ab82bu, 0xacc58cu, 0xaccaccu), // 42
+    uvec3(0x96b82bu, 0xae8968u, 0xad4ad4u), // 43
+    uvec3(0x83282bu, 0xaecaf2u, 0xaecaecu), // 44
+    uvec3(0x83482bu, 0xaf4af4u, 0xaf4af4u), // 45
+    uvec3(0x5ab82bu, 0xb0d58du, 0xb0db0du), // 46
+    uvec3(0x96b82bu, 0xb28968u, 0xb13b13u), // 47
+    uvec3(0x83282bu, 0xb2db32u, 0xb2db2du), // 48
+    uvec3(0x83382bu, 0xb33b33u, 0xb33b33u), // 49
+    uvec3(0x5ab82bu, 0xb4e58eu, 0xb4eb4eu), // 50
+    uvec3(0x96b82bu, 0xb68968u, 0xb52b52u), // 51
+    uvec3(0x96b82bu, 0xb69969u, 0xb6eb6eu), // 52
+    uvec3(0x83282bu, 0xb72b72u, 0xb72b72u), // 53
+    uvec3(0x5ab82bu, 0xb0e58eu, 0xb8fb0fu), // 54
+    uvec3(0x5ab82bu, 0xb0e58eu, 0xb90b10u), // 55
+    uvec3(0x96b82bu, 0xba8968u, 0xb91b91u), // 56
+    uvec3(0x96b82bu, 0xba9969u, 0xbafbafu), // 57
+    uvec3(0x83282bu, 0xb30b32u, 0xbb0bb0u), // 58
+    uvec3(0x83282bu, 0xb31b32u, 0xbb1bb1u) // 59
+);
+
+bool beeNeedsFootprintRoute(ivec2 home) {
+    return !inside(home + ivec2(-23, -24)) ||
+           !inside(home + ivec2(23, 16));
+}
+
+ivec2 beeFootprintWaypoint(uint slot, uint point) {
+    uvec3 route = BEE_FOOTPRINT_ROUTES[min(slot, 59u)];
+    uint packed = (route[point / 2u] >> ((point & 1u) * 12u)) & 0xfffu;
+    return ivec2(int(packed & 63u) - 32, int((packed >> 6u) & 63u) - 32);
+}
+
+ivec2 beeFootprintTransitTarget(ivec2 position, ivec2 home, uint slot,
+                                 bool homeward, out bool exactRouteStep) {
+    exactRouteStep = true;
+    ivec2 local = position - home;
+    // A searcher reverses the same physical path it used to leave its slot.
+    // Check each segment in travel order, skipping its already reached end.
+    for (int ordinal = 0; ordinal < 5; ++ordinal) {
+        uint segment = uint(homeward ? ordinal : 4 - ordinal);
+        ivec2 a = beeFootprintWaypoint(slot, segment);
+        ivec2 b = beeFootprintWaypoint(slot, segment + 1u);
+        ivec2 end = homeward ? b : a;
+        if (all(equal(a, b)) || all(equal(local, end))) continue;
+        if (!all(greaterThanEqual(local, min(a, b))) ||
+            !all(lessThanEqual(local, max(a, b)))) continue;
+        ivec2 next = position + sign(end - local);
+        // The immutable snapshot rejects occupied route cells without racing
+        // another mover's payload. The actual CAS still owns the one-cell
+        // transaction; a blocked/replaced owner waits rather than sidestepping.
+        if (!inside(next) ||
+            !sectionActiveAt(next, pc.activeSectionX, pc.activeSectionY, pc.activeMode) ||
+            !beeMovePassable(nextCells[indexOf(next)])) return position;
+        return next;
+    }
+    // Exact endpoint, or an externally displaced Bee no longer on this route:
+    // remain a live owner rather than teleporting or overwriting a neighbor.
+    return position;
+}
+
+ivec2 beeNewbornTransitTarget(ivec2 position, ivec2 home, uint slot,
+                                out bool exactRouteStep) {
+    exactRouteStep = false;
     ivec2 local = position - home;
     ivec2 settled = beeFormationOffset(slot);
+    if (beeNeedsFootprintRoute(home)) {
+        // The photographed tunnel reaches x=10, beyond the radius<88 shell.
+        // Center before its mouth so a y=+/-1 owner enters the route at(11,0),
+        // not off-path at(11,+/-1). Footprint paths never re-enter this tunnel.
+        bool inExitTunnel = local.x >= 1 && local.x <= 10 && abs(local.y) <= 1;
+        if (inExitTunnel && local.y != 0)
+            return home + ivec2(local.x, 0);
+        if (local.x * local.x + local.y * local.y < 88 || inExitTunnel)
+            return home + ivec2(11, 0);
+        return beeFootprintTransitTarget(position, home, slot, true, exactRouteStep);
+    }
 
     // Leave through the historical right-hand tunnel, then stay outside both
     // the body and the occupied three-lobe symbol. Upper-lobe births approach
@@ -233,42 +377,70 @@ ivec2 beeForagerDepartureTarget(ivec2 home, uint slot) {
     return home + ivec2(formation.x < 0 ? -23 : 23, formation.y);
 }
 
-ivec2 beeMoveDestination(ivec2 position, Cell bee) {
+ivec2 beeMoveDestination(ivec2 position, Cell bee, out bool exactRouteStep) {
+    exactRouteStep = false;
     uint slot = beeFormationSlotFromAux(bee.aux, pc.width, pc.height);
     ivec2 home = beeMoveExactHome(bee);
     uint targetTile = beeTargetTileFromAge(bee.age);
     if ((bee.aux & BEE_AUX_QUEEN) != 0u) {
         if (!beeMoveTargetValid(targetTile, TILE_HAS_FLOWER)) return home;
         return beeMigrationSite(
-            tileFlowerPosition(targetTile, pc.width, tiles[targetTile]),
+            tileFlowerPosition(targetTile, pc.width, beeMoveTileFeatures(targetTile)),
             pc.width, pc.height);
     }
     if ((bee.aux & BEE_AUX_MIGRATING) != 0u) {
         if (!beeMoveTargetValid(targetTile, TILE_HAS_MIGRATING_QUEEN) &&
             !beeMoveTargetValid(targetTile, TILE_HAS_QUEEN)) return home;
-        ivec2 queen = tileQueenPosition(targetTile, pc.width, tiles[targetTile]);
+        ivec2 queen = tileQueenPosition(targetTile, pc.width, beeMoveTileFeatures(targetTile));
         return queen + beeRotateOffset(beeFormationOffset(slot) / 2, pc.step / 8u);
     }
     // Only an explicitly marked replacement is routed through the photographed
     // right-hand x=1..10, |y|<=1 exit. Position alone cannot identify a birth:
     // six valid lower-lobe slots are deliberately close to the hive body.
     if (targetTile == BEE_TARGET_NEWBORN)
-        return beeNewbornTransitTarget(position, home, slot);
+        return beeNewbornTransitTarget(position, home, slot, exactRouteStep);
     if ((bee.aux & BEE_AUX_POLLEN) != 0u)
         return home + beeLandingOffset(slot);
     if ((bee.aux & BEE_AUX_FED) == 0u) {
         if (!beeMoveTargetValid(targetTile, TILE_HAS_HONEY))
             return home + beeLandingOffset(slot);
-        ivec2 honey = tileHoneyPosition(targetTile, pc.width, tiles[targetTile]);
+        ivec2 honey = tileHoneyPosition(targetTile, pc.width, beeMoveTileFeatures(targetTile));
         return beeApproachPosition(honey, home);
+    }
+    if (targetTile == BEE_TARGET_SEARCH) {
+        uint timer = beeTimerFromAge(bee.age);
+        if (beeNeedsFootprintRoute(home))
+            return beeFootprintTransitTarget(position, home, slot, timer >= 192u,
+                                              exactRouteStep);
+        // The slot17 return formerly approached diagonally from(-5,-21) and
+        // oscillated against the frozen upper crescent. Align with its clear
+        // x=0 outside lane before entering; other proven interior routes stay
+        // unchanged.
+        if (timer >= 192u && slot == 17u &&
+            position.x != home.x + beeFormationOffset(slot).x)
+            return beeForagerDepartureTarget(home, slot);
+        if (timer >= 192u) return home + beeFormationOffset(slot);
+        ivec2 outside = beeForagerDepartureTarget(home, slot);
+        if (timer < 64u) return outside;
+        ivec2 offset = beeFormationOffset(slot);
+        ivec2 outward = offset.y < 0 ? ivec2(0, -1) :
+            ivec2(offset.x < 0 ? -1 : 1, 0);
+        ivec2 tangent = ivec2(-outward.y, outward.x);
+        return outside + outward * 12 + tangent * (timer < 128u ? 5 : -5);
     }
     if (targetTile != BEE_TARGET_NONE) {
         if (!beeMoveTargetValid(targetTile, TILE_HAS_FLOWER))
             return home + beeBiohazardTargetOffset(slot, pc.step);
-        if (beeForagerSlot(slot) && beeTimerFromAge(bee.age) <= 64u)
+        if (beeForagerSlot(slot) && beeTimerFromAge(bee.age) <= 64u) {
+            if (beeNeedsFootprintRoute(home))
+                return beeFootprintTransitTarget(position, home, slot, false, exactRouteStep);
             return beeForagerDepartureTarget(home, slot);
-        ivec2 flower = tileFlowerPosition(targetTile, pc.width, tiles[targetTile]);
-        return beeForagerApproachPosition(flower, slot);
+        }
+        ivec2 flower = tileFlowerPosition(targetTile, pc.width, beeMoveTileFeatures(targetTile));
+        ivec2 approach = beeForagerApproachPosition(flower, slot);
+        return beeNeedsFootprintRoute(home)
+            ? clamp(approach, ivec2(0), ivec2(pc.width, pc.height) - ivec2(1))
+            : approach;
     }
     return home + beeBiohazardTargetOffset(slot, pc.step);
 }
@@ -289,6 +461,13 @@ bool beeBirthInsideDispatch(ivec2 position) {
 }
 
 void markBeeMoveDirty(ivec2 position) {
+    // This is candidate membership, not an increment of the cached count.
+    // Stale positives are harmless: population validates canonical owners.
+    // Only classification may clear the bit after inspecting the full tile.
+    // Birth reads the immutable tile snapshot; its newly occupied chamber is
+    // already conservatively nominated by HAS_HIVE/HAS_QUEEN until reclassified.
+    if (pc.material == BEE_PASS_MOVE)
+        atomicOr(tiles[tileIndex(position, pc.width)].flags, TILE_HAS_BEES);
     atomicOr(chunks[chunkIndex(position, pc.width)].flags,
              CHUNK_DIRTY | CHUNK_ACTIVE | CHUNK_FINE_ACTIVE);
 }
@@ -300,6 +479,9 @@ bool beeMoveAcceptedBirth(ivec2 queenPosition,
     birthOwner = 0xffffffffu;
     if ((pc.step & 4095u) != 0u) return false;
     uint stationaryBees = beeMoveStationaryPopulation(queenPosition, missingSlot);
+    // Healthy full formations cannot need a replacement. Avoid the resident
+    // candidate scan entirely for this overwhelmingly common opportunity.
+    if (stationaryBees >= BEE_COLONY_MAX || missingSlot >= BEE_FORMATION_COUNT) return false;
     uint districtBees = beeMoveDistrictPopulation(queenPosition);
     if (districtBees >= BEE_COLONY_MAX || stationaryBees != districtBees ||
         missingSlot >= BEE_FORMATION_COUNT) return false;
@@ -353,7 +535,7 @@ void runBeeBirth(ivec2 position, Cell source) {
                          BEE_AUX_MIGRATING);
         newborn.aux = beePackMetadata(newborn.aux, queenPosition, missingSlot,
                                       pc.width, pc.height);
-        newborn.age = beePackAge(beeNewbornHomeTimer(queenPosition),
+        newborn.age = beePackAge(beeNewbornHomeTimer(queenPosition, newborn.aux),
                                  BEE_TARGET_NEWBORN);
         nextCells[indexOf(position)] = newborn;
         markBeeMoveDirty(position);
@@ -447,7 +629,8 @@ void main() {
         return;
     }
 
-    ivec2 destination = beeMoveDestination(position, bee);
+    bool exactRouteStep = false;
+    ivec2 destination = beeMoveDestination(position, bee, exactRouteStep);
     ivec2 delta = destination - position;
     if (all(equal(delta, ivec2(0)))) {
         atomicAnd(cells[index].aux, ~AUX_MOVED);
@@ -458,6 +641,7 @@ void main() {
     ivec2 vertical = ivec2(0, delta.y > 0 ? 1 : (delta.y < 0 ? -1 : 0));
     bool horizontalFirst = abs(delta.x) >= abs(delta.y);
     if (tryBeeMove(position, bee, horizontalFirst ? horizontal : vertical)) return;
+    if (exactRouteStep) return;
     if (tryBeeMove(position, bee, horizontalFirst ? vertical : horizontal)) return;
 
     bool clockwise = ((slot * 17u + 3u) & 1u) == 0u;

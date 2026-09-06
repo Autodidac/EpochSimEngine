@@ -1,5 +1,6 @@
 #include "sandhybrid/hive_recovery.hpp"
 #include "sandhybrid/actor_medium.hpp"
+#include "sandhybrid/bee_colony.hpp"
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/world_layout.hpp"
 
@@ -146,16 +147,13 @@ LegacyHiveOwnerResult initialize_schema1_hive_owners(
         return {};
     const auto queen_x = scene_origin_x + 512u;
     const auto queen_y = scene_origin_y + local_y;
-    std::uint32_t home_metadata{};
     const bool persistent = width >= persistent_world_width && height >= persistent_world_height;
     if (persistent) {
         const auto district = persistent_world_district_index(scene);
         if (scene_origin_x != persistent_world_district_origin_x(width, district) ||
             scene_origin_y != persistent_world_district_origin_y(height, district)) return {};
-        home_metadata = 64u | ((local_y / 8u) << 7u) | (district << 20u);
     } else {
         if (queen_x / 4u > 255u || queen_y / 4u > 127u) return {};
-        home_metadata = (queen_x / 4u) | ((queen_y / 4u) << 8u) | 0x00400000u;
     }
     for (std::int32_t dy = -11; dy <= 11; ++dy) {
         for (std::int32_t dx = -11; dx <= 12; ++dx) {
@@ -184,12 +182,11 @@ LegacyHiveOwnerResult initialize_schema1_hive_owners(
     for (std::size_t slot = 0u; slot < fix29_bee_formation_count; ++slot) {
         const auto offset = fix29_bee_formation_offset(slot);
         auto& bee = cells[index_at(width, queen_x, queen_y, offset.x, offset.y)];
-        const auto slot_shift = persistent ? 13u : 15u;
         // Normalization reconstructs a fed formation owner, even when the
         // source already happened to be Bee. Retired Queen/migration/pollen
         // and movement flags must not survive and hijack its new lifecycle.
-        bee.aux = swarm_fed | home_metadata |
-                  (static_cast<std::uint32_t>(slot) << slot_shift);
+        bee.aux = pack_bee_home_metadata(swarm_fed, {queen_x, queen_y},
+            static_cast<std::uint32_t>(slot), width, height);
         bee.age = fix29_bee_pack_age(fix29_bee_initial_timer(slot), fix29_bee_target_none);
         ++result.bee_cells;
     }

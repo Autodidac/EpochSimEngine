@@ -98,7 +98,10 @@ for token in (
     ".world_time = simulation_step",
     "policy::editor_mutation_allowed(paused, reset_this_frame)",
     "vkCmdFillBuffer(command_buffer, sunlight_buffer.handle",
-    "vkCmdCopyBuffer(command_buffer, cell_buffers[0].handle",
+    "record_map_snapshot_rows(command_buffer, 0u, config.grid_height, 0u)",
+    "vkCmdCopyBuffer(command_buffer, cell_buffers[source_set].handle",
+    "map_snapshot_buffer.handle, 1, &copy",
+    "map_tile_snapshot_buffer.handle, 1, &tile_copy",
 ):
     require("src/vulkan_renderer.cpp", token)
 reject("src/vulkan_renderer.cpp", "Fill ignored while paused.")

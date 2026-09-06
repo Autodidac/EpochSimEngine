@@ -4,6 +4,7 @@
 #include "tiles.glsl"
 #include "chunks.glsl"
 #include "bee_swarm.glsl"
+#include "beehive.glsl"
 #include "conservation.glsl"
 #include "rain_membership.glsl"
 
@@ -68,8 +69,7 @@ bool correctionTargetHasFlags(uint target, uint required, uint forbidden) {
 }
 
 uint correctionBeeSlot(uint aux) {
-    bool persistent = pc.width >= 5120u && pc.height >= 360u;
-    return persistent ? ((aux >> 13u) & 127u) : ((aux >> 15u) & 127u);
+    return beeFormationSlotFromAux(aux, pc.width, pc.height);
 }
 
 bool correctionBeeIsForager(uint aux) {
@@ -81,8 +81,9 @@ ivec2 correctionBeeExactHome(Cell bee) {
     ivec2 approximate = beeHomeCenterFromAux(bee.aux, pc.width, pc.height);
     ivec2 exact = approximate;
     int bestDistance = 0x3fffffff;
-    for (int dy = -2; dy <= 7; ++dy) {
-        for (int dx = -2; dx <= 7; ++dx) {
+    int extent = beeHomeSearchExtent(bee.aux, pc.width, pc.height);
+    for (int dy = -2; dy <= extent; ++dy) {
+        for (int dx = -2; dx <= extent; ++dx) {
             ivec2 candidate = approximate + ivec2(dx, dy);
             if (!inside(candidate) ||
                 sourceAt(candidate).material != MAT_QUEEN_BEE) continue;
@@ -201,8 +202,7 @@ uint correctionStationaryBeeCount(ivec2 homeCenter, out uint firstMissingSlot) {
         bool exact = bee.material == MAT_BEE &&
             (bee.aux & BEE_AUX_SWARM) != 0u &&
             beeFormationSlotFromAux(bee.aux, pc.width, pc.height) == slot &&
-            all(equal(storedHome / int(TILE_SIZE),
-                      homeCenter / int(TILE_SIZE)));
+            beeOwnsHome(bee.aux, homeCenter, pc.width, pc.height);
         if (exact) ++count;
         else if (firstMissingSlot == BEE_FORMATION_COUNT)
             firstMissingSlot = slot;
@@ -309,6 +309,125 @@ void addConvertedStat() {
     atomicAdd(conservation[CONS_CONVERTED], 1u);
 }
 
+bool queenVentInsideDispatch(ivec2 position) {
+    if (!inside(position) || !sectionActiveAt(position, pc.activeSectionX,
+        pc.activeSectionY, pc.activeMode)) return false;
+    ivec2 local = position - activeDispatchCellOrigin(
+        pc.activeSectionX, pc.activeSectionY, pc.activeMode);
+    return pc.radius == 0u || (all(greaterThanEqual(local, ivec2(0))) &&
+        uint(local.x) < pc.radius && uint(local.y) < pc.material);
+}
+
+bool queenVentOpenMedium(Cell cell) {
+    return cell.material == MAT_EMPTY || cell.material == MAT_ATMOSPHERE;
+}
+
+bool queenVentCanonicalBody(ivec2 queen) {
+    if (!inside(queen - ivec2(10)) || !inside(queen + ivec2(10))) return false;
+    ivec2 entropyQueen = queen;
+    uint district = 0u;
+    ivec2 local = ivec2(0);
+    if (beePersistentAddress(queen, pc.width, pc.height, district, local))
+        entropyQueen = local;
+    for (int y = -10; y <= 10; ++y) {
+        for (int x = -10; x <= 10; ++x) {
+            ivec2 offset = ivec2(x, y);
+            uint expected = beehivePrefabMaterial(entropyQueen, offset,
+                beehivePrefabEntropy(entropyQueen, offset));
+            if (expected == MATERIAL_COUNT || expected == MAT_QUEEN_BEE) continue;
+            Cell cell = sourceAt(queen + offset);
+            if (expected == MAT_EMPTY) {
+                bool homeBee = cell.material == MAT_BEE &&
+                    (cell.aux & BEE_AUX_SWARM) != 0u &&
+                    beeOwnsHome(cell.aux, queen, pc.width, pc.height);
+                if (!queenVentOpenMedium(cell) && !homeBee) return false;
+            } else if (cell.material != expected ||
+                (cell.aux & (AUX_STRUCTURAL | AUX_SUPPORTED)) !=
+                    (AUX_STRUCTURAL | AUX_SUPPORTED)) return false;
+        }
+    }
+    // All three physical exit rows must remain open. Besides refusing a
+    // sealed/flooded vent, this excludes a competing machine's vent controller
+    // at queen+(6,1), not merely the centerline controller at queen+(6,0).
+    for (int x = 1; x <= 10; ++x)
+        for (int y = -1; y <= 1; ++y)
+            if (!queenVentOpenMedium(sourceAt(queen + ivec2(x, y)))) return false;
+    return true;
+}
+
+// Both endpoints derive this transaction solely from the immutable canonical
+// input. The unique mouth at queen+(11,0) has exactly one inverse Queen; each
+// invocation writes only its own nextCells index, with no mutable-neighbor
+// proposal read or atomic reservation whose result could fund only one side.
+bool queenVentTransaction(ivec2 queen, out Cell restoredQueen, out Cell breathed) {
+    ivec2 mouth = queen + ivec2(11, 0);
+    if (!queenVentInsideDispatch(queen) || !queenVentInsideDispatch(mouth)) return false;
+    if (!tileHas(tiles[tileIndex(queen, pc.width)], TILE_HAS_QUEEN)) return false;
+    Cell owner = sourceAt(queen);
+    if (owner.material != MAT_QUEEN_BEE || isStructural(owner)) return false;
+    uint roll = cellHash(queen, owner.age ^ owner.aux);
+    // An intact open exit has at least one Empty/Air neighbor, so the legacy
+    // fully-choked mask cannot apply. Rescue only its exact zero-local-O2
+    // suffocation opportunity; real senescence remains an unfunded death.
+    if ((roll & 1023u) != 0u ||
+        (owner.age > 900000u && (roll & 16383u) == 0u)) return false;
+    for (int y = -2; y <= 2; ++y)
+        for (int x = -2; x <= 2; ++x) {
+            if (x * x + y * y > 4) continue;
+            uint material = sourceAt(queen + ivec2(x, y)).material;
+            if (material == MAT_ATMOSPHERE || material == MAT_OXYGEN) return false;
+        }
+    Cell donor = sourceAt(mouth);
+    if (donor.material != MAT_ATMOSPHERE || isStructural(donor)) return false;
+    breathed = donor;
+    if (!respirePackedMedium(breathed)) return false;
+    // Exclude competing respiration, photosynthesis, aeration, combustion,
+    // and synthesis. The complete exit/body check excludes remote controller
+    // input to this same mouth. Its chemistry proposal may change age/heat,
+    // but cannot independently spend or replace its pressure/component owner.
+    for (uint i = 0u; i < 8u; ++i)
+        if (!queenVentOpenMedium(sourceAt(mouth + correctionNeighborOffsets[i]))) return false;
+    if (!queenVentCanonicalBody(queen)) return false;
+
+    restoredQueen = advancedSource(owner);
+    int neighbors = (sourceAt(queen + ivec2(1, 0)).temperature +
+        sourceAt(queen + ivec2(-1, 0)).temperature +
+        sourceAt(queen + ivec2(0, 1)).temperature +
+        sourceAt(queen + ivec2(0, -1)).temperature) / 4;
+    int ambient = 20 + int(light[indexOf(queen)] / 48u);
+    int target = (neighbors * 3 + ambient) / 4;
+    int divisor = clamp(36 - int(materialThermalConductivity(owner.material)) / 9, 6, 36);
+    restoredQueen.temperature = clamp(owner.temperature +
+        clamp((target - owner.temperature) / divisor, -20, 20), -200, 5000);
+    if (restoredQueen.temperature > 160) return false;
+
+    // Preserve the frozen Queen's actual pre-death stress update. Its legacy
+    // population threshold is90 (the frozen100-bee model), not the current
+    // authored60; redesigning Queen reproduction is separate from ventilation.
+    uint nearbyBees = 0u;
+    bool nearbyHoney = false;
+    ivec2 centerTile = queen / int(TILE_SIZE);
+    ivec2 tileLimit = ivec2(int(tileColumns(pc.width)), int((pc.height + 7u) / 8u));
+    for (int y = -6; y <= 6; ++y)
+        for (int x = -6; x <= 6; ++x) {
+            ivec2 candidate = centerTile + ivec2(x, y);
+            if (any(lessThan(candidate, ivec2(0))) ||
+                any(greaterThanEqual(candidate, tileLimit))) continue;
+            TileState tile = tiles[uint(candidate.y) * tileColumns(pc.width) + uint(candidate.x)];
+            nearbyBees += tileBeeCount(tile);
+            if (abs(x) <= 2 && abs(y) <= 2 && tileHas(tile, TILE_HAS_HONEY)) nearbyHoney = true;
+        }
+    uint stress = stateValue(owner);
+    bool stressed = (nearbyBees >= 90u && nearbyHoney) || !nearbyHoney;
+    uint nextStress = stressed ? min(255u, stress + 8u) :
+        (stress > 0u ? stress - 1u : 0u);
+    // Do not fund a Queen whose other legitimate same-pass outcome could be
+    // a migrating carrier. That lifecycle retains its existing decision path.
+    if (nextStress >= 240u && owner.age > 36000u) return false;
+    setStateValue(restoredQueen, nextStress);
+    return true;
+}
+
 void main() {
     // Do not publish metadata or counters for padded scratch invocations that
     // are outside the exact rectangle subsequently copied to canonical cells.
@@ -324,6 +443,30 @@ void main() {
     Cell proposed = nextCells[index];
     Cell corrected = proposed;
     bool rainEmissionReserved = false;
+
+    if (source.material == MAT_QUEEN_BEE && proposed.material == MAT_WASTE) {
+        Cell restoredQueen;
+        Cell breathed;
+        if (queenVentTransaction(position, restoredQueen, breathed)) {
+            corrected = restoredQueen;
+            undoMaterialChangeStat(source, proposed);
+            recordConservation(source, corrected);
+        }
+    } else if (source.material == MAT_ATMOSPHERE && position.x >= 11) {
+        ivec2 queen = position - ivec2(11, 0);
+        // Classification is already ordered before chemistry. Its conservative
+        // Queen bit cheaply excludes almost all ordinary Atmosphere invocations.
+        if (tileHas(tiles[tileIndex(queen, pc.width)], TILE_HAS_QUEEN)) {
+            Cell restoredQueen;
+            Cell breathed;
+            if (queenVentTransaction(queen, restoredQueen, breathed)) {
+                breathed.age = proposed.age;
+                breathed.temperature = proposed.temperature;
+                breathed.aux = (breathed.aux & ~AUX_MOVED) | (proposed.aux & AUX_MOVED);
+                corrected = breathed;
+            }
+        }
+    }
 
     // The frozen chemistry kernel retains its historical Empty -> Bee birth
     // path only to preserve the proven software-Vulkan control-flow shape.
@@ -390,14 +533,36 @@ void main() {
                 TILE_HAS_HIVE | TILE_HAS_QUEEN | TILE_HAS_MIGRATING_QUEEN |
                     TILE_BEE_HAZARD,
                 16);
-            if (target != CORRECTION_BEE_TARGET_NONE) {
-                timer = 0u;
-                corrected.age = correctionBeePackAge(timer, target);
+            // No known Flower is not a command to become a static decoration.
+            // Six real owners make a bounded food-search excursion, then
+            // return; search itself never invents pollen, food or Bees.
+            if (target == CORRECTION_BEE_TARGET_NONE) target = BEE_TARGET_SEARCH;
+            timer = 0u;
+            corrected.age = correctionBeePackAge(timer, target);
+        }
+
+        if (!newbornTransit && target == BEE_TARGET_SEARCH) {
+            if (timer < 192u && (timer & 31u) == 0u) {
+                uint flower = correctionNearestBeeTile(position, TILE_HAS_FLOWER,
+                    TILE_HAS_HIVE | TILE_HAS_QUEEN | TILE_HAS_MIGRATING_QUEEN |
+                        TILE_BEE_HAZARD, 16);
+                if (flower != CORRECTION_BEE_TARGET_NONE) {
+                    target = flower;
+                    timer = 0u;
+                }
             }
+            ivec2 rest = correctionBeeExactHome(source) +
+                beeFormationOffset(correctionBeeSlot(source.aux));
+            if (target == BEE_TARGET_SEARCH && timer >= 192u &&
+                all(equal(position, rest))) {
+                target = CORRECTION_BEE_TARGET_NONE;
+                timer = 0u;
+            }
+            corrected.age = correctionBeePackAge(timer, target);
         }
 
         if (!newbornTransit && fed && !carryingPollen &&
-            target != CORRECTION_BEE_TARGET_NONE) {
+            target != CORRECTION_BEE_TARGET_NONE && target != BEE_TARGET_SEARCH) {
             if (!correctionTargetHasFlags(target, TILE_HAS_FLOWER,
                                           TILE_BEE_HAZARD)) {
                 target = CORRECTION_BEE_TARGET_NONE;

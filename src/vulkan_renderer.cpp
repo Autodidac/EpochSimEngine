@@ -1,6 +1,7 @@
 #include "sandhybrid/vulkan_renderer.hpp"
 
 #include "sandhybrid/actor_medium.hpp"
+#include "sandhybrid/bee_colony.hpp"
 #include "sandhybrid/hive_recovery.hpp"
 #include "sandhybrid/input_routing.hpp"
 #include "sandhybrid/material.hpp"
@@ -170,7 +171,8 @@ SceneCell make_fill_cell(const std::uint32_t material_id, const std::uint32_t in
 
     std::int32_t entropy_queen_x = static_cast<std::int32_t>(queen_x);
     std::int32_t entropy_queen_y = static_cast<std::int32_t>(queen_y);
-    std::optional<std::uint32_t> expected_home;
+    const auto expected_home = bee_home_from_metadata(pack_bee_home_metadata(
+        0u, {queen_x, queen_y}, 0u, width, height), width, height);
     for (std::uint32_t district = 0u;
          district < persistent_world_district_count; ++district) {
         const auto origin_x = persistent_world_district_origin_x(width, district);
@@ -179,8 +181,6 @@ SceneCell make_fill_cell(const std::uint32_t material_id, const std::uint32_t in
             queen_y >= origin_y && queen_y < origin_y + pre_expansion_world_height) {
             entropy_queen_x = static_cast<std::int32_t>(queen_x - origin_x);
             entropy_queen_y = static_cast<std::int32_t>(queen_y - origin_y);
-            expected_home = ((queen_x - origin_x) / 8u) |
-                (((queen_y - origin_y) / 8u) << 7u) | (district << 20u);
             break;
         }
     }
@@ -232,9 +232,9 @@ SceneCell make_fill_cell(const std::uint32_t material_id, const std::uint32_t in
                 // system legitimately relaxes Atmosphere into it. Both retain
                 // the same intact hive-body signature for load presentation.
                 if (cell.material == static_cast<std::uint32_t>(Material::bee) &&
-                    expected_home.has_value() && (cell.aux & 0x08000000u) != 0u &&
-                    (cell.aux & 0x00701fffu) == *expected_home &&
-                    ((cell.aux >> 13u) & 127u) < fix29_bee_formation_count) {
+                    (cell.aux & 0x08000000u) != 0u &&
+                    bee_home_from_metadata(cell.aux, width, height) == expected_home &&
+                    bee_slot_from_metadata(cell.aux, width, height) < fix29_bee_formation_count) {
                     // A live home-owned returning Bee may occupy an opening;
                     // its presence must not switch the intact body to raw art.
                 } else if (cell.material != static_cast<std::uint32_t>(Material::empty) &&
@@ -549,6 +549,7 @@ struct VulkanRenderer::Impl final {
 
     std::array<Buffer, 2> cell_buffers{};
     Buffer map_snapshot_buffer{};
+    Buffer map_tile_snapshot_buffer{};
     Buffer sunlight_buffer{};
     Buffer actor_buffer{};
     Buffer tile_buffer{};
@@ -681,6 +682,7 @@ save_slot(normalize_world_slot(requested_save_slot)) {
             destroy_buffer(tile_buffer);
             destroy_buffer(actor_buffer);
             destroy_buffer(map_snapshot_buffer);
+            destroy_buffer(map_tile_snapshot_buffer);
             destroy_buffer(sunlight_buffer);
             for (auto& buffer : cell_buffers) destroy_buffer(buffer);
 
@@ -998,6 +1000,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         map_snapshot_buffer = create_buffer(cells_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        // Typed presentation metadata is separate from the cell snapshot: no
+        // save, canonical-cell copy, or cell readback includes these bytes.
+        map_tile_snapshot_buffer = create_buffer(tile_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         sunlight_buffer = create_buffer(light_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         actor_buffer = create_buffer(sizeof(std::uint32_t) * 20u, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         tile_buffer = create_buffer(tile_size, storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -1099,6 +1104,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
             },
+            VkDescriptorSetLayoutBinding{
+                .binding = 11,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
         };
         const VkDescriptorSetLayoutCreateInfo layout_info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -1142,7 +1153,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     void create_descriptors() {
         const VkDescriptorPoolSize pool_size{
             .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 22,
+            .descriptorCount = 24,
         };
         const VkDescriptorPoolCreateInfo pool_info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -1173,6 +1184,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const VkDescriptorBufferInfo chunk_info{chunk_buffer.handle, 0, chunk_buffer.size};
             const VkDescriptorBufferInfo ui_text_info{ui_text_buffer.handle, 0, ui_text_buffer.size};
             const VkDescriptorBufferInfo map_info{map_snapshot_buffer.handle, 0, map_snapshot_buffer.size};
+            const VkDescriptorBufferInfo map_tile_info{
+                map_tile_snapshot_buffer.handle, 0, map_tile_snapshot_buffer.size};
             const VkDescriptorBufferInfo designer_info{designer_buffer.handle, 0, designer_buffer.size};
             const VkDescriptorBufferInfo rainfall_info{
                 rainfall_buffer.handle, 0, rainfall_buffer.size};
@@ -1264,6 +1277,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     .descriptorCount = 1,
                     .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                     .pBufferInfo = &rainfall_info,
+                },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptor_sets[index],
+                    .dstBinding = 11,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .pBufferInfo = &map_tile_info,
                 },
             };
             vkUpdateDescriptorSets(device, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
@@ -1414,7 +1435,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         }
 
         const std::array queue_indices{graphics_family, present_family};
-        const bool capture_frames = !config.interactive_acceptance_report.empty();
+        const bool capture_frames = !config.interactive_acceptance_report.empty() ||
+            !config.runtime_acceptance_report.empty();
         if (capture_frames &&
             (support.capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) == 0u) {
             throw std::runtime_error(
@@ -1807,6 +1829,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
     void bind_compute(const VkCommandBuffer command_buffer, const VkPipeline pipeline,
                       const std::uint32_t set_index) const {
+        if (pipeline == bee_movement_pipeline || pipeline == actor_pipeline) {
+            // Bee movement and laser transfers publish destination membership;
+            // prior classification/fragment readers must finish first.
+            buffer_barrier(command_buffer, tile_buffer,
+                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        }
         vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
                                 compute_pipeline_layout, 0, 1, &descriptor_sets[set_index], 0, nullptr);
@@ -2261,6 +2292,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_PIPELINE_STAGE_TRANSFER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
                                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            record_loaded_tile_metadata(command_buffer);
         });
         startup_log(std::string{operation} + " used a bounded upload of " +
                     std::to_string(indices.size()) + " cells in " +
@@ -2460,10 +2492,35 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
                                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
             }
+            record_loaded_tile_metadata(command_buffer);
         });
         startup_log("Placed blueprint slot " + std::to_string(slot + 1u) +
                     " with a bounded transactional upload of " +
                     std::to_string(writes.size()) + " cells.");
+    }
+
+    void record_loaded_tile_metadata(const VkCommandBuffer command_buffer) {
+        // Load/reset and explicit CPU uploads invalidate derived metadata.
+        // Rebuild only its ecology index, including off-camera Queens/foragers:
+        // paused loaded colonies must render correctly, and a later birth
+        // must count living owners outside the active window. Never called
+        // from a fixed simulation tick; no cells or physical counters change.
+        const SimulationPush push{
+            .width = config.grid_width, .height = config.grid_height,
+            .step = 0u, .seed = random_seed,
+            .radius = divide_round_up(config.grid_width, 8u),
+            .material = divide_round_up(config.grid_height, 8u),
+            .active_mode = 3u,
+        };
+        bind_compute(command_buffer, tile_pipeline, 0u);
+        vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+            VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+        vkCmdDispatch(command_buffer, divide_round_up(push.radius, 8u),
+            divide_round_up(push.material, 8u), 1u);
+        buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
     }
 
     void upload_scene_cells(const std::span<const SceneCell> cells,
@@ -2568,33 +2625,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
             }
 
-            buffer_barrier(command_buffer, cell_buffers[0],
-                           VK_ACCESS_TRANSFER_WRITE_BIT |
-                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_ACCESS_TRANSFER_READ_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT |
-                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
-                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT);
-            buffer_barrier(command_buffer, map_snapshot_buffer,
-                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
-                           VK_ACCESS_TRANSFER_WRITE_BIT,
-                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
-                               VK_PIPELINE_STAGE_TRANSFER_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT);
-            const VkBufferCopy snapshot_copy{.size = map_snapshot_buffer.size};
-            vkCmdCopyBuffer(command_buffer, cell_buffers[0].handle,
-                            map_snapshot_buffer.handle, 1, &snapshot_copy);
-            buffer_barrier(command_buffer, map_snapshot_buffer,
-                           VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT,
-                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-            buffer_barrier(command_buffer, cell_buffers[0],
-                           VK_ACCESS_TRANSFER_READ_BIT,
-                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT,
-                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
-                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            record_loaded_tile_metadata(command_buffer);
+            record_map_snapshot_rows(command_buffer, 0u, config.grid_height, 0u);
         });
         current_set = 0u;
         simulation_step = 0u;
@@ -2928,28 +2960,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
-        buffer_barrier(command_buffer, cell_buffers[0], VK_ACCESS_SHADER_WRITE_BIT,
-                       VK_ACCESS_TRANSFER_READ_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT);
-        buffer_barrier(command_buffer, map_snapshot_buffer,
-                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
-                       VK_ACCESS_TRANSFER_WRITE_BIT,
-                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
-                           VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT);
-        const VkBufferCopy snapshot_copy{.size = map_snapshot_buffer.size};
-        vkCmdCopyBuffer(command_buffer, cell_buffers[0].handle,
-                        map_snapshot_buffer.handle, 1, &snapshot_copy);
-        buffer_barrier(command_buffer, map_snapshot_buffer,
-                       VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-        buffer_barrier(command_buffer, cell_buffers[0], VK_ACCESS_TRANSFER_READ_BIT,
-                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
-                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        record_loaded_tile_metadata(command_buffer);
+        record_map_snapshot_rows(command_buffer, 0u, config.grid_height, 0u);
         current_set = 0;
         simulation_step = 0;
         debug_sample_frame = 0u;
@@ -3040,19 +3052,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                   state.selected_material.load(std::memory_order_relaxed));
         const bool beehive = material == static_cast<std::uint32_t>(Material::beehive);
         if (beehive) {
-            bool valid_home = false;
-            for (std::uint32_t district = 0u; district < persistent_world_district_count; ++district) {
-                const auto ox = static_cast<std::int32_t>(
-                    persistent_world_district_origin_x(config.grid_width, district));
-                const auto oy = static_cast<std::int32_t>(
-                    persistent_world_district_origin_y(config.grid_height, district));
-                valid_home = valid_home || (grid_x >= ox && grid_x < ox + 640 &&
-                    grid_y >= oy && grid_y < oy + 360);
-            }
-            if (!valid_home || grid_x < 64 || grid_y < 64 ||
-                grid_x + 64 >= static_cast<std::int32_t>(config.grid_width) ||
-                grid_y + 64 >= static_cast<std::int32_t>(config.grid_height)) {
-                startup_log("Beehive placement rejected: complete footprint and persistent district home required.");
+            if (!beehive_placement_fits(grid_x, grid_y,
+                    config.grid_width, config.grid_height) ||
+                !bee_home_encodable({static_cast<std::uint32_t>(grid_x),
+                    static_cast<std::uint32_t>(grid_y)}, config.grid_width, config.grid_height)) {
+                startup_log("Beehive placement rejected: complete body and bee footprint must fit inside the world.");
                 return;
             }
             const auto cleanup = [&](std::int32_t x, std::int32_t y, std::uint32_t mode) {
@@ -3081,15 +3085,25 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
                 buffer_barrier(command_buffer, cell_buffers[snapshot_set],
-                    VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                    VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-                const SimulationPush cleanup_push{
+                SimulationPush cleanup_push{
                     .width = config.grid_width, .height = config.grid_height,
                     .step = simulation_step, .seed = random_seed,
                     .brush_x = x, .brush_y = y, .radius = extent,
                     .active_mode = mode,
                 };
                 bind_compute(command_buffer, paint_pipeline, current_set);
+                if (mode == 3u) {
+                    cleanup_push.active_mode = 5u;
+                    vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                        VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(cleanup_push), &cleanup_push);
+                    vkCmdDispatch(command_buffer, 1u, 1u, 1u);
+                    buffer_barrier(command_buffer, cell_buffers[snapshot_set],
+                        VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                    cleanup_push.active_mode = mode;
+                }
                 vkCmdPushConstants(command_buffer, compute_pipeline_layout,
                     VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(cleanup_push), &cleanup_push);
                 const auto diameter = extent * 2u + 1u;
@@ -3099,18 +3113,6 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
             };
-            if (tool_hive_anchor != no_tool_hive_anchor) {
-                const auto previous_x = static_cast<std::int32_t>(tool_hive_anchor & 0xffffu);
-                const auto previous_y = static_cast<std::int32_t>(tool_hive_anchor >> 16u);
-                bool authored = false;
-                for (std::uint32_t district = 0u; district < 2u; ++district)
-                    authored = authored || (previous_x == static_cast<std::int32_t>(
-                        persistent_world_district_origin_x(config.grid_width, district) + 512u) &&
-                        previous_y == static_cast<std::int32_t>(
-                        persistent_world_district_origin_y(config.grid_height, district) +
-                        (district == 0u ? 234u : 232u)));
-                if (!authored) cleanup(previous_x, previous_y, 4u);
-            }
             cleanup(grid_x, grid_y, 3u);
         }
         const bool tile_mode = policy::effective_world_tile_mode(
@@ -3153,6 +3155,38 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         record_rain_rectangle(command_buffer, grid_x - extent,
             material == static_cast<std::uint32_t>(Material::smoke) ? 0 : grid_y - extent,
             grid_x + extent + 1, grid_y + extent + 1);
+        if (beehive || material == static_cast<std::uint32_t>(Material::bee) ||
+            material == static_cast<std::uint32_t>(Material::queen_bee)) {
+            // Rendering every colony uses derived Queen tile metadata even
+            // when Debug is hidden or simulation is paused. Classify only the
+            // edited tiles immediately; no world readback or simulation tick.
+            const auto left = (std::max)(0, grid_x - extent) / 8;
+            const auto top = (std::max)(0, grid_y - extent) / 8;
+            const auto right = divide_round_up(static_cast<std::uint32_t>(
+                (std::min)(static_cast<std::int32_t>(config.grid_width), grid_x + extent + 1)), 8u);
+            const auto bottom = divide_round_up(static_cast<std::uint32_t>(
+                (std::min)(static_cast<std::int32_t>(config.grid_height), grid_y + extent + 1)), 8u);
+            const SimulationPush hierarchy_push{
+                .width = config.grid_width, .height = config.grid_height,
+                .step = simulation_step, .seed = random_seed,
+                .brush_x = left, .brush_y = top,
+                .radius = right - static_cast<std::uint32_t>(left),
+                .material = bottom - static_cast<std::uint32_t>(top),
+                .active_mode = 3u,
+            };
+            buffer_barrier(command_buffer, tile_buffer,
+                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            bind_compute(command_buffer, tile_pipeline, current_set);
+            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(hierarchy_push), &hierarchy_push);
+            vkCmdDispatch(command_buffer, divide_round_up(hierarchy_push.radius, 8u),
+                divide_round_up(hierarchy_push.material, 8u), 1u);
+            buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        }
         buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -3566,6 +3600,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
         mark_profile(11u);
         ++simulation_step;
     }
@@ -3617,14 +3655,32 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
     }
 
-    void record_map_snapshot(const VkCommandBuffer command_buffer) {
-        buffer_barrier(command_buffer, cell_buffers[current_set],
-                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+    void record_map_snapshot_rows(const VkCommandBuffer command_buffer,
+                                  const std::uint32_t first_row,
+                                  const std::uint32_t row_count,
+                                  const std::uint32_t source_set) {
+        // Every producer (full reset/load, rolling refresh, acceptance seed)
+        // copies one matching pair of cell and typed metadata bands. A partial
+        // tile is legal only at the physical bottom edge of a nonaligned grid.
+        if (source_set >= cell_buffers.size() || row_count == 0u ||
+            first_row >= config.grid_height || first_row % 8u != 0u ||
+            row_count > config.grid_height - first_row ||
+            ((first_row + row_count) % 8u != 0u &&
+             first_row + row_count != config.grid_height))
+            throw std::runtime_error("MAP snapshot rows must cover complete bounded tile rows.");
+        buffer_barrier(command_buffer, cell_buffers[source_set],
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT |
+                           VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT,
                        VK_ACCESS_TRANSFER_READ_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
-                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
                        VK_PIPELINE_STAGE_TRANSFER_BIT);
         buffer_barrier(command_buffer, map_snapshot_buffer,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
@@ -3632,16 +3688,20 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
                            VK_PIPELINE_STAGE_TRANSFER_BIT,
                        VK_PIPELINE_STAGE_TRANSFER_BIT);
-        // Refresh one contiguous row band per cadence instead of copying the
-        // 225 MiB Large resident field in one frame. Sixty-four bands cap the
-        // per-frame Large transfer near 3.6 MiB while a four-tick cadence still
-        // rolls a complete snapshot in roughly 4.3 seconds. Reset/load already
-        // seed a complete valid snapshot, so rolling bands only update changes.
-        constexpr std::uint32_t slice_count = 64u;
-        const auto rows_per_slice = divide_round_up(config.grid_height, slice_count);
-        const auto first_row = map_snapshot_slice * rows_per_slice;
-        const auto row_count = (std::min)(rows_per_slice,
-            first_row < config.grid_height ? config.grid_height - first_row : 0u);
+        buffer_barrier(command_buffer, tile_buffer,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT |
+                           VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT,
+                       VK_ACCESS_TRANSFER_READ_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT);
+        buffer_barrier(command_buffer, map_tile_snapshot_buffer,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT);
         const VkDeviceSize byte_offset = static_cast<VkDeviceSize>(first_row) *
             config.grid_width * sizeof(SceneCell);
         const VkBufferCopy copy{
@@ -3650,20 +3710,57 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .size = static_cast<VkDeviceSize>(row_count) * config.grid_width *
                     sizeof(SceneCell),
         };
-        vkCmdCopyBuffer(command_buffer, cell_buffers[current_set].handle,
+        vkCmdCopyBuffer(command_buffer, cell_buffers[source_set].handle,
                         map_snapshot_buffer.handle, 1, &copy);
+        const auto first_tile_row = first_row / 8u;
+        const auto end_tile_row = divide_round_up(first_row + row_count, 8u);
+        const VkDeviceSize tile_row_bytes =
+            static_cast<VkDeviceSize>(divide_round_up(config.grid_width, 8u)) *
+            sizeof(TileStateReadback);
+        const VkBufferCopy tile_copy{
+            .srcOffset = first_tile_row * tile_row_bytes,
+            .dstOffset = first_tile_row * tile_row_bytes,
+            .size = (end_tile_row - first_tile_row) * tile_row_bytes,
+        };
+        vkCmdCopyBuffer(command_buffer, tile_buffer.handle,
+                        map_tile_snapshot_buffer.handle, 1, &tile_copy);
         buffer_barrier(command_buffer, map_snapshot_buffer,
                        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
                        VK_PIPELINE_STAGE_TRANSFER_BIT,
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-        buffer_barrier(command_buffer, cell_buffers[current_set],
+        buffer_barrier(command_buffer, map_tile_snapshot_buffer,
+                       VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        buffer_barrier(command_buffer, cell_buffers[source_set],
                        VK_ACCESS_TRANSFER_READ_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_TRANSFER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        buffer_barrier(command_buffer, tile_buffer,
+                       VK_ACCESS_TRANSFER_READ_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    }
+
+    void record_map_snapshot(const VkCommandBuffer command_buffer) {
+        // Partition tile rows by floor(i * rows / bands), not independently
+        // rounded cell rows: each band is nonempty and copies exactly matching
+        // cell/Queen metadata. At most 64 bands retain the four-tick cadence;
+        // Large's largest band is 24 cell rows (3.75 MiB plus 60 KiB metadata).
+        const auto tile_rows = divide_round_up(config.grid_height, 8u);
+        const auto slice_count = (std::min)(64u, tile_rows);
+        const auto slice = map_snapshot_slice % slice_count;
+        const auto first_row = (slice * tile_rows / slice_count) * 8u;
+        const auto end_row = (std::min)(config.grid_height,
+            ((slice + 1u) * tile_rows / slice_count) * 8u);
+        record_map_snapshot_rows(command_buffer, first_row,
+            end_row - first_row, current_set);
         map_snapshot_step = simulation_step;
-        map_snapshot_slice = (map_snapshot_slice + 1u) % slice_count;
+        map_snapshot_slice = (slice + 1u) % slice_count;
     }
 
     void record_designer_snapshot(const VkCommandBuffer command_buffer, SharedState& state) {
@@ -3691,10 +3788,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         buffer_barrier(command_buffer, actor_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-        if (debug_mode != 0u) {
-            buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+        // Normal hive rendering also reads bounded Queen tile metadata.
+        buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                            VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        if (debug_mode != 0u) {
             buffer_barrier(command_buffer, chunk_buffer, VK_ACCESS_SHADER_WRITE_BIT,
                            VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
@@ -5018,6 +5116,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            buffer_barrier(command_buffer, tile_buffer, VK_ACCESS_SHADER_WRITE_BIT,
+                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
         });
         ++simulation_step;
     }
@@ -6401,9 +6503,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                             " bees=" + std::to_string(
                                 count_material(result, Material::bee)));
 
-                // Exercise both ends of the explicit 385x385 cleanup before
-                // the slow lifecycle checks. A serial shader scan previously
-                // stopped before the old Queen on software Vulkan.
+                // A second colony must preserve the first colony's distant
+                // live foragers, not silently erase an earlier tool placement.
                 const auto original_tool_anchor = tool_hive_anchor;
                 auto far_foragers = result;
                 std::array<std::size_t, 2u> far_indices{};
@@ -6423,18 +6524,18 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         queen_x + 144, queen_y, material_id(Material::beehive));
                 });
                 const auto parallel_cleanup = download_scene_cells();
-                const bool far_edges_cleared = std::all_of(far_indices.begin(), far_indices.end(),
+                const bool far_edges_preserved = std::all_of(far_indices.begin(), far_indices.end(),
                     [&](const std::size_t index) {
-                        return parallel_cleanup[index].material == material_id(Material::atmosphere);
+                        return std::memcmp(&parallel_cleanup[index], &far_foragers[index], sizeof(SceneCell)) == 0;
                     });
-                append("beehive_parallel_cleanup_full_footprint",
-                    far_edges_cleared && count_material(parallel_cleanup, Material::queen_bee) == 1u &&
-                    count_material(parallel_cleanup, Material::bee) == 60u &&
-                    count_material(parallel_cleanup, Material::beehive) == 193u &&
+                append("beehive_second_colony_preserves_far_foragers",
+                    far_edges_preserved && count_material(parallel_cleanup, Material::queen_bee) == 2u &&
+                    count_material(parallel_cleanup, Material::bee) == 120u &&
+                    count_material(parallel_cleanup, Material::beehive) == 386u &&
                     std::memcmp(&parallel_cleanup[unrelated_index], &result[unrelated_index], sizeof(SceneCell)) == 0 &&
                     canonical_fix29_hive_signature_at(parallel_cleanup, config.grid_width, config.grid_height,
                         static_cast<std::uint32_t>(queen_x + 144), static_cast<std::uint32_t>(queen_y)),
-                    "far_edges_cleared=" + std::to_string(far_edges_cleared ? 1u : 0u) +
+                    "far_edges_preserved=" + std::to_string(far_edges_preserved ? 1u : 0u) +
                     " queens=" + std::to_string(count_material(parallel_cleanup, Material::queen_bee)) +
                     " bees=" + std::to_string(count_material(parallel_cleanup, Material::bee)) +
                     " shell=" + std::to_string(count_material(parallel_cleanup, Material::beehive)));
@@ -6457,6 +6558,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 bool delayed_bee_timers_exact = true;
                 for (std::size_t slot = 0u;
                      slot < fix29_bee_formation_count; ++slot) {
+                    // The six live searchers now depart even without Flowers.
+                    // Their exact ownership/search/return is tested below;
+                    // only the54 resting owners retain their original cells.
+                    if (fix29_bee_forager_slot(slot)) continue;
                     const auto offset = fix29_bee_formation_offset(slot);
                     const auto& bee = delayed[index_of(
                         static_cast<std::uint32_t>(queen_x + offset.x),
@@ -6616,15 +6721,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 immediate_submit([&](const VkCommandBuffer command_buffer) {
                     record_paint_at_grid(command_buffer, state, false, true, 1, queen_y,
                         material_id(Material::beehive));
-                    if (config.grid_width > persistent_world_width)
-                        record_paint_at_grid(command_buffer, state, false, true, 700, queen_y,
-                            material_id(Material::beehive));
                 });
                 const auto invalid_result = download_scene_cells();
                 append("beehive_invalid_placement_is_atomic",
                     retained_anchor == tool_hive_anchor &&
                     std::memcmp(invalid_result.data(), autonomous.data(), autonomous.size() * sizeof(SceneCell)) == 0,
-                    "clipped_and_gap_rejected=1 anchor_retained=" +
+                    "clipped_rejected=1 anchor_retained=" +
                         std::to_string(retained_anchor == tool_hive_anchor ? 1u : 0u));
 
                 const auto next_queen_x = queen_x + 144;
@@ -6635,14 +6737,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                         repeated_request->x, repeated_request->y, material_id(Material::beehive));
                 });
                 const auto repeated = download_scene_cells();
-                append("beehive_repeat_replaces_prior_tool_colony",
-                    repeated_request.has_value() && count_material(repeated, Material::queen_bee) == 1u &&
-                    count_material(repeated, Material::bee) == 60u &&
-                    count_material(repeated, Material::beehive) == 193u &&
+                append("beehive_repeat_creates_independent_colony",
+                    repeated_request.has_value() && count_material(repeated, Material::queen_bee) == 2u &&
+                    count_material(repeated, Material::bee) == 120u &&
+                    count_material(repeated, Material::beehive) == 386u &&
                     canonical_fix29_hive_signature_at(repeated, config.grid_width, config.grid_height,
                         static_cast<std::uint32_t>(next_queen_x), static_cast<std::uint32_t>(queen_y)) &&
                     repeated[index_of(static_cast<std::uint32_t>(queen_x), static_cast<std::uint32_t>(queen_y))].material ==
-                        material_id(Material::atmosphere) &&
+                        material_id(Material::queen_bee) &&
                     std::memcmp(&repeated[unrelated_index], &autonomous[unrelated_index], sizeof(SceneCell)) == 0,
                     "queens=" + std::to_string(count_material(repeated, Material::queen_bee)) +
                     " bees=" + std::to_string(count_material(repeated, Material::bee)) +
@@ -7130,6 +7232,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                             material_id(Material::fire),
                             static_cast<std::uint32_t>(index_of(fire_x, fire_y)));
                         upload_scene_cells(hazard_cells);
+                        // Isolate hazard death from the separately asserted
+                        // rare birth transaction; step0 is itself a birth
+                        // opportunity and may already replace the Ash owner.
+                        simulation_step = 1u;
                         run_acceptance_tile_pass(
                             active_section_x, active_section_y, true);
                         run_acceptance_chemistry_pass(
@@ -7692,6 +7798,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            " stored_volume=" +
                                std::to_string(stored_volume));
             }
+
+            #include "acceptance_bee_colonies.inl"
+            #include "acceptance_bee_membership.inl"
+            #include "acceptance_bee_visual.inl"
 
             {
                 constexpr std::uint32_t water_x = 72u;

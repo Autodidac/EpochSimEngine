@@ -20,6 +20,7 @@ layout(std430, binding = 5) readonly buffer DebugStatsBuffer { uint debugStats[]
 layout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };
 layout(std430, binding = 8) readonly buffer MapCells { Cell mapCells[]; };
 layout(std430, binding = 9) readonly buffer DesignerCells { uint designerCells[]; };
+layout(std430, binding = 11) readonly buffer MapTiles { TileState mapTiles[]; };
 
 layout(push_constant) uniform RenderPush {
     uint gridWidth;
@@ -618,15 +619,35 @@ const vec3 FIX29_REFERENCE_PALETTE[8] = vec3[](
     vec3(0.974910, 0.789138, 0.078862)
 );
 
+bool fixedHiveReferenceQueen(ivec2 queen) {
+    // Tile metadata only nominates a candidate. Verify the sampled canonical
+    // Queen and seven fixed shell witnesses before applying the reference art;
+    // an isolated Queen or stale tile flag is not a photographed hive. cellAt
+    // deliberately reads MAP's snapshot when rendering a MAP fragment.
+    if (queen.x < 8 || queen.y < 8 ||
+        queen.x + 8 >= int(renderPc.gridWidth) ||
+        queen.y + 8 >= int(renderPc.gridHeight) ||
+        cellAt(queen).material != MAT_QUEEN_BEE) return false;
+    const ivec2 witnesses[7] = ivec2[7](
+        ivec2(-8, 0), ivec2(0, -8), ivec2(0, 8),
+        ivec2(-6, -6), ivec2(6, -6), ivec2(-6, 6), ivec2(6, 6));
+    for (uint i = 0u; i < 7u; ++i) {
+        Cell shell = cellAt(queen + witnesses[i]);
+        if (shell.material != MAT_BEEHIVE ||
+            (shell.aux & (AUX_STRUCTURAL | AUX_SUPPORTED)) !=
+                (AUX_STRUCTURAL | AUX_SUPPORTED)) return false;
+    }
+    return true;
+}
+
 int fixedHiveReferenceAtQueen(ivec2 grid, ivec2 queen) {
     ivec2 offset = grid - queen;
     // The recovered Queen is column 10, row 13 of the 22x25 reference lattice.
     ivec2 reference = offset + ivec2(10, 13);
     if (reference.x < 0 || reference.x >= 22 || reference.y < 0 || reference.y >= 25)
         return -1;
-    // This single authoritative probe executes only inside a candidate 22x25
-    // box. Ordinary fragments perform arithmetic only and touch no extra buffer.
-    if (cellAt(queen).material != MAT_QUEEN_BEE) return -1;
+    // Canonical probes execute only inside a candidate's exact 22x25 box.
+    if (!fixedHiveReferenceQueen(queen)) return -1;
     uint bit = 1u << uint(reference.x);
     if ((FIX29_REFERENCE_BODY_ROWS[reference.y] & bit) == 0u) return 0;
     uint tone = (FIX29_REFERENCE_TONE_BIT0_ROWS[reference.y] & bit) != 0u ? 1u : 0u;
@@ -651,7 +672,32 @@ int fixedHiveReferenceBody(ivec2 grid) {
     if (renderPc.selectedScene != 0xffffffffu) {
         ivec2 toolQueen = ivec2(int(renderPc.selectedScene & 0xffffu),
                                 int(renderPc.selectedScene >> 16u));
-        return fixedHiveReferenceAtQueen(grid, toolQueen);
+        reference = fixedHiveReferenceAtQueen(grid, toolQueen);
+        if (reference >= 0) return reference;
+    }
+
+    // A placed colony is not the singleton latest-tool anchor. Only Queens
+    // inside this inverse reference rectangle can cover the fragment: at most
+    // four by four 8-cell tiles, irrespective of World size or colony count.
+    // Classification after edits/load publishes candidates even while paused.
+    // Missing/stale-negative metadata falls back to honest canonical material
+    // until classification; stale positives still require sampled witnesses.
+    ivec2 first = max(grid - ivec2(11), ivec2(0)) / int(TILE_SIZE);
+    ivec2 last = min(grid + ivec2(10, 13),
+        ivec2(int(renderPc.gridWidth) - 1, int(renderPc.gridHeight) - 1)) /
+        int(TILE_SIZE);
+    uint columns = tileColumns(renderPc.gridWidth);
+    for (int tileY = first.y; tileY <= last.y; ++tileY) {
+        for (int tileX = first.x; tileX <= last.x; ++tileX) {
+            uint index = uint(tileY) * columns + uint(tileX);
+            // MAP cell witnesses and their Queen candidates belong to the
+            // same frozen/rolling snapshot, never the current live index.
+            TileState candidate = mapOverlayPixel() ? mapTiles[index] : tiles[index];
+            if (!tileHas(candidate, TILE_HAS_QUEEN)) continue;
+            ivec2 queen = tileQueenPosition(index, renderPc.gridWidth, candidate);
+            reference = fixedHiveReferenceAtQueen(grid, queen);
+            if (reference >= 0) return reference;
+        }
     }
     return -1;
 }

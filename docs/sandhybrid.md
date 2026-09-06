@@ -19,6 +19,16 @@ The World is a finite closed material system except for explicit user edits and 
 
 The in-app KEYMAP is authoritative for the complete current bindings.
 
+## Beehives
+
+Select **BEEHIVE** in Editor and click once per colony. It is a live material tool, not a Blueprint slot: another click places another independent colony instead of replacing the last one. The complete photographed hive and bee footprint must fit inside the World without overlapping another live colony. Authored districts, the high sky, and inter-district gaps use the same placement path. A held mouse button does not spray colonies.
+
+Each colony owns 60 unique bees in the accepted three outward-open crescents. Fifty-four stay in their resting formation; six stagger their foraging trips. When no Flower is available, those six make a bounded search and return without creating Pollen, Honey, or extra bees. A real food target uses the existing material transactions. Paused simulation freezes these trips, and ordinary ecology advances only in its scheduled active window. Independent colonies do not share a district-wide replacement cap.
+
+The accepted photographed body is unchanged. Exact schema-2 saves retain each colony's home and slot owners; old authored-district home encodings remain compatible. Full ecological recurrence and long-duration visual acceptance remain tracked in the mission cache rather than implied by the placement fix.
+
+The queen needs a clear right entrance and a finite exterior Atmosphere supply. The ventilation correction consumes real Oxygen and stores CO2; it does not make a sealed, flooded, overheated or aging queen immortal. The current local ventilation and frozen-MAP regressions are compiled but still awaiting GPU validation; this guide does not certify them complete.
+
 ## Reading Debug
 
 Click **DEBUG** to cycle through REGION, WORLD TOTALS, and off. REGION adds sparse tile-edge markers; WORLD TOTALS and MAP do not add those markers. The material colors remain underneath them. The sidebar MARKER KEY shows the same shapes as the world, not a second color-only coding system.
