@@ -20,6 +20,10 @@ Sunlight keeps attenuated per-cell intensity and a width-word tail encoding each
 
 ## Validation layers
 
+Paint transactions with remote writes (Smoke shaft displacement and tiled direct-life gas displacement) have one bottom-up owner per X column. Three globally aligned X residue phases have disjoint one-column halos, with explicit compute dependencies between phases. All other independent-cell brushes retain their original dispatch. Final rain membership is reconciled after the complete edit, not after each partial shaft shift. This resolves scheduling ownership, not the separate packed-gas component/heat representation limitation.
+
+Small scalar GLSL helpers are compiled by CPU contracts where practical. Text tests compare the actual font raster and a separate bounds oracle; Half Water tests cover all carrier bytes; Frontier tests compile its actual authored constructor against a frozen pre-fix map. These tests can prove geometry or predicate equivalence without a GPU. They cannot establish driver execution, final pixels, frame-time improvement, whole-world ecology, or cross-platform Vulkan parity.
+
 Beehive editing owns one complete colony per press, never one global tool colony. Authored homes keep their existing metadata; out-of-district persistent homes use the shared tagged global-home codec. Load/reset rebuilds only the derived ecology index (feature flags, feature locations and Bee counts) once so paused/off-camera Queens render and population accounting sees their owners. This indexing does not classify physical ownership, alter canonical cells or low occupancy counts, age stability, or advance macro movement/failure budgets. Normal ticks remain bounded. A new hive cannot erase a nearby accepted hive, and independent hives cannot suppress each other's replacement budget. No-Flower search is a bounded six-bee motion state, not a source of food or material.
 
 - C++ unit/contract tests cover the platform-neutral library and CPU policies.

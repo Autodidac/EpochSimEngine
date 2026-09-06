@@ -6,7 +6,7 @@ SandHybrid is the bundled Windows/Linux Vulkan demo for EpochSimEngine. The proj
 
 The example runs canonical materials, liquids, gases, weather, ecology, machinery, actors, terrain, and combat on fixed 60 Hz simulation ticks. Presentation caps do not change simulation cadence. Complete aligned `8x8` liquid and gas packets use macro transactions while exposed or incomplete boundaries use fine cells; the same canonical cells remain authoritative.
 
-The World is a finite closed material system except for explicit user edits and declared boundaries. Reactions, inventory, weather, machines, phase changes, and actor tools must use balanced source/sink transactions.
+The required model is a finite closed material system except for explicit user edits and declared boundaries. Reactions, inventory, weather, machines, phase changes, and actor tools must use balanced source/sink transactions. This is a design contract, not a claim that every experimental reaction already passes it; remaining contradictions are tracked in the mission cache.
 
 ## Controls and workspaces
 
@@ -59,6 +59,12 @@ REGION statistics are a bounded snapshot of **one up-to-640x360 region**, not a 
 ## World and weather
 
 Every district shares one aligned grass surface. The high sky contains one continuous conserved Cloud deck. Steam joins Cloud one-for-one; mature Cloud returns staggered equal-temperature Water-family units as rain without waking the whole deck at once. Acid, corrosion, ecology, weather, and phase rules may change a material only through a declared source/sink transaction. Volcano, Waterworks, experiments, and terrain are examples of the same material APIs rather than separate scripted worlds.
+
+## Current corrective boundary
+
+Current local experiment repairs distinguish implementation from acceptance. Conveyors now admit real gas destinations through whole-cell swaps; Habitat input credit and consumption share one deterministic capacity decision. Dense Smoke and tiled life edits use serial column ownership rather than overlapping GPU writers. Half Water keeps liquid presentation until merge, so its saved displaced-medium heat cannot masquerade as gas density. These new production paths still require fresh GPU checks.
+
+The Frontier reset layout opens its catchment inlet and keeps Steel stock clear of the enemy Factory Core without changing initial Water quantities or activating the enemy Core. Existing saves retain their authored cells; reset geometry changes do not silently rewrite them. Wider irrigation, hopper, volcanic-throat, salt, gas-compression and soil-moisture problems remain unfinished.
 
 ## Saves and runtime checks
 

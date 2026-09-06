@@ -218,6 +218,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
                     "${SHADER_SOURCE_DIR}/paint_schedule.glsl"
                     "${SHADER_SOURCE_DIR}/actor.glsl"
                     "${SHADER_SOURCE_DIR}/terrain_generation.glsl"
+                    "${SHADER_SOURCE_DIR}/frontier_layout.glsl"
                     "${SHADER_SOURCE_DIR}/epochgui_font.glsl"
                     "${SHADER_SOURCE_DIR}/ui_text.glsl"
                     "${SHADER_SOURCE_DIR}/material_appearance.glsl"
@@ -440,6 +441,12 @@ if(BUILD_TESTING)
     target_compile_features(epochsimengine_text_geometry_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(epochsimengine_text_geometry_contract)
     add_test(NAME epochsimengine_text_geometry_contract COMMAND epochsimengine_text_geometry_contract)
+
+    add_executable(epochsimengine_frontier_layout_contract tests/frontier_layout_contract.cpp)
+    target_include_directories(epochsimengine_frontier_layout_contract PRIVATE shaders)
+    target_compile_features(epochsimengine_frontier_layout_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(epochsimengine_frontier_layout_contract)
+    add_test(NAME epochsimengine_frontier_layout_contract COMMAND epochsimengine_frontier_layout_contract)
 
     target_include_directories(sandhybrid_input_routing_contract PRIVATE include)
     target_compile_features(sandhybrid_input_routing_contract PRIVATE cxx_std_23)
