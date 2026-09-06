@@ -1,5 +1,14 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
+
+// Three production owners share this single rule body. Value 3 is an unsplit
+// compile-only reference for partition validation; no runtime ships it.
+#ifndef EPOCHSIM_CHEMISTRY_OWNER
+#define EPOCHSIM_CHEMISTRY_OWNER 0
+#endif
+#if EPOCHSIM_CHEMISTRY_OWNER < 0 || EPOCHSIM_CHEMISTRY_OWNER > 3
+#error Unsupported chemistry source owner
+#endif
 #include "materials.glsl"
 #include "tiles.glsl"
 #include "chunks.glsl"
@@ -8,6 +17,16 @@
 #include "debug_stats.glsl"
 #include "machine_controller_lattice.glsl"
 #include "machine_input_credit.glsl"
+#include "chemistry_ownership.glsl"
+
+// Only main's literal source comparisons use this macro. Neighbor/result and
+// helper predicates remain untouched. For an admitted source, source==M implies
+// owner(M)==this pass, making this extra constant test logically redundant.
+#if EPOCHSIM_CHEMISTRY_OWNER == 3
+#define SOURCE_IS(M) (source.material == (M))
+#else
+#define SOURCE_IS(M) (chemistrySourceOwner(M) == uint(EPOCHSIM_CHEMISTRY_OWNER) && source.material == (M))
+#endif
 
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
@@ -1126,6 +1145,10 @@ void main() {
 
     uint index = indexOf(p);
     Cell source = cells[index];
+#if EPOCHSIM_CHEMISTRY_OWNER != 3
+    // One immutable owner; do not inspect nextCells or a changed result here.
+    if (chemistrySourceOwner(source.material) != uint(EPOCHSIM_CHEMISTRY_OWNER)) return;
+#endif
     if (!sectionActiveAt(p, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) {
         nextCells[index] = source;
         return;
@@ -1136,12 +1159,14 @@ void main() {
     // permanently vetoes every later fine and macro liquid transaction.
     result.aux &= ~AUX_MOVED;
 
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 3
+// Source-owner exclusion: Hydrogen/Oxygen synthesis and dissolved-gas paths require Hydrogen, Oxygen, Water, or Atmosphere source; excluded from Bee and machinery owners.
     // Race-free two-cell synthesis: mutually paired Hydrogen/Oxygen contacts
     // become one water-family unit and one pressure-bearing Atmosphere unit.
     Cell synthesisPartner;
     if (hydrogenOxygenPair(p, source, synthesisPartner)) {
         int mixedTemperature = (source.temperature + synthesisPartner.temperature) / 2;
-        if (source.material == MAT_HYDROGEN) {
+        if (SOURCE_IS(MAT_HYDROGEN)) {
             result = makeCell(mixedTemperature >= 100 ? MAT_STEAM : MAT_WATER);
         } else {
             result = makeCell(MAT_ATMOSPHERE);
@@ -1180,7 +1205,7 @@ void main() {
     if (dissolvedOxygenPair(p, source)) {
         result = source;
         result.age = source.age + 1u;
-        if (source.material == MAT_WATER) {
+        if (SOURCE_IS(MAT_WATER)) {
             ivec2 donorPosition = aerationPairPartner(p);
             setDissolvedWaterOxygen(result, at(donorPosition).temperature);
             result.age = 0u;
@@ -1190,6 +1215,8 @@ void main() {
         commitResult(index, source, result);
         return;
     }
+
+#endif
 
     if (!activeStructuralProcess(source.material) && sleepingChunkNeighborhood(p)) {
         result.aux &= ~AUX_MOVED;
@@ -1208,10 +1235,12 @@ void main() {
     // Thermal response is canonical per material. High conductivity moves heat
     // faster; no placement source, tile origin, or provenance changes it.
     int thermalDivisor = clamp(36 - int(materialThermalConductivity(source.material)) / 9, 6, 36);
-    if (source.material == MAT_ICE || source.material == MAT_SNOW)
+    if (SOURCE_IS(MAT_ICE) || SOURCE_IS(MAT_SNOW))
         thermalDivisor = max(thermalDivisor, 20);
     result.temperature += clamp((thermalTarget - result.temperature) / thermalDivisor, -20, 20);
     result.temperature = clamp(result.temperature, -200, 5000);
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 3
+// Source-owner exclusion: Output endpoints require Empty/Atmosphere source; Bee and machinery sources cannot own either endpoint.
     // Machine output is a three-cell conservative transaction over the shared
     // source buffer: product replaces the output Atmosphere while the paired
     // vent accepts its represented pressure, and the controller consumes the
@@ -1226,17 +1255,23 @@ void main() {
         return;
     }
 
+#endif
+
     // Tile analysis already consumed the previous movement marker.
     result.aux &= ~AUX_MOVED;
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 3
+// Source-owner exclusion: Half Water explicitly requires MAT_WATER.
     // Fractional Water is movement-owned. Thermal state and age still advance,
     // but chemistry waits until two halves conservatively merge to one full cell.
     if (isHalfWater(source)) {
         commitResult(index, source, result);
         return;
     }
+#endif
+
     TileState tile = tiles[tileIndex(p, pc.width)];
     bool fixedHiveContent = isStructural(source) &&
-        (source.material == MAT_HONEY || source.material == MAT_POLLEN);
+        (SOURCE_IS(MAT_HONEY) || SOURCE_IS(MAT_POLLEN));
     bool minorityStructural = isStructural(source) && tile.material != source.material;
     bool durableStructural = isStructural(source) && isBlockCapable(source.material);
     durableStructural = durableStructural || fixedHiveContent;
@@ -1254,7 +1289,7 @@ void main() {
     // capable solids never regain structural state from tile metadata: dislodged
     // stone, metals, glass, machines, and other blocks remain loose fine cells.
     bool stableGranularTerrain = tileHas(tile, TILE_STABLE) && !isStructural(source) &&
-        source.material == tile.material && source.material != MAT_EMPTY &&
+        source.material == tile.material && !SOURCE_IS(MAT_EMPTY) &&
         !isCellGas(source) && !isCellLiquid(source) &&
         isReconstructableMaterial(source.material) && !isBlockCapable(source.material);
     if (stableGranularTerrain) {
@@ -1295,10 +1330,12 @@ void main() {
     bool nearPoweredBoiler = hasNeighbor(p, MAT_SMELTER) &&
                              hasNeighbor(p, MAT_POWER_CELL);
 
+#if EPOCHSIM_CHEMISTRY_OWNER != 1
+// Source-owner exclusion: Plastic, Lava/Empty destinations, soil, gas, machine input/controller, Ant/Beetle, compost and Stone branches all exclude the six source-owner materials. Preserve the following generic structural hazard block.
     // Canonical thermal behavior is material/temperature based. The material
     // ID is retained through melting and vaporization; only chemical
     // decomposition produces configured byproducts.
-    if ((source.material == MAT_PLASTIC || source.material == MAT_ACID_RESISTANT_PLASTIC) &&
+    if ((SOURCE_IS(MAT_PLASTIC) || SOURCE_IS(MAT_ACID_RESISTANT_PLASTIC)) &&
         result.temperature >= materialIgnitionPoint(source.material) &&
         (nearFire || nearLava || hasNeighbor(p, MAT_OXYGEN) || hasNeighbor(p, MAT_ATMOSPHERE))) {
         uint route = randomValue & 7u;
@@ -1336,7 +1373,7 @@ void main() {
             if ((pc.reserved & 1u) != 0u)
                 atomicAdd(debugStats[STAT_VOLCANO_GAS_OUTPUTS], 1u);
         }
-    } else if (source.material == MAT_EMPTY) {
+    } else if (SOURCE_IS(MAT_EMPTY)) {
         // Source materials create effects into empty space without racing a
         // neighbor write. Each destination cell decides its own transition.
         if (dirtyWaterSeparationReady(p + ivec2(0, 1), belowSource)) {
@@ -1450,7 +1487,7 @@ void main() {
          isGas(at(p + ivec2(1, 0)).material));
     uint supportBelow = at(p + ivec2(0, 1)).material;
     bool stableSoil = supportBelow == MAT_DIRT || supportBelow == MAT_STONE || supportBelow == MAT_MUD;
-    if (source.material == MAT_SAND || source.material == MAT_SILT) {
+    if (SOURCE_IS(MAT_SAND) || SOURCE_IS(MAT_SILT)) {
         // Wet granular feed retains its represented wash water. Only the
         // shallow surface band can absorb new water; drying may not delete it.
         if (shallowSandContact) {
@@ -1458,18 +1495,18 @@ void main() {
             result.aux &= ~(AUX_STRUCTURAL | AUX_SUPPORTED);
             result.age = 0u;
         }
-    } else if (source.material == MAT_DIRT) {
+    } else if (SOURCE_IS(MAT_DIRT)) {
         if (freshContact) result.aux |= AUX_WET;
         bool saturatedSurface = (result.aux & AUX_WET) != 0u && stableSoil && neighborCount(p, MAT_MUD) <= 2u;
         if (saturatedSurface && source.age > 90u && (randomValue & 63u) == 0u) { result = makeCell(MAT_MUD); result.aux |= AUX_WET; }
         else if (!hasFreshMoistureRadius(p, 2) && (result.aux & AUX_WET) != 0u && source.age > 900u && (randomValue & 255u) == 0u) result.aux &= ~AUX_WET;
-    } else if (source.material == MAT_MUD && !hasAnyWater(p) && source.age > 600u && (light[index] > 105u || result.temperature > 30) && (randomValue & 63u) == 0u) result = makeCell(MAT_DIRT);
+    } else if (SOURCE_IS(MAT_MUD) && !hasAnyWater(p) && source.age > 600u && (light[index] > 105u || result.temperature > 30) && (randomValue & 63u) == 0u) result = makeCell(MAT_DIRT);
 
 
     // Atmosphere is a conserved local volume. Respiration exchanges one oxygen
     // volume for one CO2 volume; photosynthesis performs the inverse exchange.
-    if (source.material == MAT_OXYGEN || source.material == MAT_ATMOSPHERE) {
-        if (source.material == MAT_ATMOSPHERE && harvestConsumesCarbon(p)) {
+    if (SOURCE_IS(MAT_OXYGEN) || SOURCE_IS(MAT_ATMOSPHERE)) {
+        if (SOURCE_IS(MAT_ATMOSPHERE) && harvestConsumesCarbon(p)) {
             result = source;
             photosynthesizePackedMedium(result);
         } else {
@@ -1491,16 +1528,18 @@ void main() {
                 respirePackedMedium(result);
             }
         }
-    } else if (source.material == MAT_CARBON_DIOXIDE) {
+    } else if (SOURCE_IS(MAT_CARBON_DIOXIDE)) {
         if (harvestConsumesCarbon(p)) {
             result = source;
             photosynthesizePackedMedium(result);
         }
-    } else if (source.material == MAT_HYDROGEN) {
+    } else if (SOURCE_IS(MAT_HYDROGEN)) {
         // Hydrogen cannot consume ambient Atmosphere by itself. Water synthesis
         // is owned exclusively by the paired Hydrogen/Oxygen transaction above.
     }
 
+#if EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 3
+// Only the 18 immutable machinery sources can own a donor or controller branch.
     // Resource cells are consumed only by one deterministic nearby machine controller.
     if (isFactoryInputResource(source.material)) {
         ivec2 acceptingMachine = nearestAcceptingMachine(p, source, 6);
@@ -1521,7 +1560,7 @@ void main() {
     if (isMachineController(p, source.material)) {
         uvec4 currentInventory = machineInventory(source);
         uvec4 inventory = min(currentInventory + incomingMachineCounts(p, source.material), uvec4(15u));
-        if (source.material == MAT_SLUICE_BOX && (inventory.x > 0u || inventory.y > 0u) &&
+        if (SOURCE_IS(MAT_SLUICE_BOX) && (inventory.x > 0u || inventory.y > 0u) &&
             currentInventory.z == 0u && currentInventory.w == 0u &&
             machineOutputMediumAvailable(p) && machineWaterFlowNear(p)) {
             // Process one represented wet feed only when the external output is
@@ -1544,20 +1583,22 @@ void main() {
                          (source.age % 24u) == 0u;
         if (canOutput) inventory -= machineConsumption(source.material, currentInventory);
         setMachineInventory(result, inventory);
-        result.temperature = source.material == MAT_SMELTER ? max(result.temperature, 260) : result.temperature;
+        result.temperature = SOURCE_IS(MAT_SMELTER) ? max(result.temperature, 260) : result.temperature;
     }
 
 
 
+#endif
+
     // Insects are ecosystem agents, not placeholder combat bots. Ants move
     // recoverable waste toward soil; beetles break dead biomass into fertilizer.
-    if (source.material == MAT_ANT) {
+    if (SOURCE_IS(MAT_ANT)) {
         if (nearFire || nearAcid || nearLava) result = makeCell(MAT_WASTE);
-    } else if (source.material == MAT_BEETLE) {
+    } else if (SOURCE_IS(MAT_BEETLE)) {
         if (nearFire || nearAcid || nearLava) result = makeCell(MAT_WASTE);
-    } else if (source.material == MAT_WASTE && (hasNeighbor(p, MAT_ANT) || hasNeighbor(p, MAT_BEETLE)) && (hasNeighbor(p, MAT_DIRT) || hasNeighbor(p, MAT_MUD)) && hasFreshMoistureRadius(p, 2) && (randomValue & 255u) == 0u) {
+    } else if (SOURCE_IS(MAT_WASTE) && (hasNeighbor(p, MAT_ANT) || hasNeighbor(p, MAT_BEETLE)) && (hasNeighbor(p, MAT_DIRT) || hasNeighbor(p, MAT_MUD)) && hasFreshMoistureRadius(p, 2) && (randomValue & 255u) == 0u) {
         result = makeCell(MAT_FERTILIZER);
-    } else if (source.material == MAT_INSECT_HABITAT) {
+    } else if (SOURCE_IS(MAT_INSECT_HABITAT)) {
         result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
     }
 
@@ -1575,7 +1616,7 @@ void main() {
     // A surrounded hot Stone unit returns to the Lava family one-for-one.
     // This executes before durable-structure early return so the renewable
     // geologic loop cannot become permanently trapped as structural Stone.
-    if (source.material == MAT_STONE && neighborCount(p, MAT_LAVA) >= 4u &&
+    if (SOURCE_IS(MAT_STONE) && neighborCount(p, MAT_LAVA) >= 4u &&
         result.temperature >= 900) {
         int reheatedTemperature = result.temperature;
         result = makeCell(MAT_LAVA);
@@ -1583,18 +1624,22 @@ void main() {
         result.age = 0u;
     }
 
+#endif
+
     // Structure chemistry only reduces integrity. It cannot replace a wall with
     // saltwater, mud, ash, or another phase while the voxel remains structural.
     applyStructuralHazards(p, source, result, nearWater, nearSaltwater, nearLava, nearFire, nearAcid);
-    if (isStructural(source) && isStructural(result) && source.material != MAT_MAGMA_VENT) {
+    if (isStructural(source) && isStructural(result) && !SOURCE_IS(MAT_MAGMA_VENT)) {
         commitResult(index, source, result);
         return;
     }
 
+#if EPOCHSIM_CHEMISTRY_OWNER != 1
+// Source-owner exclusion: Salt/water, Oil/smoke pairing, phase/weather/energy, plant and Wood source branches exclude the six owner materials.
     // Salt dissolution transfers one explicit concentration unit to exactly
     // one adjacent water cell. No liquid cells are created and salt mass never
     // chain-converts the entire body of water.
-    if (source.material == MAT_SALT) {
+    if (SOURCE_IS(MAT_SALT)) {
         if (stateValue(result) == 0u) setStateValue(result, 255u);
         ivec2 target = saltDissolutionTarget(p, source);
         Cell targetCell = at(target);
@@ -1604,14 +1649,14 @@ void main() {
             if (remaining <= 1u) result = makeCell(MAT_EMPTY);
             else setStateValue(result, remaining - 1u);
         }
-    } else if (source.material == MAT_WATER || source.material == MAT_SALTWATER) {
+    } else if (SOURCE_IS(MAT_WATER) || SOURCE_IS(MAT_SALTWATER)) {
         uint incoming = incomingSaltUnits(p);
         if (incoming > 0u) setSalinity(result, salinity(source) + incoming);
     }
 
     // Burning oil supplies smoke as well as flame. Smoke and steam merge into
     // dirty steam, which eventually condenses into dirty water.
-    if (source.material == MAT_OIL && nearFire && (randomValue & 7u) == 0u) {
+    if (SOURCE_IS(MAT_OIL) && nearFire && (randomValue & 7u) == 0u) {
         result = makeCell(MAT_FIRE);
     }
     bool primaryGas = false;
@@ -1619,24 +1664,24 @@ void main() {
         result = makeCell(MAT_DIRTY_STEAM);
     }
 
-    if (result.material == source.material && source.material == MAT_WATER &&
+    if (result.material == source.material && SOURCE_IS(MAT_WATER) &&
         (nearLava || nearFire || nearPoweredBoiler || hasNeighbor(p, MAT_EMBER) ||
          result.temperature >= 100)) {
         int carriedTemperature = max(result.temperature, 100);
         result = makeCell(MAT_STEAM);
         result.temperature = carriedTemperature;
-    } else if (source.material == MAT_SALTWATER &&
+    } else if (SOURCE_IS(MAT_SALTWATER) &&
                (nearLava || nearFire || result.temperature >= 102)) {
         // Evaporation concentrates brine. At saturation it leaves salt behind.
         uint concentration = salinity(source);
         if (concentration >= 248u) result = makeCell(MAT_SALT);
         else setSalinity(result, concentration + 2u);
-    } else if (source.material == MAT_DIRTY_WATER &&
+    } else if (SOURCE_IS(MAT_DIRTY_WATER) &&
                (nearLava || nearFire || result.temperature >= 100)) {
         int carriedTemperature = max(result.temperature, 100);
         result = makeCell(MAT_DIRTY_STEAM);
         result.temperature = carriedTemperature;
-    } else if (source.material == MAT_LAVA) {
+    } else if (SOURCE_IS(MAT_LAVA)) {
         uint connectedLava = lavaNeighborCount(p);
         bool isolated = connectedLava == 0u;
         uint pressure = stateValue(source);
@@ -1658,7 +1703,7 @@ void main() {
                 result.temperature = cooledTemperature;
             }
         }
-    } else if (source.material == MAT_MAGMA_VENT) {
+    } else if (SOURCE_IS(MAT_MAGMA_VENT)) {
         result.temperature = 1350;
         Cell outlet = at(p + ivec2(0, -1));
         bool outletOwnsLava = ventOutletOwnsLava(outlet);
@@ -1671,8 +1716,8 @@ void main() {
         setStateValue(result, pressure);
     }
 
-    if (source.material == MAT_STEAM || source.material == MAT_DIRTY_STEAM) {
-        bool dirtyVapor = source.material == MAT_DIRTY_STEAM;
+    if (SOURCE_IS(MAT_STEAM) || SOURCE_IS(MAT_DIRTY_STEAM)) {
+        bool dirtyVapor = SOURCE_IS(MAT_DIRTY_STEAM);
         if (!dirtyVapor && source.age < 300u) result.temperature = max(result.temperature, 55);
         bool joinsCloud = hasNeighbor(p, MAT_CLOUD) &&
             (source.age > 120u || result.temperature < (dirtyVapor ? 70 : 75));
@@ -1684,7 +1729,7 @@ void main() {
             if (dirtyVapor) result.aux |= AUX_WET;
             result.temperature = source.temperature;
         }
-    } else if (source.material == MAT_CLOUD) {
+    } else if (SOURCE_IS(MAT_CLOUD)) {
         uint connectedMass = 1u + neighborCount(p, MAT_CLOUD);
         bool rainInterval = (pc.step % 240u) == 0u;
         bool rainCell = (hash32(index ^ pc.seed ^ pc.step ^ 0xc10d5u) & 7u) == 0u;
@@ -1694,7 +1739,7 @@ void main() {
         }
     }
 
-    if (source.material == MAT_FIRE) {
+    if (SOURCE_IS(MAT_FIRE)) {
         result.temperature = max(result.temperature, 620);
         if (nearWater || nearSaltwater) {
             // The adjacent Water cell owns its own one-for-one Steam phase
@@ -1703,21 +1748,21 @@ void main() {
         } else if (source.age > 72u + (randomValue & 127u)) {
             result = makeCell((randomValue & 15u) == 0u ? MAT_EMBER : MAT_SMOKE);
         }
-    } else if (source.material == MAT_EMBER) {
+    } else if (SOURCE_IS(MAT_EMBER)) {
         result.temperature = max(result.temperature, 300);
         if (source.age > 260u && (randomValue & 255u) == 0u) result = makeCell(MAT_ASH);
     }
 
-    if (source.material == MAT_WATER && result.temperature <= -2 && hasCold(p) &&
+    if (SOURCE_IS(MAT_WATER) && result.temperature <= -2 && hasCold(p) &&
         source.age > 120u && (randomValue & 31u) == 0u) {
         result = makeCell(MAT_ICE);
-    } else if (source.material == MAT_SALTWATER) {
+    } else if (SOURCE_IS(MAT_SALTWATER)) {
         int freezingPoint = -2 - int(min(salinity(source), 240u) / 8u);
         if (result.temperature <= freezingPoint && hasCold(p) && salinity(source) < 48u &&
             source.age > 240u && (randomValue & 127u) == 0u) {
             result = makeCell(MAT_ICE);
         }
-    } else if (source.material == MAT_ICE) {
+    } else if (SOURCE_IS(MAT_ICE)) {
         uint brineStrength = 0u;
         for (uint i = 0u; i < 8u; ++i) brineStrength = max(brineStrength, salinity(at(p + neighborOffsets[i])));
         if (brineStrength > 24u && result.temperature > -20 && (randomValue & 15u) == 0u) {
@@ -1726,7 +1771,7 @@ void main() {
                    (randomValue & 31u) == 0u) {
             result = makeCell(MAT_WATER);
         }
-    } else if (source.material == MAT_SNOW) {
+    } else if (SOURCE_IS(MAT_SNOW)) {
         if ((nearSalt || nearSaltwater) && (randomValue & 15u) == 0u) {
             result = makeCell(MAT_WATER);
         } else if ((hasHeat(p) || result.temperature > 0) && (randomValue & 15u) == 0u) {
@@ -1737,17 +1782,17 @@ void main() {
         }
     }
 
-    if (source.material == MAT_SAND && (nearLava || result.temperature > 1050) &&
+    if (SOURCE_IS(MAT_SAND) && (nearLava || result.temperature > 1050) &&
         (randomValue & 31u) == 0u) {
         result = makeCell(MAT_GLASS);
     }
 
     // Grass is a surface cover on dirt, never a vertical dirt-like stem.
     // Seeds independently grow a short stem before a flower can bloom.
-    if (source.material == MAT_SEED && seedHasGrowingConditions(p)) {
+    if (SOURCE_IS(MAT_SEED) && seedHasGrowingConditions(p)) {
         result = makeCell(MAT_PLANT_STEM);
         setStateValue(result, 1u);
-    } else if (source.material == MAT_DIRT) {
+    } else if (SOURCE_IS(MAT_DIRT)) {
         bool exposedSurface = at(p + ivec2(0, -1)).material == MAT_EMPTY;
         bool moisture = hasFreshMoistureRadius(p, 4) || hasWithin(p, MAT_FERTILIZER, 3);
         bool grassFrontier = hasWithin(p, MAT_GRASS, 3);
@@ -1756,7 +1801,7 @@ void main() {
             source.age > 120u && (randomValue & spreadMask) == 0u) {
             result = makeCell(MAT_GRASS);
         }
-    } else if (source.material == MAT_GRASS) {
+    } else if (SOURCE_IS(MAT_GRASS)) {
         if (nearSaltwater || nearAcid || nearFire || nearLava || light[index] < 18u) {
             if (source.age > 600u && (randomValue & 127u) == 0u) {
                 result = makeCell(nearFire || nearLava ? MAT_ASH : MAT_DIRT);
@@ -1765,7 +1810,7 @@ void main() {
                    source.age > 7200u && (randomValue & 1023u) == 0u) {
             result = makeCell(MAT_DIRT);
         }
-    } else if (source.material == MAT_PLANT_STEM) {
+    } else if (SOURCE_IS(MAT_PLANT_STEM)) {
         Cell support = at(p + ivec2(0, 1));
         bool validSupport = support.material == MAT_PLANT_STEM || support.material == MAT_GRASS ||
                             support.material == MAT_DIRT || support.material == MAT_MUD ||
@@ -1779,7 +1824,7 @@ void main() {
             result.aux |= AUX_PLANT_STEM;
             result.aux &= ~AUX_CHARGED;
         }
-    } else if (source.material == MAT_FLOWER) {
+    } else if (SOURCE_IS(MAT_FLOWER)) {
         Cell support = at(p + ivec2(0, 1));
         bool validStem = support.material == MAT_PLANT_STEM;
         if (nearSaltwater || nearAcid || nearFire || nearLava) {
@@ -1789,7 +1834,7 @@ void main() {
         } else if (nearWater) result.aux |= AUX_WET;
     }
 
-    if (source.material == MAT_WOOD) {
+    if (SOURCE_IS(MAT_WOOD)) {
         if (nearWater || nearSaltwater) {
             result.aux |= AUX_WET;
         } else if ((source.aux & AUX_WET) != 0u && result.temperature > 28 &&
@@ -1799,9 +1844,13 @@ void main() {
     }
 
 
+#endif
+
+#if EPOCHSIM_CHEMISTRY_OWNER == 1 || EPOCHSIM_CHEMISTRY_OWNER == 3
+// Source-owner exclusion: Only Bee/Pollen/Honey/Beeswax/Queen/Beehive source IDs enter this chain. Bulk destinations created by other source owners must not enter it again.
     // Authored colonies use explicit targets stored in each bee. Orbiting bees do
     // no searches; only a lifecycle transition scans compact 8x8 tile metadata.
-    if (source.material == MAT_BEE) {
+    if (SOURCE_IS(MAT_BEE)) {
         bool authoredBee = (source.aux & BEE_AUX_SWARM) != 0u;
         bool queenCarrier = (source.aux & BEE_AUX_QUEEN) != 0u;
         bool migratingFollower = (source.aux & BEE_AUX_MIGRATING) != 0u;
@@ -1948,7 +1997,7 @@ void main() {
                 result.age = beePackAge(0u, BEE_TARGET_NONE);
             }
         }
-    } else if (source.material == MAT_POLLEN) {
+    } else if (SOURCE_IS(MAT_POLLEN)) {
         if (fixedHiveContent) {
             result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
         } else if ((hasNeighbor(p, MAT_QUEEN_BEE) || hasNeighbor(p, MAT_BEEHIVE)) &&
@@ -1956,7 +2005,7 @@ void main() {
             result = makeCell(MAT_HONEY);
             setStateValue(result, 255u);
         }
-    } else if (source.material == MAT_HONEY) {
+    } else if (SOURCE_IS(MAT_HONEY)) {
         if (stateValue(result) == 0u) setStateValue(result, 255u);
         if (fixedHiveContent) {
             result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
@@ -1969,7 +2018,7 @@ void main() {
                    (randomValue & 32767u) == 0u) {
             result = makeCell(MAT_BEESWAX);
         }
-    } else if (source.material == MAT_BEESWAX) {
+    } else if (SOURCE_IS(MAT_BEESWAX)) {
 
         if (nearLava || result.temperature > 180) {
             result = makeCell(MAT_EMBER);
@@ -1978,7 +2027,7 @@ void main() {
                    !hasWithin(p, MAT_QUEEN_BEE, 18)) {
             result = makeCell(MAT_QUEEN_BEE);
         }
-    } else if (source.material == MAT_QUEEN_BEE) {
+    } else if (SOURCE_IS(MAT_QUEEN_BEE)) {
         if (nearLava || nearFire || nearAcid || result.temperature > 160) {
             result = makeCell(MAT_ASH);
         } else {
@@ -2007,7 +2056,7 @@ void main() {
                 result = makeCell(MAT_WASTE);
             }
         }
-    } else if (source.material == MAT_BEEHIVE) {
+    } else if (SOURCE_IS(MAT_BEEHIVE)) {
         if (nearLava || result.temperature > 220) {
             result = makeCell(MAT_EMBER);
         } else if (!hasWithin(p, MAT_QUEEN_BEE, 7) && source.age > 120000u &&
@@ -2016,30 +2065,34 @@ void main() {
         }
     }
 
+#endif
+
     if (result.material == source.material && isRespiringLife(source.material)) {
         uint localOxygen = oxygenVolumeWithin(p, 2);
         bool fullyChoked = fullyChokedByMedium(p);
         uint deathMask = fullyChoked ? 63u : 1023u;
         if ((fullyChoked || localOxygen == 0u) && (randomValue & deathMask) == 0u) {
-            if (source.material == MAT_GRASS) result = makeCell(MAT_DIRT);
+            if (SOURCE_IS(MAT_GRASS)) result = makeCell(MAT_DIRT);
             else result = makeCell(MAT_WASTE);
         }
     }
 
+#if EPOCHSIM_CHEMISTRY_OWNER != 1
+// Source-owner exclusion: Water/Dirty Water/Silt/Fertilizer/Food/Waste source-only chain excludes Bee-family owners even when their proposed result changes to one of these materials.
     // Closed ecological loop: dirty water separates into clean water and silt;
     // sediment becomes fertilizer; crops produce food; food becomes waste; waste
     // returns to soil, fertilizer, or combustion gases instead of inventing a
     // Water-family owner merely because a real Water cell is nearby.
-    if (result.material == source.material && source.material == MAT_WATER &&
+    if (result.material == source.material && SOURCE_IS(MAT_WATER) &&
         harvestConsumesWater(p)) {
         // The paired fertilizer cell returns to dirt while the cell above it
         // becomes food. Consuming exactly one matched fresh-water cell keeps
         // the crop conversion cell-count conservative.
         result = makeCell(MAT_EMPTY);
-    } else if (result.material == source.material && source.material == MAT_DIRTY_WATER &&
+    } else if (result.material == source.material && SOURCE_IS(MAT_DIRTY_WATER) &&
                dirtyWaterSeparationReady(p, source)) {
         result = makeCell(MAT_SILT);
-    } else if (result.material == source.material && source.material == MAT_SILT) {
+    } else if (result.material == source.material && SOURCE_IS(MAT_SILT)) {
         if ((hasFreshMoisture(p) || hasNeighbor(p, MAT_FERTILIZER)) &&
             (hasNeighbor(p, MAT_GRASS) || hasNeighbor(p, MAT_FLOWER)) &&
             source.age > 900u && (randomValue & 511u) == 0u) {
@@ -2047,17 +2100,19 @@ void main() {
         } else if (!hasAnyWater(p) && source.age > 7200u && (randomValue & 1023u) == 0u) {
             result = makeCell(MAT_DIRT);
         }
-    } else if (result.material == source.material && source.material == MAT_FERTILIZER &&
+    } else if (result.material == source.material && SOURCE_IS(MAT_FERTILIZER) &&
                fertilizerHarvestReady(p, source)) {
         result = makeCell(MAT_DIRT);
-    } else if (result.material == source.material && source.material == MAT_FOOD) {
+    } else if (result.material == source.material && SOURCE_IS(MAT_FOOD)) {
         if (nearFire || nearLava) result = makeCell(MAT_SMOKE);
         else if (source.age > 7200u && (randomValue & 255u) == 0u) result = makeCell(MAT_WASTE);
-    } else if (result.material == source.material && source.material == MAT_WASTE) {
+    } else if (result.material == source.material && SOURCE_IS(MAT_WASTE)) {
         if (nearFire || nearLava) result = makeCell(MAT_SMOKE);
         else if (hasAnyWater(p) && (randomValue & 255u) == 0u) result = makeCell(MAT_DIRTY_WATER);
         else if (source.age > 5400u && (randomValue & 511u) == 0u) result = makeCell(MAT_DIRT);
     }
+
+#endif
 
     // Conductors propagate a bounded charge state; insulators and surrounding
     // metal shielding stop lightning and radiation propagation.
@@ -2071,12 +2126,14 @@ void main() {
         else if ((source.aux & AUX_CHARGED) != 0u && (randomValue & 15u) == 0u) result.aux &= ~AUX_CHARGED;
     }
 
-    if (source.material == MAT_LIGHTNING) {
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 3
+// Source-owner exclusion: Lightning/Uranium/Radiation source-only chain; retain subsequent result-sensitive ignition and acid hazards in every owner.
+    if (SOURCE_IS(MAT_LIGHTNING)) {
         result.temperature = max(result.temperature, 900);
         if (source.age > 18u + (randomValue & 31u)) result = makeCell(MAT_EMPTY);
-    } else if (source.material == MAT_URANIUM) {
+    } else if (SOURCE_IS(MAT_URANIUM)) {
         result.temperature = max(result.temperature, 42);
-    } else if (source.material == MAT_RADIATION) {
+    } else if (SOURCE_IS(MAT_RADIATION)) {
         if (hasNeighbor(p, MAT_ALUMINUM) || hasNeighbor(p, MAT_IRON)) {
             result = makeCell(MAT_EMPTY);
         } else if (source.age > 180u + (randomValue & 255u)) {
@@ -2084,12 +2141,14 @@ void main() {
         }
     }
 
+#endif
+
     if (result.material == source.material && isFlammable(source.material) && nearFire) {
         uint ignitionStrength = flammability(source.material);
-        if (source.material == MAT_WOOD && (source.aux & AUX_WET) != 0u) ignitionStrength /= 5u;
+        if (SOURCE_IS(MAT_WOOD) && (source.aux & AUX_WET) != 0u) ignitionStrength /= 5u;
         if (randomByte < ignitionStrength) {
-            result = makeCell(source.material == MAT_GUNPOWDER ? MAT_FIRE : MAT_EMBER);
-            result.temperature = source.material == MAT_GUNPOWDER ? 1000 : 460;
+            result = makeCell(SOURCE_IS(MAT_GUNPOWDER) ? MAT_FIRE : MAT_EMBER);
+            result.temperature = SOURCE_IS(MAT_GUNPOWDER) ? 1000 : 460;
         }
     }
 
@@ -2100,9 +2159,13 @@ void main() {
         result = makeCell(isOrganic(source.material) ? MAT_WASTE : MAT_DIRTY_WATER);
     }
 
-    if (source.material == MAT_ACID && (nearWater || nearSaltwater) && (randomValue & 511u) == 0u) {
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 3
+// Source-owner exclusion: Acid source-only dilution; final commit remains common.
+    if (SOURCE_IS(MAT_ACID) && (nearWater || nearSaltwater) && (randomValue & 511u) == 0u) {
         result = makeCell(nearSaltwater ? MAT_SALTWATER : MAT_WATER);
     }
+
+#endif
 
     commitResult(index, source, result);
 }

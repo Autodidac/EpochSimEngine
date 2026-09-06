@@ -178,6 +178,8 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         chunks.comp
         copy_cells.comp
         chemistry.comp
+        chemistry_bees.comp
+        chemistry_machinery.comp
         conservation_corrections.comp
         bee_move.comp
         rainfall.comp
@@ -194,12 +196,23 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
     set(SANDHYBRID_SHADER_BINARIES)
     foreach(SHADER_FILE IN LISTS SANDHYBRID_SHADER_SOURCES)
         set(SHADER_INPUT "${SHADER_SOURCE_DIR}/${SHADER_FILE}")
+        set(SHADER_DEFINITIONS)
+        # One maintained rule body, compiled into disjoint immutable-source
+        # owners so software Vulkan does not compile one oversized function.
+        if(SHADER_FILE STREQUAL "chemistry_bees.comp")
+            set(SHADER_INPUT "${SHADER_SOURCE_DIR}/chemistry.comp")
+            set(SHADER_DEFINITIONS -DEPOCHSIM_CHEMISTRY_OWNER=1)
+        elseif(SHADER_FILE STREQUAL "chemistry_machinery.comp")
+            set(SHADER_INPUT "${SHADER_SOURCE_DIR}/chemistry.comp")
+            set(SHADER_DEFINITIONS -DEPOCHSIM_CHEMISTRY_OWNER=2)
+        endif()
         set(SHADER_OUTPUT "${SHADER_BINARY_DIR}/${SHADER_FILE}.spv")
         add_custom_command(
             OUTPUT "${SHADER_OUTPUT}"
             COMMAND "${Vulkan_GLSLC_EXECUTABLE}"
                     --target-env=vulkan1.2
                     ${SHADER_OPTIMIZATION}
+                    ${SHADER_DEFINITIONS}
                     -I "${SHADER_SOURCE_DIR}"
                     "${SHADER_INPUT}"
                     -o "${SHADER_OUTPUT}"
@@ -222,6 +235,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
                     "${SHADER_SOURCE_DIR}/queen_ventilation.glsl"
                     "${SHADER_SOURCE_DIR}/machine_controller_lattice.glsl"
                     "${SHADER_SOURCE_DIR}/machine_input_credit.glsl"
+                    "${SHADER_SOURCE_DIR}/chemistry_ownership.glsl"
                     "${SHADER_SOURCE_DIR}/epochgui_font.glsl"
                     "${SHADER_SOURCE_DIR}/ui_text.glsl"
                     "${SHADER_SOURCE_DIR}/material_appearance.glsl"
@@ -415,6 +429,12 @@ if(BUILD_TESTING)
        COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_designer_clear_label.py)
         add_test(NAME epochsimengine_machinery_edits_contract
        COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_machinery_edits.py)
+        if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
+            add_test(NAME epochsimengine_chemistry_partition_contract
+                COMMAND ${Python3_EXECUTABLE} -B
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_chemistry_partition.py
+                    --glslc ${Vulkan_GLSLC_EXECUTABLE})
+        endif()
         add_test(NAME sandhybrid_mission_cache_contract
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_mission_cache.py)
         add_test(NAME sandhybrid_mission_registry_contract
@@ -488,6 +508,12 @@ if(BUILD_TESTING)
     target_compile_features(epochsimengine_machine_input_credit_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(epochsimengine_machine_input_credit_contract)
     add_test(NAME epochsimengine_machine_input_credit_contract COMMAND epochsimengine_machine_input_credit_contract)
+
+    add_executable(epochsimengine_chemistry_ownership_contract tests/chemistry_ownership_contract.cpp)
+    target_include_directories(epochsimengine_chemistry_ownership_contract PRIVATE shaders)
+    target_compile_features(epochsimengine_chemistry_ownership_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(epochsimengine_chemistry_ownership_contract)
+    add_test(NAME epochsimengine_chemistry_ownership_contract COMMAND epochsimengine_chemistry_ownership_contract)
 
     target_include_directories(sandhybrid_input_routing_contract PRIVATE include)
     target_compile_features(sandhybrid_input_routing_contract PRIVATE cxx_std_23)

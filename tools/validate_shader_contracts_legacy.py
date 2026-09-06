@@ -1131,7 +1131,7 @@ def main() -> int:
                                  "if (targetDistance < sourceDistance) return true;", "boundedSidestep",
                                  "insectMoveAllowed", "MAT_PLANT_STEM")),
         "chemistry": (chemistry, ("flowerDropsSeed", "stemMoisture", "grassFrontier",
-                                  "source.material == MAT_PLANT_STEM")),
+                                  "SOURCE_IS(MAT_PLANT_STEM)")),
         "materials": (materials, ("MAT_PLANT_STEM) temperature = 20",
                                   "AUX_PLANT_STEM | 1u")),
     }

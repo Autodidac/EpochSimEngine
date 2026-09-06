@@ -276,7 +276,7 @@ class MachineryEditsContract(unittest.TestCase):
         self.assertRegex(selected, r"result = makeCell\(MAT_EMPTY\);.*nextCells\[index\] = result;\s*return;".replace(".*", "[\\s\\S]*"))
         self.assertIn("machineAcceptsResource(p, acceptingMachine, source)", selected)
         self.assertIn("atomicAdd(conservation[CONS_CONVERTED], 1u)", selected)
-        self.assertLess(controller, main.index("source.material == MAT_WASTE && (hasNeighbor"))
+        self.assertLess(controller, main.index("SOURCE_IS(MAT_WASTE) && (hasNeighbor"))
 
     def test_endpoint_geometry_matches_actual_invocation_admission(self):
         guard = body(CHEMISTRY, "machineEndpointActive")

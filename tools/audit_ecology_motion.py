@@ -32,7 +32,7 @@ required = {
               "Stable one-to-one slot ownership",
               "return beeFormationOffset(slot)"],
     "chemistry": ["flowerDropsSeed", "grassFrontier", "stemMoisture",
-                  "source.material == MAT_PLANT_STEM",
+                  "SOURCE_IS(MAT_PLANT_STEM)",
                   "Painted and loaded orphan bees self-seed",
                   "respiringNeighborDemand", "beeRoll < demand.x",
                   "fireRespiration", "BEE_COLONY_MAX"],

@@ -538,6 +538,8 @@ struct VulkanRenderer::Impl final {
     VkPipeline chunk_pipeline{};
     VkPipeline copy_cells_pipeline{};
     VkPipeline chemistry_pipeline{};
+    VkPipeline chemistry_bees_pipeline{};
+    VkPipeline chemistry_machinery_pipeline{};
     VkPipeline conservation_corrections_pipeline{};
     VkPipeline bee_movement_pipeline{};
     VkPipeline rainfall_pipeline{};
@@ -661,6 +663,8 @@ save_slot(normalize_world_slot(requested_save_slot)) {
             if (chunk_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chunk_pipeline, nullptr);
             if (copy_cells_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, copy_cells_pipeline, nullptr);
             if (chemistry_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_pipeline, nullptr);
+            if (chemistry_bees_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_bees_pipeline, nullptr);
+            if (chemistry_machinery_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_machinery_pipeline, nullptr);
             if (conservation_corrections_pipeline != VK_NULL_HANDLE)
                 vkDestroyPipeline(device, conservation_corrections_pipeline, nullptr);
             if (bee_movement_pipeline != VK_NULL_HANDLE)
@@ -1342,6 +1346,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         chunk_pipeline = create_compute_pipeline("chunks.comp.spv");
         copy_cells_pipeline = create_compute_pipeline("copy_cells.comp.spv");
         chemistry_pipeline = create_compute_pipeline("chemistry.comp.spv");
+        chemistry_bees_pipeline = create_compute_pipeline("chemistry_bees.comp.spv");
+        chemistry_machinery_pipeline = create_compute_pipeline("chemistry_machinery.comp.spv");
         conservation_corrections_pipeline =
             create_compute_pipeline("conservation_corrections.comp.spv");
         bee_movement_pipeline = create_compute_pipeline("bee_move.comp.spv");
@@ -1846,6 +1852,29 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
                                 compute_pipeline_layout, 0, 1, &descriptor_sets[set_index], 0, nullptr);
+    }
+
+    void record_chemistry(const VkCommandBuffer command_buffer,
+                          const std::uint32_t set_index, const SimulationPush& push,
+                          const std::uint32_t width, const std::uint32_t height) const {
+        // Every pipeline selects from immutable source material before any
+        // scratch write/counter. Owners are disjoint and cover all IDs, so age,
+        // heat and reactions happen once. Never swap/copy cells between owners.
+        const std::array pipelines{chemistry_pipeline, chemistry_bees_pipeline,
+                                   chemistry_machinery_pipeline};
+        for (std::size_t owner = 0; owner < pipelines.size(); ++owner) {
+            if (owner != 0u) {
+                buffer_barrier(command_buffer, cell_buffers[set_index ^ 1u],
+                               VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            }
+            bind_compute(command_buffer, pipelines[owner], set_index);
+            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                               VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+            vkCmdDispatch(command_buffer, divide_round_up(width, simulation_local_size),
+                          divide_round_up(height, simulation_local_size), 1);
+        }
     }
 
     template <typename Recorder>
@@ -3416,12 +3445,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        bind_compute(command_buffer, chemistry_pipeline, current_set);
-        vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, sizeof(simulation_push), &simulation_push);
-        vkCmdDispatch(command_buffer,
-                      divide_round_up(active_dispatch.width, simulation_local_size),
-                      divide_round_up(active_dispatch.height, simulation_local_size), 1);
+        record_chemistry(command_buffer, current_set, simulation_push,
+                         active_dispatch.width, active_dispatch.height);
         buffer_barrier(command_buffer, cell_buffers[next_set], VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -4680,12 +4705,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-            bind_compute(command_buffer, chemistry_pipeline, current_set);
-            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
-                               VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
-            vkCmdDispatch(command_buffer,
-                          divide_round_up(acceptance_width, simulation_local_size),
-                          divide_round_up(acceptance_height, simulation_local_size), 1);
+            record_chemistry(command_buffer, current_set, push,
+                             acceptance_width, acceptance_height);
             buffer_barrier(command_buffer, cell_buffers[next_set],
                            VK_ACCESS_SHADER_WRITE_BIT,
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
@@ -4966,13 +4987,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-            bind_compute(command_buffer, chemistry_pipeline, current_set);
-            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
-                               VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                               sizeof(simulation_push), &simulation_push);
-            vkCmdDispatch(command_buffer,
-                          divide_round_up(acceptance_width, simulation_local_size),
-                          divide_round_up(acceptance_height, simulation_local_size), 1);
+            record_chemistry(command_buffer, current_set, simulation_push,
+                             acceptance_width, acceptance_height);
             buffer_barrier(command_buffer, cell_buffers[next_set],
                            VK_ACCESS_SHADER_WRITE_BIT,
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,

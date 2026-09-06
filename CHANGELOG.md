@@ -9,8 +9,9 @@
 - Serialized overlapping Smoke/direct-life brush shafts, conserved displaced conveyor gas and matched capacity/dispatch/awake machine input credit to source debit.
 - Reduced radius-six machine-controller search from 169 scanned positions to 1–4 lattice positions without changing admission or row-major ties; added actual-helper equivalence and four-way GPU ownership controls. Measured runtime improvement remains unclaimed.
 - Removed the redundant nested recipient-side donor recount, preserving immutable capacity and the original donor rank. Actual-helper CPU and Windows GPU gates pass; stock Linux chemistry still times out.
+- Partitioned the single chemistry rule body into three disjoint immutable-source kernels, preserving common-rule ordering and one correction/copyback. Actual owner/preprocessor tests and Windows runtime/finite/presentation gates pass; the Linux LLVM15 coroutine compiler stall remains unresolved.
 - Corrected Half Water appearance, avoided out-of-label glyph work and restored Frontier inlet/Core reset geometry without changing Water/Steel counts or rewriting saves.
-- Reduced acceptance-runner stack usage and repaired GNU push-lambda captures without weakening tests. Current recipient-accounting stage passes Windows Release/CTest85/85, installed Vulkan164/164, finite12/12 and1920-frame presentation gates, plus Linux CTest74/74. Linux installed-runtime acceptance remains required before release.
+- Reduced acceptance-runner stack usage and repaired GNU push-lambda captures without weakening tests. Current partition stage passes Windows Release/CTest 87/87, installed Vulkan 164/164, finite 12/12 and 1,920-frame presentation gates, plus Linux Release/CTest 76/76. Linux installed-runtime acceptance remains required before release.
 - Kept all123 active missions and accepted hive/crescent/Nuke visuals; unfinished material/soil/ecology/experiment and broad performance work remains open.
 
 - Made EpochSimEngine the sole project/library identity in public API metadata, canonical headers/namespace, CMake library exports, manifest, guides, validation and source-release labels. SandHybrid names only the bundled demo.
