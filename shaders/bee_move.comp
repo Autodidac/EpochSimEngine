@@ -12,9 +12,11 @@ layout(std430, binding = 1) buffer NextCells { Cell nextCells[]; };
 layout(std430, binding = 4) buffer Tiles { TileState tiles[]; };
 layout(std430, binding = 5) buffer DebugStatsBuffer { uint debugStats[]; };
 layout(std430, binding = 7) buffer Chunks { ChunkState chunks[]; };
+layout(std430, binding = 12) buffer BeeHomePopulation { uint beeHomePopulation[]; };
 
 const uint BEE_PASS_MOVE = 0u;
 const uint BEE_PASS_BIRTH = 1u;
+const uint BEE_PASS_POPULATION = 2u;
 
 Cell beeMoveSourceAt(ivec2 position) {
     return inside(position) ? cells[indexOf(position)] : makeCell(MAT_STONE);
@@ -79,29 +81,40 @@ ivec2 beeMoveDistrictOrigin(ivec2 homeCenter) {
 }
 
 uint beeMoveDistrictPopulation(ivec2 homeCenter) {
-    // Replacement is capped per home, never per district. On the rare birth
-    // opportunity, skip empty tile summaries and inspect only Bee-bearing
-    // canonical tiles, including foragers beyond the active camera window.
+    // Match beeOwnsHome's decoded-coordinate equality, including distinct
+    // metadata encodings that name the same home. A valid Queen's encoded home
+    // is in bounds; out-of-bounds decoded donors cannot match that query.
+    uint expected = beePackMetadata(0u, homeCenter, 0u, pc.width, pc.height);
+    ivec2 decodedHome = beeHomeCenterFromAux(expected, pc.width, pc.height);
+    uint homeIndex = beePopulationHomeIndex(decodedHome, pc.width, pc.height);
+    return homeIndex == BEE_POPULATION_INVALID ? 0u : beeHomePopulation[homeIndex];
+}
+
+void runBeePopulation() {
+    // One invocation owns one global tile, independent of the active camera or
+    // clipped birth rectangle. The host clears this ephemeral reduction before
+    // each birth opportunity and makes its atomics visible before birth reads.
+    uvec2 tilePosition = gl_GlobalInvocationID.xy;
     uint columns = tileColumns(pc.width);
-    uint count = 0u;
-    uint tileCount = columns * ((pc.height + TILE_SIZE - 1u) / TILE_SIZE);
-    for (uint tile = 0u; tile < tileCount; ++tile) {
-        // Counts are a previous classification snapshot. Movement publishes a
-        // conservative candidate bit at both endpoints, so a newly occupied
-        // off-camera tile is never skipped before its next classification.
-        if (tileBeeCount(tiles[tile]) == 0u &&
-            !tileHas(tiles[tile], TILE_HAS_BEES | TILE_HAS_HIVE | TILE_HAS_QUEEN)) continue;
-        ivec2 origin = brickOriginFromIndex(tile, pc.width);
-        for (int y = 0; y < int(TILE_SIZE); ++y)
-            for (int x = 0; x < int(TILE_SIZE); ++x) {
-                ivec2 p = origin + ivec2(x, y);
-                if (!inside(p)) continue;
-                Cell bee = beeMoveSourceAt(p);
-                if (bee.material == MAT_BEE && (bee.aux & BEE_AUX_SWARM) != 0u &&
-                    beeOwnsHome(bee.aux, homeCenter, pc.width, pc.height)) ++count;
-            }
-    }
-    return count;
+    uint rows = (pc.height + TILE_SIZE - 1u) / TILE_SIZE;
+    if (tilePosition.x >= columns || tilePosition.y >= rows) return;
+    uint tile = tilePosition.y * columns + tilePosition.x;
+    // Retain the old population scan's conservative candidate predicate.
+    // Movement publishes these flags at both endpoints, including off-camera.
+    if (tileBeeCount(tiles[tile]) == 0u &&
+        !tileHas(tiles[tile], TILE_HAS_BEES | TILE_HAS_HIVE | TILE_HAS_QUEEN)) return;
+    ivec2 origin = brickOriginFromIndex(tile, pc.width);
+    for (int y = 0; y < int(TILE_SIZE); ++y)
+        for (int x = 0; x < int(TILE_SIZE); ++x) {
+            ivec2 p = origin + ivec2(x, y);
+            if (!inside(p)) continue;
+            Cell bee = beeMoveSourceAt(p);
+            if (bee.material != MAT_BEE || (bee.aux & BEE_AUX_SWARM) == 0u) continue;
+            ivec2 decodedHome = beeHomeCenterFromAux(bee.aux, pc.width, pc.height);
+            uint homeIndex = beePopulationHomeIndex(decodedHome, pc.width, pc.height);
+            if (homeIndex != BEE_POPULATION_INVALID)
+                atomicAdd(beeHomePopulation[homeIndex], 1u);
+        }
 }
 
 uint beeMoveStationaryPopulation(ivec2 homeCenter, out uint firstMissingSlot) {
@@ -586,6 +599,10 @@ bool tryBeeMove(ivec2 sourcePosition, Cell bee, ivec2 offset) {
 }
 
 void main() {
+    if (pc.material == BEE_PASS_POPULATION) {
+        runBeePopulation();
+        return;
+    }
     bool birthPass = pc.material == BEE_PASS_BIRTH;
     ivec2 dispatchOrigin = birthPass ? ivec2(pc.brushX, pc.brushY) :
         activeDispatchCellOrigin(pc.activeSectionX, pc.activeSectionY, pc.activeMode);

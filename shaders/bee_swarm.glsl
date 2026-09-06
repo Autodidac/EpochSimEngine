@@ -19,6 +19,7 @@ const uint BEE_METADATA_MASK = 0x00ffffffu;
 // and gaps: global 16-cell home X10/Y7 plus six-bit slot.
 const uint BEE_AUX_GLOBAL_HOME = 0x00800000u;
 const uint BEE_AUTHORED_HOME_SLOT_BIT = 0x80u;
+const uint BEE_POPULATION_INVALID = 0xffffffffu;
 
 const ivec2 BEE_AUTHORED_WORLD_CELLS = ivec2(640, 360);
 const ivec2 BEE_PERSISTENT_WORLD_CELLS = ivec2(5120, 360);
@@ -90,6 +91,34 @@ ivec2 beeAuthoredWorldOrigin(uint width, uint height) {
         ? BEE_AUTHORED_WORLD_CELLS.x * 2
         : max((int(width) - BEE_AUTHORED_WORLD_CELLS.x) / 2, 0);
     return ivec2(originX, skyHeight);
+}
+
+// Every persistent decoded home lies on the eight-cell lattice (tagged global
+// homes use its sixteen-cell subset). Legacy homes lie on either the four-cell
+// lattice or that lattice translated by the authored origin. Their common
+// stride is gcd(4, origin.x, origin.y), including odd custom-width origins.
+uint beePopulationStride(uint width, uint height) {
+    if (beeUsesPersistentWorldHome(width, height)) return 8u;
+    ivec2 origin = beeAuthoredWorldOrigin(width, height);
+    uint originBits = uint(origin.x) | uint(origin.y);
+    if ((originBits & 1u) != 0u) return 1u;
+    return (originBits & 2u) != 0u ? 2u : 4u;
+}
+
+uint beePopulationColumns(uint width, uint height) {
+    uint stride = beePopulationStride(width, height);
+    return (width + stride - 1u) / stride;
+}
+
+uint beePopulationHomeIndex(ivec2 decodedHome, uint width, uint height) {
+    if (decodedHome.x < 0 || decodedHome.y < 0 ||
+        decodedHome.x >= int(width) || decodedHome.y >= int(height))
+        return BEE_POPULATION_INVALID;
+    uint stride = beePopulationStride(width, height);
+    if (uint(decodedHome.x) % stride != 0u || uint(decodedHome.y) % stride != 0u)
+        return BEE_POPULATION_INVALID;
+    return (uint(decodedHome.y) / stride) * beePopulationColumns(width, height) +
+           uint(decodedHome.x) / stride;
 }
 
 int beePersistentGap(uint width) {

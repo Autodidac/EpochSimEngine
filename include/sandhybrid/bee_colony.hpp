@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
+#include <numeric>
 
 namespace sandhybrid {
 
@@ -30,6 +32,45 @@ struct BeeDistrictAddress final {
 [[nodiscard]] constexpr bool bee_uses_persistent_home(
     const std::uint32_t width, const std::uint32_t height) noexcept {
     return width >= persistent_world_width && height >= persistent_world_height;
+}
+
+// Derived population keys identify decoded home coordinates, not metadata
+// bytes: district/global aliases of the same home must share one exact count.
+// Legacy authored offsets need not be multiples of four on odd-sized canvases.
+[[nodiscard]] constexpr std::uint32_t bee_population_stride(
+    const std::uint32_t width, const std::uint32_t height) noexcept {
+    if (bee_uses_persistent_home(width, height)) return 8u;
+    return std::gcd(4u, std::gcd(authored_scene_origin_x(width),
+                                authored_scene_origin_y(height)));
+}
+
+// Allocation callers validate this wide count against shader indexing and
+// device byte limits before narrowing it; neither ceiling addition may wrap.
+[[nodiscard]] constexpr std::uint64_t bee_population_slot_count(
+    const std::uint32_t width, const std::uint32_t height) noexcept {
+    const auto stride = bee_population_stride(width, height);
+    const auto columns = (static_cast<std::uint64_t>(width) + stride - 1u) / stride;
+    const auto rows = (static_cast<std::uint64_t>(height) + stride - 1u) / stride;
+    return columns * rows;
+}
+
+inline constexpr auto bee_population_invalid_key =
+    (std::numeric_limits<std::uint32_t>::max)();
+
+// The argument is already decoded. Reject exterior/non-lattice coordinates
+// instead of flooring them onto a different valid colony. Negative GLSL homes
+// correspond to exterior unsigned coordinates here and are rejected as well.
+[[nodiscard]] constexpr std::uint32_t bee_population_key(
+    const BeeHome decoded_home, const std::uint32_t width,
+    const std::uint32_t height) noexcept {
+    const auto stride = bee_population_stride(width, height);
+    if (decoded_home.x >= width || decoded_home.y >= height ||
+        decoded_home.x % stride != 0u || decoded_home.y % stride != 0u)
+        return bee_population_invalid_key;
+    const auto columns = (static_cast<std::uint64_t>(width) + stride - 1u) / stride;
+    const auto key = (decoded_home.y / stride) * columns + decoded_home.x / stride;
+    return key < bee_population_invalid_key
+        ? static_cast<std::uint32_t>(key) : bee_population_invalid_key;
 }
 
 [[nodiscard]] constexpr BeeDistrictAddress bee_district_address(

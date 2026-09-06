@@ -568,6 +568,7 @@ struct VulkanRenderer::Impl final {
     Buffer chunk_buffer{};
     Buffer conservation_buffer{};
     Buffer rainfall_buffer{};
+    Buffer bee_population_buffer{};
     Buffer ui_text_buffer{};
     Buffer designer_buffer{};
     Buffer scene_staging_buffer{};
@@ -697,6 +698,7 @@ save_slot(normalize_world_slot(requested_save_slot)) {
             destroy_buffer(ui_text_buffer);
             destroy_buffer(conservation_buffer);
             destroy_buffer(rainfall_buffer);
+            destroy_buffer(bee_population_buffer);
             destroy_buffer(chunk_buffer);
             destroy_buffer(tile_buffer);
             destroy_buffer(actor_buffer);
@@ -862,6 +864,18 @@ save_slot(normalize_world_slot(requested_save_slot)) {
     }
 
     void select_physical_device() {
+        const auto requested_cells = static_cast<VkDeviceSize>(config.grid_width) *
+                                     config.grid_height;
+        if (config.grid_height > 2048u ||
+            requested_cells > static_cast<VkDeviceSize>((std::numeric_limits<std::int32_t>::max)()))
+            throw std::runtime_error("World dimensions exceed simulation indexing capacity.");
+        const auto requested_world_bytes = requested_cells * sizeof(SceneCell);
+        // Current, alternate and MAP cells each bind the complete canonical
+        // field. Device choice must satisfy that exact range before scoring;
+        // neither a shorter descriptor nor silently resizing the World is valid.
+        constexpr std::uint32_t required_storage_bindings = 13u;
+        constexpr std::uint32_t required_stage_storage_bindings = 9u;
+        constexpr auto required_push_bytes = (std::max)(sizeof(ActorPush), sizeof(RenderPush));
         std::uint32_t count{};
         check_vk(vkEnumeratePhysicalDevices(instance, &count, nullptr), "vkEnumeratePhysicalDevices(count)");
         if (count == 0) {
@@ -872,6 +886,9 @@ save_slot(normalize_world_slot(requested_save_slot)) {
         check_vk(vkEnumeratePhysicalDevices(instance, &count, devices.data()), "vkEnumeratePhysicalDevices(data)");
 
         std::uint64_t best_score{};
+        VkDeviceSize maximum_available_range{};
+        bool presentation_device_found = false;
+        bool renderer_limits_rejected = false;
         for (const auto candidate : devices) {
             VkPhysicalDeviceProperties properties{};
             vkGetPhysicalDeviceProperties(candidate, &properties);
@@ -881,6 +898,33 @@ save_slot(normalize_world_slot(requested_save_slot)) {
             if (!families.complete() || !device_supports_swapchain(candidate)) continue;
             const auto support = query_swapchain_support(candidate);
             if (support.formats.empty() || support.present_modes.empty()) continue;
+
+            presentation_device_found = true;
+            const auto& limits = properties.limits;
+            maximum_available_range = (std::max)(maximum_available_range,
+                static_cast<VkDeviceSize>(limits.maxStorageBufferRange));
+            // The shared layout exposes nine storage buffers to each shader
+            // stage. Existing RenderPush and Debug's256-wide local group also
+            // exceed Vulkan's guaranteed minima on some otherwise valid GPUs.
+            const bool renderer_limits =
+                limits.maxDescriptorSetStorageBuffers >= required_storage_bindings &&
+                limits.maxPerStageDescriptorStorageBuffers >= required_stage_storage_bindings &&
+                limits.maxPerStageResources >= required_stage_storage_bindings &&
+                limits.maxPushConstantsSize >= required_push_bytes &&
+                limits.maxComputeWorkGroupInvocations >= 256u &&
+                limits.maxComputeWorkGroupSize[0] >= 256u &&
+                limits.maxComputeWorkGroupSize[1] >= 16u;
+            if (requested_world_bytes > limits.maxStorageBufferRange || !renderer_limits) {
+                renderer_limits_rejected = renderer_limits_rejected || !renderer_limits;
+                startup_log(std::string{"Skipping GPU: "} + properties.deviceName +
+                    "; requested canonical/MAP descriptor=" +
+                    std::to_string(requested_world_bytes) +
+                    " bytes; maxStorageBufferRange=" +
+                    std::to_string(limits.maxStorageBufferRange) +
+                    " bytes; renderer layout/workgroup limits=" +
+                    (renderer_limits ? "supported" : "unsupported"));
+                continue;
+            }
 
             std::uint64_t score = properties.limits.maxComputeSharedMemorySize;
             if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) score += 1'000'000u;
@@ -894,7 +938,19 @@ save_slot(normalize_world_slot(requested_save_slot)) {
         }
 
         if (physical_device == VK_NULL_HANDLE) {
-            throw std::runtime_error("No Vulkan 1.2 device supports compute, graphics, and presentation.");
+            if (!presentation_device_found)
+                throw std::runtime_error("No Vulkan 1.2 device supports compute, graphics, and presentation.");
+            throw std::runtime_error(
+                "No compatible Vulkan 1.2 device supports the requested World " +
+                std::to_string(config.grid_width) + "x" + std::to_string(config.grid_height) +
+                ": each canonical/MAP storage descriptor requires " +
+                std::to_string(requested_world_bytes) +
+                " bytes; maximum available maxStorageBufferRange is " +
+                std::to_string(maximum_available_range) + " bytes." +
+                (renderer_limits_rejected
+                    ? " The renderer also requires 13 storage bindings, 9 per stage, 256-byte push constants, and 256-invocation workgroups (X>=256, Y>=16)."
+                    : "") +
+                " Select --world-size compact or use a capable GPU. The World was not resized.");
         }
 
         VkPhysicalDeviceProperties selected_properties{};
@@ -902,6 +958,9 @@ save_slot(normalize_world_slot(requested_save_slot)) {
         cpu_physical_device =
             selected_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
         startup_log(std::string{"Selected GPU: "} + selected_properties.deviceName);
+        startup_log("World storage admission: " + std::to_string(requested_world_bytes) +
+            " bytes per canonical/MAP descriptor; maxStorageBufferRange=" +
+            std::to_string(selected_properties.limits.maxStorageBufferRange) + " bytes.");
     }
 
     void create_device() {
@@ -956,6 +1015,17 @@ save_slot(normalize_world_slot(requested_save_slot)) {
 
     Buffer create_buffer(const VkDeviceSize size, const VkBufferUsageFlags usage,
                          const VkMemoryPropertyFlags properties) {
+        // Every storage buffer created here is subsequently bound at full size.
+        // Transfer-only staging/capture allocations are not descriptor ranges.
+        if ((usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0u) {
+            VkPhysicalDeviceProperties buffer_limits{};
+            vkGetPhysicalDeviceProperties(physical_device, &buffer_limits);
+            if (size > buffer_limits.limits.maxStorageBufferRange)
+                throw std::runtime_error("Storage buffer requires " + std::to_string(size) +
+                    " bytes, exceeding selected GPU maxStorageBufferRange=" +
+                    std::to_string(buffer_limits.limits.maxStorageBufferRange) +
+                    " bytes. Select --world-size compact or use a capable GPU; descriptor ranges are never truncated.");
+        }
         Buffer buffer{.size = size};
         const VkBufferCreateInfo buffer_info{
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -1040,6 +1110,28 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         rainfall_buffer = create_buffer(
             rain_words * sizeof(std::uint32_t),
             storage_usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        // A derived exact home count, rebuilt only at rare birth opportunities.
+        // Persistent home bases are8-cell aligned (global homes16), so Large
+        // needs230,400 words, not a second cell field or a CPU readback.
+        // Prefix acceptance retains its legacy192-row codec. Its four-cell
+        // lattice can be larger than a short persistent world's eight-cell
+        // lattice, even though it addresses fewer canonical source rows.
+        const auto population_slots = std::max(
+            bee_population_slot_count(config.grid_width, config.grid_height),
+            bee_population_slot_count(config.grid_width,
+                                      std::min(config.grid_height, 192u)));
+        const auto population_bytes = population_slots * sizeof(std::uint32_t);
+        VkPhysicalDeviceProperties population_limits{};
+        vkGetPhysicalDeviceProperties(physical_device, &population_limits);
+        if (population_slots == 0u ||
+            population_slots > (std::numeric_limits<std::uint32_t>::max)() ||
+            population_bytes > population_limits.limits.maxStorageBufferRange ||
+            population_limits.limits.maxDescriptorSetStorageBuffers < 13u ||
+            population_limits.limits.maxPerStageDescriptorStorageBuffers < 9u)
+            throw std::runtime_error("Device/world exceeds exact Bee population capacity.");
+        bee_population_buffer = create_buffer(population_bytes, storage_usage,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         const auto ui_text_size = static_cast<VkDeviceSize>(ui::text_storage.size() * sizeof(std::uint32_t));
         ui_text_buffer = create_buffer(ui_text_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -1129,6 +1221,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
             },
+            VkDescriptorSetLayoutBinding{
+                .binding = 12,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+            },
         };
         const VkDescriptorSetLayoutCreateInfo layout_info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -1172,7 +1270,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     void create_descriptors() {
         const VkDescriptorPoolSize pool_size{
             .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 24,
+            .descriptorCount = 26,
         };
         const VkDescriptorPoolCreateInfo pool_info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -1208,6 +1306,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             const VkDescriptorBufferInfo designer_info{designer_buffer.handle, 0, designer_buffer.size};
             const VkDescriptorBufferInfo rainfall_info{
                 rainfall_buffer.handle, 0, rainfall_buffer.size};
+            const VkDescriptorBufferInfo bee_population_info{
+                bee_population_buffer.handle, 0, bee_population_buffer.size};
             const std::array writes{
                 VkWriteDescriptorSet{
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -1304,6 +1404,14 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     .descriptorCount = 1,
                     .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                     .pBufferInfo = &map_tile_info,
+                },
+                VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptor_sets[index],
+                    .dstBinding = 12,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .pBufferInfo = &bee_population_info,
                 },
             };
             vkUpdateDescriptorSets(device, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
@@ -1796,6 +1904,52 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                const ActiveCellDispatch dispatch) {
         if ((simulation_push.step & 4095u) != 0u ||
             dispatch.width == 0u || dispatch.height == 0u) return;
+        if (simulation_push.width != config.grid_width ||
+            simulation_push.height == 0u || simulation_push.height > config.grid_height ||
+            bee_population_slot_count(simulation_push.width, simulation_push.height) >
+                bee_population_buffer.size / sizeof(std::uint32_t))
+            throw std::runtime_error("Bee population dispatch exceeds its decoded-home storage.");
+
+        // Rebuild globally from the same immutable canonical cells that birth
+        // will inspect. Each candidate tile has one bounded64-cell worker;
+        // off-camera foragers still count without a230,400-iteration shader
+        // loop exceeding software-driver loop budgets. No canonical copy or
+        // readback occurs here, and clipping still applies to BOTH birth ends.
+        buffer_barrier(command_buffer, bee_population_buffer,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT);
+        vkCmdFillBuffer(command_buffer, bee_population_buffer.handle, 0,
+                        bee_population_buffer.size, 0u);
+        buffer_barrier(command_buffer, bee_population_buffer,
+                       VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        buffer_barrier(command_buffer, cell_buffers[current_set],
+                       VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        buffer_barrier(command_buffer, tile_buffer,
+                       VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        auto population_push = simulation_push;
+        population_push.material = 2u;
+        bind_compute(command_buffer, bee_movement_pipeline, current_set);
+        vkCmdPushConstants(command_buffer, compute_pipeline_layout,
+                           VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof(population_push), &population_push);
+        vkCmdDispatch(command_buffer,
+                      divide_round_up(divide_round_up(simulation_push.width, 8u),
+                                      simulation_local_size),
+                      divide_round_up(divide_round_up(simulation_push.height, 8u),
+                                      simulation_local_size), 1u);
+        buffer_barrier(command_buffer, bee_population_buffer,
+                       VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
         const auto next_set = current_set ^ 1u;
         buffer_barrier(command_buffer, cell_buffers[current_set],

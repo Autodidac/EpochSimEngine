@@ -292,7 +292,11 @@ for token in ('#include "bee_swarm.glsl"', "beeMoveExactHome", "tileQueenPositio
               "beeMoveStationaryPopulation",
               "beeOwnsHome(bee.aux, homeCenter, pc.width, pc.height)",
               "if (tileBeeCount(tiles[tile]) == 0u &&",
-              "!tileHas(tiles[tile], TILE_HAS_BEES | TILE_HAS_HIVE | TILE_HAS_QUEEN)) continue;",
+              # One global worker per tile now returns at the same candidate
+              # guard; it no longer continues an over-limit resident scan.
+              "!tileHas(tiles[tile], TILE_HAS_BEES | TILE_HAS_HIVE | TILE_HAS_QUEEN)) return;",
+              "void runBeePopulation()",
+              "atomicAdd(beeHomePopulation[homeIndex], 1u)",
               "beeMoveBirthOwner",
               "districtBees >= BEE_COLONY_MAX",
               "stationaryBees != districtBees",

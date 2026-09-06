@@ -2,6 +2,22 @@
 
 SandHybrid is the bundled Windows/Linux Vulkan demo for EpochSimEngine. The project and simulation library are named EpochSimEngine; SandHybrid names only this demo application. It presents one persistent connected World containing eight west-to-east districts: Sandbox, Ecosystem, Engineering, Frontier, Volcano, Waterworks, Gold Mine, and Demolition.
 
+## World size and Vulkan device limits
+
+Choose an explicit world preset that fits the selected Vulkan device. Each canonical cell buffer and the full MAP cell snapshot use a storage-buffer descriptor covering the entire resident cell field, at 16 bytes per cell:
+
+| Preset | Resident cells | Bytes per full cell descriptor | MiB |
+|---|---|---:|---:|
+| Compact | 5120 x 1440 | 117,964,800 | 112.5 |
+| Standard | 7680 x 1440 | 176,947,200 | 168.75 |
+| Large | 10240 x 1440 | 235,929,600 | 225 |
+
+These are per-descriptor sizes, not total GPU memory consumption. Both cell buffers, MAP, lighting, hierarchy, staging, and driver allocations require additional memory. Every full cell descriptor must fit the device's advertised `maxStorageBufferRange`; free VRAM does not override that limit. An unsupported requested preset must be rejected before allocation/dispatch, never silently resized or admitted through a truncated descriptor. Saves retain their exact world dimensions.
+
+The currently tested stock Mesa 23.2.1 llvmpipe/LLVM 15 device advertises a 128 MiB limit: Compact fits, while Standard and Large do not. From an installed Linux package root, use `./run-compact.sh` for the demo, or `./bin/sandhybrid --world-size compact` with the desired report arguments. Compact retains all eight contiguous districts, but does not cover Standard/Large inter-district gaps or Large's sparse startup-window requirement. Validate those on a device that supports the larger preset; Compact results are not Large parity. Final production Linux acceptance for the current corrective build remains pending; a supported allocation alone is not acceptance.
+
+For every acceptance or profiling run, retain the selected device/driver, advertised `maxStorageBufferRange`, explicit preset, and resident dimensions with the report. Use the largest supported preset for the native release state gate, and keep preset/device conditions identical for comparisons.
+
 ## Simulation
 
 The example runs canonical materials, liquids, gases, weather, ecology, machinery, actors, terrain, and combat on fixed 60 Hz simulation ticks. Presentation caps do not change simulation cadence. Complete aligned `8x8` liquid and gas packets use macro transactions while exposed or incomplete boundaries use fine cells; the same canonical cells remain authoritative.
@@ -96,16 +112,16 @@ Focused, repeated-cycle, and interactive checks cover different risks. None subs
 
 ## Material-tick profiling
 
-The optional profiler diagnoses where the material simulation spends GPU time. From the installed `bin` directory on Windows:
+The optional profiler diagnoses where the material simulation spends GPU time. From the installed `bin` directory on a Windows device supporting Large:
 
 ```powershell
 .\sandhybrid.exe --world-size large --simulation-profile-report material-profile.json
 ```
 
-On Linux:
+On the current stock llvmpipe Linux device, select Compact explicitly:
 
 ```sh
-./sandhybrid --world-size large --simulation-profile-report=material-profile.json
+./sandhybrid --world-size compact --simulation-profile-report=material-profile.json
 ```
 
 Both argument forms accept a quoted path with spaces. Choose exactly one report mode per process: profiling cannot be combined with focused, long-cycle, or interactive acceptance. `--world-size compact`, `standard`, and `large` select the resident allocation; keep the same size and machine conditions when comparing reports.

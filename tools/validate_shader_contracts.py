@@ -574,6 +574,22 @@ def main() -> int:
         require(bee_move, token, errors,
                 "conserved two-cell Bee replacement transaction")
     for token in (
+        "const uint BEE_PASS_POPULATION = 2u",
+        "layout(std430, binding = 12) buffer BeeHomePopulation",
+        "uvec2 tilePosition = gl_GlobalInvocationID.xy",
+        "void runBeePopulation()",
+        "atomicAdd(beeHomePopulation[homeIndex], 1u)",
+        "beePopulationHomeIndex(decodedHome, pc.width, pc.height)",
+        "return homeIndex == BEE_POPULATION_INVALID ? 0u : beeHomePopulation[homeIndex]",
+    ):
+        require(bee_move, token, errors, "global bounded Bee population reduction")
+    if "for (uint tile = 0u; tile < tileCount; ++tile)" in bee_move:
+        errors.append("Bee population must not restore the software-driver-limited world scan")
+    population_main = bee_move.find("if (pc.material == BEE_PASS_POPULATION)")
+    birth_main = bee_move.find("bool birthPass = pc.material == BEE_PASS_BIRTH")
+    if not (0 <= population_main < birth_main):
+        errors.append("Bee population reduction must run before camera/birth clipping")
+    for token in (
         '#include "rain_membership.glsl"',
         "if (pc.activeMode == 2u)",
         "if (((pc.step + x) & 3u) != 0u) return",
@@ -637,6 +653,10 @@ def main() -> int:
         "bind_compute(command_buffer, conservation_corrections_pipeline, current_set)",
         "auto bee_birth_push = simulation_push",
         "bee_birth_push.material = 1u",
+        "population_push.material = 2u",
+        "vkCmdFillBuffer(command_buffer, bee_population_buffer.handle, 0,",
+        "bee_population_slot_count(",
+        ".dstBinding = 12",
         "record_bee_birth_pass(command_buffer, simulation_push, active_dispatch)",
         "record_bee_birth_pass(command_buffer, push, acceptance_dispatch)",
         "create_compute_pipeline(\"rainfall.comp.spv\")",

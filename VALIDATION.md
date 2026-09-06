@@ -66,13 +66,29 @@ This command builds the real application and all GLSL shaders, runs the static s
 - While `PAUSED`, paint, erase, fill, and trigger `NUKE FROM SPACE`; confirm each edit appears immediately while both RUNNING and PAUSED, the warning flare precedes detonation, and clocks, actors, reactions, lighting, MAP refresh, and effects do not advance.
 - Verify Inventory and Designer remain inside the sidebar at wide and compact sizes; each exposes `INVENTORY` and `BLUEPRINTS`, and Designer never replaces the world viewport.
 
+## Supported Vulkan world sizes
+
+The full canonical cell buffers and full MAP cell snapshot each require a storage-buffer descriptor for `width * height * 16` bytes. Compare that range with the selected device's advertised `maxStorageBufferRange` before allocation or dispatch:
+
+| Preset | Resident cells | Bytes per full cell descriptor | MiB |
+|---|---|---:|---:|
+| Compact | 5120 x 1440 | 117,964,800 | 112.5 |
+| Standard | 7680 x 1440 | 176,947,200 | 168.75 |
+| Large | 10240 x 1440 | 235,929,600 | 225 |
+
+These are individual descriptor ranges, not a total memory budget; two cell buffers, MAP, lighting, hierarchy, staging, and driver allocations consume additional memory. Free VRAM is not permission to exceed the advertised range. Reject an unsupported requested preset clearly; never silently shrink the world, alter save dimensions, or truncate a descriptor to fit.
+
+Use the largest supported preset for each native release state gate. Retain the device/driver, advertised limit, selected preset, and actual resident dimensions alongside every state, finite-cycle, presentation, or profiling report. The currently tested stock Mesa 23.2.1 llvmpipe/LLVM 15 device advertises 134,217,728 bytes (128 MiB), so only Compact fits. Compact still contains all eight contiguous districts, but cannot validate Standard/Large inter-district gaps or Large's sparse startup-window subcases. Keep those as explicit hardware-supported Large checks, not inferred Linux Compact parity. Earlier software Large observations remain historical diagnostics outside that device's advertised range; this admission guidance does not revalidate them. The final full production Linux gate for the current corrective build remains pending.
+
 ## Packaged Vulkan state-readback command
 
-Run this from a fresh native package on a system with a working Vulkan presentation device:
+Run this from a fresh native package on a system with a working Vulkan presentation device, selecting the largest supported preset under the limits above. On the current stock llvmpipe Linux device, from the installed `bin` directory:
 
 ```text
-sandhybrid --world-size large --runtime-acceptance-report runtime-acceptance.json
+./sandhybrid --world-size compact --runtime-acceptance-report runtime-acceptance.json
 ```
+
+For ordinary Linux demo startup from the package root, `./run-compact.sh` selects the same supported preset. A capable hardware device may instead use `sandhybrid --world-size large --runtime-acceptance-report runtime-acceptance.json`; record its actual device and preset rather than assuming platform-wide support.
 
 The executable allocates the selected resident World (Large is 10240x1440), runs the production reset, actor, paint, tile, macro-movement, fine-movement, and chemistry pipelines, writes a schema-1 JSON report, and exits 0 only when every focused check passes. Seeded movement dispatch remains bounded to the first 192 columns and rows because those micro-scenarios live there, while reset, district, player, startup-footprint, and hard-coded hive checks cover the complete selected resident buffers. Unrelated long-running chemistry, effects, sunlight, multi-interval weather/ecology, and cross-district travel are intentionally omitted; deterministic contracts separately enforce their source policies. Exit 3 means observed GPU state contradicted the accepted behavior. The report covers:
 
@@ -94,7 +110,7 @@ The executable allocates the selected resident World (Large is 10240x1440), runs
 - complete supported structural Stone foundations and common aligned grass Y `1040` in all eight distributed World districts;
 - live persistent player state at the distributed Frontier recovery spawn with full health and Oxygen, plus a shared 23-cell-tall body with all 207 footprint cells clear, nine support cells, and a breathable head sample;
 - Inventory startup ownership producing actor shot timer 4, an exact terrain hit, and expected two-hit Stone integrity 111 while Editor paint remains independently routed;
-- no more than three authored districts intersecting the initial Large 4x4 active window;
+- on supported Large runs, no more than three authored districts intersecting the initial Large 4x4 active window; Compact does not establish this Large-specific coverage;
 - cell-exact photographed Fix29 shell, queen, exit, and tagged two-bit Empty/Pollen/Honey payload in placed, Sandbox, and Ecosystem hives. Shell count is `193`; Sandbox/translated placement contains `35/13/8` Honey/Pollen/Empty chamber cells and Ecosystem contains `31/9/16`. Every path must report zero legacy-perch Wood. The placed body is checked immediately and again after 120 focused ticks, while each hard-coded colony retains exactly 60 unique district-correct bee homes in three connected `20/20/20` lobes.
 - a production bee lifecycle that acquires a Flower, picks up Pollen, returns and deposits it, feeds from Honey, exchanges one packed-Atmosphere Oxygen unit for stored CO2 without changing pressure, and repeats three deterministic hazard-death/replacement cycles. Every replacement must settle at the exact missing district-local slot, restore 59 to 60, and never exceed 60.
 
