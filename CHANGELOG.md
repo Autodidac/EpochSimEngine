@@ -1,6 +1,13 @@
 # EpochSimEngine changelog
 
-## Unpublished naming correction
+## 2.5.29 (candidate; native package gates pending)
+
+- Made Beehive an independently repeatable Editor tool with sky/gap homes, exact per-colony 60-slot ownership, bounded no-Flower search/return and live/paused/MAP recognition of every home. This supersedes frozen 2.5.28 singleton replacement.
+- Preserved finite Queen ventilation during own-home newborn transit, including coincident Bee breathing and scarce Oxygen; retained the original edge regression and added deterministic rare-event controls.
+- Serialized overlapping Smoke/direct-life brush shafts, conserved displaced conveyor gas and matched capacity/dispatch/awake machine input credit to source debit.
+- Corrected Half Water appearance, avoided out-of-label glyph work and restored Frontier inlet/Core reset geometry without changing Water/Steel counts or rewriting saves.
+- Reduced acceptance-runner stack usage and repaired GNU push-lambda captures without weakening tests. Source-stage evidence is Windows CTest82/82, Linux CTest71/71 and Windows production Vulkan163/163; installed gates remain separate.
+- Kept all123 active missions and accepted hive/crescent/Nuke visuals; unfinished material/soil/ecology/experiment and broad performance work remains open.
 
 - Made EpochSimEngine the sole project/library identity in public API metadata, canonical headers/namespace, CMake library exports, manifest, guides, validation and source-release labels. SandHybrid names only the bundled demo.
 - Retained legacy API aliases, options, save-format markers and existing URLs as compatibility interfaces; immutable artifact history is unchanged. This naming pass does not publish a new runtime or complete outstanding simulation missions.

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(EpochSimEngine VERSION 2.5.28 LANGUAGES CXX)
+project(EpochSimEngine VERSION 2.5.29 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -284,6 +284,24 @@ if(SANDHYBRID_BUILD_APP)
     install(FILES scenes/README.txt DESTINATION ${CMAKE_INSTALL_BINDIR}/scenes)
     if(WIN32)
         install(FILES run.bat run-compact.bat run-standard.bat run-large.bat DESTINATION .)
+        # vcpkg app-local deployment populates the build tree, not install().
+        # Package the matching loader explicitly instead of borrowing an old
+        # demo install or accidentally shipping the Debug DLL in Release.
+        if(DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
+            set(EPOCHSIMENGINE_RELEASE_VULKAN_LOADER
+                "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin/vulkan-1.dll")
+            set(EPOCHSIMENGINE_DEBUG_VULKAN_LOADER
+                "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/bin/vulkan-1.dll")
+            if(EXISTS "${EPOCHSIMENGINE_RELEASE_VULKAN_LOADER}")
+                install(FILES "${EPOCHSIMENGINE_RELEASE_VULKAN_LOADER}"
+                    DESTINATION ${CMAKE_INSTALL_BINDIR}
+                    CONFIGURATIONS Release RelWithDebInfo MinSizeRel)
+            endif()
+            if(EXISTS "${EPOCHSIMENGINE_DEBUG_VULKAN_LOADER}")
+                install(FILES "${EPOCHSIMENGINE_DEBUG_VULKAN_LOADER}"
+                    DESTINATION ${CMAKE_INSTALL_BINDIR} CONFIGURATIONS Debug)
+            endif()
+        endif()
     else()
         install(PROGRAMS run-compact.sh run-standard.sh run-large.sh DESTINATION .)
     endif()

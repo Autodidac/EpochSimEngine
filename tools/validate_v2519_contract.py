@@ -21,8 +21,8 @@ def reject(path: str, token: str) -> None:
 
 
 # Stable, visible native release contract.
-require("CMakeLists.txt", "VERSION 2.5.28")
-require("RELEASE_NOTES.md", "# EpochSimEngine v2.5.28")
+require("CMakeLists.txt", "VERSION 2.5.29")
+require("RELEASE_NOTES.md", "# EpochSimEngine v2.5.29")
 for token in (
     "SandHybrid-Windows-x64-v2.5.26",
     "SandHybrid-Linux-x64-v2.5.26",

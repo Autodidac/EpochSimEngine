@@ -27,18 +27,18 @@ def reject(relative: str, *tokens: str) -> None:
 
 require(
     "CMakeLists.txt",
-    "project(EpochSimEngine VERSION 2.5.28",
+    "project(EpochSimEngine VERSION 2.5.29",
     "sandhybrid_v2527_source_contract",
     "tools/validate_v2527_contract.py",
 )
-require("vcpkg.json", '"version-string": "2.5.28"')
+require("vcpkg.json", '"version-string": "2.5.29"')
 require(
     "RELEASE_NOTES.md",
-    "# EpochSimEngine v2.5.28",
-    "SandHybrid-Windows-x64-v2.5.28.zip",
-    "SandHybrid-Linux-x64-v2.5.28.tar.gz",
-    "EpochSimEngine-v2.5.28-source.tar.gz",
-    "EpochSimEngine-v2.5.28-source.zip",
+    "# EpochSimEngine v2.5.29",
+    "SandHybrid-Windows-x64-v2.5.29.zip",
+    "SandHybrid-Linux-x64-v2.5.29.tar.gz",
+    "EpochSimEngine-v2.5.29-source.tar.gz",
+    "EpochSimEngine-v2.5.29-source.zip",
     "123 active missions",
     "60 live district-home SandHybrid bees",
 )
@@ -64,6 +64,7 @@ require(
 # This release is transported only through the Site task. Merely preparing the
 # source must not arm the legacy GitHub tag publisher or source-export workflow.
 reject(".github/workflows/ci-release.yml", "refs/tags/v2.5.27", "gh release create v2.5.27")
-reject(".github/workflows/source-export.yml", "SandHybrid-v2.5.28-source")
+reject(".github/workflows/source-export.yml", "SandHybrid-v2.5.28-source",
+       "SandHybrid-v2.5.29-source")
 
 print("v2.5.27 incremental Site release identity and evidence boundary valid.")

@@ -21,7 +21,7 @@ def reject(path: str, token: str) -> None:
 
 
 # Canonical history remains while the newest contract owns current publication.
-require("CMakeLists.txt", "VERSION 2.5.28")
+require("CMakeLists.txt", "VERSION 2.5.29")
 require("CHANGELOG.md", "## 2.5.15")
 
 # v2.5.3 macro ownership: moving complete media get a packet attempt.

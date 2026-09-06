@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "epochsimengine",
-  "version-string": "2.5.28",
+  "version-string": "2.5.29",
   "builtin-baseline": "04a735608afac5844e86fc91d6ba2112cac613c1",
   "description": "EpochSimEngine C++23 simulation library with an optional Vulkan backend and the SandHybrid demo for Windows and Linux.",
   "dependencies": [

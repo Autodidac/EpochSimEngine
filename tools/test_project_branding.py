@@ -17,7 +17,7 @@ from validate_project_branding import (
 
 
 CMAKE = """
-project(EpochSimEngine VERSION 2.5.28 LANGUAGES CXX)
+project(EpochSimEngine VERSION 2.5.29 LANGUAGES CXX)
 add_library(EpochSimEngine STATIC src/scene_image.cpp)
 add_library(EpochSimEngine::EpochSimEngine ALIAS EpochSimEngine)
 add_library(SandHybrid::SandHybrid ALIAS EpochSimEngine)
@@ -125,7 +125,7 @@ class ProjectBrandingContract(unittest.TestCase):
     def test_current_headings_preserve_historical_contents(self) -> None:
         for name, heading in (
             ("README.md", "# EpochSimEngine"),
-            ("RELEASE_NOTES.md", "# EpochSimEngine v2.5.28"),
+            ("RELEASE_NOTES.md", "# EpochSimEngine v2.5.29"),
             ("missioncache.md", "# EpochSimEngine Mission Cache"),
             ("MISSION_LEDGER.md", "# EpochSimEngine Mission Ledger"),
         ):
@@ -136,7 +136,7 @@ class ProjectBrandingContract(unittest.TestCase):
     def test_current_headings_cannot_use_demo_identity(self) -> None:
         for name, heading in (
             ("README.md", "# SandHybrid"),
-            ("RELEASE_NOTES.md", "# SandHybrid v2.5.28"),
+            ("RELEASE_NOTES.md", "# SandHybrid v2.5.29"),
             ("missioncache.md", "# SandHybrid Mission Cache"),
             ("MISSION_LEDGER.md", "# SandHybrid Mission Ledger"),
         ):

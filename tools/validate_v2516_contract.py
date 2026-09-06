@@ -21,9 +21,9 @@ def reject(path: str, token: str) -> None:
 
 
 # Normal visible release and exact package names.
-require("CMakeLists.txt", "VERSION 2.5.28")
+require("CMakeLists.txt", "VERSION 2.5.29")
 require("CHANGELOG.md", "## 2.5.16")
-require("RELEASE_NOTES.md", "# EpochSimEngine v2.5.28")
+require("RELEASE_NOTES.md", "# EpochSimEngine v2.5.29")
 for token in (
     "SandHybrid-Windows-x64-v2.5.26",
     "SandHybrid-Linux-x64-v2.5.26",
