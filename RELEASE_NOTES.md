@@ -6,7 +6,7 @@ EpochSimEngine is the project and reusable simulation library. SandHybrid names 
 
 This is a fresh corrective release candidate, not an overwrite of the frozen local v2.5.28 tag or packages. Public v2.5.27 remains unchanged until the Site owner receives the exact accepted committed source and final artifact handoff. The user has requested publication; native installed-package checks remain required. Personal visual acceptance is not claimed.
 
-The focused source checkpoint passes Windows Release CTest 82/82, native GNU11.4 Linux Release CTest 71/71 and RTX 5080 production Vulkan 163/163. These results precede the final versioned package rebuild. Current installed Windows/Linux runtime, finite/save-cycle and presentation reports will be recorded separately; historical v2.5.28 reports do not validate these bytes.
+The current Release builds pass Windows CTest 84/84 and native GNU11.4 Linux CTest 73/73. The earlier authored-hive correction passed installed RTX 5080 production Vulkan 163/163, twelve finite/save cycles and a 1,920-frame presentation gate; those reports precede the latest controller-search and CLEAR-caption stage. Fresh installed Windows/Linux runtime, finite/save-cycle and presentation reports remain required for the current bytes. Historical v2.5.28 reports do not validate this candidate.
 
 ## Corrected behavior
 
@@ -18,6 +18,7 @@ The focused source checkpoint passes Windows Release CTest 82/82, native GNU11.4
 - Map reset now gives canonical hive shell cells the same supported structural ownership and health as the Beehive tool. This repairs the smooth fallback body without changing the accepted ragged artwork. Immediate/delayed state checks and actual rendered-hive witnesses now reject the formerly missed constructor mismatch.
 - Designer's clear action uses its generated CLEAR text identity rather than a stale index that displayed SAMPLED CELLS. The separate small-window sidebar-height limitation remains open.
 - Smoke and tiled direct-life brushes serialize overlapping shafts in three disjoint column phases. Conveyor cargo swaps exact displaced gas. Food/Waste/Fertilizer input credit requires matching admitted source debit, capacity, active dispatch and awake endpoints. Unpaired machine outputs and general packed-gas compression remain separate open work.
+- Machine input election visits only the 1–4 possible controller positions instead of scanning all 169 positions in its radius-six square. The exact row-major tie order and admission policy are unchanged. CPU equivalence and bounded GPU tie controls protect the change; this is a loop-work reduction, not a measured whole-simulation speedup.
 - Half Water stays visually liquid instead of interpreting its displaced-medium byte as Steam opacity. Off-label pixels reject glyph work early without changing the authored label raster; work-count reductions are not a measured whole-simulation speedup.
 - Frontier reset opens its blocked catchment inlet and restores the overwritten Factory Core with the same Water and Steel quantities. Existing saves are not rewritten; other unfinished district experiments remain in the mission cache.
 - Acceptance fixtures no longer exceed the default Windows thread stack. GNU Release retains warnings-as-errors while constructing local push payloads inside submission lambdas. Finite-oxygen fixtures use exact rare-event inputs instead of probabilistic searches.
@@ -30,7 +31,7 @@ Windows presentation now uses a private high-resolution one-shot timer, avoiding
 
 ## Verification and remaining work
 
-The fresh source-stage 163-check GPU report includes the original five-edge 96-tick newborn-route regression, simultaneous two-breath and scarce-donor controls, real paint/conveyor/Habitat input checks, laser transfers, exact saves and delayed authored hives. Windows tests include all eleven supported upstream EpochGui suites. GNU compatibility builds do not claim unsupported module-suite execution.
+The earlier pre-controller-search/CLEAR 163-check GPU report includes the original five-edge 96-tick newborn-route regression, simultaneous two-breath and scarce-donor controls, real paint/conveyor/Habitat input checks, laser transfers, exact saves and delayed authored hives. It is not the final report for the current stage. Windows tests include all eleven supported upstream EpochGui suites. GNU compatibility builds do not claim unsupported module-suite execution.
 
 Frozen v2.5.28 at `805039d1fa4b9a03b94a89225e48f316dc6821a5` remains historical local evidence with its exact manifests, tag and bytes. Its 44/34 CPU and 84/84 GPU results, singleton placement policy and legacy source filename must not be presented as current acceptance or overwritten. Older public releases and rollback history remain protected.
 

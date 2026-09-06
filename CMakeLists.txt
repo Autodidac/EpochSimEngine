@@ -220,6 +220,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
                     "${SHADER_SOURCE_DIR}/terrain_generation.glsl"
                     "${SHADER_SOURCE_DIR}/frontier_layout.glsl"
                     "${SHADER_SOURCE_DIR}/queen_ventilation.glsl"
+                    "${SHADER_SOURCE_DIR}/machine_controller_lattice.glsl"
                     "${SHADER_SOURCE_DIR}/epochgui_font.glsl"
                     "${SHADER_SOURCE_DIR}/ui_text.glsl"
                     "${SHADER_SOURCE_DIR}/material_appearance.glsl"
@@ -474,6 +475,12 @@ if(BUILD_TESTING)
     target_compile_features(epochsimengine_queen_ventilation_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(epochsimengine_queen_ventilation_contract)
     add_test(NAME epochsimengine_queen_ventilation_contract COMMAND epochsimengine_queen_ventilation_contract)
+
+    add_executable(epochsimengine_machine_controller_lattice_contract tests/machine_controller_lattice_contract.cpp)
+    target_include_directories(epochsimengine_machine_controller_lattice_contract PRIVATE shaders)
+    target_compile_features(epochsimengine_machine_controller_lattice_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(epochsimengine_machine_controller_lattice_contract)
+    add_test(NAME epochsimengine_machine_controller_lattice_contract COMMAND epochsimengine_machine_controller_lattice_contract)
 
     target_include_directories(sandhybrid_input_routing_contract PRIVATE include)
     target_compile_features(sandhybrid_input_routing_contract PRIVATE cxx_std_23)

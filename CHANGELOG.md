@@ -7,8 +7,9 @@
 - Matched map-authored hive shell ownership to tool placement, restoring the accepted ragged body; strengthened delayed shell and rendered-reference gates instead of weakening the presentation guard.
 - Replaced Designer's stale numeric CLEAR label with a generated text identity; actual packed-text contracts protect against future table-index drift.
 - Serialized overlapping Smoke/direct-life brush shafts, conserved displaced conveyor gas and matched capacity/dispatch/awake machine input credit to source debit.
+- Reduced radius-six machine-controller search from 169 scanned positions to 1–4 lattice positions without changing admission or row-major ties; added actual-helper equivalence and four-way GPU ownership controls. Measured runtime improvement remains unclaimed.
 - Corrected Half Water appearance, avoided out-of-label glyph work and restored Frontier inlet/Core reset geometry without changing Water/Steel counts or rewriting saves.
-- Reduced acceptance-runner stack usage and repaired GNU push-lambda captures without weakening tests. Source-stage evidence is Windows CTest82/82, Linux CTest71/71 and Windows production Vulkan163/163; installed gates remain separate.
+- Reduced acceptance-runner stack usage and repaired GNU push-lambda captures without weakening tests. Current Release CTests pass 84/84 Windows and 73/73 Linux. Earlier installed Windows163/163, finite12/12 and1920-frame reports validate the preceding hive correction, not the latest controller-search/CLEAR stage; fresh installed gates remain required.
 - Kept all123 active missions and accepted hive/crescent/Nuke visuals; unfinished material/soil/ecology/experiment and broad performance work remains open.
 
 - Made EpochSimEngine the sole project/library identity in public API metadata, canonical headers/namespace, CMake library exports, manifest, guides, validation and source-release labels. SandHybrid names only the bundled demo.

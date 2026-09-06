@@ -122,13 +122,18 @@
             return (x << 8u) | (y << 12u) | (z << 16u);
         };
         const auto controller = [&](std::uint32_t x, std::uint32_t y,
-                                    std::uint32_t before, std::uint32_t after) {
+                                    std::uint32_t before, std::uint32_t after,
+                                    Material material = Material::insect_habitat) {
             const auto index = index_of(x, y);
-            cells[index] = {material_id(Material::insect_habitat), 5u, 20,
+            cells[index] = {material_id(material), 5u, 20,
                 fill_aux_structural | fill_aux_supported | 255u | before};
             auto expected = cells[index];
             expected.age = 6u;
             expected.aux = (expected.aux & ~fill_aux_random_mask) | after;
+            // An isolated Assembler retains structural identity but loses
+            // unsupported-tile support. Habitat explicitly restores its own
+            // support later in chemistry; that policy is not shared by it.
+            if (material == Material::assembler) expected.aux &= ~fill_aux_supported;
             expected_cells.emplace_back(index, expected);
             controller_indices.push_back(index);
         };
@@ -173,6 +178,35 @@
         donor(103u, 98u, Material::food, true);
         donor(103u, 99u, Material::food, false); // Same-distance tie stays left; no double credit.
 
+        struct ControllerTieProbe {
+            std::array<std::size_t, 4u> controllers{};
+            std::size_t donor{};
+            std::size_t winner{};
+        };
+        std::array<ControllerTieProbe, 2u> controller_ties{};
+        for (std::uint32_t variant = 0u; variant < controller_ties.size(); ++variant) {
+            auto& probe = controller_ties[variant];
+            const auto left = 67u + variant * 32u;
+            constexpr std::uint32_t top = 139u;
+            probe.winner = variant == 0u ? 0u : 1u;
+            // Four controllers are equidistant from the central Food donor.
+            // All-compatible selects top-left. Making only top-left an
+            // incompatible Assembler proves top-right precedes bottom-left,
+            // distinguishing row-first from column-first enumeration. A full
+            // compatible controller would NOT permit this fallback policy.
+            for (std::uint32_t ordinal = 0u; ordinal < probe.controllers.size(); ++ordinal) {
+                const auto x = left + (ordinal & 1u) * 8u;
+                const auto y = top + (ordinal / 2u) * 8u;
+                probe.controllers[ordinal] = index_of(x, y);
+                const auto material = variant == 1u && ordinal == 0u
+                    ? Material::assembler : Material::insect_habitat;
+                controller(x, y, 0u, inventory_bits(ordinal == probe.winner ? 1u : 0u, 0u, 0u),
+                           material);
+            }
+            probe.donor = index_of(left + 4u, top + 4u);
+            donor(left + 4u, top + 4u, Material::food, true);
+        }
+
         // The accepted Waste source also satisfies the later local conversion
         // into Fertilizer. Its exact stored debit must win, not be resurrected.
         controller(147u, 147u, 0u, inventory_bits(0u, 1u, 0u));
@@ -203,9 +237,17 @@
         const auto stats = machinery_stats();
         std::size_t mismatches = 0u;
         std::size_t first = machinery_prefix;
+        std::string first_payload;
         for (const auto& [index, expected] : expected_cells) {
             if (!machinery_same(after[index], expected)) {
-                if (first == machinery_prefix) first = index;
+                if (first == machinery_prefix) {
+                    first = index;
+                    const auto words = [](const SceneCell& cell) {
+                        return std::to_string(cell.material) + "/" + std::to_string(cell.age) +
+                            "/" + std::to_string(cell.temperature) + "/" + std::to_string(cell.aux);
+                    };
+                    first_payload = " actual=" + words(after[index]) + " expected=" + words(expected);
+                }
                 ++mismatches;
             }
         }
@@ -226,9 +268,41 @@
             " converted=" + std::to_string(stats[2]) +
             " units=" + std::to_string(before_units) + "/" + std::to_string(after_units) +
             " full_payload_mismatches=" + std::to_string(mismatches) +
-            " first_index=" + std::to_string(first) +
+            " first_index=" + std::to_string(first) + first_payload +
             " competing_waste_age=" + std::to_string(waste_age) +
             " step=" + std::to_string(fixture_step));
+
+        bool ties_exact = true;
+        std::string tie_details;
+        for (std::size_t variant = 0u; variant < controller_ties.size(); ++variant) {
+            const auto& probe = controller_ties[variant];
+            bool exact = machinery_same(after[probe.donor], stored);
+            std::uint32_t credited = 0u;
+            for (std::size_t ordinal = 0u; ordinal < probe.controllers.size(); ++ordinal) {
+                const auto index = probe.controllers[ordinal];
+                auto expected = cells[index];
+                ++expected.age;
+                expected.aux = (expected.aux & ~fill_aux_random_mask) |
+                    inventory_bits(ordinal == probe.winner ? 1u : 0u, 0u, 0u);
+                if (expected.material == material_id(Material::assembler))
+                    expected.aux &= ~fill_aux_supported;
+                exact = exact && machinery_same(after[index], expected);
+                for (std::uint32_t slot = 0u; slot < 4u; ++slot)
+                    credited += (after[index].aux >> (8u + slot * 4u)) & 15u;
+            }
+            exact = exact && credited == 1u;
+            ties_exact = ties_exact && exact;
+            tie_details += " [" + std::string{variant == 0u ? "all-compatible" : "incompatible-top-left"} +
+                " expected_winner=" + std::to_string(probe.winner) +
+                " credits=" + std::to_string(credited) + " exact=" + std::to_string(exact) + "]";
+        }
+        append("machine_four_way_lattice_ties_preserve_row_then_column_ownership",
+            ties_exact && mismatches == 0u && before_units == after_units &&
+                disappeared == accepted && stats[0] == 0u && stats[1] == 0u &&
+                stats[2] == accepted && stats[3] == 0u && stats[7] == 0u &&
+                stats[116] == accepted && stats[117] == 0u,
+            "two equidistant four-controller probes in the existing192x192 chemistry dispatch; "
+            "exact donor debit, all controller words, and one inventory credit per probe;" + tie_details);
     }
     for (const bool translated : {false, true}) {
         // A64x64 dispatch tests real-world neighbors outside its copyback
