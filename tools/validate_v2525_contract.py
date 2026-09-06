@@ -23,11 +23,11 @@ def reject(relative: str, *tokens: str) -> None:
 
 
 require("CMakeLists.txt", "VERSION 2.5.28", "sandhybrid_v2525_source_contract")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.28",
+require("RELEASE_NOTES.md", "# EpochSimEngine v2.5.28",
         "SandHybrid-Windows-x64-v2.5.28", "SandHybrid-Linux-x64-v2.5.28")
 require(".github/workflows/ci-release.yml", "refs/tags/v2.5.26",
         "SandHybrid-Windows-x64-v2.5.26", "SandHybrid-Linux-x64-v2.5.26",
-        "gh release create v2.5.26", "group: sandhybrid-v2526-")
+        "gh release create v2.5.26", "group: epochsimengine-v2526-")
 require("include/sandhybrid/world_layout.hpp",
         "persistent_world_gap_slots =", "persistent_world_district_gap",
         "persistent_world_surface_y", "persistent_world_district_origin_y")

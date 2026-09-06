@@ -1,4 +1,4 @@
-SandHybrid persistent World and legacy scene images
+SandHybrid demo: EpochSimEngine persistent World and legacy scene images
 
 The normal runtime owns one connected persistent World containing the eight former
 640x360 scenes as west-to-east districts in one canonical resident cell field.

@@ -23,7 +23,7 @@ def reject(path: str, token: str) -> None:
 # Stable, visible, tag-gated publication with packaged checksums.
 require("CMakeLists.txt", "VERSION 2.5.14")
 require("CHANGELOG.md", "## 2.5.14")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.14")
+require("RELEASE_NOTES.md", "# EpochSimEngine v2.5.14")
 for token in (
     "SandHybrid-Windows-x64-v2.5.14",
     "SandHybrid-Linux-x64-v2.5.14",

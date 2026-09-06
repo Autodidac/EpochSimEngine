@@ -1,6 +1,6 @@
 # EpochSimEngine library
 
-`EpochSimEngine` is the reusable C++23 simulation library. `SandHybrid` is its bundled example/runtime and the compatibility package identity retained for existing consumers.
+`EpochSimEngine` is the project and reusable C++23 simulation library. `SandHybrid` names only its bundled demo. Old SandHybrid API/package identifiers remain legacy compatibility interfaces, not library branding. The current compact guide is [`docs/library.md`](docs/library.md).
 
 Native startup, window creation, event polling, Vulkan presentation, shader packaging, and the demo executable are outside the core target and outside the installed core header set.
 
@@ -17,15 +17,15 @@ The compatibility build-tree alias `Autodidac::SandHybrid` remains available.
 
 ```bash
 cmake -S . -B build/library \
-  -DSANDHYBRID_BUILD_APP=OFF \
-  -DSANDHYBRID_BUILD_VULKAN_RUNTIME=OFF \
+  -DEPOCHSIMENGINE_BUILD_DEMO=OFF \
+  -DEPOCHSIMENGINE_BUILD_VULKAN_RUNTIME=OFF \
   -DBUILD_TESTING=ON
 cmake --build build/library --parallel
 ctest --test-dir build/library --output-on-failure
 cmake --install build/library --prefix build/library-package
 ```
 
-This path does not configure EpochGui, find Vulkan, compile shaders, include native window sources, or link window-system libraries. Its installed include tree contains only platform-neutral SandHybrid headers; runtime-only Vulkan, window, application, shared-state, UI, and EpochGui headers are deliberately excluded.
+This path does not configure EpochGui, find Vulkan, compile shaders, include native window sources, or link window-system libraries. Its installed include tree contains only platform-neutral EpochSimEngine headers and their legacy compatibility counterparts; runtime-only Vulkan, window, application, shared-state, UI, and EpochGui headers are deliberately excluded.
 
 ## Downstream use
 
@@ -37,21 +37,23 @@ target_compile_features(my_simulation PRIVATE cxx_std_23)
 ```
 
 ```cpp
-#include <sandhybrid/library.hpp>
+#include <epochsimengine/library.hpp>
+
+static_assert(epochsimengine::library_name == "EpochSimEngine");
 ```
 
-The installed package exports `SandHybridTargets.cmake`, `SandHybridConfig.cmake`, and a same-major-version compatibility file. The downstream package contract installs the library into a clean prefix, rejects runtime-header leakage, configures an external consumer with `find_package`, and links that consumer without repository-private include paths.
+The installed core package exports `EpochSimEngineTargets.cmake`, `EpochSimEngineConfig.cmake`, and a same-major-version file. `SandHybridConfig.cmake` is a compatibility shim. The optional Vulkan backend is currently build-tree-only. The downstream package contract installs the library into a clean prefix, rejects runtime-header leakage, and executes canonical and legacy consumers without repository-private include paths.
 
 ## Native demo build
 
 ```bash
 cmake -S . -B build/app \
-  -DSANDHYBRID_BUILD_APP=ON \
-  -DSANDHYBRID_BUILD_VULKAN_RUNTIME=ON
+  -DEPOCHSIMENGINE_BUILD_DEMO=ON \
+  -DEPOCHSIMENGINE_BUILD_VULKAN_RUNTIME=ON
 cmake --build build/app --parallel
 ```
 
-`SANDHYBRID_BUILD_APP=ON` requires the Vulkan runtime. The runtime may be built without the demo for an alternate native host by enabling `SANDHYBRID_BUILD_VULKAN_RUNTIME` and disabling `SANDHYBRID_BUILD_APP`.
+`EPOCHSIMENGINE_BUILD_DEMO=ON` requires the Vulkan runtime. The backend may be built without the demo for an alternate native host by enabling `EPOCHSIMENGINE_BUILD_VULKAN_RUNTIME` and disabling `EPOCHSIMENGINE_BUILD_DEMO`. Legacy `SANDHYBRID_*` options remain accepted.
 
 ## Ownership boundary
 
@@ -59,7 +61,7 @@ The core library never owns a process entry point, native window, input loop, or
 
 ## Deterministic core state contracts
 
-SandHybrid API v3 exposes platform-neutral foundations for the replacement runtime:
+EpochSimEngine API v4 exposes platform-neutral foundations for the replacement runtime:
 
 - packed Atmosphere composition with exact pressure/component conservation;
 - atomic all-or-fallback represented-material packet transfers;

@@ -1,4 +1,9 @@
-# Changelog
+# EpochSimEngine changelog
+
+## Unpublished naming correction
+
+- Made EpochSimEngine the sole project/library identity in public API metadata, canonical headers/namespace, CMake library exports, manifest, guides, validation and source-release labels. SandHybrid names only the bundled demo.
+- Retained legacy API aliases, options, save-format markers and existing URLs as compatibility interfaces; immutable artifact history is unchanged. This naming pass does not publish a new runtime or complete outstanding simulation missions.
 
 ## 2.5.28
 

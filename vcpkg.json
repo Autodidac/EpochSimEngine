@@ -1,9 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
-  "name": "sandhybrid",
+  "name": "epochsimengine",
   "version-string": "2.5.28",
   "builtin-baseline": "04a735608afac5844e86fc91d6ba2112cac613c1",
-  "description": "C++23 Vulkan particle, material, atmosphere, ecology, and terrain simulation engine for Windows and Linux.",
+  "description": "EpochSimEngine C++23 simulation library with an optional Vulkan backend and the SandHybrid demo for Windows and Linux.",
   "dependencies": [
     "vulkan",
     {

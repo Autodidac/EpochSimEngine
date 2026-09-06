@@ -11,6 +11,7 @@ namespace {
 
 void print_usage() {
     std::fprintf(stderr,
+        "SandHybrid demo for EpochSimEngine\n"
         "Usage: sandhybrid [--world-size SIZE] [--save-slot NAME] [--runtime-acceptance-report FILE] [--long-cycle-acceptance-report FILE] [--interactive-acceptance-report FILE] [--simulation-profile-report FILE] [--simulation-profile-stage-trace]\n"
         "World sizes: compact, standard, large\n"
         "Aliases: small=compact, medium=standard\n"

@@ -1,12 +1,12 @@
 # EpochSimEngine library
 
-EpochSimEngine is a platform-neutral C++23 static library; the bundled SandHybrid application is an example consumer, not the library itself. New consumers use `find_package(EpochSimEngine)` and `EpochSimEngine::EpochSimEngine`. The installed `SandHybrid::SandHybrid` target and `sandhybrid/*` public headers remain compatibility APIs.
+EpochSimEngine is the project and platform-neutral C++23 static library. SandHybrid names only the bundled demo. New consumers use `find_package(EpochSimEngine)`, `EpochSimEngine::EpochSimEngine`, `<epochsimengine/library.hpp>`, and `epochsimengine::`.
 
 ## Targets
 
 - `EpochSimEngine::EpochSimEngine` owns public value types and deterministic policies for materials, Atmosphere, actors, inventory, packets, machinery, scene images, saves, sections, terrain, and persistent-world layout.
 - `EpochSimEngine::VulkanRuntime` is optional and owns the GPU cell simulation, renderer, EpochGui integration, shaders, and runtime persistence.
-- `SandHybrid_Demo` owns the native process, window, input loop, and bundled example world.
+- `SandHybrid_Demo` is the demo and owns its native process, window, input loop, and example world.
 
 The core target never owns a process entry point, native window, input loop, presentation surface, or hidden global world. Callers own storage and pass spans, paths, and value objects across the boundary.
 
@@ -19,10 +19,16 @@ target_compile_features(my_simulation PRIVATE cxx_std_23)
 ```
 
 ```cpp
-#include <sandhybrid/library.hpp>
+#include <epochsimengine/library.hpp>
+
+static_assert(epochsimengine::library_name == "EpochSimEngine");
 ```
 
-The installed package exports `EpochSimEngineConfig.cmake` plus the compatibility `SandHybridConfig.cmake`, target export, and same-major version files. A library-only build neither finds Vulkan nor configures EpochGui, shaders, or native window dependencies.
+The installed core package exports `EpochSimEngineConfig.cmake` and `EpochSimEngineTargets.cmake` with a same-major version file. A library-only build neither finds Vulkan nor configures EpochGui, shaders, or native window dependencies. `EpochSimEngine::VulkanRuntime` is currently a build-tree target, not a supported installed renderer SDK.
+
+### Legacy compatibility
+
+Existing `find_package(SandHybrid)`, `SandHybrid::SandHybrid`, `<sandhybrid/...>` includes, and `sandhybrid::` source/ABI identifiers remain supported. They identify legacy interfaces, not a second project or library. Canonical `epochsimengine/*` headers expose the same types through a namespace alias, so old and new consumers can coexist without payload or ABI migration. The legacy `SANDHYBRID_*` CMake options remain accepted; new builds use `EPOCHSIMENGINE_BUILD_DEMO`, `EPOCHSIMENGINE_BUILD_VULKAN_RUNTIME`, `EPOCHSIMENGINE_ENABLE_VALIDATION`, and `EPOCHSIMENGINE_WARNINGS_AS_ERRORS`.
 
 ## Public state contracts
 
@@ -35,6 +41,6 @@ The current implementation is evolving behind preserved mission acceptance. API 
 
 ## Licenses and binary requirements
 
-EpochSimEngine's own code uses the root MIT license. The optional SandHybrid runtime also incorporates EpochGui under its separate `LicenseRef-MIT-NoSell` terms; runtime installs carry the exact notice in `docs/licenses/EpochGui.txt`. The Windows package includes the Vulkan loader and its notice in `docs/licenses/VulkanLoader.txt`. These dependency terms are not replaced by the library's MIT license.
+EpochSimEngine's own code uses the root MIT license. Its optional Vulkan backend, used by the SandHybrid demo, also incorporates EpochGui under its separate `LicenseRef-MIT-NoSell` terms; demo installs carry the exact notice in `docs/licenses/EpochGui.txt`. The Windows demo package includes the Vulkan loader and its notice in `docs/licenses/VulkanLoader.txt`. These dependency terms are not replaced by the library's MIT license.
 
 The native example needs an x64 system and a Vulkan-capable driver. Windows binaries are unsigned and require the Microsoft Visual C++ v14 x64 runtime (`MSVCP140.dll`, `VCRUNTIME140.dll`, and `VCRUNTIME140_1.dll`); those system redistributables are not included in the archive. Linux binaries use the system Vulkan loader, XCB, and C++ runtime; software Vulkan/Xvfb validation is functional evidence, not a hardware frame-rate promise. Keep each package's executable, shaders, and dependency files together.

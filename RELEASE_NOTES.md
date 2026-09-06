@@ -1,6 +1,12 @@
-# SandHybrid v2.5.28
+# EpochSimEngine v2.5.28
 
-Hive placement, colony lifecycle, and save recovery correction for the SandHybrid example/runtime bundled with the EpochSimEngine library.
+EpochSimEngine is the project and reusable simulation library. SandHybrid names only its bundled Windows/Linux demo.
+
+## Current candidate status
+
+The updated private Windows eye-test candidate includes the subsequent September 5 save, weather, ownership, debug, and submission changes. The latest behavior candidate passes Windows CTest 74/74, installed RTX 5080 checks 126/126, finite/save cycles 12/12 and the 1,920-frame presentation gate. Current-source Linux parity, personal user visual approval, and final versioned packages remain pending. The naming-only follow-up is documented in the mission cache with its own validation; no new simulation or public release is implied.
+
+The evidence below records the older frozen September 4 candidate, not completed Linux validation of the updated source. Its immutable local archives and tag remain unchanged. Final Site handoff must identify the accepted exact source and new artifacts; it may not reuse historical hashes for rebuilt files.
 
 ## Corrected behavior
 
@@ -23,17 +29,17 @@ Two final installed Windows presentation passes each capture 1,920 frames and al
 
 The Linux production run exits zero in 57:49.33, peaks at 9,773,760 KiB RSS, and uses zero swap (elapsed time includes one brief intentional pause for Windows timing isolation). Linux finite/save cycles take 0:50.06 with 1,417,384 KiB maximum RSS; presentation takes 7:45.47 with 1,530,868 KiB maximum RSS, both with zero swap. Earlier failed cleanup and timing reports are retained; no acceptance threshold was relaxed.
 
-The mission cache retains 123 active missions (70 PARTIAL, 36 REGRESSION, 16 OPEN, one DEFERRED). Broader bee aging/migration, long visual recurrence, cross-district acceptance, and the architectural backlog remain active. The user has authorized release after the package gates, but has not personally visually checked this correction.
+The mission cache retains 123 active missions (70 PARTIAL, 36 REGRESSION, 16 OPEN, one DEFERRED). Broader bee aging/migration, long visual recurrence, cross-district acceptance, and the architectural backlog remain active. The current user instruction requires personal eye-test approval before final Release packages and Site handoff.
 
 ## Dependency
 
 The complete canonical EpochGui snapshot remains v0.89.30 at b97167423373b9a7af3f821dcf91d8a71613dbf2, confirmed against the Site mirror on 2026-09-04. Its CMake/GNU compatibility boundary remains documented in third_party/EpochGui/SNAPSHOT.md.
 
-## Stable release assets
+## Final release naming (packages pending)
 
-- SandHybrid-Windows-x64-v2.5.28.zip
-- SandHybrid-Linux-x64-v2.5.28.tar.gz
-- SandHybrid-v2.5.28-source.tar.gz
-- EpochSimEngine-v2.5.28-source.zip (the same platform-neutral committed source in Windows-friendly ZIP form)
+- `SandHybrid-Windows-x64-v2.5.28.zip` — Windows demo and bundled library install.
+- `SandHybrid-Linux-x64-v2.5.28.tar.gz` — Linux demo and bundled library install.
+- `EpochSimEngine-v2.5.28-source.tar.gz` — platform-neutral committed project/library source.
+- `EpochSimEngine-v2.5.28-source.zip` — the same platform-neutral committed source in Windows-friendly ZIP form.
 
-Each archive has a sibling SHA-256 record. Current aliases retain their existing names and are updated only after matching immutable objects verify. Site publication is a normal visible release; GitHub publication is out of scope.
+Final archives require sibling SHA-256 records. The older frozen `SandHybrid-v2.5.28-source.tar.gz` is a legacy-named artifact, not the new canonical source package; it is not renamed or overwritten by this naming correction. Existing public clone/download/updater URLs retain compatibility, and current aliases update only after matching immutable objects verify under final release authorization. Site publication is a normal visible EpochSimEngine release with SandHybrid demo downloads; GitHub publication is out of scope.

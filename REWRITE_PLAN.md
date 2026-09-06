@@ -1,10 +1,10 @@
-# SandHybrid Production Rewrite Plan
+# EpochSimEngine Production Rewrite Plan
 
 ## Decision
 
 The current simulation is a useful behavior prototype, not the final production architecture. Repeated fixes across fine cells, 8x8 packets, 64x64 sections, shaders, UI state, and runtime ownership have created overlapping authorities. That is the source of water ownership ping-pong, disappearing half-water, false stable blocks, misleading debug counters, and excessive work on inactive world space.
 
-The rewrite proceeds inside the reusable `SandHybrid::SandHybrid` library. `SandHybrid::VulkanRuntime` remains an optional execution backend and `SandHybrid_Demo` remains a thin native host. The old runtime stays buildable until every migration gate passes; replacement is staged, measured, and reversible.
+The rewrite proceeds inside the reusable `EpochSimEngine::EpochSimEngine` library. `EpochSimEngine::VulkanRuntime` remains an optional execution backend and `SandHybrid_Demo` remains a thin native demo host. Legacy SandHybrid API identifiers remain compatibility aliases. The old runtime stays buildable until every migration gate passes; replacement is staged, measured, and reversible.
 
 ## Reference model
 
@@ -16,7 +16,7 @@ The section system follows the proven large-world principles presented for Noita
 - sparse active-area updates instead of scanning the whole world;
 - larger streamed pages around the player, with distant pages saved and unloaded.
 
-SandHybrid keeps its own requirements: conserved half-water, composite atmosphere, structural-tile fracture, wet granular state, industrial machinery, deterministic tests, optional Vulkan acceleration, and cross-platform C++23 library use.
+EpochSimEngine keeps its own requirements: conserved half-water, composite atmosphere, structural-tile fracture, wet granular state, industrial machinery, deterministic tests, optional Vulkan acceleration, and cross-platform C++23 library use.
 
 ## Non-negotiable ownership rules
 
@@ -158,4 +158,3 @@ A release may include rewrite foundations before full cutover, but release notes
 ## R2 deterministic state and transaction foundations
 
 The reusable core now owns deterministic contracts for packed Atmosphere, conserved packet movement, actor/medium overlap, bounded impulses, atomic directional machinery, sluicing, and explicit insect habitats. These foundations are platform-neutral and installed as API v3 headers. R2 remains active until the Vulkan runtime, saves, shaders, UI, and authored scenes use the same canonical state and parity tests pass against the legacy runtime.
-

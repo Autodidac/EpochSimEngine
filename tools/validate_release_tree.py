@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Reject source-tree debris that belongs in GitHub Actions or Releases."""
+"""Validate source-only EpochSimEngine release inputs without publishing them."""
 from __future__ import annotations
 
 from pathlib import Path
 import json
 import re
 import subprocess
+
+from validate_project_branding import source_export_violations
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -30,9 +32,12 @@ version_match = re.search(
     r"project\(EpochSimEngine\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)",
     cmake_text,
 )
-manifest_version = json.loads(
+manifest = json.loads(
     (ROOT / "vcpkg.json").read_text(encoding="utf-8")
-).get("version-string")
+)
+manifest_version = manifest.get("version-string")
+if manifest.get("name") != "epochsimengine":
+    errors.append("vcpkg manifest must identify the EpochSimEngine project as epochsimengine")
 if version_match is None:
     errors.append("CMake package version is missing")
 elif manifest_version != version_match.group(1):
@@ -61,6 +66,12 @@ for required in (
     if required not in release_workflow:
         errors.append(f"Windows checksum writer missing exact-text contract: {required}")
 
+# New source exports belong to the library. Historical SandHybrid demo archive
+# names/tags in the compatibility release workflow are deliberately not renamed.
+errors.extend(source_export_violations(
+    (ROOT / ".github/workflows/source-export.yml").read_text(encoding="utf-8")
+))
+
 for relative in FORBIDDEN_DIRS:
     if (ROOT / relative).exists():
         errors.append(f"forbidden source-tree directory remains: {relative}")
@@ -85,7 +96,7 @@ for relative in tracked:
         continue
     name = path.name.lower()
     if any(name.endswith(suffix) for suffix in FORBIDDEN_SUFFIXES):
-        errors.append(f"tracked binary/archive belongs in GitHub Releases: {rel}")
+        errors.append(f"tracked binary/archive belongs in verified release artifacts, not source: {rel}")
     if path.stat().st_size > 1_000_000:
         errors.append(f"unexpected tracked file over 1 MB: {rel}")
     if rel.parts and rel.parts[0] == ".github" and "payload" in name:
@@ -102,4 +113,4 @@ if unknown:
 if errors:
     raise SystemExit("Release tree validation failed:\n  - " + "\n  - ".join(errors))
 
-print("Release tree valid: source-only repository, canonical notes, four permanent workflows.")
+print("EpochSimEngine release tree valid: source-only repository, canonical source naming/notes, four permanent workflows.")

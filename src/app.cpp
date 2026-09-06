@@ -318,7 +318,7 @@ void reset_active_camera_home(SharedState& state, const SimulationConfig& config
 int run_application(const ApplicationOptions& options) {
     std::fprintf(stderr, "[SandHybrid] Creating native window...\n");
     const std::string application_title =
-        "SandHybrid v" + std::string{SANDHYBRID_VERSION_STRING};
+        "EpochSimEngine v" + std::string{SANDHYBRID_VERSION_STRING} + " - SandHybrid demo";
     NativeWindow window{
         application_title, 1280, 720,
         options.runtime_acceptance_report.empty() &&

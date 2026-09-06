@@ -1,4 +1,4 @@
-name: Core hygiene contracts
+name: EpochSimEngine core hygiene contracts
 
 on:
   push:
@@ -20,5 +20,5 @@ jobs:
       - name: Reject simulation coroutines
         run: python3 tools/validate_no_simulation_coroutines.py
 
-      - name: Enforce SandHybrid branding
+      - name: Enforce EpochSimEngine library and SandHybrid demo identities
         run: python3 tools/validate_project_branding.py

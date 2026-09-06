@@ -1,6 +1,6 @@
-# SandHybrid example runtime
+# SandHybrid demo for EpochSimEngine
 
-SandHybrid is the bundled Windows/Linux Vulkan example for EpochSimEngine. It presents one persistent connected World containing eight west-to-east districts: Sandbox, Ecosystem, Engineering, Frontier, Volcano, Waterworks, Gold Mine, and Demolition.
+SandHybrid is the bundled Windows/Linux Vulkan demo for EpochSimEngine. The project and simulation library are named EpochSimEngine; SandHybrid names only this demo application. It presents one persistent connected World containing eight west-to-east districts: Sandbox, Ecosystem, Engineering, Frontier, Volcano, Waterworks, Gold Mine, and Demolition.
 
 ## Simulation
 

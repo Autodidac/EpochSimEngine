@@ -31,7 +31,7 @@ require(
     "SandHybrid-Windows-x64-v2.5.26",
     "SandHybrid-Linux-x64-v2.5.26",
     "gh release create v2.5.26",
-    "group: sandhybrid-v2526-",
+    "group: epochsimengine-v2526-",
 )
 reject(".github/workflows/ci-release.yml", "v2.5.26-test", "prerelease: true")
 require(

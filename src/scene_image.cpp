@@ -604,7 +604,7 @@ bool write_scene_material_key(const std::filesystem::path& directory, std::strin
         error = "unable to write material_key.txt";
         return false;
     }
-    text << "SandHybrid PPM scene material key\n"
+    text << "EpochSimEngine PPM material key (SandHybrid demo palette)\n"
             "Colors are stable representatives of the visible cell palette for ordinary Paint editing. Exact key colors are lossless; nearby colors load as the nearest material.\n"
             "Any structural material with fewer than 32 represented pixels in its aligned 8x8 region crumbles.\n\n";
     constexpr char hex[] = "0123456789ABCDEF";

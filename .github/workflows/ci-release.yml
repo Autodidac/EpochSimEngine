@@ -1,4 +1,4 @@
-name: SandHybrid CI and Release
+name: EpochSimEngine CI and SandHybrid demo release
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sandhybrid-v2526-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: epochsimengine-v2526-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -81,7 +81,7 @@ jobs:
       - name: Reject simulation coroutines
         run: python tools/validate_no_simulation_coroutines.py
 
-      - name: Enforce SandHybrid branding
+      - name: Enforce EpochSimEngine library and SandHybrid demo identities
         run: python tools/validate_project_branding.py
 
       - name: Install Linux host packages
@@ -112,8 +112,8 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} `
             -DVCPKG_HOST_TRIPLET=${{ matrix.triplet }} `
-            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON `
-            -DSANDHYBRID_ENABLE_VALIDATION=OFF `
+            -DEPOCHSIMENGINE_WARNINGS_AS_ERRORS=ON `
+            -DEPOCHSIMENGINE_ENABLE_VALIDATION=OFF `
             -DBUILD_TESTING=ON
 
       - name: Configure Linux Release
@@ -125,8 +125,8 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
             -DVCPKG_HOST_TRIPLET=${{ matrix.triplet }} \
-            -DSANDHYBRID_WARNINGS_AS_ERRORS=ON \
-            -DSANDHYBRID_ENABLE_VALIDATION=OFF \
+            -DEPOCHSIMENGINE_WARNINGS_AS_ERRORS=ON \
+            -DEPOCHSIMENGINE_ENABLE_VALIDATION=OFF \
             -DBUILD_TESTING=ON
 
       - name: Build Windows Release
@@ -232,11 +232,11 @@ jobs:
           if gh release view v2.5.26 >/dev/null 2>&1; then
             gh release upload v2.5.26 "${assets[@]}" --clobber
             gh release edit v2.5.26 \
-              --title 'SandHybrid v2.5.26' \
+              --title 'EpochSimEngine v2.5.26 (SandHybrid demo)' \
               --notes-file RELEASE_NOTES.md
           else
             gh release create v2.5.26 "${assets[@]}" \
               --verify-tag \
-              --title 'SandHybrid v2.5.26' \
+              --title 'EpochSimEngine v2.5.26 (SandHybrid demo)' \
               --notes-file RELEASE_NOTES.md
           fi

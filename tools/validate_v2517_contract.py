@@ -23,7 +23,7 @@ def reject(path: str, token: str) -> None:
 # Stable visible publication and exact native package names.
 require("CMakeLists.txt", "VERSION 2.5.28")
 require("CHANGELOG.md", "## 2.5.17")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.28")
+require("RELEASE_NOTES.md", "# EpochSimEngine v2.5.28")
 for token in (
     "SandHybrid-Windows-x64-v2.5.26",
     "SandHybrid-Linux-x64-v2.5.26",

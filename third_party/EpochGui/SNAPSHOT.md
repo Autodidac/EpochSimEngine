@@ -1,6 +1,6 @@
 # EpochGui snapshot
 
-SandHybrid carries the complete vendored EpochGui dependency from the GitHub-independent canonical mirror at https://epoch.adamrushford.chatgpt.site/git/EpochGui.git.
+EpochSimEngine's optional Vulkan backend, used by the SandHybrid demo, carries the complete vendored EpochGui dependency from the GitHub-independent canonical mirror at https://epoch.adamrushford.chatgpt.site/git/EpochGui.git.
 
 - Version: v0.89.30
 - Commit: b97167423373b9a7af3f821dcf91d8a71613dbf2
@@ -12,4 +12,4 @@ SandHybrid carries the complete vendored EpochGui dependency from the GitHub-ind
 
 Release v2.5.28 revalidation on 2026-09-04: the canonical Site mirror HEAD/main and peeled v0.89.30 tag still resolve to the same exact commit above. The complete existing snapshot remains current; no selective update or older pin is used.
 
-The source alias was byte/file-mode compared with the exact v0.89.30 mirror checkout and contains the same 53 committed upstream files; the snapshot is complete rather than a selected-header copy. SandHybrid's integration delta is confined to CMakeLists.txt: the dependency floor remains CMake 3.28 for the supported package toolchains; the upstream static C++23 module build remains the default on MSVC/Clang, while EPOCHGUI_BUILD_MODULES exposes the complete current compatibility-header surface as an interface target on GNU toolchains that cannot scan these modules. Supported upstream tests, including the now-mandatory Input suite, are built whenever the module target is enabled; optional rounded-rectangle remains controlled by its upstream option.
+The source alias was byte/file-mode compared with the exact v0.89.30 mirror checkout and contains the same 53 committed upstream files; the snapshot is complete rather than a selected-header copy. EpochSimEngine's integration delta is confined to CMakeLists.txt: the dependency floor remains CMake 3.28 for the supported package toolchains; the upstream static C++23 module build remains the default on MSVC/Clang, while EPOCHGUI_BUILD_MODULES exposes the complete current compatibility-header surface as an interface target on GNU toolchains that cannot scan these modules. Supported upstream tests, including the now-mandatory Input suite, are built whenever the module target is enabled; optional rounded-rectangle remains controlled by its upstream option.

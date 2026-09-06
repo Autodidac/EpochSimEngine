@@ -27,10 +27,10 @@ def reject(relative: str, *tokens: str) -> None:
 require("CMakeLists.txt", "VERSION 2.5.26", "conservation_corrections.comp",
         "rainfall.comp",
         "sandhybrid_runtime_shaders ALL", "sandhybrid_v2526_source_contract")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.26",
+require("RELEASE_NOTES.md", "# EpochSimEngine v2.5.26",
         "SandHybrid-Windows-x64-v2.5.26.zip",
         "SandHybrid-Linux-x64-v2.5.26.tar.gz",
-        "SandHybrid-v2.5.26-source.tar.gz")
+        "EpochSimEngine-v2.5.26-source.tar.gz")
 require("CHANGELOG.md", "## 2.5.26")
 require("third_party/EpochGui/SNAPSHOT.md", "Version: v0.89.30",
         "b97167423373b9a7af3f821dcf91d8a71613dbf2",
@@ -58,7 +58,7 @@ require("AGENTS.md", "dedicated shallow correction post-pass",
 require(".github/workflows/ci-release.yml", "refs/tags/v2.5.26",
         "SandHybrid-Windows-x64-v2.5.26",
         "SandHybrid-Linux-x64-v2.5.26", "gh release create v2.5.26",
-        "group: sandhybrid-v2526-")
+        "group: epochsimengine-v2526-")
 reject(".github/workflows/ci-release.yml", "v2.5.26-test", "prerelease: true")
 
 print("v2.5.26 staged recovery, EpochGui v0.89.30, and package identity valid.")

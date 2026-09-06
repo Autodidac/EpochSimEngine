@@ -1,14 +1,5 @@
 @PACKAGE_INIT@
 
+# Legacy package entry point; the installed library is EpochSimEngine.
 include("${CMAKE_CURRENT_LIST_DIR}/SandHybridTargets.cmake")
-if(TARGET SandHybrid::SandHybrid AND NOT TARGET EpochSimEngine::EpochSimEngine)
-    add_library(EpochSimEngine::EpochSimEngine INTERFACE IMPORTED)
-    set_property(TARGET EpochSimEngine::EpochSimEngine PROPERTY
-        INTERFACE_LINK_LIBRARIES SandHybrid::SandHybrid)
-endif()
-if(TARGET SandHybrid::VulkanRuntime AND NOT TARGET EpochSimEngine::VulkanRuntime)
-    add_library(EpochSimEngine::VulkanRuntime INTERFACE IMPORTED)
-    set_property(TARGET EpochSimEngine::VulkanRuntime PROPERTY
-        INTERFACE_LINK_LIBRARIES SandHybrid::VulkanRuntime)
-endif()
 check_required_components(SandHybrid)

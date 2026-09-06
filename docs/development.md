@@ -1,4 +1,4 @@
-# Development and validation
+# EpochSimEngine development and validation
 
 ## Required workflow
 
@@ -40,6 +40,8 @@ ctest --test-dir build/windows -C Release --output-on-failure
 Linux Release and llvmpipe acceptance run serially when WSL/compiler ownership is coordinated. Never overlap the fast production report, repeated finite-ledger report, compiler, or another GPU/runtime process in that lane.
 
 ## Documentation policy
+
+EpochSimEngine is the sole project, library, source-package, and engine-release name. SandHybrid refers only to the demo. Legacy API/build identifiers, save-format markers, exact old artifact filenames, URLs, and historical evidence are compatibility records and must not be rewritten as though their bytes or published provenance changed. New library examples use `epochsimengine/*` headers and `epochsimengine::`; new source archives use `EpochSimEngine-vVERSION-source.zip` or `.tar.gz`. Demo archives may remain `SandHybrid-Windows-x64-vVERSION.zip` and `SandHybrid-Linux-x64-vVERSION.tar.gz`, explicitly labelled as demos.
 
 User and package documentation lives in this small lowercase set: `library.md`, `sandhybrid.md`, and `development.md`, with the root README as the landing page. Historical uppercase design notes remain source-only while their still-active acceptance details are migrated; internal mission ledgers, runtime reports, rewrite notes, and release working files must not be copied into the runtime package root.
 

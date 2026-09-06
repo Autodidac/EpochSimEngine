@@ -60,8 +60,6 @@ EXPECTED_STALE_ERRORS = {
     "click-confirmed Fill input contract missing 'const bool fill_click = editor_workspace && input.fill_modifier && primary_pressed'",
     "click-confirmed Fill input contract missing 'if (fill_click) shared_state.fill_region.store(true'",
     "renderer UI text descriptor contract missing '.descriptorCount = 20'",
-    "legacy project branding remains in CMakeLists.txt: 'EpochSimEngine'",
-    "legacy project branding remains in README.md: 'EpochSimEngine'",
 }
 
 def require(text: str, token: str, errors: list[str], contract: str) -> None:

@@ -11,23 +11,41 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(SANDHYBRID_VALIDATION_DEFAULT OFF)
+set(EPOCHSIMENGINE_VALIDATION_DEFAULT OFF)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(SANDHYBRID_VALIDATION_DEFAULT ON)
+    set(EPOCHSIMENGINE_VALIDATION_DEFAULT ON)
 endif()
 
-option(SANDHYBRID_BUILD_APP "Build the native SandHybrid Vulkan demo" ON)
-set(SANDHYBRID_RUNTIME_DEFAULT ${SANDHYBRID_BUILD_APP})
-option(SANDHYBRID_BUILD_VULKAN_RUNTIME
-       "Build the optional Vulkan simulation and presentation runtime"
-       ${SANDHYBRID_RUNTIME_DEFAULT})
-option(SANDHYBRID_ENABLE_VALIDATION "Enable Vulkan validation layers" ${SANDHYBRID_VALIDATION_DEFAULT})
-option(SANDHYBRID_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+# Legacy cache variables remain accepted for existing consumers and presets.
+# Conflicting spellings are rejected instead of silently changing build scope.
+function(epochsimengine_compat_option canonical legacy description default_value)
+    if(DEFINED ${canonical} AND DEFINED ${legacy})
+        if((${canonical} AND NOT ${legacy}) OR (${legacy} AND NOT ${canonical}))
+            message(FATAL_ERROR "${canonical} conflicts with legacy ${legacy}; set both to the same value or unset the legacy cache entry.")
+        endif()
+    elseif(DEFINED ${legacy})
+        set(default_value "${${legacy}}")
+    endif()
+    option(${canonical} "${description}" ${default_value})
+    # A normal variable mirrors the canonical value without creating a second
+    # cache entry that would become stale when a canonical option is changed.
+    set(${legacy} "${${canonical}}" PARENT_SCOPE)
+endfunction()
+
+epochsimengine_compat_option(EPOCHSIMENGINE_BUILD_DEMO SANDHYBRID_BUILD_APP
+    "Build SandHybrid, the native EpochSimEngine Vulkan demo" ON)
+epochsimengine_compat_option(EPOCHSIMENGINE_BUILD_VULKAN_RUNTIME SANDHYBRID_BUILD_VULKAN_RUNTIME
+    "Build the optional EpochSimEngine Vulkan simulation and presentation runtime"
+    ${EPOCHSIMENGINE_BUILD_DEMO})
+epochsimengine_compat_option(EPOCHSIMENGINE_ENABLE_VALIDATION SANDHYBRID_ENABLE_VALIDATION
+    "Enable Vulkan validation layers" ${EPOCHSIMENGINE_VALIDATION_DEFAULT})
+epochsimengine_compat_option(EPOCHSIMENGINE_WARNINGS_AS_ERRORS SANDHYBRID_WARNINGS_AS_ERRORS
+    "Treat compiler warnings as errors" OFF)
 
 if(SANDHYBRID_BUILD_APP AND NOT SANDHYBRID_BUILD_VULKAN_RUNTIME)
     message(FATAL_ERROR
-        "SANDHYBRID_BUILD_APP requires SANDHYBRID_BUILD_VULKAN_RUNTIME. "
-        "Disable the app for a pure headless library build.")
+        "EPOCHSIMENGINE_BUILD_DEMO requires EPOCHSIMENGINE_BUILD_VULKAN_RUNTIME. "
+        "Disable the demo for a pure headless library build.")
 endif()
 
 function(sandhybrid_configure_warnings target_name)
@@ -47,26 +65,28 @@ endfunction()
 
 # Reusable, platform-neutral library. Native startup, windowing, Vulkan, EpochGui,
 # and application event handling are intentionally absent from this target.
-add_library(SandHybrid STATIC
+add_library(EpochSimEngine STATIC
     src/scene_image.cpp
     src/hive_recovery.cpp
     src/world_save.cpp
     src/section_grid.cpp
     src/section_scheduler.cpp
 )
-add_library(SandHybrid::SandHybrid ALIAS SandHybrid)
-add_library(EpochSimEngine::EpochSimEngine ALIAS SandHybrid)
-add_library(Autodidac::SandHybrid ALIAS SandHybrid)
-set_target_properties(SandHybrid PROPERTIES
-    EXPORT_NAME SandHybrid
+add_library(EpochSimEngine::EpochSimEngine ALIAS EpochSimEngine)
+# Legacy target names are aliases of the same library, never a second archive.
+add_library(SandHybrid ALIAS EpochSimEngine)
+add_library(SandHybrid::SandHybrid ALIAS EpochSimEngine)
+add_library(Autodidac::SandHybrid ALIAS EpochSimEngine)
+set_target_properties(EpochSimEngine PROPERTIES
+    EXPORT_NAME EpochSimEngine
     POSITION_INDEPENDENT_CODE ON
 )
-target_include_directories(SandHybrid PUBLIC
+target_include_directories(EpochSimEngine PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-target_compile_features(SandHybrid PUBLIC cxx_std_23)
-sandhybrid_configure_warnings(SandHybrid)
+target_compile_features(EpochSimEngine PUBLIC cxx_std_23)
+sandhybrid_configure_warnings(EpochSimEngine)
 
 if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
     add_subdirectory(third_party/EpochGui)
@@ -116,17 +136,18 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         endif()
     endif()
 
-    add_library(SandHybrid_VulkanRuntime STATIC src/vulkan_renderer.cpp)
-    add_library(SandHybrid::VulkanRuntime ALIAS SandHybrid_VulkanRuntime)
-    add_library(EpochSimEngine::VulkanRuntime ALIAS SandHybrid_VulkanRuntime)
-    target_include_directories(SandHybrid_VulkanRuntime SYSTEM PRIVATE ${Vulkan_INCLUDE_DIRS})
-    target_link_libraries(SandHybrid_VulkanRuntime PUBLIC
-        SandHybrid
+    add_library(EpochSimEngine_VulkanRuntime STATIC src/vulkan_renderer.cpp)
+    add_library(EpochSimEngine::VulkanRuntime ALIAS EpochSimEngine_VulkanRuntime)
+    add_library(SandHybrid_VulkanRuntime ALIAS EpochSimEngine_VulkanRuntime)
+    add_library(SandHybrid::VulkanRuntime ALIAS EpochSimEngine_VulkanRuntime)
+    target_include_directories(EpochSimEngine_VulkanRuntime SYSTEM PRIVATE ${Vulkan_INCLUDE_DIRS})
+    target_link_libraries(EpochSimEngine_VulkanRuntime PUBLIC
+        EpochSimEngine::EpochSimEngine
         ${SANDHYBRID_VULKAN_LIBRARY}
         Threads::Threads
         Autodidac::EpochGui
     )
-    target_compile_definitions(SandHybrid_VulkanRuntime PRIVATE
+    target_compile_definitions(EpochSimEngine_VulkanRuntime PRIVATE
         SANDHYBRID_VERSION_STRING="${PROJECT_VERSION}"
         $<$<PLATFORM_ID:Windows>:VK_USE_PLATFORM_WIN32_KHR>
         $<$<PLATFORM_ID:Windows>:WIN32_LEAN_AND_MEAN>
@@ -137,12 +158,12 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         $<$<BOOL:${SANDHYBRID_ENABLE_VALIDATION}>:SANDHYBRID_ENABLE_VALIDATION=1>
         $<$<NOT:$<BOOL:${SANDHYBRID_ENABLE_VALIDATION}>>:SANDHYBRID_ENABLE_VALIDATION=0>
     )
-    sandhybrid_configure_warnings(SandHybrid_VulkanRuntime)
+    sandhybrid_configure_warnings(EpochSimEngine_VulkanRuntime)
 
     if(UNIX AND NOT APPLE)
         find_path(XCB_INCLUDE_DIR xcb/xcb.h REQUIRED)
         find_library(XCB_LIBRARY NAMES xcb REQUIRED)
-        target_include_directories(SandHybrid_VulkanRuntime PRIVATE ${XCB_INCLUDE_DIR})
+        target_include_directories(EpochSimEngine_VulkanRuntime PRIVATE ${XCB_INCLUDE_DIR})
     endif()
 
     set(SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
@@ -206,7 +227,7 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
     endforeach()
 
     add_custom_target(sandhybrid_shaders ALL DEPENDS ${SANDHYBRID_SHADER_BINARIES})
-    add_dependencies(SandHybrid_VulkanRuntime sandhybrid_shaders)
+    add_dependencies(EpochSimEngine_VulkanRuntime sandhybrid_shaders)
 endif()
 
 if(SANDHYBRID_BUILD_APP)
@@ -222,7 +243,7 @@ if(SANDHYBRID_BUILD_APP)
     add_executable(SandHybrid_Demo ${SANDHYBRID_DEMO_SOURCES})
     add_executable(sandhybrid ALIAS SandHybrid_Demo)
     set_target_properties(SandHybrid_Demo PROPERTIES OUTPUT_NAME sandhybrid)
-    target_link_libraries(SandHybrid_Demo PRIVATE SandHybrid_VulkanRuntime)
+    target_link_libraries(SandHybrid_Demo PRIVATE EpochSimEngine::VulkanRuntime)
     target_compile_definitions(SandHybrid_Demo PRIVATE
         SANDHYBRID_VERSION_STRING="${PROJECT_VERSION}"
         $<$<PLATFORM_ID:Windows>:VK_USE_PLATFORM_WIN32_KHR>
@@ -263,8 +284,8 @@ if(SANDHYBRID_BUILD_APP)
     endif()
 endif()
 
-install(TARGETS SandHybrid
-    EXPORT SandHybridTargets
+install(TARGETS EpochSimEngine
+    EXPORT EpochSimEngineTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -295,6 +316,15 @@ set(SANDHYBRID_CORE_PUBLIC_HEADERS
 )
 install(FILES ${SANDHYBRID_CORE_PUBLIC_HEADERS}
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sandhybrid)
+# Canonical public paths forward to the ABI-compatible implementation headers.
+# Runtime-only headers are intentionally absent from both installed trees.
+set(EPOCHSIMENGINE_CORE_PUBLIC_HEADERS include/epochsimengine/namespace.hpp)
+foreach(legacy_header IN LISTS SANDHYBRID_CORE_PUBLIC_HEADERS)
+    get_filename_component(header_name "${legacy_header}" NAME)
+    list(APPEND EPOCHSIMENGINE_CORE_PUBLIC_HEADERS "include/epochsimengine/${header_name}")
+endforeach()
+install(FILES ${EPOCHSIMENGINE_CORE_PUBLIC_HEADERS}
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/epochsimengine)
 
 set(SANDHYBRID_CMAKE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/SandHybrid")
 configure_package_config_file(
@@ -318,19 +348,21 @@ write_basic_package_version_file(
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY SameMajorVersion
 )
-install(EXPORT SandHybridTargets
-    FILE SandHybridTargets.cmake
-    NAMESPACE SandHybrid::
-    DESTINATION "${SANDHYBRID_CMAKE_INSTALL_DIR}"
+install(EXPORT EpochSimEngineTargets
+    FILE EpochSimEngineTargets.cmake
+    NAMESPACE EpochSimEngine::
+    DESTINATION "${EPOCHSIMENGINE_CMAKE_INSTALL_DIR}"
 )
 install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/SandHybridConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/SandHybridConfigVersion.cmake"
+    cmake/SandHybridTargets.cmake
     DESTINATION "${SANDHYBRID_CMAKE_INSTALL_DIR}"
 )
 install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/EpochSimEngineConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/EpochSimEngineConfigVersion.cmake"
+    cmake/EpochSimEngineCompatibility.cmake
     DESTINATION "${EPOCHSIMENGINE_CMAKE_INSTALL_DIR}"
 )
 install(FILES README.md LICENSE CHANGELOG.md DESTINATION .)
@@ -351,6 +383,8 @@ endif()
 if(BUILD_TESTING)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
+        add_test(NAME epochsimengine_project_branding_contract
+       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_project_branding.py)
         add_test(NAME sandhybrid_mission_cache_contract
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_mission_cache.py)
         add_test(NAME sandhybrid_mission_registry_contract
@@ -470,7 +504,7 @@ if(BUILD_TESTING)
     add_test(NAME sandhybrid_section_grid_contract COMMAND sandhybrid_section_grid_contract)
 
     add_executable(sandhybrid_public_api_contract tests/public_api_contract.cpp)
-    target_link_libraries(sandhybrid_public_api_contract PRIVATE SandHybrid::SandHybrid)
+    target_link_libraries(sandhybrid_public_api_contract PRIVATE EpochSimEngine::EpochSimEngine)
     target_compile_features(sandhybrid_public_api_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_public_api_contract)
     add_test(NAME sandhybrid_public_api_contract COMMAND sandhybrid_public_api_contract)
@@ -562,6 +596,7 @@ if(BUILD_TESTING)
             "-DSANDHYBRID_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
             "-DSANDHYBRID_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"
             "-DSANDHYBRID_CONFIG=$<CONFIG>"
+            "-DSANDHYBRID_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}"
             "-DSANDHYBRID_CTEST_COMMAND=${CMAKE_CTEST_COMMAND}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run_downstream_smoke.cmake"
     )

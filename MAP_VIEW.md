@@ -1,4 +1,4 @@
-# SandHybrid Full-World Map
+# SandHybrid demo: EpochSimEngine Full-World Map
 
 The v2.5.6 map is a presentation/debug view over a separate GPU snapshot. It does not change simulation scheduling, LOD, the main camera, or the active-region origin.
 

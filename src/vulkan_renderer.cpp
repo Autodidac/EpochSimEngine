@@ -742,9 +742,9 @@ save_slot(normalize_world_slot(requested_save_slot)) {
 
         const VkApplicationInfo application_info{
             .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-            .pApplicationName = "SandHybrid",
+            .pApplicationName = "SandHybrid demo",
             .applicationVersion = VK_MAKE_API_VERSION(0, 1, 0, 0),
-            .pEngineName = "SandHybrid",
+            .pEngineName = "EpochSimEngine",
             .engineVersion = VK_MAKE_API_VERSION(0, 1, 0, 0),
             .apiVersion = VK_API_VERSION_1_2,
         };

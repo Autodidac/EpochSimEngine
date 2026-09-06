@@ -28,7 +28,7 @@ def reject(relative: str, *tokens: str) -> None:
 
 
 require("CMakeLists.txt", "VERSION 2.5.28", "sandhybrid_v2524_source_contract")
-require("RELEASE_NOTES.md", "# SandHybrid v2.5.28",
+require("RELEASE_NOTES.md", "# EpochSimEngine v2.5.28",
         "SandHybrid-Windows-x64-v2.5.28", "SandHybrid-Linux-x64-v2.5.28")
 require(".github/workflows/ci-release.yml", "refs/tags/v2.5.26",
         "SandHybrid-Windows-x64-v2.5.26", "SandHybrid-Linux-x64-v2.5.26",

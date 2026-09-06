@@ -1,6 +1,6 @@
-# SandHybrid World Layout
+# SandHybrid demo World Layout
 
-SandHybrid exposes one persistent `World`. The normal runtime does not swap or reset separate scenes.
+The SandHybrid demo exposes one persistent EpochSimEngine `World`. The normal demo runtime does not swap or reset separate scenes.
 
 ## District composition
 

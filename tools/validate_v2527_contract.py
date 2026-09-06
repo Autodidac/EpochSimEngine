@@ -34,10 +34,11 @@ require(
 require("vcpkg.json", '"version-string": "2.5.28"')
 require(
     "RELEASE_NOTES.md",
-    "# SandHybrid v2.5.28",
+    "# EpochSimEngine v2.5.28",
     "SandHybrid-Windows-x64-v2.5.28.zip",
     "SandHybrid-Linux-x64-v2.5.28.tar.gz",
-    "SandHybrid-v2.5.28-source.tar.gz",
+    "EpochSimEngine-v2.5.28-source.tar.gz",
+    "EpochSimEngine-v2.5.28-source.zip",
     "123 active missions",
     "60 live district-home SandHybrid bees",
 )

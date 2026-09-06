@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static cross-contract checks for SandHybrid's C++ and GLSL material model.
+"""Static cross-contract checks for EpochSimEngine's C++ and GLSL material model.
 
 This intentionally complements, rather than replaces, glslc. It catches ID drift,
 generated-UI drift, missing includes, delimiter damage, reserved identifiers that
@@ -513,8 +513,8 @@ def main() -> int:
         errors.append("painted bee activation contract missing")
     if "std::jthread" in app_cpp or "stop_token" in app_cpp or "request_stop" in app_cpp:
         errors.append("obsolete implicit jthread ownership remains")
-    if "SandHybrid" not in app_cpp:
-        errors.append("SandHybrid branding is missing from the application")
+    if "EpochSimEngine v" not in app_cpp or "SandHybrid demo" not in app_cpp:
+        errors.append("EpochSimEngine project / SandHybrid demo identity is missing from the application")
     for token in ("make_simulation_viewport", "viewport_left", "viewport_width"):
         if token not in app_cpp + ui_layout + (ROOT / "src/vulkan_renderer.cpp").read_text(encoding="utf-8"):
             errors.append(f"tile-aligned viewport contract missing {token!r}")
@@ -1099,7 +1099,7 @@ def main() -> int:
     if (ROOT / "tools/apply_terrain_stability_fix.py").exists():
         errors.append("obsolete terrain rewrite tool can restore pre-v2.4.9 tile behavior")
     project_owned_files = [ROOT / "CMakeLists.txt", ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "src/app.cpp", ROOT / "src/main.cpp", ROOT / "src/vulkan_renderer.cpp", ROOT / ".github/workflows/source-export.yml", ROOT / ".github/workflows/ci-release.yml"]
-    forbidden_branding = ("Epoch" + "SimEngine", "Epoch" + "Sand", "epoch" + "_sand", "namespace epoch" + "::sand", "include/epoch" + "/sand")
+    forbidden_branding = ("Epoch" + "Sand", "epoch" + "_sand", "namespace epoch" + "::sand", "include/epoch" + "/sand")
     for project_file in project_owned_files:
         source_text = project_file.read_text(encoding="utf-8")
         for forbidden in forbidden_branding:

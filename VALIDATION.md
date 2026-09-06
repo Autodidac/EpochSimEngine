@@ -1,4 +1,4 @@
-# SandHybrid Validation Matrix
+# EpochSimEngine Validation Matrix
 
 The project separates three validation levels:
 

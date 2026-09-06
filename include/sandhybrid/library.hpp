@@ -16,7 +16,10 @@
 namespace sandhybrid {
 
 inline constexpr std::uint32_t library_api_version = 4u;
-inline constexpr std::string_view library_name = "SandHybrid";
+inline constexpr std::string_view library_name = "EpochSimEngine";
+// Historical source namespace/include spelling is retained for API-4 consumers.
+// SandHybrid is the bundled demo, not a separate simulation library.
+inline constexpr std::string_view legacy_library_name = "SandHybrid";
 
 struct LibraryCapabilities final {
     bool native_startup_owned_by_consumer{true};
