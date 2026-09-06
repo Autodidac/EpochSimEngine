@@ -4,6 +4,7 @@
 
 - Made Beehive an independently repeatable Editor tool with sky/gap homes, exact per-colony 60-slot ownership, bounded no-Flower search/return and live/paused/MAP recognition of every home. This supersedes frozen 2.5.28 singleton replacement.
 - Preserved finite Queen ventilation during own-home newborn transit, including coincident Bee breathing and scarce Oxygen; retained the original edge regression and added deterministic rare-event controls.
+- Matched map-authored hive shell ownership to tool placement, restoring the accepted ragged body; strengthened delayed shell and rendered-reference gates instead of weakening the presentation guard.
 - Serialized overlapping Smoke/direct-life brush shafts, conserved displaced conveyor gas and matched capacity/dispatch/awake machine input credit to source debit.
 - Corrected Half Water appearance, avoided out-of-label glyph work and restored Frontier inlet/Core reset geometry without changing Water/Steel counts or rewriting saves.
 - Reduced acceptance-runner stack usage and repaired GNU push-lambda captures without weakening tests. Source-stage evidence is Windows CTest82/82, Linux CTest71/71 and Windows production Vulkan163/163; installed gates remain separate.

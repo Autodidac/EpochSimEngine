@@ -6009,6 +6009,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 const auto cells = download_scene_cells();
                 std::uint32_t mismatches = 0u;
                 std::uint32_t shell = 0u;
+                std::uint32_t shell_ownership_mismatches = 0u;
                 std::uint32_t legacy_perch_wood = 0u;
                 std::uint32_t honey = 0u;
                 std::uint32_t pollen = 0u;
@@ -6050,10 +6051,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                             actual == Material::wood)
                             ++legacy_perch_wood;
                         switch (part) {
-                        case HivePart::shell:
-                            matches = actual == Material::beehive;
+                        case HivePart::shell: {
+                            constexpr auto shell_owner_mask = fill_aux_structural |
+                                fill_aux_supported | fill_aux_moved | fill_aux_state_mask;
+                            const bool shell_owner_valid =
+                                (actual_cell.aux & shell_owner_mask) ==
+                                (fill_aux_structural | fill_aux_supported | 255u);
+                            matches = actual == Material::beehive && shell_owner_valid;
+                            if (!shell_owner_valid) ++shell_ownership_mismatches;
                             ++shell;
                             break;
+                        }
                         case HivePart::queen:
                             matches = actual == Material::queen_bee;
                             break;
@@ -6178,7 +6186,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 const auto summarized_queen_y =
                     (hive_tile_occupancy >> 10u) & 7u;
                 append(std::string{name},
-                       mismatches == 0u && shell == 193u && legacy_perch_wood == 0u &&
+                       mismatches == 0u && shell == 193u &&
+                           shell_ownership_mismatches == 0u && legacy_perch_wood == 0u &&
                            honey == expected_honey && pollen == expected_pollen &&
                            empty_chamber == expected_empty &&
                            bee_count == fix29_bee_formation_count &&
@@ -6192,8 +6201,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        "mismatches=" + std::to_string(mismatches) +
                            " legacy_perch_wood=" +
                            std::to_string(legacy_perch_wood) +
-                           " shell=" + std::to_string(shell) +
-                           " honey=" + std::to_string(honey) +
+                            " shell=" + std::to_string(shell) +
+                            " shell_ownership_mismatches=" +
+                            std::to_string(shell_ownership_mismatches) +
+                            " honey=" + std::to_string(honey) +
                            " pollen=" + std::to_string(pollen) +
                            " chamber_empty=" + std::to_string(empty_chamber) +
                            " bees=" + std::to_string(bee_count) +
@@ -12444,6 +12455,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         bool interactive_debug_pair_measurement = false;
         std::uint32_t interactive_presented_frames = 0u;
         std::uint64_t interactive_ticks = 0u;
+        bool interactive_hive_witnesses = false;
         const auto interactive_start = Clock::now();
         if (interactive_acceptance) {
             state.presentation_limit.store(1u, std::memory_order_relaxed);
@@ -12632,6 +12644,61 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 }
             }
             const auto after_draw = Clock::now();
+            if (interactive_acceptance && frame_presented && scheduled_capture.has_value() &&
+                interactive_phase == 6u) {
+                // Acceptance-only 128-byte readback of the actual rendered hive.
+                // State totals alone cannot prove the photographed-body selector
+                // accepted an authored hive instead of drawing its fallback.
+                const auto district = persistent_world_district_index(Scene::ecosystem);
+                const auto queen_x = persistent_world_district_origin_x(
+                    config.grid_width, district) + 512u;
+                const auto queen_y = persistent_world_district_origin_y(
+                    config.grid_height, district) + 232u;
+                constexpr std::array<std::array<int, 2>, 8u> offsets{{
+                    {0, 0}, {-8, 0}, {0, -8}, {0, 8},
+                    {-6, -6}, {6, -6}, {-6, 6}, {6, 6}}};
+                std::array<SceneCell, offsets.size()> probes{};
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    buffer_barrier(command_buffer, cell_buffers[current_set],
+                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                        VK_ACCESS_TRANSFER_READ_BIT,
+                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT);
+                    buffer_barrier(command_buffer, scene_staging_buffer,
+                        VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT,
+                        VK_ACCESS_TRANSFER_WRITE_BIT,
+                        VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT);
+                    std::array<VkBufferCopy, offsets.size()> copies{};
+                    for (std::size_t i = 0u; i < offsets.size(); ++i) {
+                        const auto x = static_cast<std::uint32_t>(static_cast<int>(queen_x) + offsets[i][0]);
+                        const auto y = static_cast<std::uint32_t>(static_cast<int>(queen_y) + offsets[i][1]);
+                        copies[i] = VkBufferCopy{
+                            .srcOffset = (static_cast<VkDeviceSize>(y) * config.grid_width + x) * sizeof(SceneCell),
+                            .dstOffset = i * sizeof(SceneCell), .size = sizeof(SceneCell)};
+                    }
+                    vkCmdCopyBuffer(command_buffer, cell_buffers[current_set].handle,
+                        scene_staging_buffer.handle, static_cast<std::uint32_t>(copies.size()), copies.data());
+                    buffer_barrier(command_buffer, scene_staging_buffer,
+                        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT);
+                });
+                void* mapped = nullptr;
+                check_vk(vkMapMemory(device, scene_staging_buffer.memory, 0u,
+                    sizeof(probes), 0u, &mapped), "vkMapMemory(interactive hive witnesses)");
+                std::memcpy(probes.data(), mapped, sizeof(probes));
+                vkUnmapMemory(device, scene_staging_buffer.memory);
+                interactive_hive_witnesses = probes[0].material == static_cast<std::uint32_t>(Material::queen_bee);
+                std::string detail{"Interactive hive reference witnesses"};
+                for (std::size_t i = 0u; i < probes.size(); ++i) {
+                    detail += " [" + std::to_string(i) + " mat=" + std::to_string(probes[i].material) +
+                              " aux=" + std::to_string(probes[i].aux) + "]";
+                    if (i != 0u) interactive_hive_witnesses = interactive_hive_witnesses &&
+                        probes[i].material == static_cast<std::uint32_t>(Material::beehive) &&
+                        (probes[i].aux & 0x06000000u) == 0x06000000u;
+                }
+                startup_log(detail + (interactive_hive_witnesses ? " PASS" : " FAIL"));
+            }
             if (interactive_acceptance && present_frame && frame_presented &&
                 interactive_phase < interactive_samples.size()) {
                 const double draw_ms =
@@ -12693,7 +12760,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 const auto elapsed_seconds = std::chrono::duration<double>(
                     Clock::now() - interactive_start).count();
                 bool passed = !gpu_stalled &&
-                    interactive_ticks <= interactive_presented_frames;
+                    interactive_ticks <= interactive_presented_frames && interactive_hive_witnesses;
                 std::array<double, interactive_phase_names.size()> means{};
                 std::array<double, interactive_phase_names.size()> p95s{};
                 std::array<double, interactive_phase_names.size()> maxima{};
@@ -12791,6 +12858,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 }
                 report
                        << "  \"passed\": " << (passed ? "true" : "false") << ",\n"
+                       << "  \"hive_reference_witnesses\": "
+                       << (interactive_hive_witnesses ? "true" : "false") << ",\n"
                        << "  \"presented_frames\": " << interactive_presented_frames << ",\n"
                        << "  \"simulation_ticks\": " << interactive_ticks << ",\n"
                        << "  \"elapsed_seconds\": " << elapsed_seconds << ",\n"

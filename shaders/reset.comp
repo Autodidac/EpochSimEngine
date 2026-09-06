@@ -820,7 +820,9 @@ bool looseAuthoredTerrain(uint scene, ivec2 p, uint material) {
 }
 
 bool beehiveFixedContentForScene(uint scene, ivec2 p, uint material) {
-    if ((material != MAT_HONEY && material != MAT_POLLEN) ||
+    // Map-authored shell owns the same fixed flags/health as the Beehive tool;
+    // Beehive is intentionally not a generic block-capable terrain material.
+    if ((material != MAT_BEEHIVE && material != MAT_HONEY && material != MAT_POLLEN) ||
         (scene != SCENE_SANDBOX && scene != SCENE_ECOSYSTEM)) return false;
     ivec2 queen = scene == SCENE_SANDBOX ? sandboxQueen() : ecosystemQueen();
     ivec2 offset = p - queen;
