@@ -15,7 +15,8 @@
                         original[index_of(x, y)] = water;
                     }
                 auto expected = original;
-                SharedState brush_state{};
+                const auto brush_owner = std::make_unique<SharedState>();
+                auto& brush_state = *brush_owner;
                 brush_state.paused.store(true);
                 brush_state.selected_workspace.store(1u); // Editor
                 brush_state.brush_radius.store(3u);
@@ -86,7 +87,8 @@
                     for (std::uint32_t x = left; x < right; ++x)
                         original[index_of(x, y)] = oxygen;
 
-                SharedState brush_state{};
+                const auto brush_owner = std::make_unique<SharedState>();
+                auto& brush_state = *brush_owner;
                 brush_state.paused.store(true);
                 brush_state.selected_workspace.store(1u); // Editor
                 brush_state.placement_mode.store(1u); // Actual aligned TILE edit

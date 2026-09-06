@@ -33,7 +33,8 @@
     const auto visual_user_ui = ui_snapshot();
     // Isolated input avoids consuming any queued user edit/save/load/actor
     // action. The user's camera, MAP and Debug fields are never overwritten.
-    SharedState visual_state{};
+    const auto visual_owner = std::make_unique<SharedState>();
+    auto& visual_state = *visual_owner;
     visual_state.window_width.store(state.window_width.load(std::memory_order_acquire));
     visual_state.window_height.store(state.window_height.load(std::memory_order_acquire));
     visual_state.selected_scene.store(static_cast<std::uint32_t>(world_scene));

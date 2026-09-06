@@ -9773,7 +9773,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 cells[index_of(252u, 99u)] = make_fill_cell(material_id(Material::empty), 99u);
                 cells[index_of(252u, 101u)] = make_fill_cell(material_id(Material::water), 101u);
                 upload_scene_cells(cells, true);
-                SharedState edit_state{};
+                // Fixture workspaces embed large Blueprint grids. Keep their
+                // storage off this monolithic acceptance function's stack.
+                const auto edit_owner = std::make_unique<SharedState>();
+                auto& edit_state = *edit_owner;
                 edit_state.brush_radius.store(0u);
                 edit_state.brush_shape.store(0u);
                 const auto paused_step = simulation_step;
@@ -9917,7 +9920,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 rain_actor.health = 255u; rain_actor.oxygen = 255u;
                 rain_actor.scene = static_cast<std::uint32_t>(world_scene);
                 upload_actor_state(rain_actor);
-                SharedState actor_state{};
+                const auto actor_owner = std::make_unique<SharedState>();
+                auto& actor_state = *actor_owner;
                 actor_state.selected_scene.store(static_cast<std::uint32_t>(world_scene));
                 actor_state.move_x.store(1);
                 immediate_submit([&](const VkCommandBuffer command_buffer) {
