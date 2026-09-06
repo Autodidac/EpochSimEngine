@@ -67,6 +67,12 @@ def _packed_words(text: str) -> list[int]:
     return words
 
 
+def _fixed_text_id(label: str) -> int:
+    if FIXED.count(label) != 1:
+        raise ValueError(f"fixed label must be unique: {label!r}")
+    return FIXED.index(label)
+
+
 def _append_text_table(storage: list[int], values: list[str]) -> tuple[int, int, int]:
     offsets = [0]
     flattened = ""
@@ -358,6 +364,8 @@ def generate_ui_text():
         "layout(std430, binding = 6) readonly buffer UiTextStorageBuffer {",
         "    uint uiTextStorage[];",
         "};",
+        "",
+        f"const uint FIXED_TEXT_CLEAR = {_fixed_text_id('CLEAR')}u;",
         "",
     ]
     for prefix, (offsets_base, words_base, count) in tables.items():

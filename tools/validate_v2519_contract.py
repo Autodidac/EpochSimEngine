@@ -55,7 +55,7 @@ for token in ("Scene::volcano", "Scene::ecosystem", "Scene::frontier_base", "for
 for token in ("clear_designer_grid", "designer_workspace &&", "clear_designer_grid(shared_state)"):
     require("src/app.cpp", token)
 require("tools/generate_ui_text.py", "CLEAR")
-require("shaders/fullscreen.frag", "renderPc.selectedWorkspace == 3u ? 160u : 108u")
+require("shaders/fullscreen.frag", "renderPc.selectedWorkspace == 3u ? FIXED_TEXT_CLEAR : 108u")
 for token in ("flood_replace_connected", "upload_bounded_cells", '"Air fill"'):
     require("src/vulkan_renderer.cpp", token)
 

@@ -919,7 +919,7 @@ void main() {
 
         // Primary tools are always visible and strongly differentiated.
         uint utilityWidth = max((rowWidth - rowGap * 2u) / 3u, 1u);
-        uint utilityLabels[3] = uint[3](67u, 159u, renderPc.selectedWorkspace == 3u ? 160u : 108u);
+        uint utilityLabels[3] = uint[3](67u, 159u, renderPc.selectedWorkspace == 3u ? FIXED_TEXT_CLEAR : 108u);
         for (uint button = 0u; button < 3u; ++button) {
             uint left = rowLeft + button * (utilityWidth + rowGap);
             uint right = button == 2u ? sidebarLeft + sidebarWidth - 8u : left + utilityWidth;

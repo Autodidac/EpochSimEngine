@@ -409,6 +409,8 @@ if(BUILD_TESTING)
     if(Python3_Interpreter_FOUND)
         add_test(NAME epochsimengine_project_branding_contract
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_project_branding.py)
+        add_test(NAME epochsimengine_designer_clear_label_contract
+       COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_designer_clear_label.py)
         add_test(NAME epochsimengine_machinery_edits_contract
        COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_machinery_edits.py)
         add_test(NAME sandhybrid_mission_cache_contract

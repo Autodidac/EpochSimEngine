@@ -327,7 +327,7 @@ def main() -> int:
         if token not in ui_layout_hpp:
             errors.append(f"grouped editor layout contract missing {token!r}")
     fullscreen = (SHADERS / "fullscreen.frag").read_text(encoding="utf-8")
-    for token in ("mediumCell", "stateEdge", "utilityLabels[3] = uint[3](67u, 159u, renderPc.selectedWorkspace == 3u ? 160u : 108u)",
+    for token in ("mediumCell", "stateEdge", "utilityLabels[3] = uint[3](67u, 159u, renderPc.selectedWorkspace == 3u ? FIXED_TEXT_CLEAR : 108u)",
                   "debugScale", "palettePanelHeight = 124u",
                   "keymapBottom = keymapTop + 124u",
                   "cursorBottom = cursorTop + 112u",

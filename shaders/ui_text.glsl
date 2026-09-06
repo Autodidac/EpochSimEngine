@@ -5,6 +5,8 @@ layout(std430, binding = 6) readonly buffer UiTextStorageBuffer {
     uint uiTextStorage[];
 };
 
+const uint FIXED_TEXT_CLEAR = 189u;
+
 const uint FIXED_TEXT_OFFSETS_BASE = 0u;
 const uint FIXED_TEXT_WORDS_BASE = 204u;
 const uint FIXED_TEXT_COUNT = 203u;
