@@ -22,6 +22,7 @@ scene scene_image scene_spawn section_grid section_scheduler simulation_policy
 terrain_generation world_layout world_save""".split()
 SHADERS = """reset.comp paint.comp sunlight.comp tiles.comp chunks.comp copy_cells.comp
 chemistry.comp chemistry_bees.comp chemistry_machinery.comp
+chemistry_destinations.comp chemistry_phases.comp
 conservation_corrections.comp bee_move.comp rainfall.comp macro_move.comp
 structural_repair.comp move.comp actor.comp debug_stats.comp fullscreen.vert fullscreen.frag""".split()
 CONFIGS = [f"lib/cmake/EpochSimEngine/{name}.cmake" for name in (

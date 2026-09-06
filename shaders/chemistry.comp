@@ -1,12 +1,12 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 
-// Three production owners share this single rule body. Value 3 is an unsplit
+// Five production owners share this single rule body. Value 5 is an unsplit
 // compile-only reference for partition validation; no runtime ships it.
 #ifndef EPOCHSIM_CHEMISTRY_OWNER
 #define EPOCHSIM_CHEMISTRY_OWNER 0
 #endif
-#if EPOCHSIM_CHEMISTRY_OWNER < 0 || EPOCHSIM_CHEMISTRY_OWNER > 3
+#if EPOCHSIM_CHEMISTRY_OWNER < 0 || EPOCHSIM_CHEMISTRY_OWNER > 5
 #error Unsupported chemistry source owner
 #endif
 #include "materials.glsl"
@@ -17,12 +17,11 @@
 #include "debug_stats.glsl"
 #include "machine_controller_lattice.glsl"
 #include "machine_input_credit.glsl"
-#include "chemistry_ownership.glsl"
 
-// Only main's literal source comparisons use this macro. Neighbor/result and
-// helper predicates remain untouched. For an admitted source, source==M implies
-// owner(M)==this pass, making this extra constant test logically redundant.
-#if EPOCHSIM_CHEMISTRY_OWNER == 3
+#include "chemistry_ownership.glsl"
+// Only the frozen main's 71 literal equalities and two inequalities change.
+// Neighbor/result/helper comparisons and execution order are untouched.
+#if EPOCHSIM_CHEMISTRY_OWNER == 5
 #define SOURCE_IS(M) (source.material == (M))
 #else
 #define SOURCE_IS(M) (chemistrySourceOwner(M) == uint(EPOCHSIM_CHEMISTRY_OWNER) && source.material == (M))
@@ -1145,8 +1144,8 @@ void main() {
 
     uint index = indexOf(p);
     Cell source = cells[index];
-#if EPOCHSIM_CHEMISTRY_OWNER != 3
-    // One immutable owner; do not inspect nextCells or a changed result here.
+#if EPOCHSIM_CHEMISTRY_OWNER != 5
+    // Immutable owner is selected before any scratch write or counter.
     if (chemistrySourceOwner(source.material) != uint(EPOCHSIM_CHEMISTRY_OWNER)) return;
 #endif
     if (!sectionActiveAt(p, pc.activeSectionX, pc.activeSectionY, pc.activeMode)) {
@@ -1159,8 +1158,8 @@ void main() {
     // permanently vetoes every later fine and macro liquid transaction.
     result.aux &= ~AUX_MOVED;
 
-#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 3
-// Source-owner exclusion: Hydrogen/Oxygen synthesis and dissolved-gas paths require Hydrogen, Oxygen, Water, or Atmosphere source; excluded from Bee and machinery owners.
+#if EPOCHSIM_CHEMISTRY_OWNER == 3 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 5
+// Frozen 1139-1193: synthesis/outgas requires Hydrogen/Oxygen/Water or Atmosphere.
     // Race-free two-cell synthesis: mutually paired Hydrogen/Oxygen contacts
     // become one water-family unit and one pressure-bearing Atmosphere unit.
     Cell synthesisPartner;
@@ -1216,8 +1215,7 @@ void main() {
         return;
     }
 
-#endif
-
+#endif // frozen 1139-1193
     if (!activeStructuralProcess(source.material) && sleepingChunkNeighborhood(p)) {
         result.aux &= ~AUX_MOVED;
         nextCells[index] = result;
@@ -1239,8 +1237,8 @@ void main() {
         thermalDivisor = max(thermalDivisor, 20);
     result.temperature += clamp((thermalTarget - result.temperature) / thermalDivisor, -20, 20);
     result.temperature = clamp(result.temperature, -200, 5000);
-#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 3
-// Source-owner exclusion: Output endpoints require Empty/Atmosphere source; Bee and machinery sources cannot own either endpoint.
+#if EPOCHSIM_CHEMISTRY_OWNER == 3 || EPOCHSIM_CHEMISTRY_OWNER == 5
+// Frozen 1215-1228: machine output and vent endpoints require Empty or Atmosphere source.
     // Machine output is a three-cell conservative transaction over the shared
     // source buffer: product replaces the output Atmosphere while the paired
     // vent accepts its represented pressure, and the controller consumes the
@@ -1255,20 +1253,18 @@ void main() {
         return;
     }
 
-#endif
-
+#endif // frozen 1215-1228
     // Tile analysis already consumed the previous movement marker.
     result.aux &= ~AUX_MOVED;
-#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 3
-// Source-owner exclusion: Half Water explicitly requires MAT_WATER.
+#if EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 5
+// Frozen 1231-1236: Half Water requires Water source.
     // Fractional Water is movement-owned. Thermal state and age still advance,
     // but chemistry waits until two halves conservatively merge to one full cell.
     if (isHalfWater(source)) {
         commitResult(index, source, result);
         return;
     }
-#endif
-
+#endif // frozen 1231-1236
     TileState tile = tiles[tileIndex(p, pc.width)];
     bool fixedHiveContent = isStructural(source) &&
         (SOURCE_IS(MAT_HONEY) || SOURCE_IS(MAT_POLLEN));
@@ -1330,8 +1326,8 @@ void main() {
     bool nearPoweredBoiler = hasNeighbor(p, MAT_SMELTER) &&
                              hasNeighbor(p, MAT_POWER_CELL);
 
-#if EPOCHSIM_CHEMISTRY_OWNER != 1
-// Source-owner exclusion: Plastic, Lava/Empty destinations, soil, gas, machine input/controller, Ant/Beetle, compost and Stone branches all exclude the six source-owner materials. Preserve the following generic structural hazard block.
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 3 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 5
+// Frozen 1298-1585: mixed pre-structure rules exclude only the six Bee-family source IDs.
     // Canonical thermal behavior is material/temperature based. The material
     // ID is retained through melting and vaporization; only chemical
     // decomposition produces configured byproducts.
@@ -1538,8 +1534,8 @@ void main() {
         // is owned exclusively by the paired Hydrogen/Oxygen transaction above.
     }
 
-#if EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 3
-// Only the 18 immutable machinery sources can own a donor or controller branch.
+#if EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 5
+// Frozen 1504-1551: factory donors and controllers require one of the 18 machinery source IDs.
     // Resource cells are consumed only by one deterministic nearby machine controller.
     if (isFactoryInputResource(source.material)) {
         ivec2 acceptingMachine = nearestAcceptingMachine(p, source, 6);
@@ -1588,8 +1584,7 @@ void main() {
 
 
 
-#endif
-
+#endif // frozen 1504-1551
     // Insects are ecosystem agents, not placeholder combat bots. Ants move
     // recoverable waste toward soil; beetles break dead biomass into fertilizer.
     if (SOURCE_IS(MAT_ANT)) {
@@ -1602,6 +1597,8 @@ void main() {
         result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
     }
 
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 5
+// Frozen 1564-1574: immutable feed is Ash/Silt/Waste; immutable water is Dirty Water.
     // Explicit paired compost path: ember can only age into ash. Fertilizer
     // requires ash, organic waste, mineral soil/silt, dirty water, oxygen, and
     // time. One selected feed cell becomes fertilizer while its mutually paired
@@ -1613,6 +1610,7 @@ void main() {
         result = makeCell(MAT_WATER);
     }
 
+#endif // frozen 1564-1574
     // A surrounded hot Stone unit returns to the Lava family one-for-one.
     // This executes before durable-structure early return so the renewable
     // geologic loop cannot become permanently trapped as structural Stone.
@@ -1624,8 +1622,7 @@ void main() {
         result.age = 0u;
     }
 
-#endif
-
+#endif // frozen 1298-1585
     // Structure chemistry only reduces integrity. It cannot replace a wall with
     // saltwater, mud, ash, or another phase while the voxel remains structural.
     applyStructuralHazards(p, source, result, nearWater, nearSaltwater, nearLava, nearFire, nearAcid);
@@ -1634,8 +1631,8 @@ void main() {
         return;
     }
 
-#if EPOCHSIM_CHEMISTRY_OWNER != 1
-// Source-owner exclusion: Salt/water, Oil/smoke pairing, phase/weather/energy, plant and Wood source branches exclude the six owner materials.
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 5
+// Frozen 1594-1801: phase/plant/salt/sand/Oil/Wood rules and Smoke/Steam pairing exclude Bee and Empty/Atmosphere sources.
     // Salt dissolution transfers one explicit concentration unit to exactly
     // one adjacent water cell. No liquid cells are created and salt mass never
     // chain-converts the entire body of water.
@@ -1844,10 +1841,9 @@ void main() {
     }
 
 
-#endif
-
-#if EPOCHSIM_CHEMISTRY_OWNER == 1 || EPOCHSIM_CHEMISTRY_OWNER == 3
-// Source-owner exclusion: Only Bee/Pollen/Honey/Beeswax/Queen/Beehive source IDs enter this chain. Bulk destinations created by other source owners must not enter it again.
+#endif // frozen 1594-1801
+#if EPOCHSIM_CHEMISTRY_OWNER == 1 || EPOCHSIM_CHEMISTRY_OWNER == 5
+// Frozen 1802-2018: six Bee-family lifecycle source IDs only; never select from result.
     // Authored colonies use explicit targets stored in each bee. Orbiting bees do
     // no searches; only a lifecycle transition scans compact 8x8 tile metadata.
     if (SOURCE_IS(MAT_BEE)) {
@@ -2065,8 +2061,7 @@ void main() {
         }
     }
 
-#endif
-
+#endif // frozen 1802-2018
     if (result.material == source.material && isRespiringLife(source.material)) {
         uint localOxygen = oxygenVolumeWithin(p, 2);
         bool fullyChoked = fullyChokedByMedium(p);
@@ -2077,8 +2072,8 @@ void main() {
         }
     }
 
-#if EPOCHSIM_CHEMISTRY_OWNER != 1
-// Source-owner exclusion: Water/Dirty Water/Silt/Fertilizer/Food/Waste source-only chain excludes Bee-family owners even when their proposed result changes to one of these materials.
+#if EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 5
+// Frozen 2029-2061: closed ecology requires Water/Dirty Water or Silt/Fertilizer/Food/Waste source.
     // Closed ecological loop: dirty water separates into clean water and silt;
     // sediment becomes fertilizer; crops produce food; food becomes waste; waste
     // returns to soil, fertilizer, or combustion gases instead of inventing a
@@ -2112,8 +2107,7 @@ void main() {
         else if (source.age > 5400u && (randomValue & 511u) == 0u) result = makeCell(MAT_DIRT);
     }
 
-#endif
-
+#endif // frozen 2029-2061
     // Conductors propagate a bounded charge state; insulators and surrounding
     // metal shielding stop lightning and radiation propagation.
     if (isConductive(source.material)) {
@@ -2126,8 +2120,8 @@ void main() {
         else if ((source.aux & AUX_CHARGED) != 0u && (randomValue & 15u) == 0u) result.aux &= ~AUX_CHARGED;
     }
 
-#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 3
-// Source-owner exclusion: Lightning/Uranium/Radiation source-only chain; retain subsequent result-sensitive ignition and acid hazards in every owner.
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 5
+// Frozen 2074-2086: Lightning/Uranium/Radiation remain in residual bulk.
     if (SOURCE_IS(MAT_LIGHTNING)) {
         result.temperature = max(result.temperature, 900);
         if (source.age > 18u + (randomValue & 31u)) result = makeCell(MAT_EMPTY);
@@ -2141,8 +2135,7 @@ void main() {
         }
     }
 
-#endif
-
+#endif // frozen 2074-2086
     if (result.material == source.material && isFlammable(source.material) && nearFire) {
         uint ignitionStrength = flammability(source.material);
         if (SOURCE_IS(MAT_WOOD) && (source.aux & AUX_WET) != 0u) ignitionStrength /= 5u;
@@ -2159,13 +2152,12 @@ void main() {
         result = makeCell(isOrganic(source.material) ? MAT_WASTE : MAT_DIRTY_WATER);
     }
 
-#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 3
-// Source-owner exclusion: Acid source-only dilution; final commit remains common.
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 5
+// Frozen 2103-2106: Acid-source dilution remains in residual bulk.
     if (SOURCE_IS(MAT_ACID) && (nearWater || nearSaltwater) && (randomValue & 511u) == 0u) {
         result = makeCell(nearSaltwater ? MAT_SALTWATER : MAT_WATER);
     }
 
-#endif
-
+#endif // frozen 2103-2106
     commitResult(index, source, result);
 }

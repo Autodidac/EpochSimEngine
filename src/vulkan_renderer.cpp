@@ -540,6 +540,8 @@ struct VulkanRenderer::Impl final {
     VkPipeline chemistry_pipeline{};
     VkPipeline chemistry_bees_pipeline{};
     VkPipeline chemistry_machinery_pipeline{};
+    VkPipeline chemistry_destinations_pipeline{};
+    VkPipeline chemistry_phases_pipeline{};
     VkPipeline conservation_corrections_pipeline{};
     VkPipeline bee_movement_pipeline{};
     VkPipeline rainfall_pipeline{};
@@ -665,6 +667,8 @@ save_slot(normalize_world_slot(requested_save_slot)) {
             if (chemistry_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_pipeline, nullptr);
             if (chemistry_bees_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_bees_pipeline, nullptr);
             if (chemistry_machinery_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_machinery_pipeline, nullptr);
+            if (chemistry_destinations_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_destinations_pipeline, nullptr);
+            if (chemistry_phases_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device, chemistry_phases_pipeline, nullptr);
             if (conservation_corrections_pipeline != VK_NULL_HANDLE)
                 vkDestroyPipeline(device, conservation_corrections_pipeline, nullptr);
             if (bee_movement_pipeline != VK_NULL_HANDLE)
@@ -1348,6 +1352,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         chemistry_pipeline = create_compute_pipeline("chemistry.comp.spv");
         chemistry_bees_pipeline = create_compute_pipeline("chemistry_bees.comp.spv");
         chemistry_machinery_pipeline = create_compute_pipeline("chemistry_machinery.comp.spv");
+        chemistry_destinations_pipeline = create_compute_pipeline("chemistry_destinations.comp.spv");
+        chemistry_phases_pipeline = create_compute_pipeline("chemistry_phases.comp.spv");
         conservation_corrections_pipeline =
             create_compute_pipeline("conservation_corrections.comp.spv");
         bee_movement_pipeline = create_compute_pipeline("bee_move.comp.spv");
@@ -1854,14 +1860,18 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                 compute_pipeline_layout, 0, 1, &descriptor_sets[set_index], 0, nullptr);
     }
 
+    template<bool Profile = false, typename StageBoundary = std::nullptr_t>
     void record_chemistry(const VkCommandBuffer command_buffer,
                           const std::uint32_t set_index, const SimulationPush& push,
-                          const std::uint32_t width, const std::uint32_t height) const {
+                          const std::uint32_t width, const std::uint32_t height,
+                          [[maybe_unused]] const VkQueryPool profile_queries = VK_NULL_HANDLE,
+                          [[maybe_unused]] StageBoundary stage_boundary = nullptr) const {
         // Every pipeline selects from immutable source material before any
         // scratch write/counter. Owners are disjoint and cover all IDs, so age,
         // heat and reactions happen once. Never swap/copy cells between owners.
         const std::array pipelines{chemistry_pipeline, chemistry_bees_pipeline,
-                                   chemistry_machinery_pipeline};
+                                   chemistry_machinery_pipeline,
+                                   chemistry_destinations_pipeline, chemistry_phases_pipeline};
         for (std::size_t owner = 0; owner < pipelines.size(); ++owner) {
             if (owner != 0u) {
                 buffer_barrier(command_buffer, cell_buffers[set_index ^ 1u],
@@ -1874,6 +1884,15 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
             vkCmdDispatch(command_buffer, divide_round_up(width, simulation_local_size),
                           divide_round_up(height, simulation_local_size), 1);
+            // Profile-only boundaries expose cold compilation per owner.
+            // Normal simulation instantiates none of these commands/callbacks.
+            if constexpr (Profile) {
+                const auto boundary = 3u + static_cast<std::uint32_t>(owner);
+                vkCmdWriteTimestamp(command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                    profile_queries, boundary);
+                if constexpr (!std::is_same_v<StageBoundary, std::nullptr_t>)
+                    stage_boundary(boundary);
+            }
         }
     }
 
@@ -3445,12 +3464,12 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        record_chemistry(command_buffer, current_set, simulation_push,
-                         active_dispatch.width, active_dispatch.height);
+        record_chemistry<Profile>(command_buffer, current_set, simulation_push,
+                         active_dispatch.width, active_dispatch.height,
+                         profile_queries, stage_boundary);
         buffer_barrier(command_buffer, cell_buffers[next_set], VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        mark_profile(3u);
         record_rain_admission_snapshot(command_buffer);
         bind_compute(command_buffer, conservation_corrections_pipeline, current_set);
         vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
@@ -3470,7 +3489,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        mark_profile(4u);
+        mark_profile(8u);
         copy_cell_rectangle(command_buffer, next_set, current_set, active_dispatch);
         buffer_barrier(command_buffer, cell_buffers[next_set], VK_ACCESS_SHADER_READ_BIT,
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
@@ -3479,7 +3498,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
-        mark_profile(5u);
+        mark_profile(9u);
         // Inspect one count per column, then only occupied row words and tagged
         // owners. All already-emitted rain continues outside the active window
         // without a complete-world cell scan or any global Water wake-up.
@@ -3513,7 +3532,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
-        mark_profile(6u);
+        mark_profile(10u);
         // Full uniform 8x8 regions use the same fall/diagonal/spread decisions
         // as cells, but transfer all 64 canonical cells in parallel. Mixed,
         // partial, structural, reacting, or half-water regions fall through to
@@ -3555,9 +3574,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             }
         }
 
-        mark_profile(7u);
+        mark_profile(11u);
         record_structural_repair_pass(command_buffer, simulation_push, active_dispatch);
-        mark_profile(8u);
+        mark_profile(12u);
         // Freeze the post-chemistry and macro-movement state for all neighborhood decisions in
         // the movement passes. Pair endpoints still use the writable current
         // buffer, while pressure, support, and bee attraction read this exact
@@ -3581,7 +3600,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                        VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
-        mark_profile(9u);
+        mark_profile(13u);
         bind_compute(command_buffer, movement_pipeline, current_set);
         // One complete fine pair schedule per fixed tick. AUX_MOVED now owns
         // single-tick liquid transactions, so replaying horizontal pairs only
@@ -3622,7 +3641,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 cell_buffers[current_set].handle, chunk_buffer.handle});
         }
 
-        mark_profile(10u);
+        mark_profile(14u);
         // A rare bounded double-buffer phase exchanges a missing Bee's Ash with
         // one local birth medium before any Bee can move. Ordinary ticks pay no
         // copy or dispatch cost.
@@ -3650,7 +3669,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-        mark_profile(11u);
+        mark_profile(15u);
         ++simulation_step;
     }
 
@@ -12049,9 +12068,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                               const SharedState& application_state) {
         startup_log("Running isolated GPU material-tick timestamp profile (not FPS)...");
         using Clock = std::chrono::steady_clock;
-        constexpr std::uint32_t query_count = 12u;
+        constexpr std::uint32_t query_count = 16u;
         constexpr std::array<std::string_view, query_count - 1u> stage_names{
-            "sunlight", "tile_and_chunk_classification", "chemistry",
+            "sunlight", "tile_and_chunk_classification", "chemistry_bulk",
+            "chemistry_bees", "chemistry_machinery", "chemistry_destinations", "chemistry_phases",
             "conservation_corrections", "chemistry_copyback", "tracked_rainfall",
             "macro_movement", "structural_repair", "movement_snapshot",
             "fine_movement", "bee_birth_and_movement",
@@ -12380,7 +12400,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                << "  \"limitations\": [\n"
                   "    \"GPU marker intervals include barriers and timestamp overhead; bottom-of-pipe markers can perturb overlap.\",\n"
                << (serial_stage_trace ?
-                  "    \"One cold tick in eleven separately fenced stages; timestamps include intervening host/queue gaps and may include driver JIT. These are stage-completion diagnostics, NOT performance comparisons.\",\n" :
+                  "    \"One cold tick in fifteen separately fenced stages; timestamps include intervening host/queue gaps and may include driver JIT. These are stage-completion diagnostics, NOT performance comparisons.\",\n" :
                   "    \"One material tick per serialized submission; CPU recording, fence wait, query readback, startup, reset and initial MAP snapshot are outside GPU intervals.\",\n")
                <<
                   "    \"No presentation, input edits, player actor, save/load, live MAP refresh or Debug collection; these numbers are not interactive frame times or FPS.\",\n"

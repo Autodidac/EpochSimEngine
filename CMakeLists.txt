@@ -180,6 +180,8 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         chemistry.comp
         chemistry_bees.comp
         chemistry_machinery.comp
+        chemistry_destinations.comp
+        chemistry_phases.comp
         conservation_corrections.comp
         bee_move.comp
         rainfall.comp
@@ -205,6 +207,12 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         elseif(SHADER_FILE STREQUAL "chemistry_machinery.comp")
             set(SHADER_INPUT "${SHADER_SOURCE_DIR}/chemistry.comp")
             set(SHADER_DEFINITIONS -DEPOCHSIM_CHEMISTRY_OWNER=2)
+        elseif(SHADER_FILE STREQUAL "chemistry_destinations.comp")
+            set(SHADER_INPUT "${SHADER_SOURCE_DIR}/chemistry.comp")
+            set(SHADER_DEFINITIONS -DEPOCHSIM_CHEMISTRY_OWNER=3)
+        elseif(SHADER_FILE STREQUAL "chemistry_phases.comp")
+            set(SHADER_INPUT "${SHADER_SOURCE_DIR}/chemistry.comp")
+            set(SHADER_DEFINITIONS -DEPOCHSIM_CHEMISTRY_OWNER=4)
         endif()
         set(SHADER_OUTPUT "${SHADER_BINARY_DIR}/${SHADER_FILE}.spv")
         add_custom_command(

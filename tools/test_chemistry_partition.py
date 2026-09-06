@@ -20,7 +20,23 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 GLSLC: Path | None = None
 OWNER = "EPOCHSIM_CHEMISTRY_OWNER"
-OUTPUTS = ("chemistry.comp", "chemistry_bees.comp", "chemistry_machinery.comp")
+OUTPUTS = ("chemistry.comp", "chemistry_bees.comp", "chemistry_machinery.comp",
+           "chemistry_destinations.comp", "chemistry_phases.comp")
+REFERENCE = 5
+
+# Independent source families, never inferred from chemistrySourceOwner. The
+# C++ oracle additionally checks every exact saved ID and unknown uint value.
+OWNED_MATERIALS = (
+    "DIRT STONE CRYSTAL MUD ACID GRASS OIL WOOD PLASTIC ACID_RESISTANT_PLASTIC "
+    "ASH GLASS GUNPOWDER SEED FLOWER MAGNET INSULATOR LIGHTNING URANIUM RADIATION "
+    "CONVEYOR ANT BEETLE PLANT_STEM FACTORY_CORE",
+    "HONEY BEE BEESWAX BEEHIVE POLLEN QUEEN_BEE",
+    "SAND ALUMINUM IRON COPPER ALUMINUM_SHAVINGS GOLD IRON_ORE STEEL SMELTER "
+    "ASSEMBLER INSECT_HABITAT POWER_CELL PLASMA_AMMO SILT FERTILIZER FOOD WASTE SLUICE_BOX",
+    "EMPTY ATMOSPHERE",
+    "WATER SMOKE STEAM FIRE LAVA SALT ICE EMBER SNOW SALTWATER DIRTY_STEAM "
+    "DIRTY_WATER MAGMA_VENT OXYGEN CARBON_DIOXIDE HYDROGEN CLOUD",
+)
 
 
 def require(condition: bool, message: str) -> None:
@@ -97,7 +113,7 @@ def validate_guard(preprocessed: str, owner: int) -> None:
     source = re.search(r"\bCell\s+source\s*=\s*cells\s*\[\s*index\s*\]\s*;", main)
     require(source is not None, "main must load the immutable canonical source")
     guards = list(re.finditer(guard_pattern(str(owner) + r"u?"), main))
-    if owner == 3:
+    if owner == REFERENCE:
         require(not re.search(r"chemistrySourceOwner\s*\(\s*source\s*\.\s*material", main),
                 "unsplit reference must not filter source ownership")
         return
@@ -120,7 +136,7 @@ def validate_guard(preprocessed: str, owner: int) -> None:
 # Each sentinel must occur in main, not merely in an included helper. Checking
 # both presence AND exclusion catches a nested !=1 guard erasing the Bee body.
 FAMILIES = {
-    "Bees": ({1, 3}, (
+    "Bees": ({1, 5}, (
         "if ((source.material == (MAT_BEE)))",
         "else if ((source.material == (MAT_POLLEN)))",
         "else if ((source.material == (MAT_HONEY)))",
@@ -134,7 +150,7 @@ FAMILIES = {
         "beeDepositTarget(p, source)", "hungryBeeTargetsHoney(p)",
         "uint stress = stateValue(source);", "!hasWithin(p, MAT_QUEEN_BEE, 7)",
     )),
-    "machinery": ({2, 3}, (
+    "machinery": ({2, 5}, (
         "if (isFactoryInputResource(source.material))",
         "nearestAcceptingMachine(p, source, 6)",
         "machineAcceptsResource(p, acceptingMachine, source)",
@@ -144,11 +160,35 @@ FAMILIES = {
         "incomingMachineCounts(p, source.material)",
         "setMachineInventory(result, inventory)",
     )),
-    "bulk pairs/output": ({0, 3}, (
+    "destination/phase pairs": ({3, 4, 5}, (
         "Cell synthesisPartner;", "hydrogenOxygenPair(p, source, synthesisPartner)",
         "dissolvedOutgasPair(p, source)", "if (hasDissolvedWaterGas(source))",
-        "dissolvedOxygenPair(p, source)", "machineOutputTransition(p, source, result)",
-        "machineOutputVentTransition(p, source, result)", "if (isHalfWater(source))",
+        "dissolvedOxygenPair(p, source)",
+    )),
+    "destinations": ({3, 5}, (
+        "machineOutputTransition(p, source, result)",
+        "machineOutputVentTransition(p, source, result)",
+    )),
+    "phase carrier": ({4, 5}, ("if (isHalfWater(source))",)),
+    "mixed nonbee prestructure": ({0, 2, 3, 4, 5}, (
+        "ventOutletOwnsLava(source)", "dirtyWaterSeparationReady(p + ivec2(0, 1), belowSource)",
+        "flowerDropsSeed(p)", "pollenBeeTargets(p)", "uint newbornSlot =",
+        "respiringNeighborDemand(p)", "respirePackedMedium(result)",
+        "int reheatedTemperature = result.temperature;",
+    )),
+    "compost": ({0, 2, 4, 5}, ("compostFeedReady(p, source)", "compostWaterReady(p, source)")),
+    "phase/plant rules": ({0, 2, 4, 5}, (
+        "saltDissolutionTarget(p, source)", "incomingSaltUnits(p)",
+        "smokeSteamPair(p, source, primaryGas)", "uint connectedLava = lavaNeighborCount(p);",
+        "bool outletOwnsLava = ventOutletOwnsLava(outlet);",
+        "bool nucleatesCloud =", "uint connectedMass = 1u + neighborCount(p, MAT_CLOUD);",
+        "seedHasGrowingConditions(p)", "bool validStem = support.material == MAT_PLANT_STEM;",
+    )),
+    "closed ecology": ({2, 4, 5}, (
+        "harvestConsumesWater(p)", "dirtyWaterSeparationReady(p, source)",
+        "fertilizerHarvestReady(p, source)",
+    )),
+    "residual bulk": ({0, 5}, (
         "result.temperature = max(result.temperature, 900);",
         "result = makeCell(nearSaltwater ? MAT_SALTWATER : MAT_WATER);",
     )),
@@ -176,9 +216,9 @@ COMMON = (
 def validate_families(preprocessed: str, owner: int, reference: str) -> None:
     main, original = compact(body(preprocessed)), compact(body(reference))
     # Normalize only SOURCE_IS's documented redundant constant specialization
-    # so exact lifecycle branch headers can be compared with reference owner3.
+    # so exact lifecycle branch headers can be compared with reference owner5.
     # Never simplify arbitrary predicates or infer runtime numerical parity.
-    main = re.sub(r"\(chemistrySourceOwner\((MAT_\w+)\)==uint\([012]u?\)&&"
+    main = re.sub(r"\(chemistrySourceOwner\((MAT_\w+)\)==uint\([0-4]u?\)&&"
                   r"source\.material==\(\1\)\)", r"(source.material==(\1))", main)
     for family, (owners, sentinels) in FAMILIES.items():
         for sentinel in sentinels:
@@ -196,11 +236,25 @@ def validate_families(preprocessed: str, owner: int, reference: str) -> None:
                 "uintlocalOxygen=", "if(isConductive(source.material))", "uintignitionStrength=")
     positions = [main.index(needle) for needle in sequence]
     require(positions == sorted(positions), f"owner {owner}: common rule order changed")
+    # Every SOURCE_IS occurrence for this owner's material must survive, not
+    # just one mention in a common prelude. This independently catches a family
+    # guard that erases its own lifecycle while leaving helper declarations.
+    material_groups = [set("MAT_" + name for name in group.split()) for group in OWNED_MATERIALS]
+    require(tuple(map(len, material_groups)) == (25, 6, 18, 2, 17) and
+            len(set.union(*material_groups)) == 68, "independent owner oracle changed")
+    pattern = r"\(source\.material==\((MAT_\w+)\)\)"
+    original_predicates = Counter(re.findall(pattern, original))
+    actual_predicates = Counter(re.findall(pattern, main))
+    require(set(original_predicates) <= set.union(*material_groups),
+            "reference uses a source material missing from the independent oracle")
+    for material in (set.union(*material_groups) if owner == REFERENCE else material_groups[owner]):
+        require(actual_predicates[material] == original_predicates[material],
+                f"owner {owner}: own-material rule was excluded or duplicated: {material}")
 
 
 def wrap_bee_guard(source: str) -> str:
     start = re.search(r"^\s*#if\s+" + OWNER + r"\s*==\s*1\s*\|\|\s*" +
-                      OWNER + r"\s*==\s*3[^\n]*\n", source, re.M)
+                      OWNER + r"\s*==\s*5[^\n]*\n", source, re.M)
     require(start is not None, "mutation fixture needs the production Bee conditional")
     depth = 1
     for directive in re.finditer(r"^\s*#\s*(if|ifdef|ifndef|endif)\b[^\n]*(?:\n|$)",
@@ -217,8 +271,9 @@ def validate_renderer(source: str) -> None:
     clean = uncomment(source)
     recorder = compact(body(clean, "record_chemistry"))
     require("conststd::arraypipelines{chemistry_pipeline,chemistry_bees_pipeline,"
-            "chemistry_machinery_pipeline};" in recorder, "recorder must own each pipeline once")
-    require("owner<pipelines.size();++owner" in recorder, "recorder must dispatch all three owners")
+            "chemistry_machinery_pipeline,chemistry_destinations_pipeline,chemistry_phases_pipeline};"
+            in recorder, "recorder must own each pipeline once")
+    require("owner<pipelines.size();++owner" in recorder, "recorder must dispatch all five owners")
     require(recorder.count("vkCmdDispatch(") == 1 and recorder.count("bind_compute(") == 1,
             "recorder requires one shared dispatch/bind site")
     for needle in (
@@ -237,40 +292,87 @@ def validate_renderer(source: str) -> None:
     require("conservation_corrections_pipeline" not in recorder,
             "correction belongs after all owners, not inside their loop")
 
-    calls = list(re.finditer(r"\brecord_chemistry\s*\(([^;{}]*?)\)\s*;", clean, re.S))
+    calls = list(re.finditer(r"\brecord_chemistry\s*(<\s*Profile\s*>)?\s*\(([^;{}]*?)\)\s*;", clean, re.S))
     expected = Counter((
-        "command_buffer,current_set,simulation_push,active_dispatch.width,active_dispatch.height",
-        "command_buffer,current_set,push,acceptance_width,acceptance_height",
-        "command_buffer,current_set,simulation_push,acceptance_width,acceptance_height",
+        ("<Profile>", "command_buffer,current_set,simulation_push,active_dispatch.width,"
+         "active_dispatch.height,profile_queries,stage_boundary"),
+        ("", "command_buffer,current_set,push,acceptance_width,acceptance_height"),
+        ("", "command_buffer,current_set,simulation_push,acceptance_width,acceptance_height"),
     ))
-    require(Counter(compact(call[1]) for call in calls) == expected,
-            "production and both acceptance paths must use the same three-owner recorder")
-    require(not re.search(r"bind_compute\s*\([^;]*,\s*chemistry(?:_bees|_machinery)?_pipeline\s*,", clean),
-            "direct chemistry binds may bypass the three-owner recorder")
+    require(Counter((compact(call[1] or ""), compact(call[2])) for call in calls) == expected,
+            "production and both acceptance paths must use the same five-owner recorder")
+    require(not re.search(r"bind_compute\s*\([^;]*,\s*chemistry(?:_bees|_machinery|_destinations|_phases)?"
+                          r"_pipeline\s*,", clean), "direct chemistry binds may bypass the five-owner recorder")
     for call in calls:
         suffix = clean[call.end():]
         copy = re.search(r"\bcopy_cell_rectangle\s*\(([^;]+)\)\s*;", suffix)
         require(copy is not None, "chemistry path lost bounded scratch copyback")
         between = compact(suffix[:copy.start()])
-        push = compact(call[1]).split(",")[2]
+        push = compact(call[2]).split(",")[2]
         require(between.count("bind_compute(command_buffer,conservation_corrections_pipeline,current_set);") == 1,
                 "each complete chemistry stage needs exactly one following correction")
         require(f"0,sizeof({push}),&{push});" in between,
                 "correction must receive the same unchanged chemistry push")
         require(between.count("record_rain_admission_snapshot(command_buffer);") == 1,
                 "rain admission must be snapshotted once after all chemistry owners")
-        require(between.count("vkCmdDispatch(") == 1 and "record_chemistry(" not in between,
+        require(between.count("vkCmdDispatch(") == 1 and "record_chemistry" not in between,
                 "unexpected dispatch between complete chemistry and copyback")
         require(not re.search(r"vkCmdCopy|current_set=|swap\(", between),
                 "canonical buffer changed before the one correction/copyback")
         require(compact(copy[1]).startswith("command_buffer,next_set,current_set,"),
                 "bounded chemistry copyback must target the canonical source set")
     for pipeline, filename in zip(("chemistry_pipeline", "chemistry_bees_pipeline",
-                                   "chemistry_machinery_pipeline"), OUTPUTS):
+                                   "chemistry_machinery_pipeline", "chemistry_destinations_pipeline",
+                                   "chemistry_phases_pipeline"), OUTPUTS):
         require(f'{pipeline}=create_compute_pipeline("{filename}.spv");' in compact(clean),
                 f"missing deployed pipeline {filename}")
         require(f"vkDestroyPipeline(device,{pipeline},nullptr);" in compact(clean),
                 f"missing owned-pipeline destruction: {pipeline}")
+
+
+def validate_profile(source: str) -> None:
+    clean = compact(source)
+    for name in ("record_chemistry", "record_simulation_step"):
+        require("template<boolProfile=false,typenameStageBoundary=std::nullptr_t>void" + name + "("
+                in clean, f"{name}: profiling must default to a compile-time-disabled instantiation")
+    recorder = compact(body(source, "record_chemistry"))
+    profile_guard = (
+        "ifconstexpr(Profile){constautoboundary=3u+static_cast<std::uint32_t>(owner);"
+        "vkCmdWriteTimestamp(command_buffer,VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,profile_queries,boundary);"
+        "ifconstexpr(!std::is_same_v<StageBoundary,std::nullptr_t>)stage_boundary(boundary);}")
+    require(recorder.count(profile_guard) == 1,
+            "owner timestamps and callbacks need the compile-time profile guard")
+    ordinary = recorder.replace(profile_guard, "")
+    require(not re.search(r"vkCmdWriteTimestamp|profile_queries|stage_boundary", ordinary),
+            "ordinary owner dispatch must emit no profiling work")
+    require(recorder.index("vkCmdDispatch(") < recorder.index(profile_guard),
+            "owner boundary must follow its complete dispatch")
+
+    step = compact(body(source, "record_simulation_step"))
+    step_guard = ("ifconstexpr(Profile){vkCmdWriteTimestamp(command_buffer,"
+                  "VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,profile_queries,boundary);"
+                  "ifconstexpr(!std::is_same_v<StageBoundary,std::nullptr_t>)stage_boundary(boundary);}")
+    require(step.count(step_guard) == 1 and "vkCmdWriteTimestamp" not in step.replace(step_guard, ""),
+            "fixed-tick markers must also remain compile-time profile-only")
+    marks = [int(value) for value in re.findall(r"mark_profile\((\d+)u\);", step)]
+    require(marks == [0, 1, 2, 8, 9, 10, 11, 12, 13, 14, 15],
+            "fixed-tick marker numbers overlap owners 3..7 or omit the final boundary")
+    call = step.index("record_chemistry<Profile>(")
+    require(step.index("mark_profile(2u);") < call < step.index("mark_profile(8u);"),
+            "five owner boundaries must sit between classification and correction completion")
+    profile = compact(body(source, "run_simulation_profile"))
+    require("constexprstd::uint32_tquery_count=16u;" in profile,
+            "profiler must allocate all 16 boundary queries")
+    names = re.search(r"stage_names\{([^}]+)\};", profile)
+    require(names is not None and re.findall(r'"([^"\\]*)"', names[1]) == [
+        "sunlight", "tile_and_chunk_classification", "chemistry_bulk", "chemistry_bees",
+        "chemistry_machinery", "chemistry_destinations", "chemistry_phases",
+        "conservation_corrections", "chemistry_copyback", "tracked_rainfall", "macro_movement",
+        "structural_repair", "movement_snapshot", "fine_movement", "bee_birth_and_movement"],
+        "profiler stage labels no longer match the 15 measured boundary intervals")
+    require("boundary!=next_boundary||boundary>=query_count" in profile and
+            "if(next_boundary!=query_count)" in profile,
+            "serial diagnostics must reject missing, repeated or out-of-range end markers")
 
 
 def validate_build(cmake: str, shader: str, package: str) -> None:
@@ -279,7 +381,7 @@ def validate_build(cmake: str, shader: str, package: str) -> None:
     entries = listing[1].split()
     for output in OUTPUTS:
         require(entries.count(output) == 1, f"shader output must be unique: {output}")
-    for output, owner in zip(OUTPUTS[1:], (1, 2)):
+    for output, owner in zip(OUTPUTS[1:], (1, 2, 3, 4)):
         branch = re.search(r'(?:if|elseif)\(SHADER_FILE STREQUAL "' + re.escape(output) +
                            r'"\)(.*?)(?=\s*(?:elseif|endif)\()', cmake, re.S)
         require(branch is not None, f"missing source mapping for {output}")
@@ -314,7 +416,7 @@ class ChemistryPartitionContracts(unittest.TestCase):
         cls.renderer = (ROOT / "src/vulkan_renderer.cpp").read_text(encoding="utf-8")
         cls.cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
         cls.package = (ROOT / "tools/package_release.py").read_text(encoding="utf-8")
-        cls.preprocessed = {owner: preprocess(cls.shader, owner) for owner in range(4)}
+        cls.preprocessed = {owner: preprocess(cls.shader, owner) for owner in range(REFERENCE + 1)}
 
     def test_immutable_guard_precedes_every_scratch_or_counter_path(self) -> None:
         for owner, source in self.preprocessed.items():
@@ -328,7 +430,7 @@ class ChemistryPartitionContracts(unittest.TestCase):
     def test_real_preprocessor_retains_each_family_in_its_own_pass(self) -> None:
         for owner, source in self.preprocessed.items():
             with self.subTest(owner=owner):
-                validate_families(source, owner, self.preprocessed[3])
+                validate_families(source, owner, self.preprocessed[REFERENCE])
 
     def test_source_specialization_is_immutable_and_reference_is_unsplit(self) -> None:
         self.assertIn('#include "chemistry_ownership.glsl"', self.shader)
@@ -339,10 +441,13 @@ class ChemistryPartitionContracts(unittest.TestCase):
         default = preprocess(self.shader, None)
         self.assertEqual(compact(body(default)), compact(body(self.preprocessed[0])))
 
-    def test_renderer_uses_three_owners_before_one_correction_copyback(self) -> None:
+    def test_renderer_uses_five_owners_before_one_correction_copyback(self) -> None:
         validate_renderer(self.renderer)
 
-    def test_build_deployment_and_package_share_all_three_outputs(self) -> None:
+    def test_profile_markers_cover_each_owner_without_normal_runtime_commands(self) -> None:
+        validate_profile(self.renderer)
+
+    def test_build_deployment_and_package_share_all_five_outputs(self) -> None:
         validate_build(self.cmake, self.shader, self.package)
 
     def test_negative_late_guard_is_rejected(self) -> None:
@@ -360,13 +465,37 @@ class ChemistryPartitionContracts(unittest.TestCase):
     def test_negative_nonbee_guard_cannot_swallow_bee_lifecycle(self) -> None:
         mutant = preprocess(wrap_bee_guard(self.shader), 1)
         with self.assertRaisesRegex(AssertionError, "Bees main rule"):
-            validate_families(mutant, 1, self.preprocessed[3])
+            validate_families(mutant, 1, self.preprocessed[REFERENCE])
+
+    def test_negative_destination_and_phase_guards_cannot_exclude_their_own_rules(self) -> None:
+        for owner, wrong_owner, family in ((3, 4, "destinations"), (4, 3, "phase carrier")):
+            with self.subTest(owner=owner):
+                conditional = f"#if {OWNER} == {owner} || {OWNER} == {REFERENCE}"
+                replacement = f"#if {OWNER} == {wrong_owner} || {OWNER} == {REFERENCE}"
+                self.assertEqual(self.shader.count(conditional), 1)
+                mutant = preprocess(self.shader.replace(conditional, replacement, 1), owner)
+                with self.assertRaisesRegex(AssertionError, family + " main rule"):
+                    validate_families(mutant, owner, self.preprocessed[REFERENCE])
+
+    def test_negative_own_source_predicate_loss_cannot_hide_behind_family_sentinels(self) -> None:
+        for owner, material in ((3, "MAT_EMPTY"), (4, "MAT_CLOUD")):
+            with self.subTest(owner=owner):
+                old = f"else if (SOURCE_IS({material})) {{"
+                mutant = preprocess(edit_main(self.shader, old, "else if (false) {"), owner)
+                with self.assertRaisesRegex(AssertionError, "own-material rule was excluded"):
+                    validate_families(mutant, owner, self.preprocessed[REFERENCE])
 
     def test_negative_missing_common_hazard_is_rejected(self) -> None:
         call = "applyStructuralHazards(p, source, result, nearWater, nearSaltwater, nearLava, nearFire, nearAcid);"
         mutant = preprocess(edit_main(self.shader, call, ""), 2)
         with self.assertRaisesRegex(AssertionError, "common rule was excluded"):
-            validate_families(mutant, 2, self.preprocessed[3])
+            validate_families(mutant, 2, self.preprocessed[REFERENCE])
+
+    def test_negative_normal_runtime_profile_work_is_rejected(self) -> None:
+        mutant = self.renderer.replace("if constexpr (Profile)", "if (true)", 1)
+        self.assertNotEqual(mutant, self.renderer)
+        with self.assertRaisesRegex(AssertionError, "compile-time profile guard"):
+            validate_profile(mutant)
 
     def test_negative_result_guard_and_duplicate_host_owner_are_rejected(self) -> None:
         mutant = re.sub(r"chemistrySourceOwner\s*\(\s*source\s*\.\s*material\s*\)",
