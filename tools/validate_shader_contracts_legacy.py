@@ -1018,7 +1018,7 @@ def main() -> int:
     for token in ("if (!tileInside(p)) continue;", "supportedStructural > 0u", "STAT_STRUCTURAL_COLLAPSES", "STAT_GAS_EDGE_ACTIVE_TILES"):
         if token not in tiles: errors.append(f"structure/atmosphere regression contract missing {token!r}")
     if re.search(r"for \(int x = 0; x < int\(TILE_SIZE\); \+\+x\) \{\s*for \(int x = 0;", tiles): errors.append("tile support sampling contains a duplicated nested x loop")
-    for token in ("activeStructuralProcess(source.material)", "machineAcceptsResource(resourcePosition, controller, resourceCell)", "machineInputRank", "currentInventory", "machineWaterFlowNear", "MAT_SLUICE_BOX", "MAT_SMELTER", "MAT_ASSEMBLER", "ventEmissionKind", "pressure > 20u ? pressure - 20u : 0u", "pressure > 6u ? pressure - 6u : 0u", "STAT_MACHINE_INPUTS", "STAT_MACHINE_OUTPUTS", "STAT_VOLCANO_LAVA_OUTPUTS", "STAT_VOLCANO_GAS_OUTPUTS"):
+    for token in ("activeStructuralProcess(source.material)", "machineAcceptsResource(p, acceptingMachine, source)", "machineInputCreditIncrement(incoming[slot], capacity[slot])", "machineInputRank", "currentInventory", "machineWaterFlowNear", "MAT_SLUICE_BOX", "MAT_SMELTER", "MAT_ASSEMBLER", "ventEmissionKind", "pressure > 20u ? pressure - 20u : 0u", "pressure > 6u ? pressure - 6u : 0u", "STAT_MACHINE_INPUTS", "STAT_MACHINE_OUTPUTS", "STAT_VOLCANO_LAVA_OUTPUTS", "STAT_VOLCANO_GAS_OUTPUTS"):
         if token not in chemistry: errors.append(f"industry/volcano regression contract missing {token!r}")
     for token in ("Functional industrial line", "material = MAT_CONVEYOR", "material = MAT_SLUICE_BOX", "material = MAT_WATER"):
         if token not in reset: errors.append(f"engineering industry scene contract missing {token!r}")

@@ -319,6 +319,16 @@ class MachineryEditsContract(unittest.TestCase):
                     self.assertEqual(endpoint_active(x, y, dispatch), invoked,
                                      (dispatch, x, y))
 
+    def test_recipient_credit_keeps_source_capacity_without_nested_rank(self):
+        recipient = body(CHEMISTRY, "incomingMachineCounts")
+        self.assertIn("uvec4(15u) - machineInventory(at(controller))", recipient)
+        self.assertIn("nearestAcceptingMachine(resourcePosition, resourceCell, 6)", recipient)
+        self.assertIn("machineInputCreditIncrement(incoming[slot], capacity[slot])", recipient)
+        self.assertNotIn("machineAcceptsResource(", recipient)
+        self.assertNotIn("machineInputRank(", recipient)
+        self.assertIn("machineInputRank(resourcePosition, controller, machine.material, slot) < capacity",
+                      body(CHEMISTRY, "machineAcceptsResource"))
+
     def test_both_endpoints_and_rank_exclude_unprocessed_neighbors(self):
         for name, snippets in {
             "nearestAcceptingMachine": ("!machineEndpointActive(resourcePosition)",
