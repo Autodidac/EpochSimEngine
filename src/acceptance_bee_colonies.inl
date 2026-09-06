@@ -256,14 +256,17 @@
             upload_scene_cells(birth_seed);
             simulation_step = 4096u;
             run_acceptance_tile_pass(0, 2, true);
-            const SimulationPush birth_push{
-                .width = config.grid_width, .height = config.grid_height,
-                .step = simulation_step, .seed = random_seed,
-                .active_section_x = 0, .active_section_y = 2, .active_mode = 1u};
-            constexpr ActiveCellDispatch birth_scope{0u, 720u, 640u, 360u};
-            immediate_submit([&](const VkCommandBuffer command_buffer) {
-                record_bee_birth_pass(command_buffer, birth_push, birth_scope);
-            });
+            const auto submit_birth = [&] {
+                immediate_submit([&](const VkCommandBuffer command_buffer) {
+                    const SimulationPush birth_push{
+                        .width = config.grid_width, .height = config.grid_height,
+                        .step = simulation_step, .seed = random_seed,
+                        .active_section_x = 0, .active_section_y = 2, .active_mode = 1u};
+                    constexpr ActiveCellDispatch birth_scope{0u, 720u, 640u, 360u};
+                    record_bee_birth_pass(command_buffer, birth_push, birth_scope);
+                });
+            };
+            submit_birth();
             const auto born = download_scene_cells();
             const SceneCell expected_newborn{material_id(Material::bee),
                 fix29_bee_pack_age((homes[0].x & 7u) | ((homes[0].y & 7u) << 3u),
@@ -299,9 +302,7 @@
             // No fresh Ash owner exists after the exact pair, and each colony
             // now owns60 Bees. A repeated opportunity must not create a121st.
             run_acceptance_tile_pass(0, 2, true);
-            immediate_submit([&](const VkCommandBuffer command_buffer) {
-                record_bee_birth_pass(command_buffer, birth_push, birth_scope);
-            });
+            submit_birth();
             const auto capped = download_scene_cells();
             exact_cap = capped.size() == born.size() &&
                 std::memcmp(capped.data(), born.data(), born.size() * sizeof(SceneCell)) == 0 &&
@@ -399,6 +400,14 @@
             value ^= value >> 15u; value *= 0x846ca68bu;
             return value ^ (value >> 16u);
         };
+        const auto inverse_hash32 = [](std::uint32_t value) {
+            // Both odd multipliers are invertible modulo2^32. Reverse the
+            // xor-shifts too, so the fixture has no probabilistic age search.
+            value ^= value >> 16u; value *= 0x43021123u;
+            value ^= (value >> 15u) ^ (value >> 30u);
+            value *= 0x1d69e2a5u;
+            return value ^ (value >> 16u);
+        };
         const auto force_suffocation_age = [&](SceneCell& queen, const BeeHome home,
                                                const bool old_age,
                                                const std::uint32_t minimum_age = 0u) {
@@ -412,11 +421,16 @@
             return false;
         };
         struct VentCase final { const char* name; std::uint32_t mode; };
-        constexpr std::array<VentCase, 11u> cases{{
+        constexpr std::array<VentCase, 18u> cases{{
             {"open", 0u}, {"sealed", 1u}, {"flooded", 2u}, {"depleted", 3u},
             {"heat-hazard", 4u}, {"senescence", 5u}, {"clipped-mouth", 6u},
             {"machine-vent", 7u}, {"structural-donor", 8u},
             {"old-high-stress", 9u}, {"live-thermal-phase", 10u},
+            {"own-bee-mouth-neighbor", 11u}, {"own-bee-open-exit", 12u},
+            {"own-bee-coincident-breath-two-debits", 13u},
+            {"own-bee-coincident-breath-insufficient-oxygen", 14u},
+            {"foreign-bee-mouth-neighbor", 15u}, {"ant-mouth-neighbor", 16u},
+            {"own-bee-occupies-mouth", 17u},
         }};
         bool positive = false;
         bool negatives = true;
@@ -441,7 +455,71 @@
                 probe.mode == 9u ? 36001u : 0u);
             seed[mouth_index] = SceneCell{material_id(Material::atmosphere), 19u, 23,
                 0x40000000u | (material_id(Material::carbon_dioxide) << 8u) | (3u << 15u) |
-                    (probe.mode == 3u ? 1u : 2u)};
+                    (probe.mode == 3u ? 1u : (probe.mode == 13u ? 3u : 2u))};
+            bool neighbor_ready = true;
+            bool donor_event_ready = true;
+            std::size_t neighbor_index = seed.size();
+            std::uint32_t neighbor_bee_roll = 0u;
+            std::uint32_t neighbor_life_roll = 0u;
+            if (probe.mode >= 11u) {
+                // Move one real slot owner, rather than adding a sixty-first
+                // Bee. The displaced Empty/Air cell keeps its exact owner at
+                // the vacated formation site. Chemistry alone must not move
+                // this explicitly marked newborn or rewrite its home/slot.
+                constexpr std::uint32_t transit_slot = 54u;
+                const auto offset = fix29_bee_formation_offset(transit_slot);
+                const auto formation_index = index_of(
+                    static_cast<std::uint32_t>(static_cast<std::int32_t>(home.x) + offset.x),
+                    static_cast<std::uint32_t>(static_cast<std::int32_t>(home.y) + offset.y));
+                neighbor_index = probe.mode == 12u ? index_of(home.x + 9u, home.y + 1u) :
+                    (probe.mode == 17u ? mouth_index : index_of(home.x + 11u, home.y - 1u));
+                auto transit = seed[formation_index];
+                neighbor_ready = transit.material == material_id(Material::bee) &&
+                    bee_slot_from_metadata(transit.aux, config.grid_width, config.grid_height) == transit_slot &&
+                    (seed[neighbor_index].material == material_id(Material::empty) ||
+                     seed[neighbor_index].material == material_id(Material::atmosphere));
+                const BeeHome encoded_home = probe.mode == 15u ? BeeHome{304u, 920u} : home;
+                transit.aux = pack_bee_home_metadata(
+                    (transit.aux | swarm_bit | fed_bit) & ~(role_bits | fill_aux_moved),
+                    encoded_home, transit_slot, config.grid_width, config.grid_height);
+                const bool global_home = bee_uses_global_home(transit.aux,
+                    config.grid_width, config.grid_height);
+                const auto home_timer = global_home
+                    ? 256u | (encoded_home.x & 15u) | ((encoded_home.y & 15u) << 4u)
+                    : (encoded_home.x & 7u) | ((encoded_home.y & 7u) << 3u);
+                transit.age = fix29_bee_pack_age(home_timer, fix29_bee_target_newborn);
+                if (probe.mode == 16u)
+                    transit = SceneCell{material_id(Material::ant), 5u, 20, 1u};
+                seed[formation_index] = seed[neighbor_index];
+                seed[neighbor_index] = transit;
+
+                // Force the donor's independent legacy event without changing
+                // the Queen's suffocation hash. Count is exactly one for the
+                // neighboring Bee cases; the open-exit Bee is two cells away.
+                // A coincident event retains the legacy proposal's age, while
+                // an idle donor advances age normally before correction.
+                if (probe.mode != 17u) {
+                    const bool competing = probe.mode == 13u || probe.mode == 14u;
+                    // upload_scene_cells resets the actual step to zero; use
+                    // that current value, not the discarded requested37. A
+                    // randomValue of0xb33a71 gives beeRoll=hash32(0)=0;
+                    // randomValue0 gives both rolls>=8. Derive source age by
+                    // inversion for any current seed, then verify the forward
+                    // expression independently before accepting the fixture.
+                    const auto desired_random = competing ? 0xb33a71u : 0u;
+                    const auto donor_hash_input = (home.x + 11u) * 73856093u ^
+                        home.y * 19349663u ^ simulation_step * 83492791u ^
+                        random_seed ^ seed[mouth_index].aux;
+                    seed[mouth_index].age = donor_hash_input ^ inverse_hash32(desired_random);
+                    const auto actual_random = hash32(donor_hash_input ^ seed[mouth_index].age);
+                    neighbor_bee_roll = hash32(actual_random ^ 0xb33a71u) & 0x0003ffffu;
+                    neighbor_life_roll = hash32(actual_random ^ 0x11fe21u) & 0x0000ffffu;
+                    donor_event_ready = actual_random == desired_random &&
+                        (competing ? neighbor_bee_roll == 0u : neighbor_bee_roll >= 8u) &&
+                        neighbor_life_roll >= 8u;
+                    neighbor_ready = neighbor_ready && donor_event_ready;
+                }
+            }
             if (probe.mode == 1u)
                 seed[index_of(home.x + 6u, home.y)] =
                     SceneCell{material_id(Material::stone), 0u, 20, fill_aux_structural | fill_aux_supported};
@@ -468,6 +546,9 @@
             const auto pollen_before = count_material(seed, Material::pollen);
             const auto honey_before = count_material(seed, Material::honey);
             const auto donor_before = seed[mouth_index];
+            const auto neighbor_before = neighbor_index < seed.size() ? seed[neighbor_index] : SceneCell{};
+            const auto bee_count_before = probe.mode >= 11u ? count_material(seed, Material::bee) : 0u;
+            const auto ant_count_before = probe.mode >= 11u ? count_material(seed, Material::ant) : 0u;
             upload_scene_cells(seed);
             run_acceptance_tile_pass(0, 2, true);
             run_acceptance_chemistry_pass(0, 2, true);
@@ -480,7 +561,59 @@
             const bool intact = canonical_fix29_hive_signature_at(actual, config.grid_width,
                 config.grid_height, home.x, home.y);
             bool passed = false;
-            if (probe.mode == 0u || probe.mode == 10u) {
+            if (probe.mode >= 11u) {
+                const bool rescued = probe.mode >= 11u && probe.mode <= 13u;
+                const bool competing = probe.mode == 13u || probe.mode == 14u;
+                auto expected_neighbor = neighbor_before;
+                if (expected_neighbor.material == material_id(Material::bee))
+                    expected_neighbor.aux |= fill_aux_moved;
+                else ++expected_neighbor.age;
+                const bool neighbor_exact = std::memcmp(&actual[neighbor_index],
+                    &expected_neighbor, sizeof(SceneCell)) == 0 &&
+                    count_material(actual, Material::bee) == bee_count_before &&
+                    count_material(actual, Material::ant) == ant_count_before;
+                auto expected_donor = donor_before;
+                std::uint32_t expected_debits = 0u;
+                if (probe.mode == 17u) {
+                    expected_donor = expected_neighbor; // No gas donor exists here.
+                } else {
+                    expected_donor.age += competing ? 0u : 1u;
+                    expected_debits = rescued ? (competing ? 2u : 1u) : (competing ? 1u : 0u);
+                    const auto oxygen = donor_before.aux & 255u;
+                    const auto carbon = (donor_before.aux >> 15u) & 255u;
+                    expected_donor.aux = 0x40000000u |
+                        (material_id(Material::carbon_dioxide) << 8u) |
+                        ((carbon + expected_debits) << 15u) | (oxygen - expected_debits);
+                }
+                const bool donor_exact = std::memcmp(&donor_after, &expected_donor,
+                    sizeof(SceneCell)) == 0;
+                bool queen_exact = false;
+                if (rescued) {
+                    const SceneCell expected_queen{material_id(Material::queen_bee),
+                        queen_before.age + 1u, 20, (queen_before.aux & ~255u) | 15u};
+                    queen_exact = intact && std::memcmp(&queen_after, &expected_queen,
+                        sizeof(SceneCell)) == 0;
+                } else {
+                    const SceneCell expected_queen{material_id(Material::waste), 0u, 20,
+                        (hash32(material_id(Material::waste) ^ random_seed ^ simulation_step) &
+                            fill_aux_random_mask) | 255u};
+                    queen_exact = !intact && std::memcmp(&queen_after, &expected_queen,
+                        sizeof(SceneCell)) == 0 && count_material(actual, Material::queen_bee) == 0u;
+                }
+                passed = clicked && aged && neighbor_ready && food && neighbor_exact && donor_exact &&
+                    queen_exact && counters[0] == 0u && counters[1] == 0u &&
+                    counters[2] == (rescued ? 0u : 1u) && counters[3] == 0u &&
+                    counters[4] == 0u && counters[7] == 0u;
+                append("beehive_queen_ventilation_" + std::string{probe.name}, passed,
+                    "forced Queen age=" + std::to_string(queen_before.age) +
+                    " donor age=" + std::to_string(donor_before.age) +
+                    " donor_event_ready=" + std::to_string(donor_event_ready) +
+                    " Bee/life rolls=" + std::to_string(neighbor_bee_roll) + "/" +
+                    std::to_string(neighbor_life_roll) + " expected_debits=" +
+                    std::to_string(expected_debits) + " exact Queen/donor/neighbor=" +
+                    std::to_string(queen_exact) + "/" + std::to_string(donor_exact) + "/" +
+                    std::to_string(neighbor_exact) + " converted=" + std::to_string(counters[2]));
+            } else if (probe.mode == 0u || probe.mode == 10u) {
                 const SceneCell expected_queen{material_id(Material::queen_bee),
                     queen_before.age + 1u, probe.mode == 10u ? 121 : 20,
                     (queen_before.aux & ~255u) | 15u};
@@ -660,8 +793,24 @@
                 const auto section_y = static_cast<std::int32_t>(edge.home.y / 360u);
                 for (std::uint32_t tick = 0u; tick < 96u; ++tick) {
                     run_acceptance_focused_tick(section_x, section_y, true, true);
-                    if (tick == 0u)
-                        lifecycle_detail += queen_diagnostic("tick1", download_scene_cells());
+                    if (tick == 0u || (edge.home.x == 20u && tick == 1u)) {
+                        const auto early = download_scene_cells();
+                        const auto label = "tick" + std::to_string(tick + 1u);
+                        const auto diagnostic = queen_diagnostic(label.c_str(), early);
+                        lifecycle_detail += diagnostic;
+                        if (edge.home.x == 20u) {
+                            std::string tunnel;
+                            for (std::int32_t y = -1; y <= 1; ++y) {
+                                const auto& cell = early[index_of(edge.home.x + 11u,
+                                    static_cast<std::uint32_t>(
+                                        static_cast<std::int32_t>(edge.home.y) + y))];
+                                tunnel += " mouth_row" + std::to_string(y) + "=" +
+                                    std::to_string(cell.material) + "/" +
+                                    std::to_string(cell.aux);
+                            }
+                            startup_log("hive_edge_trace" + diagnostic + tunnel);
+                        }
+                    }
                 }
                 const auto actual = download_scene_cells();
                 lifecycle_detail += queen_diagnostic("tick96", actual);

@@ -187,14 +187,14 @@
         laser_expected_actor.hit_y = static_cast<std::int32_t>(far_y);
         laser_expected_actor.shot_timer = 4u;
         const auto fire_membership_laser = [&] {
-            const ActorPush laser_push{
-                .width = config.grid_width, .height = config.grid_height,
-                .step = simulation_step, .seed = random_seed,
-                .aim_x = static_cast<std::int32_t>(far_x),
-                .aim_y = static_cast<std::int32_t>(far_y), .fire = 1u,
-                .scene = static_cast<std::uint32_t>(world_scene),
-                .simulate = 0u, .active_mode = 0u};
             immediate_submit([&](const VkCommandBuffer command_buffer) {
+                const ActorPush laser_push{
+                    .width = config.grid_width, .height = config.grid_height,
+                    .step = simulation_step, .seed = random_seed,
+                    .aim_x = static_cast<std::int32_t>(far_x),
+                    .aim_y = static_cast<std::int32_t>(far_y), .fire = 1u,
+                    .scene = static_cast<std::uint32_t>(world_scene),
+                    .simulate = 0u, .active_mode = 0u};
                 bind_compute(command_buffer, actor_pipeline, current_set);
                 vkCmdPushConstants(command_buffer, compute_pipeline_layout,
                     VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(laser_push), &laser_push);

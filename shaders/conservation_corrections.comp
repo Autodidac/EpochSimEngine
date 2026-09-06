@@ -5,6 +5,7 @@
 #include "chunks.glsl"
 #include "bee_swarm.glsl"
 #include "beehive.glsl"
+#include "queen_ventilation.glsl"
 #include "conservation.glsl"
 #include "rain_membership.glsl"
 
@@ -13,6 +14,7 @@ layout(std430, binding = 0) readonly buffer CurrentCells { Cell cells[]; };
 layout(std430, binding = 1) buffer NextCells { Cell nextCells[]; };
 layout(std430, binding = 2) readonly buffer Sunlight { uint light[]; };
 layout(std430, binding = 4) readonly buffer Tiles { TileState tiles[]; };
+layout(std430, binding = 7) readonly buffer Chunks { ChunkState chunks[]; };
 
 const uint CORRECTION_BEE_TIMER_BITS = 14u;
 const uint CORRECTION_BEE_TIMER_MAX = 0x3fffu;
@@ -322,6 +324,27 @@ bool queenVentOpenMedium(Cell cell) {
     return cell.material == MAT_EMPTY || cell.material == MAT_ATMOSPHERE;
 }
 
+bool queenVentChemistryAwake(ivec2 position) {
+    ivec2 center = ivec2(chunkCoordinate(position));
+    ivec2 limit = ivec2(int(chunkColumns(pc.width)), int(chunkRows(pc.height)));
+    for (int y = -1; y <= 1; ++y)
+        for (int x = -1; x <= 1; ++x) {
+            ivec2 candidate = center + ivec2(x, y);
+            if (any(lessThan(candidate, ivec2(0))) ||
+                any(greaterThanEqual(candidate, limit))) continue;
+            ChunkState state = chunks[uint(candidate.y) * uint(limit.x) + uint(candidate.x)];
+            if (!chunkHas(state, CHUNK_SLEEPING) || chunkHas(state, CHUNK_DIRTY)) return true;
+        }
+    return false;
+}
+
+bool queenVentHomeBee(Cell cell, ivec2 queen) {
+    return cell.material == MAT_BEE &&
+        (cell.aux & (BEE_AUX_SWARM | BEE_AUX_QUEEN | BEE_AUX_MIGRATING)) == BEE_AUX_SWARM &&
+        beeFormationSlotFromAux(cell.aux, pc.width, pc.height) < 60u &&
+        beeOwnsHome(cell.aux, queen, pc.width, pc.height);
+}
+
 bool queenVentCanonicalBody(ivec2 queen) {
     if (!inside(queen - ivec2(10)) || !inside(queen + ivec2(10))) return false;
     ivec2 entropyQueen = queen;
@@ -337,21 +360,21 @@ bool queenVentCanonicalBody(ivec2 queen) {
             if (expected == MATERIAL_COUNT || expected == MAT_QUEEN_BEE) continue;
             Cell cell = sourceAt(queen + offset);
             if (expected == MAT_EMPTY) {
-                bool homeBee = cell.material == MAT_BEE &&
-                    (cell.aux & BEE_AUX_SWARM) != 0u &&
-                    beeOwnsHome(cell.aux, queen, pc.width, pc.height);
+                bool homeBee = queenVentHomeBee(cell, queen);
                 if (!queenVentOpenMedium(cell) && !homeBee) return false;
             } else if (cell.material != expected ||
                 (cell.aux & (AUX_STRUCTURAL | AUX_SUPPORTED)) !=
                     (AUX_STRUCTURAL | AUX_SUPPORTED)) return false;
         }
     }
-    // All three physical exit rows must remain open. Besides refusing a
-    // sealed/flooded vent, this excludes a competing machine's vent controller
+    // Own returning/newborn Bees may cross the open exit without sealing it.
+    // Besides refusing a sealed/flooded vent, this excludes a machine controller
     // at queen+(6,1), not merely the centerline controller at queen+(6,0).
     for (int x = 1; x <= 10; ++x)
-        for (int y = -1; y <= 1; ++y)
-            if (!queenVentOpenMedium(sourceAt(queen + ivec2(x, y)))) return false;
+        for (int y = -1; y <= 1; ++y) {
+            Cell cell = sourceAt(queen + ivec2(x, y));
+            if (!queenVentOpenMedium(cell) && !queenVentHomeBee(cell, queen)) return false;
+        }
     return true;
 }
 
@@ -371,6 +394,9 @@ bool queenVentTransaction(ivec2 queen, out Cell restoredQueen, out Cell breathed
     // suffocation opportunity; real senescence remains an unfunded death.
     if ((roll & 1023u) != 0u ||
         (owner.age > 900000u && (roll & 16383u) == 0u)) return false;
+    // Mirror the immutable nonstructural chemistry sleep gate at both ends.
+    // Even supplied stale metadata must not admit just one side of a breath.
+    if (!queenVentChemistryAwake(queen) || !queenVentChemistryAwake(mouth)) return false;
     for (int y = -2; y <= 2; ++y)
         for (int x = -2; x <= 2; ++x) {
             if (x * x + y * y > 4) continue;
@@ -379,15 +405,28 @@ bool queenVentTransaction(ivec2 queen, out Cell restoredQueen, out Cell breathed
         }
     Cell donor = sourceAt(mouth);
     if (donor.material != MAT_ATMOSPHERE || isStructural(donor)) return false;
-    breathed = donor;
-    if (!respirePackedMedium(breathed)) return false;
-    // Exclude competing respiration, photosynthesis, aeration, combustion,
-    // and synthesis. The complete exit/body check excludes remote controller
+    // Exclude unrelated respiration, photosynthesis, aeration, combustion,
+    // and synthesis; admitted home-Bee respiration is budgeted below.
+    // The complete exit/body check excludes remote controller
     // input to this same mouth. Its chemistry proposal may change age/heat,
     // but cannot independently spend or replace its pressure/component owner.
-    for (uint i = 0u; i < 8u; ++i)
-        if (!queenVentOpenMedium(sourceAt(mouth + correctionNeighborOffsets[i]))) return false;
+    uint nearbyHomeBees = 0u;
+    for (uint i = 0u; i < 8u; ++i) {
+        Cell neighbor = sourceAt(mouth + correctionNeighborOffsets[i]);
+        if (queenVentHomeBee(neighbor, queen)) ++nearbyHomeBees;
+        else if (!queenVentOpenMedium(neighbor)) return false;
+    }
     if (!queenVentCanonicalBody(queen)) return false;
+
+    // A legitimate transit Bee does not occlude the whole three-row entrance,
+    // but its ordinary gas-side respiration still owns its Oxygen. Reserve
+    // that exact legacy breath before the Queen's additional breath. Failure
+    // on either endpoint leaves the original chemistry proposal untouched.
+    breathed = donor;
+    uint breaths = queenVentRequiredBreaths(nearbyHomeBees,
+        cellHash(mouth, donor.age ^ donor.aux));
+    for (uint breath = 0u; breath < breaths; ++breath)
+        if (!respirePackedMedium(breathed)) return false;
 
     restoredQueen = advancedSource(owner);
     int neighbors = (sourceAt(queen + ivec2(1, 0)).temperature +
