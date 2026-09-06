@@ -1,5 +1,10 @@
 # EpochSimEngine Mission Cache
 
+### 2026-09-06 reproducible release archive tooling
+
+- Add a bounded release packager and17 temporary fixture contracts. Author run17/17 (22.881s) and independent Windows Python3.12 run17/17 (27.097s, exit0, no skips) pass. Reviewed file SHA-256: `tools/package_release.py` `98db8d10e30aa51bace31c9e3b38e609d090b74bbcfa928a047b4514b718f078`; `tools/test_package_release.py` `7516cf2f7d69a3c7dace0187257d49b60a824ab6987d9aad968362f859b67885`. No real release archives or Site mutations are part of this source stage.
+- The tool admits exact86-file Windows and83-file Linux installs, including17 shaders/45 headers/8 CMake configurations. Four fresh archives, four normalized sidecars and one manifest are exclusive-create only. Committed source uses Git archive with exact commit/version, ignored build data excluded, replacement/routing/local-attribute overrides rejected; Linux modes/ownership/time are normalized. Guards cover dirty/untracked source, partial outputs, links/reparse points, duplicate/casefold entries, traversal and Windows namespace/alias containment. These are archive-integrity tests, not native build/runtime provenance. Final native gates and independent installed hashes remain mandatory; all123 active missions and criteria remain unchanged.
+
 ### 2026-09-06 corrected authored hive passes installed Windows gates
 
 - Corrected map-authored shell ownership preserves the accepted photographed geometry and now passes Windows installed production Vulkan163/163. Both authored homes have193 supported structural shell cells, zero shell-ownership mismatches and60 unique live Bee owners immediately after reset and after120 ticks. Report `build/evidence/v2529-hive-reset-installed-windows-runtime.json` SHA-256 `5703bf3186269fd102536cf48634e8a87e93758f119d8d76e279cfb2c5345d5e`. Exact installed executable SHA-256 `a360d66a69f4aa9773e113af0b2dff02fd64bea2e37a83c159f13fb1fe71d9d7`.
