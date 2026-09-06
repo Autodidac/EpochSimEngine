@@ -15,6 +15,7 @@
 #include "sandhybrid/world_save.hpp"
 #include "sandhybrid/ui_text_data.hpp"
 #include "vulkan_barriers.hpp"
+#include "vulkan_wait_policy.hpp"
 
 #include <vulkan/vulkan.h>
 
@@ -4378,15 +4379,17 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     const bool present_frame,
                     const bool force_debug_sample = false) {
         auto& frame = frames[frame_index];
-        const std::uint64_t gpu_timeout_ns = cpu_physical_device &&
-            !config.interactive_acceptance_report.empty()
-            ? 60'000'000'000ull : 5'000'000'000ull;
+        // Software Vulkan can compile a graphics variant on first use. Device
+        // policy, not a diagnostic command-line switch, owns this bounded wait.
+        const std::uint64_t gpu_timeout_ns = presentation_wait_timeout_ns(cpu_physical_device);
+        const auto gpu_timeout_seconds = std::to_string(gpu_timeout_ns / 1'000'000'000ull);
         const auto fence_result = vkWaitForFences(device, 1, &frame.fence, VK_TRUE, gpu_timeout_ns);
         if (fence_result == VK_TIMEOUT) {
             gpu_stalled = true;
             throw std::runtime_error(
-                "GPU fence timed out after 5 seconds. The first simulation submission stalled; "
-                "update the GPU driver and inspect the last SandHybrid startup line.");
+                "GPU frame fence timed out after " + gpu_timeout_seconds +
+                " seconds waiting for a previously submitted frame. Inspect the "
+                "last SandHybrid startup line and the Vulkan driver status.");
         }
         check_vk(fence_result, "vkWaitForFences");
 
@@ -4446,7 +4449,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                                                    frame.image_available, VK_NULL_HANDLE,
                                                    &image_index);
             if (acquire_result == VK_TIMEOUT || acquire_result == VK_NOT_READY) {
-                throw std::runtime_error("Timed out acquiring a swapchain image after 5 seconds.");
+                throw std::runtime_error("Timed out acquiring a swapchain image after " +
+                    gpu_timeout_seconds + " seconds.");
             }
             if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) return false;
             if (acquire_result != VK_SUCCESS && acquire_result != VK_SUBOPTIMAL_KHR) {
@@ -4458,7 +4462,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     device, 1, &image_fences[image_index], VK_TRUE, gpu_timeout_ns);
                 if (image_fence_result == VK_TIMEOUT) {
                     gpu_stalled = true;
-                    throw std::runtime_error("Swapchain image fence timed out after 5 seconds.");
+                    throw std::runtime_error("Swapchain image fence timed out after " +
+                        gpu_timeout_seconds + " seconds.");
                 }
                 check_vk(image_fence_result, "vkWaitForFences(swapchain image)");
             }
@@ -4618,7 +4623,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     device, 1u, &frame.fence, VK_TRUE, gpu_timeout_ns);
                 if (capture_result == VK_TIMEOUT) {
                     gpu_stalled = true;
-                    throw std::runtime_error("Frame capture fence timed out.");
+                    throw std::runtime_error("Frame capture fence timed out after " +
+                        gpu_timeout_seconds + " seconds waiting for rendering and capture.");
                 }
                 check_vk(capture_result, "vkWaitForFences(frame capture)");
                 write_frame_capture(*pending_frame_capture);
@@ -7410,6 +7416,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                     .actor = lifecycle_saved_actor,
                 };
                 upload_actor_state(lifecycle_saved_actor);
+
+                // Exercise first-use graphics/capture before the long ecology
+                // cycles. The actor is now initialized, and each later cycle
+                // uploads its independent canonical seed before simulation.
+                #include "acceptance_bee_visual.inl"
                 const WorldSaveMetadata lifecycle_save_metadata{
                     .world_size = config.world_size,
                     .width = config.grid_width,
@@ -8033,7 +8044,6 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
 
             #include "acceptance_bee_colonies.inl"
             #include "acceptance_bee_membership.inl"
-            #include "acceptance_bee_visual.inl"
             #include "acceptance_paint_columns.inl"
             #include "acceptance_machinery_edits.inl"
 

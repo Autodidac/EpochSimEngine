@@ -1,4 +1,5 @@
-// Included after the colony and membership fixtures. These are real presented
+// Included after deterministic actor setup, before long ecology cycles.
+// These are real presented
 // frame captures for human visual review, not an automatic visual-acceptance
 // claim. Three paused frames must leave canonical cells, actor and clocks alone.
 {

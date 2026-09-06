@@ -449,6 +449,11 @@ if(BUILD_TESTING)
        COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_designer_clear_label.py)
         add_test(NAME epochsimengine_machinery_edits_contract
        COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_machinery_edits.py)
+        add_test(NAME epochsimengine_presentation_wait_wiring_contract
+            COMMAND ${Python3_EXECUTABLE} -B
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_presentation_wait_policy.py)
+        set_tests_properties(epochsimengine_presentation_wait_wiring_contract
+            PROPERTIES TIMEOUT 10 LABELS "source;no-gpu")
         if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
             add_test(NAME epochsimengine_chemistry_partition_contract
                 COMMAND ${Python3_EXECUTABLE} -B
@@ -488,6 +493,16 @@ if(BUILD_TESTING)
     endif()
 
     add_executable(sandhybrid_input_routing_contract tests/input_routing_contract.cpp)
+    add_executable(epochsimengine_presentation_wait_policy_contract
+        tests/presentation_wait_policy_contract.cpp)
+    target_include_directories(epochsimengine_presentation_wait_policy_contract PRIVATE src)
+    target_compile_features(epochsimengine_presentation_wait_policy_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(epochsimengine_presentation_wait_policy_contract)
+    add_test(NAME epochsimengine_presentation_wait_policy_contract
+        COMMAND epochsimengine_presentation_wait_policy_contract)
+    set_tests_properties(epochsimengine_presentation_wait_policy_contract
+        PROPERTIES TIMEOUT 10 LABELS "cpu;no-gpu")
+
     add_executable(epochsimengine_paint_schedule_contract tests/paint_schedule_contract.cpp)
     target_compile_features(epochsimengine_paint_schedule_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(epochsimengine_paint_schedule_contract)

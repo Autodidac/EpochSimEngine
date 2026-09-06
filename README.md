@@ -49,6 +49,12 @@ VCPKG_ROOT="$HOME/vcpkg" ./build_linux.sh Release
 ./run_linux.sh Release
 ```
 
+The demo checks the selected Vulkan device's limits before allocating a World.
+On the current 128-MiB-limit llvmpipe software driver, use
+`./build/linux-Release/sandhybrid --world-size compact` after building; Large
+requires a device supporting a full 225-MiB storage-buffer range. Compact keeps
+all eight districts. See `docs/sandhybrid.md` for the complete size requirements.
+
 ## License and releases
 
 See `LICENSE` and `CHANGELOG.md`. Project releases and committed-source archives are named EpochSimEngine; SandHybrid Windows/Linux packages contain the demo. Old API identifiers and published URLs remain compatibility interfaces, not project branding. Public releases are normal stable, versioned releases only; intermediate corrective commits are not publication authorization.
