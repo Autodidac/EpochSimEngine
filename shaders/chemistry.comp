@@ -1,12 +1,12 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 
-// Five production owners share this single rule body. Value 5 is an unsplit
+// Eight production owners share this single rule body. Value 8 is an unsplit
 // compile-only reference for partition validation; no runtime ships it.
 #ifndef EPOCHSIM_CHEMISTRY_OWNER
 #define EPOCHSIM_CHEMISTRY_OWNER 0
 #endif
-#if EPOCHSIM_CHEMISTRY_OWNER < 0 || EPOCHSIM_CHEMISTRY_OWNER > 5
+#if EPOCHSIM_CHEMISTRY_OWNER < 0 || EPOCHSIM_CHEMISTRY_OWNER > 8
 #error Unsupported chemistry source owner
 #endif
 #include "materials.glsl"
@@ -21,7 +21,7 @@
 #include "chemistry_ownership.glsl"
 // Only the frozen main's 71 literal equalities and two inequalities change.
 // Neighbor/result/helper comparisons and execution order are untouched.
-#if EPOCHSIM_CHEMISTRY_OWNER == 5
+#if EPOCHSIM_CHEMISTRY_OWNER == 8
 #define SOURCE_IS(M) (source.material == (M))
 #else
 #define SOURCE_IS(M) (chemistrySourceOwner(M) == uint(EPOCHSIM_CHEMISTRY_OWNER) && source.material == (M))
@@ -1144,7 +1144,7 @@ void main() {
 
     uint index = indexOf(p);
     Cell source = cells[index];
-#if EPOCHSIM_CHEMISTRY_OWNER != 5
+#if EPOCHSIM_CHEMISTRY_OWNER != 8
     // Immutable owner is selected before any scratch write or counter.
     if (chemistrySourceOwner(source.material) != uint(EPOCHSIM_CHEMISTRY_OWNER)) return;
 #endif
@@ -1158,7 +1158,7 @@ void main() {
     // permanently vetoes every later fine and macro liquid transaction.
     result.aux &= ~AUX_MOVED;
 
-#if EPOCHSIM_CHEMISTRY_OWNER == 3 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 5
+#if EPOCHSIM_CHEMISTRY_OWNER == 3 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 8
 // Frozen 1139-1193: synthesis/outgas requires Hydrogen/Oxygen/Water or Atmosphere.
     // Race-free two-cell synthesis: mutually paired Hydrogen/Oxygen contacts
     // become one water-family unit and one pressure-bearing Atmosphere unit.
@@ -1237,7 +1237,7 @@ void main() {
         thermalDivisor = max(thermalDivisor, 20);
     result.temperature += clamp((thermalTarget - result.temperature) / thermalDivisor, -20, 20);
     result.temperature = clamp(result.temperature, -200, 5000);
-#if EPOCHSIM_CHEMISTRY_OWNER == 3 || EPOCHSIM_CHEMISTRY_OWNER == 5
+#if EPOCHSIM_CHEMISTRY_OWNER == 3 || EPOCHSIM_CHEMISTRY_OWNER == 8
 // Frozen 1215-1228: machine output and vent endpoints require Empty or Atmosphere source.
     // Machine output is a three-cell conservative transaction over the shared
     // source buffer: product replaces the output Atmosphere while the paired
@@ -1256,7 +1256,7 @@ void main() {
 #endif // frozen 1215-1228
     // Tile analysis already consumed the previous movement marker.
     result.aux &= ~AUX_MOVED;
-#if EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 5
+#if EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 8
 // Frozen 1231-1236: Half Water requires Water source.
     // Fractional Water is movement-owned. Thermal state and age still advance,
     // but chemistry waits until two halves conservatively merge to one full cell.
@@ -1326,7 +1326,7 @@ void main() {
     bool nearPoweredBoiler = hasNeighbor(p, MAT_SMELTER) &&
                              hasNeighbor(p, MAT_POWER_CELL);
 
-#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 3 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 5
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 5 || EPOCHSIM_CHEMISTRY_OWNER == 7 || EPOCHSIM_CHEMISTRY_OWNER == 6 || EPOCHSIM_CHEMISTRY_OWNER == 3 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 8
 // Frozen 1298-1585: mixed pre-structure rules exclude only the six Bee-family source IDs.
     // Canonical thermal behavior is material/temperature based. The material
     // ID is retained through melting and vaporization; only chemical
@@ -1534,8 +1534,10 @@ void main() {
         // is owned exclusively by the paired Hydrogen/Oxygen transaction above.
     }
 
-#if EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 5
+#if EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 5 || EPOCHSIM_CHEMISTRY_OWNER == 7 || EPOCHSIM_CHEMISTRY_OWNER == 6 || EPOCHSIM_CHEMISTRY_OWNER == 8
 // Frozen 1504-1551: factory donors and controllers require one of the 18 machinery source IDs.
+#if EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 5 || EPOCHSIM_CHEMISTRY_OWNER == 7 || EPOCHSIM_CHEMISTRY_OWNER == 8
+// Frozen 1504-1520: only the fourteen factory-input source IDs can debit.
     // Resource cells are consumed only by one deterministic nearby machine controller.
     if (isFactoryInputResource(source.material)) {
         ivec2 acceptingMachine = nearestAcceptingMachine(p, source, 6);
@@ -1553,6 +1555,9 @@ void main() {
         }
     }
 
+#endif // frozen 1504-1520
+#if EPOCHSIM_CHEMISTRY_OWNER == 6 || EPOCHSIM_CHEMISTRY_OWNER == 8
+// Frozen 1521-1551: only the four controller source IDs can credit/output.
     if (isMachineController(p, source.material)) {
         uvec4 currentInventory = machineInventory(source);
         uvec4 inventory = min(currentInventory + incomingMachineCounts(p, source.material), uvec4(15u));
@@ -1584,6 +1589,7 @@ void main() {
 
 
 
+#endif // frozen 1521-1551
 #endif // frozen 1504-1551
     // Insects are ecosystem agents, not placeholder combat bots. Ants move
     // recoverable waste toward soil; beetles break dead biomass into fertilizer.
@@ -1597,7 +1603,7 @@ void main() {
         result.aux |= AUX_STRUCTURAL | AUX_SUPPORTED;
     }
 
-#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 5
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 5 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 8
 // Frozen 1564-1574: immutable feed is Ash/Silt/Waste; immutable water is Dirty Water.
     // Explicit paired compost path: ember can only age into ash. Fertilizer
     // requires ash, organic waste, mineral soil/silt, dirty water, oxygen, and
@@ -1631,7 +1637,7 @@ void main() {
         return;
     }
 
-#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 5
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 5 || EPOCHSIM_CHEMISTRY_OWNER == 7 || EPOCHSIM_CHEMISTRY_OWNER == 6 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 8
 // Frozen 1594-1801: phase/plant/salt/sand/Oil/Wood rules and Smoke/Steam pairing exclude Bee and Empty/Atmosphere sources.
     // Salt dissolution transfers one explicit concentration unit to exactly
     // one adjacent water cell. No liquid cells are created and salt mass never
@@ -1842,7 +1848,7 @@ void main() {
 
 
 #endif // frozen 1594-1801
-#if EPOCHSIM_CHEMISTRY_OWNER == 1 || EPOCHSIM_CHEMISTRY_OWNER == 5
+#if EPOCHSIM_CHEMISTRY_OWNER == 1 || EPOCHSIM_CHEMISTRY_OWNER == 8
 // Frozen 1802-2018: six Bee-family lifecycle source IDs only; never select from result.
     // Authored colonies use explicit targets stored in each bee. Orbiting bees do
     // no searches; only a lifecycle transition scans compact 8x8 tile metadata.
@@ -2072,7 +2078,7 @@ void main() {
         }
     }
 
-#if EPOCHSIM_CHEMISTRY_OWNER == 2 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 5
+#if EPOCHSIM_CHEMISTRY_OWNER == 5 || EPOCHSIM_CHEMISTRY_OWNER == 7 || EPOCHSIM_CHEMISTRY_OWNER == 4 || EPOCHSIM_CHEMISTRY_OWNER == 8
 // Frozen 2029-2061: closed ecology requires Water/Dirty Water or Silt/Fertilizer/Food/Waste source.
     // Closed ecological loop: dirty water separates into clean water and silt;
     // sediment becomes fertilizer; crops produce food; food becomes waste; waste
@@ -2120,7 +2126,7 @@ void main() {
         else if ((source.aux & AUX_CHARGED) != 0u && (randomValue & 15u) == 0u) result.aux &= ~AUX_CHARGED;
     }
 
-#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 5
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 8
 // Frozen 2074-2086: Lightning/Uranium/Radiation remain in residual bulk.
     if (SOURCE_IS(MAT_LIGHTNING)) {
         result.temperature = max(result.temperature, 900);
@@ -2152,7 +2158,7 @@ void main() {
         result = makeCell(isOrganic(source.material) ? MAT_WASTE : MAT_DIRTY_WATER);
     }
 
-#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 5
+#if EPOCHSIM_CHEMISTRY_OWNER == 0 || EPOCHSIM_CHEMISTRY_OWNER == 8
 // Frozen 2103-2106: Acid-source dilution remains in residual bulk.
     if (SOURCE_IS(MAT_ACID) && (nearWater || nearSaltwater) && (randomValue & 511u) == 0u) {
         result = makeCell(nearSaltwater ? MAT_SALTWATER : MAT_WATER);

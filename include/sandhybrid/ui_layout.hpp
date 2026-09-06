@@ -148,7 +148,9 @@ framebuffer_to_logical_pointer(
     return {{{left, top}, {float(viewport_width), float(viewport_height)}}, tile_pixels};
 }
 
-[[nodiscard]] inline constexpr Layout make_layout(std::uint32_t width, std::uint32_t height) noexcept {
+[[nodiscard]] inline constexpr Layout make_layout(
+    std::uint32_t width, std::uint32_t height,
+    std::uint32_t selected_workspace = 1u) noexcept {
     const auto screen_width = (std::max)(width, 1u);
     const auto screen_height = (std::max)(height, 1u);
     const auto requested = (std::max)(minimum_sidebar_width, screen_width / 3u);
@@ -160,14 +162,25 @@ framebuffer_to_logical_pointer(
     const float side = float(screen_width - simulation_width);
     const float content_left = left + margin;
     const float content_width = (std::max)(1.0f, side - margin * 2.0f);
+    const bool designer_workspace = selected_workspace == 3u;
+    // Designer has no ACTIONS panel. Reserve a two-pixel-per-row canvas and
+    // a readable material-card title before spending height on palette space.
+    // Keep every mode/tab/slot/cursor button at its normal size. The matching
+    // fragment policy uses logical window height, never framebuffer height.
+    const auto designer_shortfall = designer_workspace && screen_height < 793u
+        ? (std::min)(793u - screen_height, 76u) : 0u;
+    const auto group_reduction = (std::min)(designer_shortfall, 32u);
+    const auto palette_reduction = designer_shortfall - group_reduction;
+    const auto effective_group_height = group_tabs_height - group_reduction;
+    const auto effective_palette_height = palette_items_height - palette_reduction;
 
     Layout layout{
         .status = {{left, 0.0f}, {side, float(status_height)}},
         .simulation = {{0.0f, 0.0f}, {float(simulation_width), float(screen_height)}},
         .group_tabs = {{content_left, float(status_height) + margin},
-                       {content_width, float(group_tabs_height)}},
-        .palette = {{content_left, float(status_height + group_tabs_height) + margin + gap},
-                    {content_width, float(palette_items_height)}},
+                       {content_width, float(effective_group_height)}},
+        .palette = {{content_left, float(status_height + effective_group_height) + margin + gap},
+                    {content_width, float(effective_palette_height)}},
     };
 
     const float workspace_left = left + 8.0f;
@@ -229,7 +242,8 @@ framebuffer_to_logical_pointer(
     layout.actions = {{content_left, actions_top}, {content_width, float(actions_height)}};
     layout.ignite_air = {{content_left + 8.0f, actions_top + 22.0f},
                          {content_width - 16.0f, 27.0f}};
-    const float keymap_top = actions_top + float(actions_height) + gap;
+    const float keymap_top = designer_workspace ? actions_top
+        : actions_top + float(actions_height) + gap;
     layout.keymap = {{content_left, keymap_top}, {content_width, float(keymap_height)}};
 
     const float settings_top = float(status_height) + margin;
@@ -283,8 +297,11 @@ framebuffer_to_logical_pointer(
     const float card_top = cursor_top + float(cursor_editor_height) + gap;
     layout.material_card = {{content_left, card_top},
                             {content_width, (std::max)(1.0f, float(screen_height) - card_top - margin)}};
-    const float designer_grid_height = (std::min)(
-        content_width * 0.5f, (std::max)(1.0f, layout.material_card.size.y * 0.5f));
+    const auto designer_available_height = static_cast<std::uint32_t>(layout.material_card.size.y);
+    const float designer_grid_height = designer_workspace
+        ? float((std::min)((std::max)(1u, static_cast<std::uint32_t>(content_width) / 2u),
+                          designer_available_height > 43u ? designer_available_height - 43u : 1u))
+        : (std::min)(content_width * 0.5f, (std::max)(1.0f, layout.material_card.size.y * 0.5f));
     layout.designer_grid = {{content_left, card_top},
                             {content_width, designer_grid_height}};
     const float designer_card_top = card_top + designer_grid_height + gap;

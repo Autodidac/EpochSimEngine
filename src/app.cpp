@@ -428,7 +428,9 @@ int run_application(const ApplicationOptions& options) {
         if (input.save_scene) shared_state.save_scene_image.store(true, std::memory_order_release);
         if (input.load_scene) shared_state.load_scene_image.store(true, std::memory_order_release);
 
-        const auto layout = ui::make_layout(input.width, input.height);
+        const auto selected_workspace = shared_state.selected_workspace.load(
+            std::memory_order_relaxed) % ui::workspace_tab_count;
+        const auto layout = ui::make_layout(input.width, input.height, selected_workspace);
         const bool map_view_enabled =
             shared_state.map_view.load(std::memory_order_relaxed);
         const auto visible_view = camera_view(shared_state, simulation_config, false);
@@ -444,8 +446,6 @@ int run_application(const ApplicationOptions& options) {
         };
         const bool primary_pressed = input.primary_pressed;
         if (!input.primary_down) primary_one_shot_latched = false;
-        const auto selected_workspace = shared_state.selected_workspace.load(
-            std::memory_order_relaxed) % ui::workspace_tab_count;
         const bool inventory_workspace = selected_workspace == 0u;
         const bool editor_workspace = selected_workspace == 1u;
         const bool settings_workspace = selected_workspace == 2u;

@@ -953,13 +953,18 @@ void main() {
             y >= groupTop && y < groupTop + renderPc.groupTabsHeight &&
             x >= contentLeft && x < contentLeft + contentWidth) {
             uint column = min((x - contentLeft) / groupCellWidth, 1u);
-            uint row = min((y - groupTop) / groupCellHeight, groupRows - 1u);
+            uint row = renderPc.selectedWorkspace == 3u
+                ? min((y - groupTop) * groupRows / max(renderPc.groupTabsHeight, 1u), groupRows - 1u)
+                : min((y - groupTop) / groupCellHeight, groupRows - 1u);
             uint group = row * 2u + column;
             if (group < renderPc.groupCount) {
                 uint left = contentLeft + column * groupCellWidth;
                 uint right = column == 1u ? contentLeft + contentWidth : left + groupCellWidth;
-                uint top = groupTop + row * groupCellHeight;
-                uint bottom = min(groupTop + renderPc.groupTabsHeight, top + groupCellHeight);
+                uint top = groupTop + (renderPc.selectedWorkspace == 3u
+                    ? row * renderPc.groupTabsHeight / groupRows : row * groupCellHeight);
+                uint bottom = renderPc.selectedWorkspace == 3u
+                    ? groupTop + (row + 1u) * renderPc.groupTabsHeight / groupRows
+                    : min(groupTop + renderPc.groupTabsHeight, top + groupCellHeight);
                 color = group == renderPc.selectedGroup ? vec3(0.14, 0.30, 0.45) : vec3(0.04, 0.052, 0.07);
                 if (group == renderPc.hoveredGroup) color += vec3(0.055);
                 if (borderPixel(x, y, left, top, right, bottom)) color *= 0.55;
@@ -974,7 +979,11 @@ void main() {
         }
 
         uint paletteTop = groupTop + renderPc.groupTabsHeight + 3u;
-        const uint palettePanelHeight = 124u;
+        // Match ui::make_layout's Designer-only compact policy in logical
+        // pixels. Editor retains its existing ACTIONS/Nuke and palette layout.
+        uint designerShortfall = renderPc.selectedWorkspace == 3u && renderPc.windowHeight < 793u
+            ? min(793u - renderPc.windowHeight, 76u) : 0u;
+        uint palettePanelHeight = 124u - (designerShortfall - min(designerShortfall, 32u));
         const uint igniteAirGroup = 4u;
         const uint igniteAirTextId = 165u;
         uint materialSlotCount = groupMaterialCount(renderPc.selectedGroup);
@@ -986,14 +995,19 @@ void main() {
             y >= paletteTop && y < paletteTop + palettePanelHeight &&
             x >= contentLeft && x < contentLeft + contentWidth) {
             uint column = min((x - contentLeft) / cellWidth, 1u);
-            uint row = min((y - paletteTop) / cellHeight, slotRows - 1u);
+            uint row = renderPc.selectedWorkspace == 3u
+                ? min((y - paletteTop) * slotRows / palettePanelHeight, slotRows - 1u)
+                : min((y - paletteTop) / cellHeight, slotRows - 1u);
             uint slot = row * 2u + column;
             if (slot < slotCount) {
                 bool igniteAirAction = false;
                 uint left = contentLeft + column * cellWidth;
                 uint right = column == 1u ? contentLeft + contentWidth : left + cellWidth;
-                uint top = paletteTop + row * cellHeight;
-                uint bottom = min(paletteTop + palettePanelHeight, top + cellHeight);
+                uint top = paletteTop + (renderPc.selectedWorkspace == 3u
+                    ? row * palettePanelHeight / slotRows : row * cellHeight);
+                uint bottom = renderPc.selectedWorkspace == 3u
+                    ? paletteTop + (row + 1u) * palettePanelHeight / slotRows
+                    : min(paletteTop + palettePanelHeight, top + cellHeight);
                 if (igniteAirAction) {
                     color = vec3(0.48, 0.16, 0.035);
                     if (borderPixel(x, y, left, top, right, bottom)) color *= 0.5;
@@ -1123,9 +1137,9 @@ void main() {
             return;
         }
 
-        uint keymapTop = (renderPc.selectedWorkspace == 1u || renderPc.selectedWorkspace == 3u)
-            ? actionsBottom + 3u
-            : (renderPc.selectedWorkspace == 2u ? settingsFpsBottom + 3u : groupTop);
+        uint keymapTop = renderPc.selectedWorkspace == 3u ? actionsTop
+            : (renderPc.selectedWorkspace == 1u ? actionsBottom + 3u
+               : (renderPc.selectedWorkspace == 2u ? settingsFpsBottom + 3u : groupTop));
         uint keymapBottom = keymapTop + 124u;
         if (renderPc.selectedWorkspace == 3u &&
             y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {
@@ -1293,7 +1307,7 @@ void main() {
             ? renderPc.windowHeight - 5u : renderPc.windowHeight;
         if (renderPc.selectedWorkspace == 3u) {
             uint cardHeight = cardBottom > cardTop ? cardBottom - cardTop : 1u;
-            uint designerGridHeight = min(contentWidth / 2u, max(cardHeight / 2u, 1u));
+            uint designerGridHeight = min(max(contentWidth / 2u, 1u), cardHeight > 43u ? cardHeight - 43u : 1u);
             uint designerGridBottom = min(cardTop + designerGridHeight, cardBottom);
             if (y >= cardTop && y < designerGridBottom) {
                 vec4 designerColor = designerGridColor(

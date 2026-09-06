@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 namespace actual {
 using uint = std::uint32_t;
@@ -24,9 +25,10 @@ struct Material {
 };
 
 // Independent saved-ID and owner oracle, not generated from the GLSL helper.
-// In particular, resources belong to machinery, but Conveyor/Factory Core/
-// Magnet and Ant/Beetle remain bulk; hive content belongs to Bees. Empty and
-// Atmosphere own destinations; the explicit water/gas/heat IDs own phases.
+// Industrial inputs, compost donors, controllers and harvest donors have
+// separate owners. Conveyor/Factory Core/Magnet and Ant/Beetle remain bulk;
+// hive content belongs to Bees. Empty/Atmosphere own destinations, and the
+// explicit water/gas/heat IDs own phases.
 constexpr std::array<Material, 68> materials{{
     {actual::MAT_EMPTY, 0u, 3u},
     {actual::MAT_SAND, 1u, 2u},
@@ -79,21 +81,21 @@ constexpr std::array<Material, 68> materials{{
     {actual::MAT_IRON_ORE, 48u, 2u},
     {actual::MAT_STEEL, 49u, 2u},
     {actual::MAT_CONVEYOR, 50u, 0u},
-    {actual::MAT_SMELTER, 51u, 2u},
-    {actual::MAT_ASSEMBLER, 52u, 2u},
-    {actual::MAT_INSECT_HABITAT, 53u, 2u},
+    {actual::MAT_SMELTER, 51u, 6u},
+    {actual::MAT_ASSEMBLER, 52u, 6u},
+    {actual::MAT_INSECT_HABITAT, 53u, 6u},
     {actual::MAT_POWER_CELL, 54u, 2u},
     {actual::MAT_PLASMA_AMMO, 55u, 2u},
     {actual::MAT_ANT, 56u, 0u},
     {actual::MAT_BEETLE, 57u, 0u},
     {actual::MAT_PLANT_STEM, 58u, 0u},
     {actual::MAT_FACTORY_CORE, 59u, 0u},
-    {actual::MAT_SILT, 60u, 2u},
-    {actual::MAT_FERTILIZER, 61u, 2u},
-    {actual::MAT_FOOD, 62u, 2u},
-    {actual::MAT_WASTE, 63u, 2u},
+    {actual::MAT_SILT, 60u, 5u},
+    {actual::MAT_FERTILIZER, 61u, 7u},
+    {actual::MAT_FOOD, 62u, 7u},
+    {actual::MAT_WASTE, 63u, 5u},
     {actual::MAT_HYDROGEN, 64u, 4u},
-    {actual::MAT_SLUICE_BOX, 65u, 2u},
+    {actual::MAT_SLUICE_BOX, 65u, 6u},
     {actual::MAT_ATMOSPHERE, 66u, 3u},
     {actual::MAT_CLOUD, 67u, 4u},
 }};
@@ -104,20 +106,49 @@ constexpr std::array<Word, 16> unknown_ids{
     0xffff0000u, 0xfffffffdu, 0xfffffffeu, 0xffffffffu};
 constexpr std::size_t domain_size = materials.size() + unknown_ids.size();
 using Cells = std::array<Cell, domain_size>;
-using Order = std::array<Word, 5>;
-constexpr auto orders = [] {
-    std::array<Order, 120> permutations{};
-    Order order{0u, 1u, 2u, 3u, 4u};
-    std::size_t index{};
-    do {
-        permutations[index++] = order;
-    } while (std::next_permutation(order.begin(), order.end()));
-    return permutations;
-}();
+constexpr Word owner_count = 8u;
+using Order = std::array<Word, owner_count>;
+constexpr Order canonical_order{0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u};
+constexpr Order production_order{0u, 1u, 2u, 5u, 6u, 7u, 3u, 4u};
+
+// A bounded, explicitly non-exhaustive order suite: all distinct leading
+// pairs with both tail directions, both cyclic directions, and production
+// order/reverse. Deduplication gives 123 of 40,320 possible orders. Separate tests exhaust every
+// owner pair's commutativity, without factorial full-composition work.
+std::vector<Order> sampled_orders() {
+    std::vector<Order> result;
+    for (Word first = 0u; first < owner_count; ++first)
+        for (Word second = 0u; second < owner_count; ++second) {
+            if (first == second) continue;
+            Order order{first, second};
+            std::size_t index = 2u;
+            for (const Word owner : canonical_order)
+                if (owner != first && owner != second) order[index++] = owner;
+            result.push_back(order);
+            std::reverse(order.begin() + 2, order.end());
+            result.push_back(order);
+        }
+    for (Word first = 0u; first < owner_count; ++first)
+        for (const bool reverse : {false, true}) {
+            Order order{};
+            for (Word position = 0u; position < owner_count; ++position)
+                order[position] = reverse ? (first + owner_count - position) % owner_count
+                                          : (first + position) % owner_count;
+            result.push_back(order);
+        }
+    result.push_back(production_order);
+    Order reverse_production = production_order;
+    std::reverse(reverse_production.begin(), reverse_production.end());
+    result.push_back(reverse_production);
+    std::sort(result.begin(), result.end());
+    result.erase(std::unique(result.begin(), result.end()), result.end());
+    return result;
+}
 constexpr Cell poison{0xdeadbeefu, 0xfeedc0deu, 0xabcdef01u, 0x98765432u};
 
 std::uint64_t assertions{}, ownership_cases{}, transition_cases{}, composition_cases{};
 std::uint64_t mutable_source_cases{}, duplicate_controls{};
+std::uint64_t pair_composition_cases{};
 
 void require(bool condition, const char* message) {
     ++assertions;
@@ -138,13 +169,13 @@ void verify_owner(Word material) {
     const Word owner = actual::chemistrySourceOwner(material);
     require(owner == expected_owner(material), "immutable source mapped to wrong owner");
     Word memberships{};
-    for (Word stage = 0u; stage < 5u; ++stage) {
+    for (Word stage = 0u; stage < owner_count; ++stage) {
         const bool owns = owner == stage;
         require(owns == (expected_owner(material) == stage), "pass membership changed");
         if (owns) ++memberships;
     }
     require(memberships == 1u, "source does not have exactly one chemistry owner");
-    require(owner != 5u && owner != std::numeric_limits<Word>::max(),
+    require(owner < owner_count && owner != std::numeric_limits<Word>::max(),
             "unsupported stage owns source");
 }
 
@@ -239,6 +270,47 @@ void verify_composition(const Cells& source, std::size_t shift, const Order& ord
     }
     require(events == expected_events, "partition duplicated or omitted additive events");
 }
+
+void verify_pair_commutativity(const Cells& source, std::size_t shift,
+                               Word first, Word second, bool reverse_invocations,
+                               std::size_t begin, std::size_t end) {
+    ++pair_composition_cases;
+    Cells expected;
+    expected.fill(poison);
+    Counters expected_events{};
+    for (std::size_t i = begin; i < end; ++i) {
+        const Word owner = expected_owner(source[i][0]);
+        if (owner != first && owner != second) continue;
+        const auto proposal = synthetic_rule(source, i, domain_id((i + shift) % domain_size));
+        expected[i] = proposal.cell;
+        add(expected_events, proposal.events);
+    }
+    for (const bool reverse_owners : {false, true}) {
+        Cells scratch;
+        scratch.fill(poison);
+        Counters events{};
+        std::array<Word, domain_size> writes{};
+        const std::array pair = reverse_owners ? std::array{second, first}
+                                              : std::array{first, second};
+        for (const Word owner : pair)
+            for (std::size_t invocation = 0u; invocation < domain_size; ++invocation) {
+                const std::size_t i = reverse_invocations ? domain_size - 1u - invocation : invocation;
+                if (i < begin || i >= end || actual::chemistrySourceOwner(source[i][0]) != owner)
+                    continue;
+                const auto proposal = synthetic_rule(source, i, domain_id((i + shift) % domain_size));
+                scratch[i] = proposal.cell;
+                ++writes[i];
+                add(events, proposal.events);
+            }
+        for (std::size_t i = 0u; i < domain_size; ++i) {
+            const Word owner = expected_owner(source[i][0]);
+            const bool selected = i >= begin && i < end && (owner == first || owner == second);
+            require(writes[i] == (selected ? 1u : 0u), "owner pair duplicated or omitted a source write");
+            require(scratch[i] == expected[i], "owner pair did not commute at an exact four-word payload");
+        }
+        require(events == expected_events, "owner pair did not commute at additive event counters");
+    }
+}
 }
 
 int main() {
@@ -247,9 +319,12 @@ int main() {
         require(actual::CHEMISTRY_OWNER_BULK == 0u && actual::CHEMISTRY_OWNER_BEES == 1u &&
                     actual::CHEMISTRY_OWNER_MACHINERY == 2u &&
                     actual::CHEMISTRY_OWNER_DESTINATIONS == 3u &&
-                    actual::CHEMISTRY_OWNER_PHASES == 4u,
+                    actual::CHEMISTRY_OWNER_PHASES == 4u &&
+                    actual::CHEMISTRY_OWNER_ECOLOGY_DONORS == 5u &&
+                    actual::CHEMISTRY_OWNER_CONTROLLERS == 6u &&
+                    actual::CHEMISTRY_OWNER_HARVEST_DONORS == 7u,
                 "host-visible chemistry stage numbers changed");
-        std::array<Word, 5> totals{};
+        Order totals{};
         for (std::size_t i = 0; i < materials.size(); ++i) {
             const auto& material = materials[i];
             require(material.saved_id == i, "independent material oracle has a gap or duplicate");
@@ -257,21 +332,35 @@ int main() {
             verify_owner(material.shader_id);
             ++totals[material.owner];
         }
-        require(totals == std::array<Word, 5>{25u, 6u, 18u, 2u, 17u},
+        require(totals == Order{25u, 6u, 10u, 2u, 17u, 2u, 4u, 2u},
                 "canonical partition sizes changed");
 
-        std::array<Order, 5> position_totals{};
+        const auto orders = sampled_orders();
+        require(orders.size() == 123u, "bounded sampled stage-order coverage changed");
+        require(std::binary_search(orders.begin(), orders.end(), production_order),
+                "bounded suite omitted the actual production owner order");
+        std::array<Order, owner_count> position_totals{}, ordered_pair_totals{}, leading_pair_totals{};
         for (std::size_t i = 0; i < orders.size(); ++i) {
             Order sorted = orders[i];
             std::sort(sorted.begin(), sorted.end());
-            require(sorted == Order{0u, 1u, 2u, 3u, 4u}, "stage order lost or duplicated an owner");
-            require(i == 0u || orders[i - 1u] < orders[i], "stage orders are not unique and exhaustive");
+            require(sorted == canonical_order, "stage order lost or duplicated an owner");
+            require(i == 0u || orders[i - 1u] < orders[i], "sampled stage orders are not unique");
             for (std::size_t position = 0; position < orders[i].size(); ++position)
                 ++position_totals[orders[i][position]][position];
+            ++leading_pair_totals[orders[i][0]][orders[i][1]];
+            for (std::size_t before = 0; before < owner_count; ++before)
+                for (std::size_t after = before + 1u; after < owner_count; ++after)
+                    ++ordered_pair_totals[orders[i][before]][orders[i][after]];
         }
         for (const auto& positions : position_totals)
-            require(positions == Order{24u, 24u, 24u, 24u, 24u},
-                    "every owner must occupy every stage position in all 120 orders");
+            for (const Word count : positions)
+                require(count > 0u, "sampled suite must put every owner at every stage position");
+        for (Word before = 0u; before < owner_count; ++before)
+            for (Word after = 0u; after < owner_count; ++after)
+                require(before == after ? ordered_pair_totals[before][after] == 0u
+                                        : ordered_pair_totals[before][after] > 0u &&
+                                          leading_pair_totals[before][after] >= 2u,
+                        "sampled suite must include each ordered leading pair with both tail directions");
 
         // Exhaust every 16-bit ID, including the entire invalid 68..65535
         // range. Full-width probes separately cover sign/high-bit boundaries.
@@ -287,12 +376,12 @@ int main() {
                           0x80000000u ^ static_cast<Word>(i),
                           0x00800000u | (static_cast<Word>(i) * 257u)};
         const Cells source = initial;
-        std::array<std::uint64_t, 25> transition_totals{};
+        std::array<std::uint64_t, owner_count * owner_count> transition_totals{};
         for (std::size_t shift = 0; shift < domain_size; ++shift) {
             for (std::size_t i = 0; i < domain_size; ++i) {
                 const Word result = domain_id((i + shift) % domain_size);
                 ++transition_cases;
-                ++transition_totals[expected_owner(source[i][0]) * 5u + expected_owner(result)];
+                ++transition_totals[expected_owner(source[i][0]) * owner_count + expected_owner(result)];
                 for (const auto& order : orders)
                     verify_mutable_source_control(source[i][0], result, order);
             }
@@ -304,22 +393,35 @@ int main() {
                     verify_composition(source, shift, order, reverse, 1u, domain_size - 1u);
                     verify_composition(source, shift, order, reverse, domain_size / 2u, domain_size / 2u);
                 }
+            for (Word first = 0u; first < owner_count; ++first)
+                for (Word second = first + 1u; second < owner_count; ++second)
+                    for (const bool reverse : {false, true}) {
+                        verify_pair_commutativity(source, shift, first, second, reverse, 0u, domain_size);
+                        verify_pair_commutativity(source, shift, first, second, reverse, 1u, domain_size - 1u);
+                        verify_pair_commutativity(source, shift, first, second, reverse,
+                                                  domain_size / 2u, domain_size / 2u);
+                    }
         }
         require(source == initial, "stage composition mutated the immutable canonical source");
-        require(transition_totals == std::array<std::uint64_t, 25>{
-                    1681u, 246u, 738u, 82u, 697u,
-                    246u, 36u, 108u, 12u, 102u,
-                    738u, 108u, 324u, 36u, 306u,
-                    82u, 12u, 36u, 4u, 34u,
-                    697u, 102u, 306u, 34u, 289u},
-                "all 25 source/result ownership transitions were not exhausted");
+        constexpr Order expected_domain_totals{41u, 6u, 10u, 2u, 17u, 2u, 4u, 2u};
+        std::uint64_t expected_duplicates{};
+        for (Word from = 0u; from < owner_count; ++from)
+            for (Word to = 0u; to < owner_count; ++to) {
+                const auto pairs = static_cast<std::uint64_t>(expected_domain_totals[from]) *
+                                   expected_domain_totals[to];
+                require(transition_totals[from * owner_count + to] == pairs,
+                        "all 64 source/result ownership transitions were not exhausted");
+                expected_duplicates += pairs * ordered_pair_totals[from][to];
+            }
         require(ownership_cases == 65620u && transition_cases == 7056u &&
-                    composition_cases == 60480u && mutable_source_cases == 846720u &&
-                    duplicate_controls == 283320u,
-                "exhaustive partition/composition coverage changed unexpectedly");
+                    composition_cases == 61992u && mutable_source_cases == 867888u &&
+                    pair_composition_cases == 14112u && duplicate_controls == expected_duplicates &&
+                    duplicate_controls > 0u,
+                "partition, pair-commutation or bounded composition coverage changed unexpectedly");
         std::printf("chemistry ownership: %llu assertions; %llu source IDs; "
-                    "%llu source/result pairs; %llu compositions (all 120 stage orders, "
+                    "%llu source/result pairs; %llu compositions (123 sampled stage orders of 40,320, "
                     "two invocation orders, full/clipped/empty scopes); "
+                    "%llu pair compositions (all 28 owner pairs in both execution orders); "
                     "%llu mutable-source controls (%llu duplicated-write witnesses). "
                     "Actual shared partition helper and synthetic CPU composition only; "
                     "not full shader numerical equivalence, GPU synchronization, "
@@ -328,6 +430,7 @@ int main() {
                     static_cast<unsigned long long>(ownership_cases),
                     static_cast<unsigned long long>(transition_cases),
                     static_cast<unsigned long long>(composition_cases),
+                    static_cast<unsigned long long>(pair_composition_cases),
                     static_cast<unsigned long long>(mutable_source_cases),
                     static_cast<unsigned long long>(duplicate_controls));
         return 0;

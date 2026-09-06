@@ -6,6 +6,9 @@
 const uint CHEMISTRY_OWNER_BULK = 0u;
 const uint CHEMISTRY_OWNER_BEES = 1u;
 const uint CHEMISTRY_OWNER_MACHINERY = 2u;
+const uint CHEMISTRY_OWNER_ECOLOGY_DONORS = 5u;
+const uint CHEMISTRY_OWNER_CONTROLLERS = 6u;
+const uint CHEMISTRY_OWNER_HARVEST_DONORS = 7u;
 const uint CHEMISTRY_OWNER_DESTINATIONS = 3u;
 const uint CHEMISTRY_OWNER_PHASES = 4u;
 
@@ -15,13 +18,17 @@ uint chemistrySourceOwner(uint material) {
         material == MAT_BEESWAX || material == MAT_BEEHIVE)
         return CHEMISTRY_OWNER_BEES;
     if (material == MAT_SMELTER || material == MAT_ASSEMBLER ||
-        material == MAT_SLUICE_BOX || material == MAT_INSECT_HABITAT ||
-        material == MAT_SAND || material == MAT_SILT || material == MAT_IRON ||
+        material == MAT_SLUICE_BOX || material == MAT_INSECT_HABITAT)
+        return CHEMISTRY_OWNER_CONTROLLERS;
+    if (material == MAT_SILT || material == MAT_WASTE)
+        return CHEMISTRY_OWNER_ECOLOGY_DONORS;
+    if (material == MAT_FERTILIZER || material == MAT_FOOD)
+        return CHEMISTRY_OWNER_HARVEST_DONORS;
+    if (material == MAT_SAND || material == MAT_IRON ||
         material == MAT_IRON_ORE || material == MAT_ALUMINUM ||
         material == MAT_ALUMINUM_SHAVINGS || material == MAT_GOLD ||
         material == MAT_STEEL || material == MAT_COPPER ||
-        material == MAT_POWER_CELL || material == MAT_PLASMA_AMMO ||
-        material == MAT_FOOD || material == MAT_WASTE || material == MAT_FERTILIZER)
+        material == MAT_POWER_CELL || material == MAT_PLASMA_AMMO)
         return CHEMISTRY_OWNER_MACHINERY;
     if (material == MAT_EMPTY || material == MAT_ATMOSPHERE)
         return CHEMISTRY_OWNER_DESTINATIONS;

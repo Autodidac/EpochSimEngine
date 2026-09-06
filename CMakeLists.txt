@@ -180,6 +180,9 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         chemistry.comp
         chemistry_bees.comp
         chemistry_machinery.comp
+        chemistry_ecology_donors.comp
+        chemistry_controllers.comp
+        chemistry_harvest_donors.comp
         chemistry_destinations.comp
         chemistry_phases.comp
         conservation_corrections.comp
@@ -213,6 +216,15 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
         elseif(SHADER_FILE STREQUAL "chemistry_phases.comp")
             set(SHADER_INPUT "${SHADER_SOURCE_DIR}/chemistry.comp")
             set(SHADER_DEFINITIONS -DEPOCHSIM_CHEMISTRY_OWNER=4)
+        elseif(SHADER_FILE STREQUAL "chemistry_ecology_donors.comp")
+            set(SHADER_INPUT "${SHADER_SOURCE_DIR}/chemistry.comp")
+            set(SHADER_DEFINITIONS -DEPOCHSIM_CHEMISTRY_OWNER=5)
+        elseif(SHADER_FILE STREQUAL "chemistry_controllers.comp")
+            set(SHADER_INPUT "${SHADER_SOURCE_DIR}/chemistry.comp")
+            set(SHADER_DEFINITIONS -DEPOCHSIM_CHEMISTRY_OWNER=6)
+        elseif(SHADER_FILE STREQUAL "chemistry_harvest_donors.comp")
+            set(SHADER_INPUT "${SHADER_SOURCE_DIR}/chemistry.comp")
+            set(SHADER_DEFINITIONS -DEPOCHSIM_CHEMISTRY_OWNER=7)
         endif()
         set(SHADER_OUTPUT "${SHADER_BINARY_DIR}/${SHADER_FILE}.spv")
         add_custom_command(

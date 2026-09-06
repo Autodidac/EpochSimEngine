@@ -2,6 +2,7 @@
 #include "sandhybrid/material.hpp"
 #include "sandhybrid/ui_layout.hpp"
 
+#include <array>
 #include <cstdint>
 
 int main() {
@@ -200,6 +201,160 @@ int main() {
             layout, 720u, {rect.position.x + rect.size.x * 0.5f,
                            rect.position.y + rect.size.y * 0.5f});
         if (hit != slot) return 13;
+    }
+
+    // Independent logical-pixel oracle: height, group height, palette height,
+    // canvas top, canvas height, material-card height. Include the requested
+    // resize boundaries plus both actual compact-policy transition edges.
+    constexpr std::array<std::array<std::uint32_t, 6>, 14> designer_cases{{
+        {719u, 64u, 82u, 607u, 64u, 40u},
+        {720u, 64u, 83u, 608u, 64u, 40u},
+        {721u, 64u, 84u, 609u, 64u, 40u},
+        {743u, 64u, 106u, 631u, 64u, 40u},
+        {744u, 64u, 107u, 632u, 64u, 40u},
+        {761u, 64u, 124u, 649u, 64u, 40u},
+        {762u, 65u, 124u, 650u, 64u, 40u},
+        {767u, 70u, 124u, 655u, 64u, 40u},
+        {768u, 71u, 124u, 656u, 64u, 40u},
+        {792u, 95u, 124u, 680u, 64u, 40u},
+        {793u, 96u, 124u, 681u, 64u, 40u},
+        {807u, 96u, 124u, 681u, 78u, 40u},
+        {808u, 96u, 124u, 681u, 79u, 40u},
+        {1080u, 96u, 124u, 681u, 207u, 184u},
+    }};
+    const auto same_rect = [](const auto a, const auto b) constexpr {
+        return a.position.x == b.position.x && a.position.y == b.position.y &&
+               a.size.x == b.size.x && a.size.y == b.size.y;
+    };
+    for (const auto& expected : designer_cases) {
+        const auto height = expected[0];
+        const auto designer = sandhybrid::ui::make_layout(1280u, height, 3u);
+        const auto editor = sandhybrid::ui::make_layout(1280u, height, 1u);
+        const epochengine::gui_lib::Rect sidebar{{856.0f, 0.0f}, {424.0f, float(height)}};
+        if (designer.group_tabs.size.y != float(expected[1]) ||
+            designer.palette.size.y != float(expected[2]) ||
+            designer.designer_grid.position.y != float(expected[3]) ||
+            designer.designer_grid.size.y != float(expected[4]) ||
+            designer.designer_material_card.size.y != float(expected[5])) return 29;
+        if (!same_rect(designer.simulation, editor.simulation) ||
+            !same_rect(designer.status, editor.status) ||
+            !same_rect(designer.fill, editor.fill) ||
+            !same_rect(designer.workspace_designer, editor.workspace_designer) ||
+            editor.group_tabs.size.y != 96.0f || editor.palette.size.y != 124.0f ||
+            editor.actions.position.y != 439.0f || editor.ignite_air.position.y != 461.0f ||
+            editor.keymap.position.y != 496.0f) return 30;
+        for (std::uint32_t workspace = 0u; workspace < 3u; ++workspace) {
+            const auto other = sandhybrid::ui::make_layout(1280u, height, workspace);
+            if (!same_rect(other.group_tabs, editor.group_tabs) ||
+                !same_rect(other.palette, editor.palette) ||
+                !same_rect(other.ignite_air, editor.ignite_air) ||
+                !same_rect(other.cursor_editor, editor.cursor_editor)) return 31;
+        }
+        if (designer.keymap.position.y != designer.palette.position.y + designer.palette.size.y + 3.0f ||
+            designer.keymap.size.y != 124.0f || designer.cursor_editor.size.y != 112.0f ||
+            designer.designer_grid.size.y < 64.0f || designer.designer_material_card.size.y < 40.0f)
+            return 32;
+        const std::array panels{designer.group_tabs, designer.palette, designer.keymap,
+                                designer.cursor_editor, designer.designer_grid,
+                                designer.designer_material_card};
+        for (std::size_t panel = 0u; panel < panels.size(); ++panel) {
+            if (!designer_contains(sidebar, panels[panel]) ||
+                panels[panel].size.x <= 0.0f || panels[panel].size.y <= 0.0f ||
+                (panel != 0u && !designer_nonoverlap(panels[panel - 1u], panels[panel]))) return 33;
+        }
+        const std::array designer_buttons{designer.designer_static_model, designer.designer_map_chunk,
+                                         designer.designer_inventory, designer.designer_blueprints};
+        for (const auto& button : designer_buttons)
+            if (!designer_contains(designer.keymap, button) || button.size.y != 28.0f) return 34;
+        const std::array cursor_buttons{designer.placement_cells, designer.placement_tiles,
+            designer.cursor_circle, designer.cursor_square, designer.cursor_horizontal,
+            designer.cursor_vertical, designer.brush_smaller, designer.brush_larger,
+            designer.zoom_out, designer.zoom_in};
+        for (std::size_t button = 0u; button < cursor_buttons.size(); ++button) {
+            if (!designer_contains(designer.cursor_editor, cursor_buttons[button]) ||
+                cursor_buttons[button].size.y < 24.0f) return 35;
+            for (std::size_t other = button + 1u; other < cursor_buttons.size(); ++other)
+                if (!designer_nonoverlap(cursor_buttons[button], cursor_buttons[other])) return 36;
+        }
+        for (std::uint32_t slot = 0u; slot < sandhybrid::blueprint_slot_count; ++slot) {
+            const auto rect = sandhybrid::ui::designer_blueprint_slot_rect(designer, slot);
+            const epochengine::gui_lib::Vec2 point{
+                rect.position.x + rect.size.x * 0.5f, rect.position.y + rect.size.y * 0.5f};
+            if (!designer_contains(designer.keymap, rect) || rect.size.y != 27.0f ||
+                sandhybrid::ui::designer_blueprint_slot_at(designer, point) != slot ||
+                !designer_nonoverlap(rect, designer.designer_inventory) ||
+                !designer_nonoverlap(rect, designer.designer_blueprints)) return 37;
+        }
+        for (std::uint32_t group = 0u; group < sandhybrid::material_group_count; ++group) {
+            const auto group_rect = sandhybrid::ui::group_tab_rect(designer, group);
+            if (!designer_contains(designer.group_tabs, group_rect) ||
+                sandhybrid::ui::group_at(designer,
+                    {group_rect.position.x + group_rect.size.x * 0.5f,
+                     group_rect.position.y + group_rect.size.y * 0.5f}) != group) return 38;
+            // The fragment uses proportional row selection, not a truncated
+            // pitch that can drift into a different button at odd heights.
+            for (auto y = static_cast<std::uint32_t>(group_rect.position.y);
+                 float(y) < group_rect.position.y + group_rect.size.y; ++y) {
+                if (float(y) < group_rect.position.y) continue;
+                const auto row = (y - static_cast<std::uint32_t>(designer.group_tabs.position.y)) * 4u /
+                                 static_cast<std::uint32_t>(designer.group_tabs.size.y);
+                if (row != group / 2u) return 42;
+            }
+            const auto material_group = static_cast<MaterialGroup>(group);
+            for (std::uint32_t slot = 0u; slot < sandhybrid::material_group_size(material_group); ++slot) {
+                const auto rect = sandhybrid::ui::palette_item_rect(designer, material_group, slot);
+                if (!designer_contains(designer.palette, rect) ||
+                    sandhybrid::ui::palette_slot_at(designer, material_group,
+                        {rect.position.x + rect.size.x * 0.5f,
+                         rect.position.y + rect.size.y * 0.5f}) != slot) return 39;
+                const auto rows = (sandhybrid::material_group_size(material_group) + 1u) / 2u;
+                for (auto y = static_cast<std::uint32_t>(rect.position.y);
+                     float(y) < rect.position.y + rect.size.y; ++y) {
+                    if (float(y) < rect.position.y) continue;
+                    const auto row = (y - static_cast<std::uint32_t>(designer.palette.position.y)) * rows /
+                                     static_cast<std::uint32_t>(designer.palette.size.y);
+                    if (row != slot / 2u) return 43;
+                }
+            }
+        }
+
+        // Integer canvas bounds must agree with fragment sampling through
+        // logical input conversion at 1x, fractional 1.5x, and 2x DPI. Exercise
+        // every canvas pixel at each Designer zoom, including last-row/column.
+        // This is a geometry contract, not packaged rendering/eye acceptance.
+        const auto grid_left = static_cast<std::uint32_t>(designer.designer_grid.position.x);
+        const auto grid_top = static_cast<std::uint32_t>(designer.designer_grid.position.y);
+        const auto grid_width = static_cast<std::uint32_t>(designer.designer_grid.size.x);
+        const auto grid_height = static_cast<std::uint32_t>(designer.designer_grid.size.y);
+        const sandhybrid::ui::SimulationViewport grid{designer.designer_grid, 0u};
+        for (std::uint32_t scale = 2u; scale <= 4u; ++scale) {
+            const auto framebuffer_width = 1280u * scale / 2u;
+            const auto framebuffer_height = height * scale / 2u;
+            for (std::uint32_t y = 0u; y < grid_height; ++y)
+                for (std::uint32_t x = 0u; x < grid_width; ++x) {
+                    const auto logical_x = grid_left + x;
+                    const auto logical_y = grid_top + y;
+                    const auto physical_x = (logical_x * framebuffer_width + 1279u) / 1280u;
+                    const auto physical_y = (logical_y * framebuffer_height + height - 1u) / height;
+                    const auto logical = sandhybrid::ui::framebuffer_to_logical_pointer(
+                        physical_x, physical_y, framebuffer_width, framebuffer_height, 1280u, height);
+                    if (logical != std::pair<std::uint32_t, std::uint32_t>{logical_x, logical_y}) return 40;
+                    for (std::uint32_t zoom = 1u; zoom <= 4u; ++zoom) {
+                        const auto columns = (std::max)(8u, 64u / zoom);
+                        const auto rows = (std::max)(8u, 32u / zoom);
+                        const auto origin_x = (64u - columns) / 2u;
+                        const auto origin_y = (32u - rows) / 2u;
+                        const auto input_cell = sandhybrid::ui::pointer_to_grid(
+                            grid, origin_x, origin_y, columns, rows,
+                            static_cast<std::int32_t>(logical.first),
+                            static_cast<std::int32_t>(logical.second));
+                        const std::pair<std::int32_t, std::int32_t> fragment_cell{
+                            static_cast<std::int32_t>(origin_x + x * columns / grid_width),
+                            static_cast<std::int32_t>(origin_y + y * rows / grid_height)};
+                        if (input_cell != fragment_cell) return 41;
+                    }
+                }
+        }
     }
     return 0;
 }
