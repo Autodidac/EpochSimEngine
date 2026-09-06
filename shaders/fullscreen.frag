@@ -9,6 +9,7 @@
 #include "ui_text.glsl"
 #include "debug_stats.glsl"
 #include "debug_geometry.glsl"
+#include "text_geometry.glsl"
 #include "material_appearance.glsl"
 
 layout(location = 0) out vec4 outColor;
@@ -114,32 +115,44 @@ bool glyphPixel(ivec2 pixel, ivec2 origin, int scale, uint code) {
 }
 
 bool fixedPixel(ivec2 pixel, ivec2 origin, int scale, uint id) {
-    for (uint i = 0u; i < fixedTextLength(id); ++i)
+    uint length = fixedTextLength(id);
+    if (!textPixelInBounds(pixel.x - origin.x, pixel.y - origin.y, scale, length)) return false;
+    for (uint i = 0u; i < length; ++i)
         if (glyphPixel(pixel, origin + ivec2(int(i) * 6 * scale, 0), scale, fixedTextChar(id, i))) return true;
     return false;
 }
 bool materialPixel(ivec2 pixel, ivec2 origin, int scale, uint id) {
-    for (uint i = 0u; i < materialTextLength(id); ++i)
+    uint length = materialTextLength(id);
+    if (!textPixelInBounds(pixel.x - origin.x, pixel.y - origin.y, scale, length)) return false;
+    for (uint i = 0u; i < length; ++i)
         if (glyphPixel(pixel, origin + ivec2(int(i) * 6 * scale, 0), scale, materialTextChar(id, i))) return true;
     return false;
 }
 bool groupPixel(ivec2 pixel, ivec2 origin, int scale, uint id) {
-    for (uint i = 0u; i < groupTextLength(id); ++i)
+    uint length = groupTextLength(id);
+    if (!textPixelInBounds(pixel.x - origin.x, pixel.y - origin.y, scale, length)) return false;
+    for (uint i = 0u; i < length; ++i)
         if (glyphPixel(pixel, origin + ivec2(int(i) * 6 * scale, 0), scale, groupTextChar(id, i))) return true;
     return false;
 }
 bool scenePixel(ivec2 pixel, ivec2 origin, int scale, uint id) {
-    for (uint i = 0u; i < sceneTextLength(id); ++i)
+    uint length = sceneTextLength(id);
+    if (!textPixelInBounds(pixel.x - origin.x, pixel.y - origin.y, scale, length)) return false;
+    for (uint i = 0u; i < length; ++i)
         if (glyphPixel(pixel, origin + ivec2(int(i) * 6 * scale, 0), scale, sceneTextChar(id, i))) return true;
     return false;
 }
 bool phasePixel(ivec2 pixel, ivec2 origin, int scale, uint id) {
-    for (uint i = 0u; i < phaseTextLength(id); ++i)
+    uint length = phaseTextLength(id);
+    if (!textPixelInBounds(pixel.x - origin.x, pixel.y - origin.y, scale, length)) return false;
+    for (uint i = 0u; i < length; ++i)
         if (glyphPixel(pixel, origin + ivec2(int(i) * 6 * scale, 0), scale, phaseTextChar(id, i))) return true;
     return false;
 }
 bool cardPixel(ivec2 pixel, ivec2 origin, int scale, uint materialId, uint line) {
-    for (uint i = 0u; i < cardTextLength(materialId, line); ++i)
+    uint length = cardTextLength(materialId, line);
+    if (!textPixelInBounds(pixel.x - origin.x, pixel.y - origin.y, scale, length)) return false;
+    for (uint i = 0u; i < length; ++i)
         if (glyphPixel(pixel, origin + ivec2(int(i) * 6 * scale, 0), scale, cardTextChar(materialId, line, i))) return true;
     return false;
 }
@@ -167,6 +180,7 @@ uint decimalDivisor(uint positionFromRight) {
 bool numberPixel(ivec2 pixel, ivec2 origin, int scale, uint value) {
     value = min(value, 99999999u);
     uint length = decimalLength(value);
+    if (!textPixelInBounds(pixel.x - origin.x, pixel.y - origin.y, scale, length)) return false;
     for (uint i = 0u; i < length; ++i) {
         uint divisor = decimalDivisor(length - i - 1u);
         if (glyphPixel(pixel, origin + ivec2(int(i) * 6 * scale, 0), scale,
@@ -719,7 +733,7 @@ vec4 worldColor(Cell cell, ivec2 grid) {
         uint stemHash = hash32(uint(grid.x) * 2654435761u ^ uint(grid.y) ^ cell.aux);
         base.rgb = mix(vec3(0.12, 0.42, 0.10), vec3(0.34, 0.66, 0.18), float(stemHash & 7u) / 7.0);
     }
-    uint phase = cellPhase(cell);
+    uint phase = materialPresentationPhase(isHalfWater(cell), cellPhase(cell));
     if (phase == PHASE_GAS || phase == PHASE_VAPOR) {
         base = gasPresentation(cell, grid, base);
         base.rgb = mix(backgroundColor(grid), base.rgb, base.a);

@@ -1,6 +1,8 @@
 #ifndef SANDHYBRID_MATERIAL_APPEARANCE_GLSL
 #define SANDHYBRID_MATERIAL_APPEARANCE_GLSL
 
+#include "material_visual_phase.glsl"
+
 uint materialAppearanceClass(uint material) {
     if (isGas(material)) return 4u;
     if (isLiquid(material) || material == MAT_LAVA) return 3u;

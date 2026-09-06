@@ -215,11 +215,14 @@ if(SANDHYBRID_BUILD_VULKAN_RUNTIME)
                     "${SHADER_SOURCE_DIR}/rain_membership.glsl"
                     "${SHADER_SOURCE_DIR}/debug_stats.glsl"
                     "${SHADER_SOURCE_DIR}/debug_geometry.glsl"
+                    "${SHADER_SOURCE_DIR}/paint_schedule.glsl"
                     "${SHADER_SOURCE_DIR}/actor.glsl"
                     "${SHADER_SOURCE_DIR}/terrain_generation.glsl"
                     "${SHADER_SOURCE_DIR}/epochgui_font.glsl"
                     "${SHADER_SOURCE_DIR}/ui_text.glsl"
                     "${SHADER_SOURCE_DIR}/material_appearance.glsl"
+                    "${SHADER_SOURCE_DIR}/material_visual_phase.glsl"
+                    "${SHADER_SOURCE_DIR}/text_geometry.glsl"
             VERBATIM
             COMMENT "Compiling ${SHADER_FILE}"
         )
@@ -386,6 +389,8 @@ if(BUILD_TESTING)
     if(Python3_Interpreter_FOUND)
         add_test(NAME epochsimengine_project_branding_contract
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_project_branding.py)
+        add_test(NAME epochsimengine_machinery_edits_contract
+       COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_machinery_edits.py)
         add_test(NAME sandhybrid_mission_cache_contract
        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_mission_cache.py)
         add_test(NAME sandhybrid_mission_registry_contract
@@ -419,6 +424,23 @@ if(BUILD_TESTING)
     endif()
 
     add_executable(sandhybrid_input_routing_contract tests/input_routing_contract.cpp)
+    add_executable(epochsimengine_paint_schedule_contract tests/paint_schedule_contract.cpp)
+    target_compile_features(epochsimengine_paint_schedule_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(epochsimengine_paint_schedule_contract)
+    add_test(NAME epochsimengine_paint_schedule_contract COMMAND epochsimengine_paint_schedule_contract)
+
+    add_executable(epochsimengine_material_appearance_contract tests/material_appearance_contract.cpp)
+    target_include_directories(epochsimengine_material_appearance_contract PRIVATE include shaders)
+    target_compile_features(epochsimengine_material_appearance_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(epochsimengine_material_appearance_contract)
+    add_test(NAME epochsimengine_material_appearance_contract COMMAND epochsimengine_material_appearance_contract)
+
+    add_executable(epochsimengine_text_geometry_contract tests/text_geometry_contract.cpp)
+    target_include_directories(epochsimengine_text_geometry_contract PRIVATE shaders include third_party/EpochGui/include)
+    target_compile_features(epochsimengine_text_geometry_contract PRIVATE cxx_std_23)
+    sandhybrid_configure_warnings(epochsimengine_text_geometry_contract)
+    add_test(NAME epochsimengine_text_geometry_contract COMMAND epochsimengine_text_geometry_contract)
+
     target_include_directories(sandhybrid_input_routing_contract PRIVATE include)
     target_compile_features(sandhybrid_input_routing_contract PRIVATE cxx_std_23)
     sandhybrid_configure_warnings(sandhybrid_input_routing_contract)

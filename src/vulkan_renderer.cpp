@@ -50,6 +50,11 @@
 
 namespace sandhybrid {
 
+namespace paint_schedule {
+using uint = std::uint32_t;
+#include "../shaders/paint_schedule.glsl"
+} // namespace paint_schedule
+
 namespace {
 
 constexpr std::uint32_t simulation_local_size = 16;
@@ -3035,6 +3040,30 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             state.mouse_y.load(std::memory_order_relaxed));
     }
 
+    void record_brush_dispatch(const VkCommandBuffer command_buffer, SimulationPush push) {
+        const auto material = static_cast<Material>(push.material & 0xffffu);
+        const bool tile_mode = (push.material & (1u << 18u)) != 0u;
+        const bool direct_life = material == Material::bee || material == Material::queen_bee ||
+                                 material == Material::ant || material == Material::beetle;
+        const bool column_owned = material == Material::smoke || (tile_mode && direct_life);
+        const auto diameter = push.radius * 2u + 1u;
+        const auto phases = column_owned ? paint_schedule::PAINT_COLUMN_PHASES : 1u;
+        bind_compute(command_buffer, paint_pipeline, current_set);
+        for (std::uint32_t phase = 0u; phase < phases; ++phase) {
+            push.active_mode = column_owned ? paint_schedule::PAINT_COLUMN_FIRST_MODE + phase : 0u;
+            vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, sizeof(push), &push);
+            vkCmdDispatch(command_buffer, divide_round_up(diameter, simulation_local_size),
+                column_owned ? 1u : divide_round_up(diameter, simulation_local_size), 1u);
+            // The next global column phase reads and writes the preceding
+            // phase's exact committed cells; no dispatch-wide shader barrier
+            // or workgroup ordering assumption can replace this dependency.
+            buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
+                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        }
+    }
+
     void record_paint_at_grid(const VkCommandBuffer command_buffer,
                               const SharedState& state,
                               const bool erase,
@@ -3139,15 +3168,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             .material = packed_material,
         };
 
-        bind_compute(command_buffer, paint_pipeline, current_set);
-        vkCmdPushConstants(command_buffer, compute_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, sizeof(push), &push);
-        const auto diameter = radius * 2u + 1u;
-        vkCmdDispatch(command_buffer, divide_round_up(diameter, simulation_local_size),
-                      divide_round_up(diameter, simulation_local_size), 1);
-        buffer_barrier(command_buffer, cell_buffers[current_set], VK_ACCESS_SHADER_WRITE_BIT,
-                       VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        record_brush_dispatch(command_buffer, push);
         // Smoke may shift an entire liquid column above the brush. Reconcile
         // the final committed strip after all paint writers finish, rather
         // than publishing intermediate shifted positions. No tick or readback.
@@ -4613,22 +4634,32 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
     void run_acceptance_chemistry_pass(const std::int32_t active_section_x = 0,
                                        const std::int32_t active_section_y = 0,
                                        const bool translated_active_window = false,
-                                       const bool collect_debug = false) {
-        immediate_submit([&](const VkCommandBuffer command_buffer) {
-            const auto origin_x = translated_active_window
-                ? static_cast<std::uint32_t>((std::max)(active_section_x, 0) *
-                                             active_region_width_cells) : 0u;
-            const auto origin_y = translated_active_window
-                ? static_cast<std::uint32_t>((std::max)(active_section_y, 0) *
-                                             active_region_height_cells) : 0u;
-            const auto acceptance_width = translated_active_window
+                                       const bool collect_debug = false,
+                                       const std::uint32_t width_limit = 0u,
+                                       const std::uint32_t height_limit = 0u) {
+        const auto requested_origin_x = translated_active_window
+            ? static_cast<std::uint64_t>((std::max)(active_section_x, 0)) *
+                  active_region_width_cells : 0u;
+        const auto requested_origin_y = translated_active_window
+            ? static_cast<std::uint64_t>((std::max)(active_section_y, 0)) *
+                  active_region_height_cells : 0u;
+        if (requested_origin_x >= config.grid_width || requested_origin_y >= config.grid_height)
+            throw std::runtime_error("Acceptance chemistry origin is outside the world.");
+        const auto origin_x = static_cast<std::uint32_t>(requested_origin_x);
+        const auto origin_y = static_cast<std::uint32_t>(requested_origin_y);
+        const auto remaining_width = translated_active_window
                 ? (std::min)(config.grid_width - origin_x,
                              static_cast<std::uint32_t>(active_region_width_cells))
                 : (std::min)(config.grid_width, 192u);
-            const auto acceptance_height = translated_active_window
+        const auto remaining_height = translated_active_window
                 ? (std::min)(config.grid_height - origin_y,
                              static_cast<std::uint32_t>(active_region_height_cells))
                 : (std::min)(config.grid_height, 192u);
+        const auto acceptance_width = width_limit == 0u ? remaining_width
+            : (std::min)(remaining_width, width_limit);
+        const auto acceptance_height = height_limit == 0u ? remaining_height
+            : (std::min)(remaining_height, height_limit);
+        immediate_submit([&](const VkCommandBuffer command_buffer) {
             const ActiveCellDispatch acceptance_dispatch{
                 origin_x, origin_y, acceptance_width, acceptance_height};
             const SimulationPush push{
@@ -5139,18 +5170,7 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                 .radius = radius,
                 .material = static_cast<std::uint32_t>(material),
             };
-            bind_compute(command_buffer, paint_pipeline, current_set);
-            vkCmdPushConstants(command_buffer, compute_pipeline_layout,
-                               VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
-            const auto diameter = radius * 2u + 1u;
-            vkCmdDispatch(command_buffer,
-                          divide_round_up(diameter, simulation_local_size),
-                          divide_round_up(diameter, simulation_local_size), 1);
-            buffer_barrier(command_buffer, cell_buffers[current_set],
-                           VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            record_brush_dispatch(command_buffer, push);
             const auto extent = static_cast<std::int32_t>(radius);
             record_rain_rectangle(command_buffer, center_x - extent,
                 material == Material::smoke ? 0 : center_y - extent,
@@ -7802,6 +7822,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             #include "acceptance_bee_colonies.inl"
             #include "acceptance_bee_membership.inl"
             #include "acceptance_bee_visual.inl"
+            #include "acceptance_paint_columns.inl"
+            #include "acceptance_machinery_edits.inl"
 
             {
                 constexpr std::uint32_t water_x = 72u;

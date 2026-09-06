@@ -490,11 +490,44 @@ bool isFactoryInputResource(uint material) {
     return material == MAT_SAND || material == MAT_SILT || material == MAT_IRON || material == MAT_IRON_ORE ||
            material == MAT_ALUMINUM || material == MAT_ALUMINUM_SHAVINGS ||
            material == MAT_GOLD || material == MAT_STEEL || material == MAT_COPPER ||
-           material == MAT_POWER_CELL || material == MAT_PLASMA_AMMO;
+           material == MAT_POWER_CELL || material == MAT_PLASMA_AMMO ||
+           material == MAT_FOOD || material == MAT_WASTE || material == MAT_FERTILIZER;
 }
 
 bool isMachineController(ivec2 p, uint material) {
     return isMachine(material) && (p.x & 7) == 3 && (p.y & 7) == 3;
+}
+
+bool machineEndpointActive(ivec2 position) {
+    // Mirror main's invocation admission, not merely global buffer bounds.
+    // A clipped/translated pass must process both ends of an inventory transfer.
+    if (!inside(position) ||
+        !sectionActiveAt(position, pc.activeSectionX, pc.activeSectionY, pc.activeMode))
+        return false;
+    ivec2 local = position - activeDispatchCellOrigin(
+        pc.activeSectionX, pc.activeSectionY, pc.activeMode);
+    if (any(lessThan(local, ivec2(0)))) return false;
+    return pc.radius == 0u ||
+        (uint(local.x) < pc.radius && uint(local.y) < pc.material);
+}
+
+bool machinePairAwake(ivec2 resourcePosition, ivec2 controller, Cell resourceCell) {
+    // Every machine reach is six cells, so both endpoints lie inside the
+    // donor's 3x3 chunk/tile sleep neighborhoods. These constant-time witnesses
+    // prove neither early sleep return can skip a credited donor. In stale
+    // metadata where only a third neighbor is awake, defer conservatively;
+    // do not add neighborhood scans inside the existing rank/election graph.
+    if (any(greaterThan(abs(resourcePosition - controller), ivec2(6)))) return false;
+    ChunkState donorChunk = chunks[chunkIndex(resourcePosition, pc.width)];
+    ChunkState controllerChunk = chunks[chunkIndex(controller, pc.width)];
+    bool chunkAwake = !chunkHas(donorChunk, CHUNK_SLEEPING) || chunkHas(donorChunk, CHUNK_DIRTY) ||
+                      !chunkHas(controllerChunk, CHUNK_SLEEPING) || chunkHas(controllerChunk, CHUNK_DIRTY);
+    if (!chunkAwake) return false;
+    if (!isStructural(resourceCell)) return true;
+    TileState donorTile = tiles[tileIndex(resourcePosition, pc.width)];
+    if (!tileHas(donorTile, TILE_SLEEPING)) return true;
+    TileState controllerTile = tiles[tileIndex(controller, pc.width)];
+    return tileHas(controllerTile, TILE_ACTIVE) || tileHas(controllerTile, TILE_COLLAPSING);
 }
 
 int machineResourceSlot(uint machine, Cell resourceCell) {
@@ -559,12 +592,16 @@ ivec2 machineOutputPosition(ivec2 controller) {
 ivec2 nearestAcceptingMachine(ivec2 resourcePosition, Cell resourceCell, int radius) {
     int best = 0x3fffffff;
     ivec2 result = resourcePosition;
+    if (!machineEndpointActive(resourcePosition)) return result;
     for (int y = -radius; y <= radius; ++y) {
         for (int x = -radius; x <= radius; ++x) {
             ivec2 candidatePosition = resourcePosition + ivec2(x, y);
+            if (!machineEndpointActive(candidatePosition)) continue;
+            if ((candidatePosition.x & 7) != 3 || (candidatePosition.y & 7) != 3) continue;
             Cell candidate = at(candidatePosition);
             if (isMachineController(candidatePosition, candidate.material) &&
-                machineResourceSlot(candidate.material, resourceCell) >= 0) {
+                machineResourceSlot(candidate.material, resourceCell) >= 0 &&
+                machinePairAwake(resourcePosition, candidatePosition, resourceCell)) {
                 int distanceSquared = x * x + y * y;
                 if (distanceSquared < best) {
                     best = distanceSquared;
@@ -582,7 +619,7 @@ uint machineInputRank(ivec2 resourcePosition, ivec2 controller, uint machine, in
     for (int y = -6; y <= 6; ++y) {
         for (int x = -6; x <= 6; ++x) {
             ivec2 candidatePosition = controller + ivec2(x, y);
-            if (!inside(candidatePosition) || indexOf(candidatePosition) >= resourceIndex) continue;
+            if (!machineEndpointActive(candidatePosition) || indexOf(candidatePosition) >= resourceIndex) continue;
             Cell candidate = at(candidatePosition);
             if (machineResourceSlot(machine, candidate) != slot) continue;
             if (all(equal(nearestAcceptingMachine(candidatePosition, candidate, 6), controller))) ++rank;
@@ -592,6 +629,8 @@ uint machineInputRank(ivec2 resourcePosition, ivec2 controller, uint machine, in
 }
 
 bool machineAcceptsResource(ivec2 resourcePosition, ivec2 controller, Cell resourceCell) {
+    if (!machineEndpointActive(resourcePosition) || !machineEndpointActive(controller)) return false;
+    if (!machinePairAwake(resourcePosition, controller, resourceCell)) return false;
     Cell machine = at(controller);
     int slot = machineResourceSlot(machine.material, resourceCell);
     if (slot < 0) return false;
@@ -602,9 +641,11 @@ bool machineAcceptsResource(ivec2 resourcePosition, ivec2 controller, Cell resou
 
 uvec4 incomingMachineCounts(ivec2 controller, uint machine) {
     uvec4 incoming = uvec4(0u);
+    if (!machineEndpointActive(controller)) return incoming;
     for (int y = -6; y <= 6; ++y) {
         for (int x = -6; x <= 6; ++x) {
             ivec2 resourcePosition = controller + ivec2(x, y);
+            if (!machineEndpointActive(resourcePosition)) continue;
             Cell resourceCell = at(resourcePosition);
             int slot = machineResourceSlot(machine, resourceCell);
             if (slot >= 0 &&
@@ -1453,14 +1494,19 @@ void main() {
     }
 
     // Resource cells are consumed only by one deterministic nearby machine controller.
-    bool storedInMachine = false;
     if (isFactoryInputResource(source.material)) {
         ivec2 acceptingMachine = nearestAcceptingMachine(p, source, 6);
         if (any(notEqual(acceptingMachine, p)) &&
             machineAcceptsResource(p, acceptingMachine, source)) {
             result = makeCell(MAT_EMPTY);
-            storedInMachine = true;
             if ((pc.reserved & 1u) != 0u) atomicAdd(debugStats[STAT_MACHINE_INPUTS], 1u);
+            // The recipient credits this immutable source through the same
+            // controller/rank/capacity election. Finalize its matching debit
+            // now: later Waste/compost/heat rules must not resurrect the unit.
+            // Inventory, rather than another world cell, owns the stored unit.
+            atomicAdd(conservation[CONS_CONVERTED], 1u);
+            nextCells[index] = result;
+            return;
         }
     }
 
@@ -2050,13 +2096,5 @@ void main() {
         result = makeCell(nearSaltwater ? MAT_SALTWATER : MAT_WATER);
     }
 
-    if (storedInMachine) {
-        // Chemistry is a strict current -> next pass. Consumed factory inputs
-        // must never write back into the readonly snapshot or race neighboring
-        // invocations. The machine inventory accounts for the represented unit.
-        atomicAdd(conservation[CONS_CONVERTED], 1u);
-        nextCells[index] = result;
-    } else {
-        commitResult(index, source, result);
-    }
+    commitResult(index, source, result);
 }

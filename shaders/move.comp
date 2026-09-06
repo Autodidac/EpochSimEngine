@@ -1456,12 +1456,15 @@ void processHorizontal(ivec2 left, ivec2 right) {
 
     int leftBelt = conveyorDirectionBelow(left);
     int rightBelt = conveyorDirectionBelow(right);
-    if (isConveyorCargo(a) && b.material == MAT_EMPTY && leftBelt > 0) {
+    // Reset authors Atmosphere, not Vacuum. Conveyors exchange the complete
+    // cargo/displaced-gas payload through the existing pair owner; they never
+    // erase the destination medium or displace a liquid/solid obstruction.
+    if (isConveyorCargo(a) && isOpenGas(b) && leftBelt > 0) {
         swapCells(left, right);
         if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_CONVEYOR_MOVES], 1u);
         return;
     }
-    if (isConveyorCargo(b) && a.material == MAT_EMPTY && rightBelt < 0) {
+    if (isConveyorCargo(b) && isOpenGas(a) && rightBelt < 0) {
         swapCells(left, right);
         if (movePc.reserved0 != 0u) atomicAdd(debugStats[STAT_CONVEYOR_MOVES], 1u);
         return;

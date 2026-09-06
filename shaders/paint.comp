@@ -6,6 +6,7 @@
 #include "chunks.glsl"
 #include "bee_swarm.glsl"
 #include "beehive.glsl"
+#include "paint_schedule.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
 layout(std430, binding = 0) buffer CurrentCells { Cell cells[]; };
@@ -163,8 +164,7 @@ bool paintColonyOwnsCell(ivec2 queen, ivec2 p, Cell candidate, bool explicitOwne
     return legacyPerch;
 }
 
-void main() {
-    ivec2 local = ivec2(gl_GlobalInvocationID.xy);
+void paintInvocation(ivec2 local) {
     if (pc.activeMode == 5u) {
         // One preflight owner writes only scratch. Painting and legacy cleanup
         // both read this admission after a barrier, so overlap rejection is
@@ -332,4 +332,21 @@ void main() {
     recordConservation(previous, cell);
     cells[index] = cell;
     markPaintChunkDirty(p);
+}
+
+void main() {
+    ivec2 local = ivec2(gl_GlobalInvocationID.xy);
+    if (paintColumnMode(pc.activeMode)) {
+        int diameter = int(pc.radius * 2u + 1u);
+        int worldX = pc.brushX - int(pc.radius) + local.x;
+        if (local.y != 0 || local.x >= diameter || worldX >= int(pc.width) ||
+            !paintColumnOwned(worldX, pc.activeMode)) return;
+        // Each column owns its complete displacement chain. Bottom-up order
+        // ensures an earlier insertion is never overwritten by a concurrent
+        // shift. Existing brush/entropy coordinates remain exactly unchanged.
+        for (int y = diameter - 1; y >= 0; --y)
+            paintInvocation(ivec2(local.x, y));
+        return;
+    }
+    paintInvocation(local);
 }
