@@ -16,6 +16,14 @@ Start with:
 
 Repository agents must read `missioncache.md` and `MISSION_LEDGER.md` before planning or changing behavior. Those are internal acceptance records and are deliberately not part of the installed runtime package.
 
+## v2.5.29 release scope
+
+The explicitly authorized September 6 release contains the **Windows demo and committed-source archives only**. The existing public Linux download remains **v2.5.27**. Linux v2.5.29 is **HELD**, not a current native download; including Linux build support in the source archives does not certify its runtime.
+
+Native source `716722969d059e8c76791107b3ff9b0e267eb372` passes Windows Release CTest 90/90, installed Large Vulkan state checks 164/164, and 12/12 material/save cycles. Idle Windows presentation passes 1,920 frames and fixed ticks in 34.5001 seconds; the paired REGION draw p95 increment is 1.2361 ms, not an attributed speedup. Linux Release CTest passes 79/79, but the final runtime run was intentionally stopped without a completed JSON report; its subsequent finite/presentation gates did not run.
+
+This release-only exception does not close any of the 123 active missions. Personal visual approval, longer hive/ecology recurrence, Editor controls clipping at 720p, crowded Designer text, legacy KEYMAP entries, and broader performance/material work remain open. See `VALIDATION.md` for evidence boundaries.
+
 ## Quick build
 
 Library only:

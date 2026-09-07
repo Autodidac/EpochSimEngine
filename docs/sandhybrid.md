@@ -2,6 +2,12 @@
 
 SandHybrid is the bundled Windows/Linux Vulkan demo for EpochSimEngine. The project and simulation library are named EpochSimEngine; SandHybrid names only this demo application. It presents one persistent connected World containing eight west-to-east districts: Sandbox, Ecosystem, Engineering, Frontier, Volcano, Waterworks, Gold Mine, and Demolition.
 
+## v2.5.29 availability and evidence
+
+The September 6 release authorization covers the Windows demo and committed-source archives only. The existing public Linux download remains v2.5.27. Linux v2.5.29 is HELD: its Release CTest passes 79/79, but its final Compact runtime was intentionally stopped without a completed report, and subsequent finite/presentation gates did not start. Linux commands below describe source/development testing, not a certified v2.5.29 Linux download.
+
+Tested native source `716722969d059e8c76791107b3ff9b0e267eb372` passes Windows CTest 90/90, installed Large state 164/164, 12/12 material/save cycles, and idle presentation of 1,920 frames/ticks in 34.5001 seconds. The paired REGION draw p95 increment is 1.2361 ms, not an attributed speedup. All 123 active missions remain; personal visual approval, longer ecology/hive recurrence, Editor 720p clipping, crowded Designer text, legacy KEYMAP entries and broader material/performance work are not declared complete.
+
 ## World size and Vulkan device limits
 
 Choose an explicit world preset that fits the selected Vulkan device. Each canonical cell buffer and the full MAP cell snapshot use a storage-buffer descriptor covering the entire resident cell field, at 16 bytes per cell:
@@ -14,7 +20,7 @@ Choose an explicit world preset that fits the selected Vulkan device. Each canon
 
 These are per-descriptor sizes, not total GPU memory consumption. Both cell buffers, MAP, lighting, hierarchy, staging, and driver allocations require additional memory. Every full cell descriptor must fit the device's advertised `maxStorageBufferRange`; free VRAM does not override that limit. An unsupported requested preset must be rejected before allocation/dispatch, never silently resized or admitted through a truncated descriptor. Saves retain their exact world dimensions.
 
-The currently tested stock Mesa 23.2.1 llvmpipe/LLVM 15 device advertises a 128 MiB limit: Compact fits, while Standard and Large do not. From an installed Linux package root, use `./run-compact.sh` for the demo, or `./bin/sandhybrid --world-size compact` with the desired report arguments. Compact retains all eight contiguous districts, but does not cover Standard/Large inter-district gaps or Large's sparse startup-window requirement. Validate those on a device that supports the larger preset; Compact results are not Large parity. Final production Linux acceptance for the current corrective build remains pending; a supported allocation alone is not acceptance.
+The currently tested stock Mesa 23.2.1 llvmpipe/LLVM 15 device advertises a 128 MiB limit: Compact fits, while Standard and Large do not. From a local Linux development install root, use `./run-compact.sh` for the demo, or `./bin/sandhybrid --world-size compact` with the desired report arguments. Compact retains all eight contiguous districts, but does not cover Standard/Large inter-district gaps or Large's sparse startup-window requirement. Validate those on a device that supports the larger preset; Compact results are not Large parity. Linux v2.5.29 remains held without completed production acceptance; a supported allocation alone is not acceptance. These current-source device checks do not retroactively change the retained public v2.5.27 binary.
 
 For every acceptance or profiling run, retain the selected device/driver, advertised `maxStorageBufferRange`, explicit preset, and resident dimensions with the report. Use the largest supported preset for the native release state gate, and keep preset/device conditions identical for comparisons.
 
@@ -33,7 +39,7 @@ The required model is a finite closed material system except for explicit user e
 - The player laser damages material and transfers a terminal fragment to a deterministic adjacent real-gas world cell. It never erases, collects inventory, or creates Vacuum; a blocked hit retains its exact source.
 - `NUKE FROM SPACE` shows a bright staged flare in the high sky above the continuous Cloud deck, then applies one GPU edit to only that upper Atmosphere region. Breathable Atmosphere below the deck remains intact. The action remains live while paused and performs no synchronous world readback.
 
-The in-app KEYMAP is authoritative for the complete current bindings.
+The in-app KEYMAP is a quick reference, but its remaining legacy entries are an open documentation/UI issue; use the current controls described above.
 
 ## Beehives
 
@@ -43,7 +49,7 @@ Each colony owns 60 unique bees in the accepted three outward-open crescents. Fi
 
 The accepted photographed body is unchanged. Exact schema-2 saves retain each colony's home and slot owners; old authored-district home encodings remain compatible. Full ecological recurrence and long-duration visual acceptance remain tracked in the mission cache rather than implied by the placement fix.
 
-The queen needs a clear right entrance and a finite exterior Atmosphere supply. The ventilation correction consumes real Oxygen and stores CO2; it does not make a sealed, flooded, overheated or aging queen immortal. The current local ventilation and frozen-MAP regressions are compiled but still awaiting GPU validation; this guide does not certify them complete.
+The queen needs a clear right entrance and a finite exterior Atmosphere supply. The ventilation correction consumes real Oxygen and stores CO2; it does not make a sealed, flooded, overheated or aging queen immortal. Current installed Windows GPU tests pass exact ventilation, edge recovery and frozen-MAP regressions. The stopped Linux run also passed the five actual paused hive/MAP captures, but is not a completed runtime pass. Broader lifecycle and visual mission acceptance remains open.
 
 ## Reading Debug
 

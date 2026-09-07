@@ -1,6 +1,8 @@
 # EpochSimEngine changelog
 
-## 2.5.29 (candidate; native package gates pending)
+## 2.5.29 (Windows and committed source; Linux held)
+
+- Release scope explicitly authorized on September 6: stable Windows demo and committed-source archives only. The existing public Linux v2.5.27 download remains unchanged; Linux v2.5.29 is HELD and is not a current download. This is a release-only exception to the normal two-platform runtime publication gate, not Linux runtime acceptance.
 
 - Made Beehive an independently repeatable Editor tool with sky/gap homes, exact per-colony 60-slot ownership, bounded no-Flower search/return and live/paused/MAP recognition of every home. This supersedes frozen 2.5.28 singleton replacement.
 - Preserved finite Queen ventilation during own-home newborn transit, including coincident Bee breathing and scarce Oxygen; retained the original edge regression and added deterministic rare-event controls.
@@ -15,8 +17,9 @@
 - Made bounded presentation/capture waits consistent by Vulkan device class instead of diagnostic mode, with accurate timeout messages; software first-use rendering retains its 60-second budget while hardware retains five seconds.
 - Restored executable modes on the five tracked Linux build/demo launchers so fresh Git/source-TAR checkouts can use their documented commands. Script contents and native binaries are unchanged.
 - Corrected Half Water appearance, avoided out-of-label glyph work and restored Frontier inlet/Core reset geometry without changing Water/Steel counts or rewriting saves.
-- Reduced acceptance-runner stack usage and repaired GNU push-lambda captures without weakening tests. Current Windows Release/CTest passes 90/90 and Linux Release/CTest passes 79/79; final installed-runtime, finite-cycle and presentation evidence must pass before the release handoff.
-- Kept all 123 active missions and accepted hive/crescent/Nuke visuals. Unfinished material/soil/ecology/experiment work, Editor small-window clipping, legacy keymap text and broader performance work remain open.
+- Reduced acceptance-runner stack usage and repaired GNU push-lambda captures without weakening tests. Tested native source `716722969d059e8c76791107b3ff9b0e267eb372` passes Windows Release/CTest 90/90, installed Large state 164/164, and 12/12 material/save cycles. Idle Windows presentation passes 1,920 frames/ticks in 34.5001 seconds, with a paired REGION draw p95 increment of 1.2361 ms; this is measured behavior, not an attributed speedup.
+- Linux Release/CTest passes 79/79. The final supported Compact runtime run was intentionally stopped at 31:59.51/exit 143 after 35 passed assertions, including all five paused hive/MAP captures; no completed runtime JSON exists, and subsequent finite/presentation gates did not start. Earlier failed and interrupted evidence remains retained, not relabeled as acceptance.
+- Kept all 123 active missions and accepted hive/crescent/Nuke visuals. Personal visual approval, longer hive/ecology recurrence, unfinished material/soil/experiment work, Editor small-window clipping, crowded Designer text, legacy keymap text and broader performance work remain open. Twelve material/save cycles are not twelve hive lifecycle cycles.
 
 - Made EpochSimEngine the sole project/library identity in public API metadata, canonical headers/namespace, CMake library exports, manifest, guides, validation and source-release labels. SandHybrid names only the bundled demo.
 - Retained legacy API aliases, options, save-format markers and existing URLs as compatibility interfaces; historical artifact identities are unchanged. Naming corrections do not complete outstanding simulation missions.

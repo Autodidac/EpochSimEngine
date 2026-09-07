@@ -8,6 +8,14 @@
 4. Keep library, optional runtime, and bundled example ownership separate.
 5. Build and test native Windows and Linux Release packages before publication.
 
+### v2.5.29 release-only exception
+
+On September 6 the user explicitly authorized Windows and committed source only, retaining the existing public Linux v2.5.27 download. Linux v2.5.29 is HELD, not a current native download. This exception permits the scoped Windows/source handoff; it does not alter the normal workflow for later releases, waive tests, or certify Linux runtime behavior.
+
+Native source `716722969d059e8c76791107b3ff9b0e267eb372` passes Windows Release CTest 90/90, installed Large production state 164/164, and 12/12 material/save cycles. Idle Windows presentation passes 1,920 frames/ticks in 34.5001 seconds, with nine captures, actual hive witnesses and a paired REGION draw p95 increment of 1.2361 ms. This is measured behavior, not an attributed speedup. Linux Release CTest passes 79/79; its final supported Compact runtime was intentionally stopped at 31:59.51/exit 143 after 35 passed assertions, including five paused hive/MAP captures. No completed runtime JSON exists, and subsequent finite/presentation gates did not start. Retain all earlier failed/interrupted evidence.
+
+Later documentation-only commits must preserve the tested binaries/shaders. All 123 active missions remain, including personal visual approval, longer ecology/hive recurrence, full reset/tool/MAP/save-load visual comparison, Editor 720p clipping, crowded Designer text, legacy KEYMAP entries and broader material/performance work. The twelve material/save cycles are not twelve hive lifecycle cycles.
+
 ## Architecture
 
 The native event thread owns Win32/XCB input and window events. A dedicated Vulkan thread owns fixed-rate simulation, compute dispatch, readback, and presentation. Canonical 16-byte cells are globally authoritative. Aligned tile and chunk metadata provide macro movement, stability, active-area rejection, and sleep without replacing cells.
@@ -64,6 +72,8 @@ User and package documentation lives in this small lowercase set: `library.md`, 
 ## Release handoff
 
 Intermediate commits are reviewable checkpoints, not releases. A final Site handoff contains the exact clean commit/ref, displayed version/status/date, committed-tree-only source intent, artifact filenames/bytes/SHA-256, Windows/Linux build/test/runtime evidence, visual/performance evidence, mutation status, blockers, and explicit publication authorization.
+
+For the explicitly authorized v2.5.29 handoff, publish only the Windows demo and committed-source ZIP/TAR archives with their exact integrity metadata. Keep the public Linux v2.5.27 artifact and label intact; a locally generated v2.5.29 Linux archive is not authorized for promotion. Source archives retain Linux support without claiming completed Linux runtime acceptance. Verify publication separately before describing the handoff as live.
 
 `tools/package_release.py` accepts the exact clean current commit, both previously validated CMake install prefixes, a stable numeric version, and a separate output directory. It creates fresh Windows/Linux demo archives plus platform-neutral source ZIP/TAR archives, normalized checksum sidecars and an integrity manifest. It never publishes, deletes, or replaces existing outputs. Source is derived from Git archive, not the checkout; committed archive attributes and executable modes are preserved while machine-local overrides are rejected. Linux runtime entries use 0755 for directories/launchers/executable and 0644 for data, with normalized ownership and commit time.
 

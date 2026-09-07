@@ -1,5 +1,25 @@
 # EpochSimEngine Validation Matrix
 
+## v2.5.29 scoped release evidence — September 6, 2026
+
+The user explicitly authorized the Windows demo and exact committed-source archives only. The existing public Linux download remains v2.5.27; Linux v2.5.29 is HELD and must not be presented as a current native download. This exception applies only to this release and does not relax any test or mission criterion.
+
+The tested native source is `716722969d059e8c76791107b3ff9b0e267eb372`; later release-documentation changes do not change the tested native bytes.
+
+| Gate | Recorded result |
+|---|---|
+| Windows Release CTest | 90/90 pass |
+| Installed Windows Large state | 164/164 pass, exit 0 |
+| Installed Windows material/save cycles | 12/12 pass, exit 0; not twelve hive lifecycle cycles |
+| Idle Windows presentation | 1,920 frames / 1,920 fixed ticks, 34.5001 seconds, nine captures and hive witnesses; paired REGION draw p95 increment 1.2361 ms |
+| Linux Release CTest | 79/79 pass; compilation/contracts, not runtime parity |
+| Final Linux Compact runtime | Intentionally stopped at 31:59.51, exit 143, after 35 passed assertions including five paused hive/MAP captures; no completed runtime JSON |
+| Final Linux finite/presentation | Not started after the stopped runtime; HELD |
+
+Windows report SHA-256 values are `0865914ee400028f23bdd0f8314a582b3bce5e0c4c668929549745717f6c0baf` (state), `c2d3d20892aa371c9efaba142dca30a11da0cb4a96cc073e261356804d5c9576` (material/save cycles), and `678e69a978f5e227b5b6c7c34a465700f42f32a35f40103e0608bd46cb457a70` (idle presentation). Earlier failures/interrupted runs remain historical evidence. The timing is not an attributed speedup, and neither captured images nor source checks imply personal user visual approval. All 123 active missions remain, including longer hive/ecology recurrence, complete reset/tool/MAP/save-load visual comparison, Editor 720p clipping, crowded Designer text, legacy KEYMAP entries, and broader material/performance work.
+
+## Validation levels
+
 The project separates three validation levels:
 
 - **Contract:** deterministic C++23 tests for IDs, phase thresholds, terrain stability policy, local water conservation, UI hit testing, and source-independent canonical state.
@@ -167,5 +187,5 @@ The packet/performance follow-up adds successful-distance and bounded-dispatch g
 - `tools/validate_v2525_contract.py` requires aligned distributed district origins, common grass Y, sparse Large startup, durable Fix29 contents across every constructor/runtime path, delayed exact hive readback, and stable v2.5.25 package names.
 - `tools/validate_release_tree.py` rejects tracked packages, executables, compiled shaders, payload chunks, one-shot workflows, and versioned release-note fragments.
 - Windows and Linux full Release builds compile every shader, build with warnings as errors, run all CTests, install the package, archive it, audit its contents, and generate SHA-256 files. The current WSL tree compiles SPIR-V with its native ELF x86-64 shaderc glslc; no Windows shader compiler is used in that lane.
-- Before any public publication, both fresh native packages must execute the Vulkan state-readback command successfully; this pass is local-only. Windows high-DPI capture must also show a paused committed edit beneath its cursor and no world ghost in the sidebar.
+- The normal publication gate requires both fresh native packages to execute the Vulkan state-readback command successfully; this pass is local-only. The explicitly authorized v2.5.29 Windows/source-only exception above does not publish or certify its held Linux build. Windows high-DPI capture must also show a paused committed edit beneath its cursor and no world ghost in the sidebar.
 - Runtime and visual acceptance stays active in `missioncache.md`; deterministic contracts and focused readback are evidence, not substitutes for every remaining mission scenario.
