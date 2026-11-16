@@ -1,5 +1,7 @@
 # EpochSimEngine Mission Ledger
 
+- MC-145/147/148 checkpoint: reproduced and fixed an optional manifest failure being reported as failure of a committed world save. Real filesystem save failures are logged without ending the session. Windows Release and 45 selected headless native contracts pass; the demo was not launched. Keep the packaged and Linux acceptance gates and all mission statuses open as recorded.
+
 - MC-094/131 checkpoint: shared REGION glyphs, high-contrast key, and suppression of passive marks at one pixel per cell. Counts are unchanged. Windows Release, shader contracts, and 45 headless native contracts pass; the demo was not launched. Keep packaged visual, Linux, and performance gates open. No mission status changes.
 
 - MC-128/141 checkpoint: compact Editor keymap and aligned pointer geometry compile in Windows Release; shader contracts and focused CPU geometry checks pass. Visual and Linux acceptance remain pending. No mission closure or replacement runtime release.

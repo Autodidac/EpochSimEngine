@@ -1,5 +1,9 @@
 # EpochSimEngine Mission Cache
 
+### Save result and recovery checkpoint
+
+- MC-145/147/148: a directory blocking `manifest.tmp` reproduced a false failure after both `world.shw` and `world.bak` were already committed. Treat the text manifest as optional and return success with a warning when only its refresh fails. The live save handler logs warnings and genuine filesystem failures without throwing out of the frame; GPU/readback failures retain existing handling. The regression now reloads the exact next-generation cells, checks the prior backup and unchanged manifest byte-for-byte, and proves a later save refreshes the manifest. Windows Release and 45 selected headless native contracts pass. No demo launch, Linux run, packaged stress acceptance, or save format change. Preserve all mission statuses and existing release packages.
+
 ### REGION marker readability checkpoint
 
 - MC-094/131 (related MC-080): the REGION overlay and its sidebar key now share one tested 8×8 glyph mask. The key shows evenly scaled colored marks against a neutral background; STABLE is intentionally blank. At one logical pixel per cell, the overlay omits settled, enclosed, and sleeping marks to reduce clutter while retaining their counts. WORLD TOTALS and MAP remain free of tile marks. Windows Release (including SPIR-V) compiled; the 45 selected headless native contracts passed, including all ten marker masks, both swatch sizes, zoom thresholds, and panel geometry. Shader contracts also passed. SandHybrid was not launched; screenshot acceptance, Linux validation, and measured REGION overhead remain open. Preserve every mission status and the existing release packages.

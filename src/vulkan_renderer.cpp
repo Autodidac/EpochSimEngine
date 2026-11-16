@@ -3102,8 +3102,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
   .scene = scene,
         };
         std::string error;
-        if (!save_world(executable_directory(), metadata, save_slot, cells, owners, error))
-  throw std::runtime_error("Unable to save world: " + error);
+        if (!save_world(executable_directory(), metadata, save_slot, cells, owners, error)) {
+            startup_log("Unable to save world: " + error);
+            return;
+        }
+        if (!error.empty()) startup_log("World save warning: " + error);
         startup_log("Saved exact world state: " +
           world_save_path(executable_directory(), config.world_size,
                           scene, save_slot).string());

@@ -106,6 +106,8 @@ bool read_world_save_metadata(const std::filesystem::path& path,
                               WorldSaveMetadata& metadata,
                               std::string& error);
 
+// True means the authoritative world file was committed. A nonempty error
+// on success warns that the optional text manifest could not be refreshed.
 bool save_world(const std::filesystem::path& application_directory,
                 const WorldSaveMetadata& metadata,
                 std::string_view slot,
@@ -113,6 +115,7 @@ bool save_world(const std::filesystem::path& application_directory,
                 const WorldSaveOwners& owners,
                 std::string& error);
 
+// Same success and warning semantics as the actor-aware overload.
 bool save_world(const std::filesystem::path& application_directory,
                 const WorldSaveMetadata& metadata,
                 std::string_view slot,

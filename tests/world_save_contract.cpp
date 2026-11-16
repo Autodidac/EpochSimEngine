@@ -62,6 +62,40 @@ static_assert(world_dimensions(WorldSizePreset::large).width == 10240u);
     return {std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
 }
 
+[[nodiscard]] bool manifest_failure_preserves_save_success(const std::filesystem::path& root) {
+    const WorldSaveMetadata request{
+        .world_size = WorldSizePreset::compact, .width = 2u, .height = 2u, .scene = world_scene};
+    constexpr auto slot = "blocked_manifest";
+    std::vector<SceneCell> cells(4u,
+        SceneCell{static_cast<std::uint32_t>(Material::water), 11u, 73, 96u});
+    std::vector<SceneCell> loaded(cells.size());
+    WorldSaveMetadata decoded{};
+    std::string error;
+    if (!save_world(root, request, slot, cells, error) || !error.empty()) return false;
+
+    const auto primary = world_save_path(root, request.world_size, request.scene, slot);
+    const auto backup = world_save_backup_path(root, request.world_size, request.scene, slot);
+    const auto manifest = primary.parent_path() / "manifest.txt";
+    const auto obstruction = primary.parent_path() / "manifest.tmp";
+    const auto old_primary = file_bytes(primary);
+    const auto old_manifest = file_bytes(manifest);
+    std::filesystem::create_directory(obstruction);
+    cells.back().temperature = 91;
+    const bool saved = save_world(root, request, slot, cells, error);
+    std::filesystem::remove(obstruction);
+    if (!saved || error.find("manifest") == std::string::npos) {
+        std::cerr << "A committed world was reported as a failed save: " << error << '\n';
+        return false;
+    }
+    if (file_bytes(backup) != old_primary || file_bytes(manifest) != old_manifest ||
+        !load_world(root, request.world_size, request.width, request.height,
+                    request.scene, slot, loaded, decoded, error) || !error.empty() ||
+        !same_cells(loaded, cells)) return false;
+
+    return save_world(root, request, slot, cells, error) && error.empty() &&
+           file_bytes(manifest) != old_manifest;
+}
+
 [[nodiscard]] bool rejected_saves_preserve_slot(const std::filesystem::path& root) {
     WorldSaveMetadata metadata{
         .world_size = WorldSizePreset::compact, .width = 69u, .height = 67u, .scene = world_scene};
@@ -557,6 +591,7 @@ int main() {
     if (!repeated_backup_recovery(root)) return 28;
     if (!rejected_saves_preserve_slot(root)) return 29;
     if (!semantic_corruption_preserves_backup(root)) return 30;
+    if (!manifest_failure_preserves_save_success(root)) return 31;
 
     std::error_code cleanup_error;
     std::filesystem::remove_all(root, cleanup_error);

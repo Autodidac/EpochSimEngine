@@ -92,6 +92,8 @@ The Frontier reset layout opens its catchment inlet and keeps Steel stock clear 
 
 World saves use checksummed schema 2 and retain every canonical cell plus the exact actor owner. Schema 1 cell-only saves remain readable without inventing actor state.
 
+`world.shw` is authoritative; `manifest.txt` is an optional summary. If only the summary cannot be refreshed, the save still loads normally and SandHybrid logs a warning. If the world file cannot be saved, SandHybrid reports the failure in its log and keeps the current session running.
+
 The packaged executable can run the focused production Vulkan gate:
 
 ```text

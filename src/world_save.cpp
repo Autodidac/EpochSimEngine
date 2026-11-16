@@ -787,7 +787,12 @@ bool save_world(const std::filesystem::path& application_directory,
     const auto backup = directory / "world.bak";
     if (!write_bytes(temporary, header, body, error)) return false;
     if (!replace_atomically(temporary, destination, backup, metadata, error)) return false;
-    return write_manifest(directory, metadata, slot, error);
+    // The checksummed world file is authoritative. Load never reads the
+    // human-readable manifest; a sidecar failure cannot undo this commit.
+    std::string manifest_error;
+    if (!write_manifest(directory, metadata, slot, manifest_error))
+        error = "world saved, but manifest was not refreshed: " + manifest_error;
+    return true;
 }
 
 bool save_world(const std::filesystem::path& application_directory,
