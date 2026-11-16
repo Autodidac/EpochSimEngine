@@ -1,5 +1,7 @@
 # EpochSimEngine Mission Ledger
 
+- MC-094/131 checkpoint: shared REGION glyphs, high-contrast key, and suppression of passive marks at one pixel per cell. Counts are unchanged. Windows Release, shader contracts, and 45 headless native contracts pass; the demo was not launched. Keep packaged visual, Linux, and performance gates open. No mission status changes.
+
 - MC-128/141 checkpoint: compact Editor keymap and aligned pointer geometry compile in Windows Release; shader contracts and focused CPU geometry checks pass. Visual and Linux acceptance remain pending. No mission closure or replacement runtime release.
 
 - 2026-09-06 explicit user authorization: release v2.5.29 Windows SandHybrid demo and exact committed EpochSimEngine source ZIP/TAR only. Keep public Linux v2.5.27 bytes, checksum, alias and platform eligibility unchanged; current Linux 79/79 CTest is not full runtime acceptance and v2.5.29 Linux remains held. This is a scoped exception to the complete two-platform gate, not a lowered future acceptance policy. Native source remains `716722969d059e8c76791107b3ff9b0e267eb372`; release changes are documentation only. Windows 90/90 CTest, 164/164 installed state, 12/12 material/save cycles and idle 1,920-frame/tick presentation pass with hashes in the cache. Preserve all 137 IDs and 123 active statuses/criteria; no personal eye approval or broad lifecycle/UI completion is claimed. Final archive/hash and Site publication evidence follow separately; no public mutation is asserted in this source checkpoint.

@@ -23,6 +23,42 @@ uint debugSleepingChunkSampleCells(uint chunkX, uint chunkY, uint chunkSize,
 }
 
 uint debugLegendSwatchSize(uint scale) { return scale == 2u ? 24u : 18u; }
+// Give all eight source cells an equal number of pixels. The 18px swatch
+// has a one-pixel margin; the 24px swatch uses its full area.
+uint debugLegendMarkerCell(uint pixel, uint swatchSize) {
+    uint pitch = max(swatchSize / 8u, 1u);
+    uint margin = (swatchSize - min(swatchSize, pitch * 8u)) / 2u;
+    return pixel >= margin && pixel < margin + pitch * 8u
+        ? (pixel - margin) / pitch : 8u;
+}
+
+// Both the legend and world use this exact tile-cell mask.
+bool debugStateMarkerPixel(uint state, uint x, uint y) {
+    if (x >= 8u || y >= 8u) return false;
+    bool top = y == 0u;
+    bool left = x == 0u;
+    bool right = x == 7u;
+    bool topLeft = (top && x <= 2u) || (left && y <= 2u);
+    bool topRight = (top && x >= 5u) || (right && y <= 2u);
+    bool lowerLeft = left && y >= 5u;
+    bool lowerRight = right && y >= 5u;
+    if (state == 0u) return top || left || right;                 // damaged
+    if (state == 1u) return topLeft;                              // active
+    if (state == 2u) return top && (x == 1u || x == 3u || x == 5u); // fine
+    if (state == 3u) return lowerRight;                           // macro moved
+    if (state == 4u) return topRight;                             // bulk ready
+    if (state == 5u) return (left || right) && y >= 3u && y <= 4u; // breakup
+    if (state == 6u) return top && x >= 2u && x <= 5u;            // settled
+    if (state == 7u) return topLeft || topRight || lowerLeft || lowerRight;
+    if (state == 8u) return lowerLeft;                            // sleeping
+    return false;                                                // stable/candidate
+}
+
+bool debugStateMarkerReadable(uint state, uint cellPixels) {
+    // At minimum zoom, passive tiles otherwise blanket the view with marks.
+    return cellPixels >= 2u || (cellPixels == 1u && state <= 5u);
+}
+
 uint debugLegendCardHeight(uint scale) { return scale == 2u ? 36u : 28u; }
 uint debugLegendTitleHeight(uint scale) { return scale == 2u ? 22u : 14u; }
 uint debugStatRowHeight(uint scale) { return scale == 2u ? 18u : 12u; }

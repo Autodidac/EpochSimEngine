@@ -390,14 +390,14 @@ def main() -> int:
     require(ui_layout, "layout.previous_scene = {{0.0f, 0.0f}, {0.0f, 0.0f}}", errors,
             "no scene carousel contract")
     for token in (
-        "bool debugStateMarkerPixel(uint state, ivec2 local)",
         "textColor = debugStatColor(stat)",
         "if (row == 17u || row == 24u) return debugKeyColor(1u)",
         "if (row == 18u || row == 25u) return debugKeyColor(8u)",
-        "return false;                                                // stable/candidate",
         "Material color remains authoritative in Debug",
         "color.rgb = mix(color.rgb, debugKeyColor(state), alpha * occupancy)",
-        "color = debugStateMarkerPixel(key, markerLocal)",
+        "color = debugStateMarkerPixel(key, markerX, markerY)",
+        "debugStateMarkerReadable(state, cellPixels)",
+        "debugStateMarkerPixel(state, uint(local.x), uint(local.y))",
         "bool activeBoundary = activeArea && (activeLocal.x == 0 || activeLocal.y == 0)",
         "if (renderPc.debugMode == 1u && !mapSample)",
         "WORLD TOTALS and MAP remain clean presentations",

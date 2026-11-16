@@ -53,7 +53,7 @@ The queen needs a clear right entrance and a finite exterior Atmosphere supply. 
 
 ## Reading Debug
 
-Click **DEBUG** to cycle through REGION, WORLD TOTALS, and off. REGION adds sparse tile-edge markers; WORLD TOTALS and MAP do not add those markers. The material colors remain underneath them. The sidebar MARKER KEY shows the same shapes as the world, not a second color-only coding system.
+Click **DEBUG** to cycle through REGION, WORLD TOTALS, and off. REGION adds sparse tile-edge markers; WORLD TOTALS and MAP leave the world unmarked. The sidebar MARKER KEY shows enlarged copies of those shapes against a dark background. A blank STABLE sample means no marker. At one logical pixel per cell, REGION hides settled, enclosed, and sleeping markers to keep the scene readable; their sampled counts still include those tiles. Zoom in to inspect those markers.
 
 | Marker label | Shape within an 8x8 tile | Meaning |
 | --- | --- | --- |

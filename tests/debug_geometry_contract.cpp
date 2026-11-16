@@ -15,6 +15,37 @@ using std::min;
 
 using namespace shader_geometry;
 
+bool check_markers() {
+    // Independent top-to-bottom edge masks, bit 0 is tile x=0.
+    constexpr std::array<std::array<uint, 8>, 10> masks{{
+        {255,129,129,129,129,129,129,129}, {7,1,1,0,0,0,0,0},
+        {42,0,0,0,0,0,0,0}, {0,0,0,0,0,128,128,128},
+        {224,128,128,0,0,0,0,0}, {0,0,0,129,129,0,0,0},
+        {60,0,0,0,0,0,0,0}, {231,129,129,0,0,129,129,129},
+        {0,0,0,0,0,1,1,1}, {0,0,0,0,0,0,0,0},
+    }};
+    for (uint state = 0u; state < masks.size(); ++state) {
+        if (debugStateMarkerReadable(state, 0u) ||
+            debugStateMarkerReadable(state, 1u) != (state < 6u) ||
+            !debugStateMarkerReadable(state, 2u)) return false;
+        for (uint scale : {1u, 2u}) {
+            uint size = debugLegendSwatchSize(scale);
+            uint pitch = scale + 1u;
+            uint margin = scale == 1u ? 1u : 0u;
+            for (uint y = 0u; y < size; ++y) {
+                for (uint x = 0u; x < size; ++x) {
+                    bool expected = x >= margin && y >= margin &&
+                        x < size - margin && y < size - margin &&
+                        ((masks[state][(y - margin) / pitch] >> ((x - margin) / pitch)) & 1u) != 0u;
+                    if (debugStateMarkerPixel(state, debugLegendMarkerCell(x, size),
+                                              debugLegendMarkerCell(y, size)) != expected) return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
 bool check_layout(uint panelWidth, uint panelHeight, bool expectAllStats) {
     uint scale = debugPanelTextScale(panelWidth, panelHeight, true);
     uint columns = debugLegendColumns(panelWidth, scale);
@@ -72,6 +103,7 @@ bool check_sample(uint worldWidth, uint worldHeight, uint sampleX, uint sampleY,
 }
 
 int main() {
+    if (!check_markers()) return 7;
     // Actual logical-window panel sizes: 960x720, 1280x800, 1920x1080,
     // 2560x1440. Framebuffer scale must not enter these calculations.
     for (const auto& panel : std::array<std::array<uint, 2>, 4>{

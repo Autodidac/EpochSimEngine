@@ -1,5 +1,9 @@
 # EpochSimEngine Mission Cache
 
+### REGION marker readability checkpoint
+
+- MC-094/131 (related MC-080): the REGION overlay and its sidebar key now share one tested 8×8 glyph mask. The key shows evenly scaled colored marks against a neutral background; STABLE is intentionally blank. At one logical pixel per cell, the overlay omits settled, enclosed, and sleeping marks to reduce clutter while retaining their counts. WORLD TOTALS and MAP remain free of tile marks. Windows Release (including SPIR-V) compiled; the 45 selected headless native contracts passed, including all ten marker masks, both swatch sizes, zoom thresholds, and panel geometry. Shader contracts also passed. SandHybrid was not launched; screenshot acceptance, Linux validation, and measured REGION overhead remain open. Preserve every mission status and the existing release packages.
+
 ### Editor compact-layout checkpoint
 
 - MC-128/141: shortened the Editor keymap by 32 logical pixels in both layout and shader, preserving Designer slot geometry. The cursor panel fits within a 720-pixel logical client area. Replaced the obsolete scene-carousel shortcut with F4 MAP and corrected save/load labels. Fresh Windows Release build (SDK 10.0.19041.0), shader source contracts, and the focused CPU UI geometry contract passed. No demo launch, visual approval, or Linux validation; mission statuses remain unchanged. Source checkpoint only; retain the published packages.

@@ -239,28 +239,6 @@ vec3 debugKeyColor(uint key) {
     return vec3(0.76, 0.84, 0.94);                      // stable / candidate
 }
 
-// Debug state is an annotation over the authoritative material presentation.
-// Geometry, rather than a full-cell recolor, distinguishes hierarchy state.
-bool debugStateMarkerPixel(uint state, ivec2 local) {
-    bool top = local.y == 0;
-    bool left = local.x == 0;
-    bool right = local.x == 7;
-    bool topLeft = (top && local.x <= 2) || (left && local.y <= 2);
-    bool topRight = (top && local.x >= 5) || (right && local.y <= 2);
-    bool lowerLeft = left && local.y >= 5;
-    bool lowerRight = right && local.y >= 5;
-    if (state == 0u) return top || left || right;                 // damaged
-    if (state == 1u) return topLeft;                              // active
-    if (state == 2u) return top && (local.x == 1 || local.x == 3 || local.x == 5); // fine
-    if (state == 3u) return lowerRight;                           // macro moved
-    if (state == 4u) return topRight;                             // bulk ready
-    if (state == 5u) return (left || right) && local.y >= 3 && local.y <= 4; // breakup
-    if (state == 6u) return top && local.x >= 2 && local.x <= 5;  // settled
-    if (state == 7u) return topLeft || topRight || lowerLeft || lowerRight; // enclosed
-    if (state == 8u) return lowerLeft;                            // sleeping
-    return false;                                                // stable/candidate
-}
-
 bool borderPixel(uint x, uint y, uint left, uint top, uint right, uint bottom) {
     return x <= left + 1u || x + 2u >= right || y <= top + 1u || y + 2u >= bottom;
 }
@@ -394,16 +372,13 @@ bool debugPanelPixel(ivec2 pixel, uint x, uint y, uint panelLeft, uint panelTop,
             uint swatchTop = keyY + 4u;
             if (swatchTop + swatchSize < cardBottom && x >= keyLeft + 4u &&
                 x < keyLeft + 4u + swatchSize && y >= swatchTop && y < swatchTop + swatchSize) {
-                ivec2 markerLocal = ivec2(
-                    int((x - keyLeft - 4u) * 8u / swatchSize),
-                    int((y - swatchTop) * 8u / swatchSize));
-                // The complete block communicates the state color at a glance;
-                // the reversed glyph is the exact sparse shape drawn in-world.
+                uint markerX = debugLegendMarkerCell(x - keyLeft - 4u, swatchSize);
+                uint markerY = debugLegendMarkerCell(y - swatchTop, swatchSize);
+                // A neutral swatch makes the actual marker shape readable even
+                // when two state colors look similar. Stable has no marker.
                 vec3 keyColor = debugKeyColor(key);
-                color = debugStateMarkerPixel(key, markerLocal)
-                    ? mix(keyColor, vec3(1.0), 0.86) : keyColor;
-                // The card owns the border. A border over this 8x8 sample
-                // hides the exact edge/corner glyphs the key must explain.
+                color = debugStateMarkerPixel(key, markerX, markerY)
+                    ? mix(keyColor, vec3(1.0), 0.35) : vec3(0.010, 0.016, 0.024);
             }
             if (keyY + 7u * uint(textScale) < panelBottom &&
                 fixedPixel(pixel, ivec2(int(keyLeft + swatchSize + 12u), int(keyY + 7u)),
@@ -1526,13 +1501,13 @@ void main() {
     if (renderPc.debugMode == 1u && !mapSample) {
         uint cellPixelsX = renderPc.viewportWidth / max(renderPc.viewWidth, 1u);
         uint cellPixelsY = renderPc.viewportHeight / max(renderPc.viewHeight, 1u);
-        bool readableTileGrid = min(cellPixelsX, cellPixelsY) >= 1u;
+        uint cellPixels = min(cellPixelsX, cellPixelsY);
         ivec2 local = ivec2(int(gridX & 7u), int(gridY & 7u));
         // Every hierarchy glyph lives on a tile edge. Avoid the tile-buffer
         // lookup and state classifier for the 42/64 interior fragments that
         // can never draw a marker.
         bool markerCandidate = local.y == 0 || local.x == 0 || local.x == 7;
-        if (readableTileGrid && markerCandidate) {
+        if (cellPixels >= 1u && markerCandidate) {
             TileState tile = tileAt(grid);
             uint state = 9u;
             float alpha = 0.0;
@@ -1556,7 +1531,8 @@ void main() {
             } else if (tileHas(tile, TILE_ACTIVE)) {
                 state = 1u; alpha = 0.46;
             }
-            if (debugStateMarkerPixel(state, local)) {
+            if (debugStateMarkerReadable(state, cellPixels) &&
+                debugStateMarkerPixel(state, uint(local.x), uint(local.y))) {
                 // Material color remains authoritative in Debug. State appears
                 // only as a sparse edge/corner annotation with bounded opacity.
                 float occupancy = clamp(float(tileOccupancy(tile)) / 64.0, 0.35, 1.0);
