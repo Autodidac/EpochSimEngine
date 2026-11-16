@@ -1,5 +1,9 @@
 # EpochSimEngine Mission Cache
 
+### Editor compact-layout checkpoint
+
+- MC-128/141: shortened the Editor keymap by 32 logical pixels in both layout and shader, preserving Designer slot geometry. The cursor panel fits within a 720-pixel logical client area. Replaced the obsolete scene-carousel shortcut with F4 MAP and corrected save/load labels. Fresh Windows Release build (SDK 10.0.19041.0), shader source contracts, and the focused CPU UI geometry contract passed. No demo launch, visual approval, or Linux validation; mission statuses remain unchanged. Source checkpoint only; retain the published packages.
+
 ### 2026-09-06 v2.5.29 Windows and source release authorization
 
 - The user explicitly accepted the offered Windows + committed source-only release with "yes for now". This supersedes the parked instruction below only for this release scope. Publish the normal stable v2.5.29 Windows SandHybrid demo plus EpochSimEngine source ZIP/TAR; keep the current public Linux v2.5.27 archive, checksum, alias and platform-specific version unchanged. Linux v2.5.29 is held, not runtime-accepted or eligible for publication. Do not restart its long gate during this handoff. The general two-platform release requirement remains for future complete cross-platform releases.

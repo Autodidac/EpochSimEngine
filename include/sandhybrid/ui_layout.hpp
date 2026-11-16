@@ -17,6 +17,7 @@ inline constexpr std::uint32_t palette_items_height = 124u;
 inline constexpr std::uint32_t eraser_height = 34u;
 inline constexpr std::uint32_t actions_height = 54u;
 inline constexpr std::uint32_t keymap_height = 124u;
+inline constexpr std::uint32_t editor_keymap_height = 92u;
 inline constexpr std::uint32_t settings_fps_height = 58u;
 inline constexpr std::uint32_t cursor_editor_height = 112u;
 inline constexpr std::uint32_t palette_height = 0u;
@@ -244,7 +245,8 @@ framebuffer_to_logical_pointer(
                          {content_width - 16.0f, 27.0f}};
     const float keymap_top = designer_workspace ? actions_top
         : actions_top + float(actions_height) + gap;
-    layout.keymap = {{content_left, keymap_top}, {content_width, float(keymap_height)}};
+    const auto workspace_keymap_height = selected_workspace == 1u ? editor_keymap_height : keymap_height;
+    layout.keymap = {{content_left, keymap_top}, {content_width, float(workspace_keymap_height)}};
 
     const float settings_top = float(status_height) + margin;
     layout.settings_lighting = {{content_left, settings_top}, {content_width, 78.0f}};
@@ -267,7 +269,7 @@ framebuffer_to_logical_pointer(
                                   {designer_button_width, 28.0f}};
     layout.designer_blueprints = {{content_left + designer_button_width, keymap_top + 59.0f},
                                    {content_width - designer_button_width, 28.0f}};
-    const float cursor_top = keymap_top + float(keymap_height) + gap;
+    const float cursor_top = keymap_top + float(workspace_keymap_height) + gap;
     layout.cursor_editor = {{content_left, cursor_top},
                             {content_width, float(cursor_editor_height)}};
 

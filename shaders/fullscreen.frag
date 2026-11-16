@@ -1141,6 +1141,7 @@ void main() {
             : (renderPc.selectedWorkspace == 1u ? actionsBottom + 3u
                : (renderPc.selectedWorkspace == 2u ? settingsFpsBottom + 3u : groupTop));
         uint keymapBottom = keymapTop + 124u;
+        if (renderPc.selectedWorkspace == 1u) keymapBottom = keymapTop + 92u;
         if (renderPc.selectedWorkspace == 3u &&
             y >= keymapTop && y < keymapBottom && x >= contentLeft && x < contentLeft + contentWidth) {
             color = vec3(0.035, 0.047, 0.064);
@@ -1211,14 +1212,15 @@ void main() {
             bool keyText = fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(keymapTop + 6u)), 2, 68u);
             uint leftIds[7] = uint[7](62u, 63u, 64u, 69u, 140u, 141u, 106u);
             uint rightIds[7] = uint[7](70u, 71u, 72u, 73u, 74u, 107u, 109u);
+            uint keyPitch = renderPc.selectedWorkspace == 1u ? 9u : 14u;
             uint columnMiddle = contentLeft + contentWidth / 2u;
             if (x >= columnMiddle && x < columnMiddle + 1u &&
                 y >= keymapTop + 23u && y < keymapBottom - 6u)
                 color = vec3(0.12, 0.20, 0.28);
             for (uint i = 0u; i < 7u; ++i)
-                keyText = keyText || fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(keymapTop + 25u + i * 14u)), 1, leftIds[i]);
+                keyText = keyText || fixedPixel(pixel, ivec2(int(contentLeft + 8u), int(keymapTop + 25u + i * keyPitch)), 1, leftIds[i]);
             for (uint i = 0u; i < 7u; ++i)
-                keyText = keyText || fixedPixel(pixel, ivec2(int(columnMiddle + 8u), int(keymapTop + 25u + i * 14u)), 1, rightIds[i]);
+                keyText = keyText || fixedPixel(pixel, ivec2(int(columnMiddle + 8u), int(keymapTop + 25u + i * keyPitch)), 1, rightIds[i]);
             if (keyText) color = vec3(0.93, 0.96, 0.99);
             outColor = vec4(color, 1.0);
             return;

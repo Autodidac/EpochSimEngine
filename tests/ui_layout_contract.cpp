@@ -132,11 +132,12 @@ int main() {
         !designer_contains(layout.keymap, layout.designer_blueprints) ||
         !designer_nonoverlap(layout.designer_static_model, layout.designer_map_chunk) ||
         !designer_nonoverlap(layout.designer_inventory, layout.designer_blueprints)) return 19;
+    const auto designer_layout = sandhybrid::ui::make_layout(1280u, 720u, 3u);
     for (std::uint32_t slot = 0u; slot < sandhybrid::blueprint_slot_count; ++slot) {
-        const auto rect = sandhybrid::ui::designer_blueprint_slot_rect(layout, slot);
-        if (!designer_contains(layout.keymap, rect) ||
+        const auto rect = sandhybrid::ui::designer_blueprint_slot_rect(designer_layout, slot);
+        if (!designer_contains(designer_layout.keymap, rect) ||
             sandhybrid::ui::designer_blueprint_slot_at(
-                layout, {rect.position.x + rect.size.x * 0.5f,
+                designer_layout, {rect.position.x + rect.size.x * 0.5f,
                          rect.position.y + rect.size.y * 0.5f}) != slot)
             return 25;
     }
@@ -242,13 +243,16 @@ int main() {
             !same_rect(designer.workspace_designer, editor.workspace_designer) ||
             editor.group_tabs.size.y != 96.0f || editor.palette.size.y != 124.0f ||
             editor.actions.position.y != 439.0f || editor.ignite_air.position.y != 461.0f ||
-            editor.keymap.position.y != 496.0f) return 30;
+            editor.keymap.position.y != 496.0f || editor.keymap.size.y != 92.0f ||
+            editor.cursor_editor.position.y != 591.0f ||
+            editor.cursor_editor.position.y + editor.cursor_editor.size.y > float(height)) return 30;
         for (std::uint32_t workspace = 0u; workspace < 3u; ++workspace) {
             const auto other = sandhybrid::ui::make_layout(1280u, height, workspace);
             if (!same_rect(other.group_tabs, editor.group_tabs) ||
                 !same_rect(other.palette, editor.palette) ||
                 !same_rect(other.ignite_air, editor.ignite_air) ||
-                !same_rect(other.cursor_editor, editor.cursor_editor)) return 31;
+                other.keymap.size.y != (workspace == 1u ? 92.0f : 124.0f) ||
+                other.cursor_editor.position.y != (workspace == 1u ? 591.0f : 623.0f)) return 31;
         }
         if (designer.keymap.position.y != designer.palette.position.y + designer.palette.size.y + 3.0f ||
             designer.keymap.size.y != 124.0f || designer.cursor_editor.size.y != 112.0f ||
