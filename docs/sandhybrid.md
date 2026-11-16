@@ -92,6 +92,8 @@ The Frontier reset layout opens its catchment inlet and keeps Steel stock clear 
 
 World saves use checksummed schema 2 and retain every canonical cell plus the exact actor owner. Schema 1 cell-only saves remain readable without inventing actor state.
 
+Loading an exact save keeps the restored player state (or the current player state for a schema 1 save). Reset and legacy PPM import instead initialize the authored player. A successful load or reset drops queued world edits so they cannot apply to the replacement world.
+
 `world.shw` is authoritative; `manifest.txt` is an optional summary. If only the summary cannot be refreshed, the save still loads normally and SandHybrid logs a warning. If the world file cannot be saved, SandHybrid reports the failure in its log and keeps the current session running.
 
 The packaged executable can run the focused production Vulkan gate:

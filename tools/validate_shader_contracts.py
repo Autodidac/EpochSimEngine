@@ -389,6 +389,30 @@ def main() -> int:
             "district-aware bee home contract")
     require(ui_layout, "layout.previous_scene = {{0.0f, 0.0f}, {0.0f, 0.0f}}", errors,
             "no scene carousel contract")
+    world_frame = renderer[renderer.index("    bool draw_frame("):]
+    frame_order = (
+        "if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) return false;",
+        "state.save_scene_image.exchange(false, std::memory_order_acq_rel)",
+        "const bool user_reset = state.reset.exchange(false, std::memory_order_acq_rel);",
+        "exact_world_loaded = load_world_slot(selected_scene);",
+        "const bool image_loaded = exact_world_loaded || authored_image_loaded;",
+        "const bool world_boundary = reset_requested || image_loaded;",
+        "if (state.fill_region.exchange(false, std::memory_order_acq_rel) && !world_boundary)",
+        "if (state.ignite_air.exchange(false, std::memory_order_acq_rel) && !world_boundary)",
+        "if (state.blueprint_place_requested.exchange(false, std::memory_order_acq_rel) && !world_boundary)",
+        "const bool regenerate_world = reset_requested && !image_loaded;",
+        "const bool reset_actor = regenerate_world || authored_image_loaded;",
+        "const bool reset_this_frame = world_boundary;",
+        "record_actor(frame.command_buffer, state, true, false, false);",
+        "else if (!reset_this_frame && !run_simulation && (actor_action || actor_motion))",
+    )
+    cursor = 0
+    for token in frame_order:
+        position = world_frame.find(token, cursor)
+        if position < 0:
+            errors.append(f"world frame transition contract missing or reordered: {token}")
+            break
+        cursor = position + len(token)
     for token in (
         "textColor = debugStatColor(stat)",
         "if (row == 17u || row == 24u) return debugKeyColor(1u)",

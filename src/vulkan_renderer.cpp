@@ -3851,8 +3851,9 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             state.fire_tool_pressed.exchange(false, std::memory_order_acq_rel);
         const bool deposit_pressed = consume_one_shots &&
             state.deposit_resource_pressed.exchange(false, std::memory_order_acq_rel);
-        const bool fire = state.fire_tool.load(std::memory_order_relaxed) || fire_pressed;
-        const bool deposit = state.deposit_resource.load(std::memory_order_relaxed) || deposit_pressed;
+        const bool fire = !reset_actor && (state.fire_tool.load(std::memory_order_relaxed) || fire_pressed);
+        const bool deposit = !reset_actor &&
+            (state.deposit_resource.load(std::memory_order_relaxed) || deposit_pressed);
         const ActorPush push{
             .width = config.grid_width,
             .height = config.grid_height,
@@ -4396,55 +4397,6 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
         }
         check_vk(fence_result, "vkWaitForFences");
 
-        const auto selected_scene = state.selected_scene.load(std::memory_order_relaxed) % scene_count;
-        const bool paused = state.paused.load(std::memory_order_relaxed);
-        if (state.save_scene_image.exchange(false, std::memory_order_acq_rel) &&
-            config.simulation_profile_report.empty()) {
-            if (!needs_reset) save_world_slot(selected_scene);
-            else startup_log("World save skipped until the initial scene exists.");
-        }
-        const bool explicit_load =
-            state.load_scene_image.exchange(false, std::memory_order_acq_rel) &&
-            config.simulation_profile_report.empty();
-        if (state.fill_region.exchange(false, std::memory_order_acq_rel)) {
-            if (!needs_reset) fill_connected_region(state);
-            else startup_log("Fill skipped until the initial scene exists.");
-        }
-        if (state.ignite_air.exchange(false, std::memory_order_acq_rel)) {
-            if (!needs_reset) {
-                constexpr std::uint32_t nuke_warning_stage_count = 6u;
-                const std::uint32_t nuke_presentations_per_stage =
-                    cpu_physical_device && !config.interactive_acceptance_report.empty() ? 1u : 8u;
-                nuke_flash_frames_remaining =
-                    nuke_warning_stage_count * nuke_presentations_per_stage;
-                nuke_dispatch_pending = true;
-                startup_log("Nuke from Space warning flash staged before GPU detonation.");
-            } else {
-                startup_log("Nuke from Space skipped until the initial World exists.");
-            }
-        }
-        const bool reset_requested = needs_reset || state.reset.exchange(false, std::memory_order_acq_rel);
-        bool image_loaded = false;
-        if (explicit_load) {
-  image_loaded = load_world_slot(selected_scene);
-  if (!image_loaded) {
-      const auto selected = static_cast<Scene>(selected_scene);
-      if (scene_image_exists(scene_directory(), selected)) {
-          startup_log("No valid world save; importing the legacy authored PPM instead.");
-          image_loaded = import_authored_scene_ppm(selected_scene);
-      } else {
-          startup_log("No valid world save or authored PPM exists for the selected scene.");
-      }
-  }
-        }
-        if (state.blueprint_place_requested.exchange(
-                false, std::memory_order_acq_rel)) {
-            if (!reset_requested && !image_loaded && !needs_reset)
-                place_selected_blueprint(state);
-            else
-                startup_log("Blueprint placement skipped across a load/reset boundary.");
-        }
-
         std::uint32_t image_index{};
         VkResult acquire_result = VK_SUCCESS;
         if (present_frame) {
@@ -4473,6 +4425,50 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             image_fences[image_index] = frame.fence;
         }
 
+        // An out-of-date swapchain is a retry, not a world-command boundary.
+        // Claim input only after acquisition succeeds (or on a tick-only frame).
+        const auto selected_scene = state.selected_scene.load(std::memory_order_relaxed) % scene_count;
+        const bool paused = state.paused.load(std::memory_order_relaxed);
+        if (state.save_scene_image.exchange(false, std::memory_order_acq_rel) &&
+            config.simulation_profile_report.empty()) {
+            if (!needs_reset) save_world_slot(selected_scene);
+            else startup_log("World save skipped until the initial scene exists.");
+        }
+        const bool explicit_load =
+            state.load_scene_image.exchange(false, std::memory_order_acq_rel) &&
+            config.simulation_profile_report.empty();
+        const bool user_reset = state.reset.exchange(false, std::memory_order_acq_rel);
+        const bool reset_requested = needs_reset || user_reset;
+        bool exact_world_loaded = false;
+        bool authored_image_loaded = false;
+        if (explicit_load) {
+            exact_world_loaded = load_world_slot(selected_scene);
+            if (!exact_world_loaded) {
+                const auto selected = static_cast<Scene>(selected_scene);
+                if (scene_image_exists(scene_directory(), selected)) {
+                    startup_log("No valid world save; importing the legacy authored PPM instead.");
+                    authored_image_loaded = import_authored_scene_ppm(selected_scene);
+                } else {
+                    startup_log("No valid world save or authored PPM exists for the selected scene.");
+                }
+            }
+        }
+        const bool image_loaded = exact_world_loaded || authored_image_loaded;
+        const bool world_boundary = reset_requested || image_loaded;
+        if (state.fill_region.exchange(false, std::memory_order_acq_rel) && !world_boundary)
+            fill_connected_region(state);
+        if (state.ignite_air.exchange(false, std::memory_order_acq_rel) && !world_boundary) {
+            constexpr std::uint32_t nuke_warning_stage_count = 6u;
+            const std::uint32_t nuke_presentations_per_stage =
+                cpu_physical_device && !config.interactive_acceptance_report.empty() ? 1u : 8u;
+            nuke_flash_frames_remaining =
+                nuke_warning_stage_count * nuke_presentations_per_stage;
+            nuke_dispatch_pending = true;
+            startup_log("Nuke from Space warning flash staged before GPU detonation.");
+        }
+        if (state.blueprint_place_requested.exchange(false, std::memory_order_acq_rel) && !world_boundary)
+            place_selected_blueprint(state);
+
         check_vk(vkResetFences(device, 1, &frame.fence), "vkResetFences");
         check_vk(vkResetCommandBuffer(frame.command_buffer, 0), "vkResetCommandBuffer");
         const VkCommandBufferBeginInfo begin_info{
@@ -4489,12 +4485,11 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         }
 
-        bool reset_actor = image_loaded;
-        bool reset_this_frame = image_loaded;
-        if (reset_requested && !image_loaded) {
+        const bool regenerate_world = reset_requested && !image_loaded;
+        const bool reset_actor = regenerate_world || authored_image_loaded;
+        const bool reset_this_frame = world_boundary;
+        if (regenerate_world) {
             record_reset(frame.command_buffer, selected_scene);
-            reset_actor = true;
-            reset_this_frame = true;
         }
         if (policy::editor_mutation_allowed(paused, reset_this_frame)) {
             if (const auto request = consume_beehive_placement(state)) {
@@ -4548,6 +4543,8 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             state.fill_region.store(false, std::memory_order_release);
             state.fill_armed.store(false, std::memory_order_release);
             state.ignite_air.store(false, std::memory_order_release);
+            state.fire_tool.store(false, std::memory_order_release);
+            state.deposit_resource.store(false, std::memory_order_release);
             state.fire_tool_pressed.store(false, std::memory_order_release);
             state.deposit_resource_pressed.store(false, std::memory_order_release);
             state.blueprint_place_requested.store(false, std::memory_order_release);
@@ -4569,8 +4566,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
              state.move_y.load(std::memory_order_relaxed) != 0 ||
              state.jump.load(std::memory_order_relaxed));
         const bool actor_simulation = run_simulation || actor_motion;
-        if (!run_simulation && (reset_actor || actor_action || actor_motion))
-            record_actor(frame.command_buffer, state, reset_actor, actor_simulation, true);
+        if (reset_actor)
+            record_actor(frame.command_buffer, state, true, false, false);
+        else if (!reset_this_frame && !run_simulation && (actor_action || actor_motion))
+            record_actor(frame.command_buffer, state, false, actor_simulation, true);
 
         if (collect_debug_stats) {
             const auto active_area_count = std::max(

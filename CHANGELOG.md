@@ -1,5 +1,12 @@
 # EpochSimEngine changelog
 
+## Unreleased
+
+- Keep the Editor cursor controls visible at 720 logical pixels and show the current map and save/load shortcuts.
+- Show REGION debug glyphs against a dark key. At one logical pixel per cell, omit passive markers without changing the counts.
+- Keep world saves usable if only the optional text summary fails, and log file-save failures without ending the session.
+- Preserve the saved player when loading an exact world. Discard queued edits across world replacement, and leave commands queued when swapchain acquisition asks for a retry.
+
 ## 2.5.29 (Windows and committed source; Linux held)
 
 - Release scope explicitly authorized on September 6: stable Windows demo and committed-source archives only. The existing public Linux v2.5.27 download remains unchanged; Linux v2.5.29 is HELD and is not a current download. This is a release-only exception to the normal two-platform runtime publication gate, not Linux runtime acceptance.
