@@ -1,5 +1,7 @@
 # EpochSimEngine Mission Cache
 
+- GitHub Actions run 43793342827 failed before compilation because the Blueprint load/reset diagnostic disappeared. Restore the diagnostic without changing the one-shot discard at world replacement. Both hosted platform results remain required before any release change.
+
 ### Exact load and world-command boundary checkpoint
 
 - MC-145/148/152: the live frame previously uploaded the exact saved actor and then passed `reset=true` to the actor shader, which replaced the owner. Exact schema-2 load now retains all saved actor words; exact schema-1 load retains the existing owner. Generated reset and legacy PPM import still initialize an authored player, without mining, depositing, or advancing motion in that frame. Acquire an image before claiming commands so swapchain retries cannot consume them; drain Fill, Nuke, Blueprint, and other queued world actions at a successful replacement boundary. Keep file schema and load fallbacks unchanged.

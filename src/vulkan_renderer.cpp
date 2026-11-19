@@ -4466,8 +4466,10 @@ const auto storage_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_
             nuke_dispatch_pending = true;
             startup_log("Nuke from Space warning flash staged before GPU detonation.");
         }
-        if (state.blueprint_place_requested.exchange(false, std::memory_order_acq_rel) && !world_boundary)
-            place_selected_blueprint(state);
+        if (state.blueprint_place_requested.exchange(false, std::memory_order_acq_rel)) {
+            if (!world_boundary) place_selected_blueprint(state);
+            else startup_log("Blueprint placement skipped across a load/reset boundary.");
+        }
 
         check_vk(vkResetFences(device, 1, &frame.fence), "vkResetFences");
         check_vk(vkResetCommandBuffer(frame.command_buffer, 0), "vkResetCommandBuffer");

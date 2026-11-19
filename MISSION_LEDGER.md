@@ -1,5 +1,7 @@
 # EpochSimEngine Mission Ledger
 
+- Restore the Blueprint world-replacement diagnostic required by CI. No mission closed; wait for hosted Windows and Linux builds.
+
 - MC-145/148/152 checkpoint: prevent exact load from resetting restored player state; defer command consumption across swapchain retries and discard edits on world replacement. Windows Release, 45 selected headless contracts, and installed Compact Vulkan state 164/164 passed. Normal F9/resize eye checks, Linux, and packaged mission acceptance remain open; statuses unchanged. Four historical GitHub milestones have verified local asset copies; no release deletions.
 
 - MC-145/147/148 checkpoint: reproduced and fixed an optional manifest failure being reported as failure of a committed world save. Real filesystem save failures are logged without ending the session. Windows Release and 45 selected headless native contracts pass; the demo was not launched. Keep the packaged and Linux acceptance gates and all mission statuses open as recorded.
